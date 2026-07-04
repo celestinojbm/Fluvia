@@ -31,6 +31,7 @@ export {
   type BalanceDto,
   type ProjectionRebuild,
   type ProjectionVerification,
+  type ReverseTransactionInput,
 } from './types.js';
 export {
   LedgerError,
@@ -43,6 +44,10 @@ export {
   IdempotencyConflictError,
   InsufficientBalanceError,
   LedgerRetriesExhaustedError,
+  TransactionNotFoundError,
+  TransactionAlreadyReversedError,
+  CannotReverseReversalError,
+  ReversalNoteRequiredError,
   UnknownAccountCodeError,
   FeesExceedAmountError,
 } from './errors.js';

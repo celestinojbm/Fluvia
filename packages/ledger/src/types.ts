@@ -1,4 +1,6 @@
 import type { Money } from '@fluvia/money';
+import type { PoolClient } from '@fluvia/db';
+import type { AuditContext } from '@fluvia/audit';
 
 export const LEDGER_REASONS = [
   'payment',
@@ -39,6 +41,13 @@ export interface PostTransactionInput {
    * locks de cuenta (race-safe); violacion => rollback total.
    */
   nonNegativeAccounts?: string[];
+  /**
+   * Hook de composicion ATOMICA: corre DENTRO de la misma transaccion, tras
+   * el outbox y solo en la primera aplicacion (jamas en replay). Uso interno
+   * (p.ej. auditoria de reversiones); PROHIBIDO hacer llamadas externas aqui
+   * (Nivel A) — solo escrituras SQL sobre el mismo client.
+   */
+  onPosted?: (client: PoolClient, posted: PostedTransaction) => Promise<void>;
 }
 
 export interface PostedEntry {
@@ -84,6 +93,21 @@ export interface ProjectionVerification {
   matches: boolean;
   projected: { available: string; pending: string };
   recomputed: { available: string; pending: string };
+}
+
+/** F2-07: reversion completa de una transaccion via servicio. */
+export interface ReverseTransactionInput {
+  tenantId: string;
+  /** Transaccion original a revertir (misma tenancy; visible via RLS). */
+  transactionId: string;
+  /** Idempotencia propia de la reversion. */
+  idempotencyKey: string;
+  /** Objeto de dominio que ORDENA la reversion (refund, ajuste, incidente). */
+  source: { type: string; id: string };
+  /** Razon humana OBLIGATORIA (V4 §17.4/§36); va al audit log. */
+  note: string;
+  /** Actor que ordena la reversion; default system. */
+  audit?: AuditContext;
 }
 
 /** Resultado de rebuildProjection (F2-05). */

@@ -69,6 +69,36 @@ export class InsufficientBalanceError extends LedgerError {
   }
 }
 
+/** F2-07: la transaccion a revertir no existe o no es visible para el tenant. */
+export class TransactionNotFoundError extends LedgerError {
+  constructor(readonly transactionId: string) {
+    super(`Ledger transaction not found or not visible for tenant: ${transactionId}`);
+  }
+}
+
+/** F2-07: la transaccion ya fue revertida (el indice unico decide las carreras). */
+export class TransactionAlreadyReversedError extends LedgerError {
+  constructor(readonly transactionId: string) {
+    super(`Ledger transaction ${transactionId} has already been reversed`);
+  }
+}
+
+/** F2-07: revertir una reversion re-aplicaria el original por la puerta de atras. */
+export class CannotReverseReversalError extends LedgerError {
+  constructor(readonly transactionId: string) {
+    super(
+      `Transaction ${transactionId} is itself a reversal; post a new forward transaction instead`
+    );
+  }
+}
+
+/** F2-07: toda reversion exige una razon humana explicita (V4 §17.4/§36). */
+export class ReversalNoteRequiredError extends LedgerError {
+  constructor() {
+    super('Reversals require an explicit, non-empty note explaining why');
+  }
+}
+
 export class UnknownAccountCodeError extends LedgerError {
   constructor(readonly code: string) {
     super(`Account code not in the Chart of Accounts: "${code}"`);

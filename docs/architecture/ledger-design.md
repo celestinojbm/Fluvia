@@ -38,6 +38,7 @@ Prohibido compensar entre monedas: un descuadre en USD jamás se "arregla" con u
 
 - `ledger_entries` y `ledger_transactions` son **append-only**: triggers de base de datos bloquean UPDATE y DELETE (ya validado en el spike: `FLUVIA_IMMUTABLE`).
 - Correcciones = **transacción compensatoria** con `reason` (`reversal`, `adjustment`), referencia `reverses_tx_id` al asiento original, actor y razón obligatorios, y registro de auditoría.
+- **Implementado (F2-07)**: `reverseTransaction` — asiento espejo completo por la vía normativa íntegra (locks, balanceo, proyecciones, outbox, idempotencia propia). Reglas: una transacción se revierte **a lo sumo una vez** (índice único parcial `ledger_transactions_reverses_once`, 0012 — las carreras las decide el motor); **prohibido revertir una reversión** (sería re-aplicar el original; correcciones posteriores = nueva tx forward); razón humana obligatoria y evento `ledger.transaction_reversed` (riesgo alto) en la MISMA transacción que el espejo.
 - La prohibición de DELETE se gobierna por clasificación de datos (`security/data-classification.md`): absoluta para ledger/auditoría/eventos financieros; con purga administrada para datos técnicos.
 
 ## 5. Posting: algoritmo normativo

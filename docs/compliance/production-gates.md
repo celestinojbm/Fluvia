@@ -6,7 +6,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 
 ## 1. Gates técnicos mínimos
 
-### Gate Ledger — 🟡 (en progreso, F2)
+### Gate Ledger — 🟢 técnico (F2-02…F2-08 completos; revisión formal en Fase 6)
 - [x] **Cada transacción balancea por activo/moneda a nivel de MOTOR** (constraint trigger diferido `FLUVIA_UNBALANCED`; probado con SQL crudo incluso como superusuario; compensación cross-moneda rechazada; cabeceras vacías rechazadas — `ledger-invariants.test.ts`, F2-02)
 - [x] Inmutabilidad de asientos a nivel motor (`FLUVIA_IMMUTABLE`)
 - [x] Modelo causal: `source_type/source_id` + `reverses_tx_id` con FK (F2-01)
@@ -15,8 +15,8 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Replay idempotente con huella causal completa**: reason/source/reverses divergentes ⇒ conflicto, jamás replay silencioso (AUD-P2-001 — `ledger-service.test.ts`)
 - [x] **Scripts externos al ORM verifican invariantes** (F2-06): `scripts/verify-ledger-invariants.sql` autocontenido, en CI tras la suite y ejecutable por cron/post-restore; detecta corrupción sembrada (probado en `drift.test.ts`)
 - [x] **Rebuild de proyección == ledger** (F2-05): `rebuildProjection` bajo lock de cuenta, property test con transferencias y rebuilds concurrentes; drift check programado (`ledger_projection_drift()` + watcher en worker)
-- [ ] Compensaciones vía servicio (F2-07; el modelo ya lo soporta)
-- [ ] Concurrencia sin duplicados ni drift (F2-08)
+- [x] **Compensaciones vía servicio** (F2-07): espejo exacto, reversión única a nivel de MOTOR (índice único parcial, carrera concurrente probada), no-reversión-de-reversiones, razón obligatoria + auditoría atómica, idempotente (`reversal.test.ts`)
+- [x] **Concurrencia sin duplicados ni drift** (F2-08): suite formal reproducible (PRNG seeded) — conservación exacta bajo 120 postings concurrentes, presión de deadlock, carrera masiva de idempotencia N→1, presión mixta con rebuilds y reversal (`concurrency.test.ts`)
 
 ### Gate Multi-tenant — 🟢 técnico (revisión formal en Fase 6)
 - [x] Tenant A no lee ni escribe datos de Tenant B vía RLS (lectura, escritura por PK, UPDATE masivo, INSERT…SELECT, JOINs, sondas EXISTS, agregados — `tenant-escape.test.ts`)

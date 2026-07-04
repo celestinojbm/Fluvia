@@ -27,6 +27,7 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 | 19 | **Credenciales `live` bloqueadas por código** (AUD-P2-003): `LiveKeysDisabledError` hasta pasar production gates + decisión humana (PEND-004). Opción más restrictiva y reversible | A/B | `api-keys.ts` |
 | 20 | **Rol dedicado del relay sin BYPASSRLS** (cierra AUD-P1-007): `fluvia_relay` con políticas RLS explícitas y UPDATE por columna solo en `outbox_events`; `fluvia_worker` reducido a cascarón; NINGÚN rol de runtime con BYPASSRLS (meta-test) | B | 0011 |
 | 21 | **Inbox con el mismo patrón de rol mínimo** (F2-12, aplica ADR-0011): `fluvia_inbox` acotado a `provider_events`+DLQ; la API solo INSERT. Firma de webhooks entrantes: HMAC-SHA256 de `timestamp.body` con timestamp firmado, tolerancia ±5 min, comparación tiempo-constante; verificación SIEMPRE antes de persistir | B | `outbox-inbox.md` §3 |
+| 22 | **Reversiones: únicas e irreversibles** (F2-07): una tx se revierte a lo sumo una vez (índice único de motor decide carreras); prohibido revertir una reversión — correcciones posteriores son transacciones forward nuevas; razón humana obligatoria con auditoría atómica | B | `ledger-design.md` §4 |
 
 ## Decisiones PENDIENTES que requieren humano
 

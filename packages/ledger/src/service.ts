@@ -1,14 +1,20 @@
 import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
+import { Money } from '@fluvia/money';
+import { insertAuditEvent } from '@fluvia/audit';
 import { EVENT_TOPICS, buildEnvelope } from '@fluvia/events';
 import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,
+  CannotReverseReversalError,
   IdempotencyConflictError,
   InsufficientBalanceError,
   InvalidEntriesError,
   LedgerAccountExistsError,
   LedgerRetriesExhaustedError,
   OptimisticLockError,
+  ReversalNoteRequiredError,
+  TransactionAlreadyReversedError,
+  TransactionNotFoundError,
   UnbalancedLedgerError,
 } from './errors.js';
 import {
@@ -22,6 +28,7 @@ import {
   type PostedTransaction,
   type ProjectionRebuild,
   type ProjectionVerification,
+  type ReverseTransactionInput,
 } from './types.js';
 
 interface LockedAccount {
@@ -246,7 +253,15 @@ export class LedgerService {
         JSON.stringify(envelope),
       ]);
 
-      return { transactionId: txId, replayed: false, createdAt, entries: postedEntries };
+      const posted: PostedTransaction = {
+        transactionId: txId,
+        replayed: false,
+        createdAt,
+        entries: postedEntries,
+      };
+      // Composicion atomica (solo primera aplicacion; el replay retorna antes).
+      if (input.onPosted) await input.onPosted(c, posted);
+      return posted;
     });
   }
 
@@ -424,6 +439,101 @@ export class LedgerService {
         recomputed: { available: r.available, pending: r.pending },
       };
     });
+  }
+
+  /**
+   * F2-07: reversion COMPLETA de una transaccion — asiento espejo (misma
+   * magnitud/moneda/bucket, direccion opuesta) enlazado con reverses_tx_id.
+   *
+   * Garantias:
+   *  - Una tx se revierte A LO SUMO una vez: el indice unico parcial
+   *    `ledger_transactions_reverses_once` (0012) decide cualquier carrera;
+   *    el pre-check solo da un error amable en el caso secuencial.
+   *  - Prohibido revertir una reversion (seria re-aplicar el original por la
+   *    puerta de atras); correcciones posteriores = nueva tx forward.
+   *  - Razon humana obligatoria; audit event `ledger.transaction_reversed`
+   *    (riesgo alto) EN LA MISMA transaccion que el asiento espejo.
+   *  - Reutiliza postTransaction integro: locks ordenados, balanceo,
+   *    proyecciones, outbox con envelope e idempotencia por key propia.
+   */
+  async reverseTransaction(input: ReverseTransactionInput): Promise<PostedTransaction> {
+    if (!input.note || input.note.trim().length === 0) {
+      throw new ReversalNoteRequiredError();
+    }
+    const original = await withTenantTransaction(this.appPool, input.tenantId, async (c) => {
+      const tx = await c.query<{ reason: string }>(
+        `SELECT reason FROM ledger_transactions WHERE id = $1`,
+        [input.transactionId]
+      );
+      if (!tx.rows[0]) throw new TransactionNotFoundError(input.transactionId);
+      if (tx.rows[0].reason === 'reversal') {
+        throw new CannotReverseReversalError(input.transactionId);
+      }
+      const already = await c.query<{ idempotency_key: string }>(
+        `SELECT idempotency_key FROM ledger_transactions WHERE reverses_tx_id = $1`,
+        [input.transactionId]
+      );
+      // Si la reversion existente es LA NUESTRA (misma key), se deja pasar:
+      // postTransaction hara el replay idempotente con huella causal completa.
+      if (
+        (already.rowCount ?? 0) > 0 &&
+        already.rows[0]!.idempotency_key !== input.idempotencyKey
+      ) {
+        throw new TransactionAlreadyReversedError(input.transactionId);
+      }
+      const entries = await c.query<{
+        account_id: string;
+        direction: 'debit' | 'credit';
+        amount: string;
+        currency: string;
+        bucket: 'available' | 'pending';
+      }>(
+        `SELECT account_id, direction, amount::text, currency, bucket
+         FROM ledger_entries WHERE tx_root_id = $1 ORDER BY id`,
+        [input.transactionId]
+      );
+      return entries.rows;
+    });
+
+    const mirrored: LedgerEntryInput[] = original.map((e) => ({
+      accountId: e.account_id,
+      direction: e.direction === 'debit' ? ('credit' as const) : ('debit' as const),
+      amount: Money.of(BigInt(e.amount), e.currency),
+      bucket: e.bucket,
+    }));
+
+    try {
+      return await this.postTransaction({
+        tenantId: input.tenantId,
+        idempotencyKey: input.idempotencyKey,
+        reason: 'reversal',
+        source: input.source,
+        entries: mirrored,
+        reversesTxId: input.transactionId,
+        onPosted: async (c, posted) => {
+          await insertAuditEvent(c, {
+            action: 'ledger.transaction_reversed',
+            tenantId: input.tenantId,
+            context: input.audit ?? { actorType: 'system' },
+            resourceType: 'ledger_transaction',
+            resourceId: input.transactionId,
+            riskLevel: 'high',
+            reason: input.note.trim(),
+            after: { reversal_tx_id: posted.transactionId, source: input.source },
+          });
+        },
+      });
+    } catch (err) {
+      // Carrera perdida contra otra reversion: el motor la rechazo.
+      if (
+        err instanceof Error &&
+        (err as { code?: string }).code === '23505' &&
+        (err as { constraint?: string }).constraint === 'ledger_transactions_reverses_once'
+      ) {
+        throw new TransactionAlreadyReversedError(input.transactionId);
+      }
+      throw err;
+    }
   }
 
   /**
