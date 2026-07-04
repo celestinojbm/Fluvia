@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0 · ADR-0006 · Nota: el header `Idempotency-Key` sigue un draft IETF, no un RFC; este documento define el contrato propio de Fluvia.
 
-> **Estado de implementación (AUD-P3-002, 2026-07-04): PARCIAL.** Construido: idempotencia del ledger (`ledger_transactions.idempotency_key` único por tenant, replay exacto con comparación de payload completo — AUD-P2-001) y la tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` (0008, AUD-P1-009). NO construido: el middleware HTTP que consuma esa tabla (F2-12); ningún endpoint expone aún `Idempotency-Key`.
+> **Estado de implementación (2026-07-04, F2-09/F2-10): CAPA COMPLETA.** Construido: idempotencia del ledger (capa dominio) + `@fluvia/idempotency` (capa API): `IdempotencyService.execute` con claim en la MISMA transacción que el efecto, hash canónico sha256 (claves ordenadas recursivamente), los 5 casos del contrato §3 probados, carrera N→1, crash pre/post-COMMIT y `expires_at` (0013; la purga es F1-09). Los endpoints mutantes de pagos la cablean en F3-02 con el patrón exacto del test HTTP (`apps/api/test/idempotency-http.test.ts`). Sin fast-path Redis: PostgreSQL es la única fuente.
 
 ## 1. Principio
 
@@ -28,7 +28,7 @@ expires_at      retención configurable (Nivel C; default inicial 24 h para sand
 |-----------|----------------|
 | Key nueva | Se inserta `in_progress` en la MISMA transacción que el efecto; al final se persiste la respuesta (`completed`) |
 | Key repetida + mismo `request_hash` + `completed` | Replay exacto de la respuesta persistida (mismo status y body) |
-| Key repetida + mismo hash + `in_progress` | `409 processing_in_flight` (el cliente reintenta luego); evita doble ejecución concurrente |
+| Key repetida + mismo hash + `in_progress` | `409 processing_in_flight` (el cliente reintenta luego); evita doble ejecución concurrente. Implementación: el duplicado espera hasta `lockTimeoutMs` (default 3 s) sobre el índice único — si el primero commitea a tiempo, el duplicado REPLAYA; si no, 409 |
 | Key repetida + `request_hash` distinto | `422 idempotency_key_reuse` — rechazo, nunca ejecutar |
 | Key ausente en endpoint que la exige | `400 idempotency_key_required` |
 

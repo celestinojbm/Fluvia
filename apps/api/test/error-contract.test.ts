@@ -52,6 +52,7 @@ describe('catalogo versionado (golden = contrato publicado)', () => {
       authorization_error: (s) => s === 403,
       not_found_error: (s) => s === 404,
       conflict_error: (s) => s === 409,
+      unprocessable_error: (s) => s === 422,
       locked_error: (s) => s === 423,
       rate_limit_error: (s) => s === 429,
       internal_error: (s) => s >= 500,

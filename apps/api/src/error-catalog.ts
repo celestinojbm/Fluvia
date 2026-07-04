@@ -26,6 +26,7 @@ export const ERROR_CATEGORIES = [
   'authorization_error',
   'not_found_error',
   'conflict_error',
+  'unprocessable_error',
   'locked_error',
   'rate_limit_error',
   'internal_error',
@@ -78,6 +79,11 @@ export const ERROR_CATALOG = {
     status: 400,
     type: 'validation_error',
     message: 'Reversals require an explicit, non-empty note',
+  },
+  idempotency_key_required: {
+    status: 400,
+    type: 'validation_error',
+    message: 'The Idempotency-Key header is required and must be 1-255 printable characters',
   },
   // --- autenticacion ---
   invalid_credentials: {
@@ -163,6 +169,16 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'A reversal cannot be reversed; post a new forward transaction',
   },
+  processing_in_flight: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'A request with this idempotency key is still being processed; retry shortly',
+  },
+  idempotency_key_reuse: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'This idempotency key was already used with a different payload',
+  },
   // --- bloqueos / limites ---
   account_locked: {
     status: 423,
@@ -215,6 +231,10 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // inbox (F2-12; el endpoint HTTP llega en F3)
   InvalidWebhookSignatureError: 'invalid_signature',
   PayloadTooLargeError: 'payload_too_large',
+  // capa de idempotencia API (F2-09)
+  IdempotencyKeyRequiredError: 'idempotency_key_required',
+  ProcessingInFlightError: 'processing_in_flight',
+  IdempotencyKeyReuseError: 'idempotency_key_reuse',
 };
 
 export interface PublicErrorBody {

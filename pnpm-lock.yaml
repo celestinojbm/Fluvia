@@ -38,6 +38,9 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fluvia/idempotency':
+        specifier: workspace:*
+        version: link:../../packages/idempotency
       '@fluvia/identity':
         specifier: workspace:*
         version: link:../../packages/identity
@@ -189,6 +192,28 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
+
+  packages/idempotency:
+    dependencies:
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      pg:
+        specifier: ^8.13.0
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.20.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

@@ -20,6 +20,7 @@
     "@fluvia/auth": "workspace:*",
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
+    "@fluvia/idempotency": "workspace:*",
     "@fluvia/identity": "workspace:*",
     "fastify": "^5.2.0",
     "zod": "^3.25.0"

@@ -28,12 +28,12 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] Relay del outbox sin doble entrega con 2 workers concurrentes (SKIP LOCKED + lease, probado en `packages/outbox/test/relay.test.ts`); dead + replay exclusivamente vía operación de plataforma auditada
 - Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §7); mitigación = consultas 100% parametrizadas + revisión Fase 6.
 
-### Gate Idempotencia — 🔴 (diseñado; schema corregido)
+### Gate Idempotencia — 🟢 técnico (F2-09/F2-10; revisión formal en Fase 6)
 - [x] Tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` conforme al contrato de `idempotency.md` (migración 0008, AUD-P1-009)
-- [ ] Mismo key + mismo payload → mismo resultado (F2-09)
-- [ ] Mismo key + payload distinto → rechazado (F2-09)
-- [ ] Crash recovery no duplica (F2-10)
-- [ ] Pérdida de Redis no duplica (F2-10)
+- [x] **Mismo key + mismo payload → mismo resultado**: replay exacto (status+body persistidos) sin re-ejecutar el handler, probado a nivel servicio y sobre HTTP real (`idempotency.test.ts`, `idempotency-http.test.ts`)
+- [x] **Mismo key + payload distinto → rechazado**: hash canónico sha256; 422 `idempotency_key_reuse`; el handler jamás se ejecuta
+- [x] **Crash recovery no duplica**: claim+efecto+respuesta en UNA transacción — kill pre-COMMIT ⇒ rollback conjunto y reintento limpio; kill post-COMMIT ⇒ replay. Carrera 8 concurrentes ⇒ exactamente 1 efecto; property test: efectos==1 para toda secuencia de reintentos
+- [x] **Pérdida de Redis no duplica**: Redis NO está en el camino (PostgreSQL única fuente, ADR-0006); si algún día se añade fast-path, este ítem se re-verifica con caída simulada
 
 ### Gate Conciliación — 🔴
 - [ ] Archivo simulado produce discrepancias detectadas (F4-02)

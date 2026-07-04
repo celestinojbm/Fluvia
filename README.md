@@ -18,6 +18,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `packages/events` | Envelope común de eventos (`event_id`, `schema_version`, `occurred_at`, `producer`, `resource`) con validación Zod |
 | `packages/outbox` | Relay del outbox: claim-lease con `SKIP LOCKED` multi-worker, backoff+jitter, DLQ y replay auditado (rol `fluvia_relay` de privilegio mínimo) |
 | `packages/inbox` | Inbox durable de webhooks de proveedores: firma HMAC verificada pre-persistencia, dedup por motor, procesador claim-lease, DLQ redactada, replay auditado (rol `fluvia_inbox`) |
+| `packages/idempotency` | Capa de idempotencia API: claim en la misma transacción que el efecto, hash canónico, replay exacto, crash-safe (Gate Idempotencia) |
 | `packages/config` | Configuración tipada de la aplicación |
 | `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
 | `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones |

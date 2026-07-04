@@ -37,6 +37,11 @@
       "type": "validation_error",
       "message": "Reversals require an explicit, non-empty note"
     },
+    "idempotency_key_required": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "The Idempotency-Key header is required and must be 1-255 printable characters"
+    },
     "invalid_credentials": {
       "status": 401,
       "type": "authentication_error",
@@ -117,6 +122,16 @@
       "type": "conflict_error",
       "message": "A reversal cannot be reversed; post a new forward transaction"
     },
+    "processing_in_flight": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "A request with this idempotency key is still being processed; retry shortly"
+    },
+    "idempotency_key_reuse": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "This idempotency key was already used with a different payload"
+    },
     "account_locked": {
       "status": 423,
       "type": "locked_error",
@@ -156,6 +171,9 @@
     "CannotReverseReversalError": "cannot_reverse_reversal",
     "ReversalNoteRequiredError": "reversal_note_required",
     "InvalidWebhookSignatureError": "invalid_signature",
-    "PayloadTooLargeError": "payload_too_large"
+    "PayloadTooLargeError": "payload_too_large",
+    "IdempotencyKeyRequiredError": "idempotency_key_required",
+    "ProcessingInFlightError": "processing_in_flight",
+    "IdempotencyKeyReuseError": "idempotency_key_reuse"
   }
 }
