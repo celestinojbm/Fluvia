@@ -67,6 +67,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - **F2-12 (cierra AUD-P1-005): run #18 VERDE** — commit `f391240`, `https://github.com/celestinojbm/Fluvia/actions/runs/28718633416` (migrate ×2 incl. 0010 sobre PG fresco, 215 tests incl. inbox). Nota de proceso: el run #17 (`bf72d98`) tuvo el job de calidad VERDE pero gitleaks marcó un falso positivo (fixture de test con aspecto de secreto); corregido con valor obviamente falso + `gitleaks:allow` puntual — no se silenció el escáner globalmente.
 - **F2-05/F2-06 (cierran AUD-P2-004 y AUD-P2-012): run #20 VERDE** — commit `0ce18a9`, `https://github.com/celestinojbm/Fluvia/actions/runs/28719493607` (migrate ×2 incl. 0011, 224 tests, y el NUEVO paso de CI ejecutando `scripts/verify-ledger-invariants.sql` vía psql sobre la base poblada por la suite).
 - **F2-07/F2-08 (Gate Ledger 🟢 técnico): run #22 VERDE** — commit `616138b`, `https://github.com/celestinojbm/Fluvia/actions/runs/28720890852` (migrate ×2 incl. 0012, 233 tests incl. reversiones bajo carrera y suite formal de concurrencia).
+- **F1-08 (cierra AUD-P2-009): run #24 VERDE** — commit `4303a93`, `https://github.com/celestinojbm/Fluvia/actions/runs/28721370832` (241 tests incl. contrato golden del catálogo de errores y tests de no-fuga de mensajes internos).
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
