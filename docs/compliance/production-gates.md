@@ -14,12 +14,13 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [ ] Compensaciones funcionan (F2-07)
 - [ ] Concurrencia sin duplicados ni drift (F2-08)
 
-### Gate Multi-tenant — 🟡 (parcial)
-- [x] Tenant A no lee ni escribe datos de Tenant B vía RLS (tests del spike: lectura, escritura, PK directa)
-- [x] Pool de conexiones no fuga contexto (patrón SET LOCAL transaction-scoped + test "sin contexto = 0 filas")
-- [ ] Autorización de aplicación (RBAC) activa (F1-04)
-- [ ] Tests de bypass administrativo (F1-06)
-- [ ] Suite ampliada de tenant escape en CI (F1-06)
+### Gate Multi-tenant — 🟢 técnico (revisión formal en Fase 6)
+- [x] Tenant A no lee ni escribe datos de Tenant B vía RLS (lectura, escritura por PK, UPDATE masivo, INSERT…SELECT, JOINs, sondas EXISTS, agregados — `tenant-escape.test.ts`)
+- [x] Pool de conexiones no fuga contexto (test explícito de la MISMA conexión a través de transacciones A → sin contexto → B)
+- [x] Autorización de aplicación (RBAC) activa con matriz verificada celda a celda (F1-04c)
+- [x] Tests de bypass administrativo: `withPlatformOperation` exige razón, audita en la misma transacción (riesgo alto) y hace rollback conjunto (F1-06)
+- [x] Suite ampliada de tenant escape en CI, incluidos **meta-tests estructurales** que verifican en `pg_catalog` que TODA tabla (presente o futura) con `tenant_id` tiene RLS forzado + política, que ningún rol de runtime tiene DELETE y que app/worker no tienen privilegio alguno sobre credenciales (F1-06)
+- Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §7); mitigación = consultas 100% parametrizadas + revisión Fase 6.
 
 ### Gate Idempotencia — 🔴 (diseñado)
 - [ ] Mismo key + mismo payload → mismo resultado (F2-09)

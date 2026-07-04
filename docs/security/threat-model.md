@@ -12,7 +12,7 @@ Fondos contables (ledger), credenciales (API keys, sesiones, secretos de webhook
 
 | Amenaza (V4 §34) | Vector típico | Mitigaciones (documento) | Estado |
 |---|---|---|---|
-| Tenant escape | IDOR, filtro por `organization_id` del cliente, fuga de contexto de pool | Defensa en profundidad + RLS forzado + regla SET LOCAL (`multi-tenancy.md`) | Parcial (spike verde; suite ampliada F1) |
+| Tenant escape | IDOR, filtro por `organization_id` del cliente, fuga de contexto de pool | Defensa en profundidad + RLS forzado + regla SET LOCAL + suite ampliada (escritura, joins, sondas, pool-reuse, SET ROLE) + meta-tests estructurales en pg_catalog + bypass controlado auditado (`multi-tenancy.md` §6.5-6.6) | **Mitigado** (F1-06). Residual: SQL arbitrario con rol app puede cambiar el GUC — defensa: parametrización total + revisión F6 |
 | Ledger manipulation | UPDATE/DELETE directo, asiento desbalanceado, bypass del servicio | Triggers de inmutabilidad, constraint diferido de balanceo, sin DELETE grant, script de invariantes externo | Parcial (triggers verdes; constraint F2) |
 | Duplicate capture / duplicate refund | Retries de red, doble click, webhooks duplicados, carreras | Idempotencia multicapa (`idempotency.md`), unique constraints, FSM con FOR UPDATE | Diseñado (F2) |
 | Webhook forgery / replay (entrantes) | Falsificar evento de proveedor | Verificación de firma antes de procesar, tolerancia de timestamp, dedup por `provider_event_id` | Diseñado (F3) |

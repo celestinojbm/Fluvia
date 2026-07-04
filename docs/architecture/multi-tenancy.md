@@ -50,6 +50,14 @@ Bypass controlado: el panel admin NO usa `BYPASSRLS`; opera con un contexto expl
 
 Tablas sin `tenant_id` (catálogos, `schema_migrations`, `platforms`): sin política de tenant, acceso solo lectura para `fluvia_app` cuando corresponda. Toda tabla nueva se clasifica en el PR: tenant-scoped (RLS obligatorio) o global (justificación).
 
+## 6.5 Límite documentado del modelo (residual)
+
+RLS protege contra **bugs de lógica de aplicación** (BOLA, filtros olvidados, joins mal escritos): aunque el código consulte mal, la base no entrega filas ajenas. NO protege contra **ejecución de SQL arbitrario** con el rol `fluvia_app`: quien pueda inyectar SQL puede llamar `set_config('app.tenant_id', …)` y cambiar de contexto. Las defensas contra ese vector son otras: consultas 100% parametrizadas (regla de código, sin SQL dinámico), validación Zod en bordes, y pruebas de inyección en Fase 6. Mitigación adicional posible si se justifica: establecer el contexto solo vía función `SECURITY DEFINER` con verificación de firma. Registrado como riesgo residual en el threat model.
+
+## 6.6 Bypass administrativo controlado (F1-06)
+
+`withPlatformOperation(adminPool, {tenantId, actorId, reason, requestId}, fn)` es el **único** camino sancionado para operar fuera del aislamiento (plano de plataforma / futuro panel admin): exige razón no vacía (lanza antes de tocar la base), escribe SIEMPRE un `audit_event` `platform.operation` de riesgo alto en la misma transacción, y si la operación falla se revierte junto con su rastro — nunca existe bypass sin auditoría ni auditoría de un bypass que no ocurrió. Jamás se expone a requests de usuarios finales.
+
 ## 6. Pruebas automatizadas (estado)
 
 Ya verdes en el spike: visibilidad limitada al tenant propio, contexto ausente = 0 filas, `WITH CHECK` bloquea inserción cross-tenant, lectura por PK cruzada = 0 filas, `authenticate_api_key` resuelve sin contexto. Pendiente F1: suite de escape ampliada (UPDATE cruzado, joins, funciones), test de no-fuga de contexto entre requests consecutivos del pool, y bypass administrativo auditado.

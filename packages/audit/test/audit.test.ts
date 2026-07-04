@@ -104,6 +104,50 @@ describe('audit_events bajo RLS (F1-05)', () => {
     await expect(ctx.admin.query('DELETE FROM audit_events')).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   });
 
+  it('withPlatformOperation requires a reason and audits the bypass atomically', async () => {
+    const { withPlatformOperation, PlatformReasonRequiredError } = await import('../src/index.js');
+    await expect(
+      withPlatformOperation(ctx.admin, { tenantId: orgA, reason: '  ' }, async () => 'x')
+    ).rejects.toThrow(PlatformReasonRequiredError);
+
+    const result = await withPlatformOperation(
+      ctx.admin,
+      { tenantId: orgA, reason: 'soporte: investigacion caso #42', requestId: 'req-platform-1' },
+      async (c) => {
+        // Operacion cross-tenant legitima (plano de plataforma).
+        const r = await c.query('SELECT count(*)::int AS n FROM audit_events');
+        return r.rows[0].n as number;
+      }
+    );
+    expect(result).toBeGreaterThanOrEqual(0);
+
+    const trail = await ctx.admin.query(
+      `SELECT reason, risk_level, auth_method FROM audit_events
+       WHERE action = 'platform.operation' AND request_id = 'req-platform-1'`
+    );
+    expect(trail.rowCount).toBe(1);
+    expect(trail.rows[0]!.reason).toBe('soporte: investigacion caso #42');
+    expect(trail.rows[0]!.risk_level).toBe('high');
+    expect(trail.rows[0]!.auth_method).toBe('platform');
+  });
+
+  it('withPlatformOperation rolls back BOTH the operation and its audit trail on failure', async () => {
+    const { withPlatformOperation } = await import('../src/index.js');
+    await expect(
+      withPlatformOperation(
+        ctx.admin,
+        { tenantId: orgA, reason: 'will fail', requestId: 'req-platform-fail' },
+        async () => {
+          throw new Error('boom');
+        }
+      )
+    ).rejects.toThrow('boom');
+    const trail = await ctx.admin.query(
+      "SELECT 1 FROM audit_events WHERE request_id = 'req-platform-fail'"
+    );
+    expect(trail.rowCount).toBe(0);
+  });
+
   it('paginates descending with the before cursor', async () => {
     for (let i = 0; i < 5; i++) {
       await withTenantTransaction(ctx.app, orgB, (c) =>

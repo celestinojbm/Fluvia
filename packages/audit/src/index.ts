@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = [
   'api_key.revoked',
   'merchant.created',
   'merchant.updated',
+  'platform.operation',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -117,6 +118,66 @@ export interface ListAuditOptions {
   limit?: number;
   /** Cursor: solo eventos con id < before (orden descendente). */
   before?: string | number;
+}
+
+export class PlatformReasonRequiredError extends Error {
+  constructor() {
+    super('Platform operations require an explicit, non-empty reason (V4 §36)');
+    this.name = 'PlatformReasonRequiredError';
+  }
+}
+
+export interface PlatformOperationOptions {
+  /** Tenant objetivo de la operacion (null para operaciones globales). */
+  tenantId?: string | null;
+  /** Operador humano/proceso que ordena la operacion. */
+  actorId?: string;
+  /** OBLIGATORIA: sin razon no hay bypass. */
+  reason: string;
+  requestId?: string;
+}
+
+/**
+ * UNICO camino sancionado para operar fuera del aislamiento de tenant
+ * (plano de plataforma / panel admin futuro). Garantias:
+ *  - Exige razon explicita; sin ella lanza antes de tocar la base.
+ *  - Registra SIEMPRE un audit event 'platform.operation' de riesgo alto
+ *    EN LA MISMA transaccion: si la operacion se confirma, su rastro tambien.
+ *  - Corre sobre el pool administrativo: jamas exponer este helper a
+ *    requests de usuarios finales.
+ */
+export async function withPlatformOperation<T>(
+  adminPool: Pool,
+  options: PlatformOperationOptions,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  if (!options.reason || options.reason.trim().length === 0) {
+    throw new PlatformReasonRequiredError();
+  }
+  const client = await adminPool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await insertAuditEvent(client, {
+      action: 'platform.operation',
+      tenantId: options.tenantId ?? null,
+      context: {
+        actorType: 'system',
+        actorId: options.actorId,
+        authMethod: 'platform',
+        requestId: options.requestId,
+      },
+      riskLevel: 'high',
+      reason: options.reason.trim(),
+    });
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /** Lectura del plano de tenant (rol fluvia_app, RLS aplica). */
