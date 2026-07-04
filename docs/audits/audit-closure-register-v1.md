@@ -64,6 +64,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - Runs #11–#12: rama documental de la auditoría (`9c17888`), verdes.
 - **Lote AUD-1: run #13 VERDE** — commit `4cdfcb0`, `https://github.com/celestinojbm/Fluvia/actions/runs/28716967441` (install, lint, format, typecheck, migrate ×2 incl. 0008, 174 tests contra PG16, gitleaks, audit, SBOM).
 - **F2-11 (cierra AUD-P1-004/007 y AUD-P2-005): run #15 VERDE** — commit `1ecc533`, `https://github.com/celestinojbm/Fluvia/actions/runs/28717692510` (migrate ×2 incl. 0009, 195 tests incl. relay multi-worker y meta-tests de roles).
+- **F2-12 (cierra AUD-P1-005): run #18 VERDE** — commit `f391240`, `https://github.com/celestinojbm/Fluvia/actions/runs/28718633416` (migrate ×2 incl. 0010 sobre PG fresco, 215 tests incl. inbox). Nota de proceso: el run #17 (`bf72d98`) tuvo el job de calidad VERDE pero gitleaks marcó un falso positivo (fixture de test con aspecto de secreto); corregido con valor obviamente falso + `gitleaks:allow` puntual — no se silenció el escáner globalmente.
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
