@@ -40,7 +40,19 @@ beforeAll(async () => {
   const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error' });
   appPool = createPool({ connectionString: config.db.app, max: 2 });
   authPool = createPool({ connectionString: config.db.auth, max: 4 });
-  app = buildApp({ config, appPool, authService: new AuthService(authPool) });
+  // Limites generosos: esta suite dispara muchos requests desde la MISMA IP
+  // de inject; los limites reales se prueban en mfa-routes.test.ts.
+  app = buildApp({
+    config,
+    appPool,
+    authService: new AuthService(authPool),
+    authRateLimits: {
+      loginPerEmail: { max: 10_000, windowMs: 60_000 },
+      loginPerIp: { max: 10_000, windowMs: 60_000 },
+      registerPerIp: { max: 10_000, windowMs: 60_000 },
+      mfaPerIp: { max: 10_000, windowMs: 60_000 },
+    },
+  });
   await app.ready();
 }, 30_000);
 

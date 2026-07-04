@@ -23,6 +23,10 @@ const EnvSchema = z.object({
   RELAY_DATABASE_URL: z.string().min(1).optional(),
   AUTH_DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).optional(),
+  MFA_SECRET_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
+    .optional(),
   RELAY_ENABLED: z.enum(['true', 'false']).default('true'),
   RELAY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
@@ -31,6 +35,8 @@ const EnvSchema = z.object({
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
 const LOCAL_DEFAULTS = {
+  // Clave SOLO local (regimen R-12): patron obvio, jamas usable fuera de local.
+  mfaSecretKey: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
   admin: 'postgres://postgres:postgres@127.0.0.1:5432/fluvia',
   app: 'postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia',
   worker: 'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia',
@@ -51,6 +57,8 @@ export interface AppConfig {
     auth: string;
   };
   redisUrl: string;
+  /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
+  mfaSecretKey: string;
   relay: {
     enabled: boolean;
     intervalMs: number;
@@ -99,6 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       auth: required('AUTH_DATABASE_URL', e.AUTH_DATABASE_URL, LOCAL_DEFAULTS.auth),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
+    mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
     relay: {
       enabled: e.RELAY_ENABLED === 'true',
       intervalMs: e.RELAY_INTERVAL_MS,

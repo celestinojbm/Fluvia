@@ -10,7 +10,7 @@ const authPool = createPool({ connectionString: config.db.auth, max: 5 });
 const app = buildApp({
   config,
   appPool,
-  authService: new AuthService(authPool),
+  authService: new AuthService(authPool, { mfaEncryptionKeyHex: config.mfaSecretKey }),
   identityService: new IdentityService(appPool),
   apiKeyService: new ApiKeyService(appPool),
 });

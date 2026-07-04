@@ -131,7 +131,8 @@ export function registerOrganizationRoutes(
 
   app.post(
     '/v1/organizations/:orgId/api-keys',
-    { preHandler: [security.session, security.org('keys:manage')] },
+    // F1-04b: crear keys es accion sensible -> step-up MFA si esta habilitado.
+    { preHandler: [security.session, security.org('keys:manage'), security.stepUp] },
     async (req, reply) => {
       const input = CreateApiKeySchema.parse(req.body);
       const created = await apiKeyService.create(req.org!.organizationId, input, auditContext(req));
@@ -169,7 +170,7 @@ export function registerOrganizationRoutes(
 
   app.post(
     '/v1/organizations/:orgId/api-keys/:apiKeyId/revoke',
-    { preHandler: [security.session, security.org('keys:manage')] },
+    { preHandler: [security.session, security.org('keys:manage'), security.stepUp] },
     async (req, reply) => {
       const { apiKeyId } = req.params as { apiKeyId: string };
       await apiKeyService.revoke(req.org!.organizationId, apiKeyId, auditContext(req));

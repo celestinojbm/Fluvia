@@ -31,3 +31,17 @@ export const VerifyEmailSchema = z
   .strict();
 
 export type VerifyEmailInput = z.infer<typeof VerifyEmailSchema>;
+
+/** Codigo TOTP de 6 digitos o codigo de respaldo (formato xxxx-xxxx-xx). */
+export const MfaCodeSchema = z.string().trim().min(6).max(20);
+
+export const MfaVerifySchema = z
+  .object({
+    challenge_token: z.string().min(10).max(200),
+    code: MfaCodeSchema,
+  })
+  .strict();
+export type MfaVerifyInput = z.infer<typeof MfaVerifySchema>;
+
+export const MfaCodeOnlySchema = z.object({ code: MfaCodeSchema }).strict();
+export type MfaCodeOnlyInput = z.infer<typeof MfaCodeOnlySchema>;

@@ -65,6 +65,12 @@ beforeAll(async () => {
     authService: new AuthService(authPool),
     identityService: new IdentityService(appPool),
     apiKeyService: new ApiKeyService(appPool),
+    authRateLimits: {
+      loginPerEmail: { max: 10_000, windowMs: 60_000 },
+      loginPerIp: { max: 10_000, windowMs: 60_000 },
+      registerPerIp: { max: 10_000, windowMs: 60_000 },
+      mfaPerIp: { max: 10_000, windowMs: 60_000 },
+    },
   });
   await app.ready();
 }, 30_000);

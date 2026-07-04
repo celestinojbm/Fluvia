@@ -44,3 +44,43 @@ export class InvalidVerificationTokenError extends AuthError {
     super('Verification token is invalid, expired or already used');
   }
 }
+
+/** F1-04b: codigo TOTP/backup incorrecto (cuenta hacia el lockout). */
+export class InvalidMfaCodeError extends AuthError {
+  constructor() {
+    super('The MFA code is invalid');
+  }
+}
+
+/** F1-04b: reto MFA inexistente, expirado o ya consumido. */
+export class InvalidMfaChallengeError extends AuthError {
+  constructor() {
+    super('The MFA challenge is invalid, expired or already used');
+  }
+}
+
+export class MfaAlreadyEnabledError extends AuthError {
+  constructor() {
+    super('MFA is already enabled for this account');
+  }
+}
+
+export class MfaNotEnabledError extends AuthError {
+  constructor() {
+    super('MFA is not enabled (or not pending activation) for this account');
+  }
+}
+
+/** F1-04b: accion sensible exige verificacion MFA reciente en la sesion. */
+export class StepUpRequiredError extends AuthError {
+  constructor() {
+    super('This action requires recent MFA verification (step-up)');
+  }
+}
+
+/** F1-04b: limite de tasa alcanzado (por IP/email/ruta). */
+export class RateLimitedError extends AuthError {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Too many requests; retry later');
+  }
+}

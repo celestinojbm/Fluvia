@@ -28,6 +28,7 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 | 20 | **Rol dedicado del relay sin BYPASSRLS** (cierra AUD-P1-007): `fluvia_relay` con políticas RLS explícitas y UPDATE por columna solo en `outbox_events`; `fluvia_worker` reducido a cascarón; NINGÚN rol de runtime con BYPASSRLS (meta-test) | B | 0011 |
 | 21 | **Inbox con el mismo patrón de rol mínimo** (F2-12, aplica ADR-0011): `fluvia_inbox` acotado a `provider_events`+DLQ; la API solo INSERT. Firma de webhooks entrantes: HMAC-SHA256 de `timestamp.body` con timestamp firmado, tolerancia ±5 min, comparación tiempo-constante; verificación SIEMPRE antes de persistir | B | `outbox-inbox.md` §3 |
 | 22 | **Reversiones: únicas e irreversibles** (F2-07): una tx se revierte a lo sumo una vez (índice único de motor decide carreras); prohibido revertir una reversión — correcciones posteriores son transacciones forward nuevas; razón humana obligatoria con auditoría atómica | B | `ledger-design.md` §4 |
+| 23 | **Modelo MFA: TOTP RFC 6238 + códigos de respaldo, sin SMS** (ex PEND-005; el propietario eligió la opción b con esta propuesta sobre la mesa, 2026-07-04). Secreto cifrado en reposo (AES-256-GCM, `MFA_SECRET_KEY`); anti-replay por step; fallos MFA → mismo lockout; step-up de 15 min para `keys:manage`. Reversible antes de exponer usuarios reales | B | F1-04b; migración 0014 |
 
 ## Decisiones PENDIENTES que requieren humano
 
@@ -35,10 +36,9 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 |----|----------|---------|----------|
 | **PEND-002** | Modelo comercial (pricing) | Diseño fino del motor de fees (Fase 4) | Opciones en PRD §8 |
 | **PEND-004** | Política definitiva de credenciales `live` (¿qué gates exactos + quién autoriza la primera emisión?) | Nada hoy (creación bloqueada por código, decisión #19) | AUD-P2-003; `production-gates.md` |
-| **PEND-005** | Modelo MFA/recuperación de cuenta (propuesta: TOTP + códigos de respaldo; ¿SMS excluido?) | F1-04b | AUD-P1-006 |
 | **PEND-006** | Condiciones para abrir sandbox compartido a terceros | Exposición pública del sandbox | Requiere F1-04b + AUD-P2-015 |
 
-Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-003~~ → aprobado (decisión #16).
+Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-003~~ → aprobado (decisión #16). ~~PEND-005~~ → TOTP + backup codes (decisión #23).
 
 ## Supuestos adoptados (más seguros y reversibles, §2)
 

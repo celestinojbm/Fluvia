@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
-import { InvalidSessionError } from '@fluvia/auth';
+import { InvalidSessionError, StepUpRequiredError } from '@fluvia/auth';
 import {
   hasPermission,
   hashApiKeySecret,
@@ -17,7 +17,12 @@ import {
 
 declare module 'fastify' {
   interface FastifyRequest {
-    identity?: { userId: string; sessionId: string };
+    identity?: {
+      userId: string;
+      sessionId: string;
+      mfaEnabled: boolean;
+      mfaVerifiedAt: Date | null;
+    };
     org?: { organizationId: string; role: Role };
     apiKey?: {
       tenantId: string;
@@ -55,7 +60,28 @@ export function createSecurity(deps: SecurityDeps) {
       const token = bearer(req);
       if (!token || !token.startsWith('fluvia_sess_')) throw new InvalidSessionError();
       const identity = await deps.authService.authenticateSession(token);
-      req.identity = { userId: identity.userId, sessionId: identity.sessionId };
+      req.identity = {
+        userId: identity.userId,
+        sessionId: identity.sessionId,
+        mfaEnabled: identity.mfaEnabled,
+        mfaVerifiedAt: identity.mfaVerifiedAt,
+      };
+    },
+
+    /**
+     * F1-04b: STEP-UP para acciones sensibles (keys:manage). Si el usuario
+     * tiene MFA habilitado, la sesion debe traer una verificacion MFA
+     * reciente (authService.stepUpMaxAgeMs); si no la tiene, se le exige
+     * /v1/auth/mfa/step-up. Los usuarios sin MFA no se bloquean hoy — el
+     * sandbox compartido exigira enrolamiento (PEND-006).
+     */
+    stepUp: async (req: FastifyRequest): Promise<void> => {
+      const identity = req.identity!;
+      if (!identity.mfaEnabled) return;
+      const maxAge = deps.authService.stepUpMaxAgeMs;
+      const fresh =
+        identity.mfaVerifiedAt !== null && Date.now() - identity.mfaVerifiedAt.getTime() <= maxAge;
+      if (!fresh) throw new StepUpRequiredError();
     },
 
     org(permission: Permission) {

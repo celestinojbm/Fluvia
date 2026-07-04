@@ -1,12 +1,35 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AuthService } from '@fluvia/auth';
-import { LoginSchema, RegisterSchema, VerifyEmailSchema } from '@fluvia/auth';
+import {
+  LoginSchema,
+  MfaCodeOnlySchema,
+  MfaVerifySchema,
+  RegisterSchema,
+  VerifyEmailSchema,
+} from '@fluvia/auth';
 import { InvalidSessionError } from '@fluvia/auth';
+import { FixedWindowLimiter, emailKey, ipKey, rateLimit, type RateRule } from '../rate-limit.js';
+
+export interface AuthRateLimits {
+  loginPerEmail: RateRule;
+  loginPerIp: RateRule;
+  registerPerIp: RateRule;
+  mfaPerIp: RateRule;
+}
+
+/** Defaults Nivel C (sandbox); los tests inyectan ventanas cortas. */
+export const DEFAULT_AUTH_RATE_LIMITS: AuthRateLimits = {
+  loginPerEmail: { max: 5, windowMs: 60_000 },
+  loginPerIp: { max: 20, windowMs: 60_000 },
+  registerPerIp: { max: 5, windowMs: 60_000 },
+  mfaPerIp: { max: 20, windowMs: 60_000 },
+};
 
 export interface AuthRoutesOptions {
   authService: AuthService;
   /** Solo local/test: expone el token de verificacion en la respuesta de registro. */
   exposeVerificationToken: boolean;
+  rateLimits?: AuthRateLimits;
 }
 
 function bearerToken(req: FastifyRequest): string {
@@ -15,21 +38,34 @@ function bearerToken(req: FastifyRequest): string {
   return header.slice('Bearer '.length).trim();
 }
 
+function meta(req: FastifyRequest) {
+  return { ip: req.ip, userAgent: req.headers['user-agent'], requestId: String(req.id) };
+}
+
 export function registerAuthRoutes(
   app: FastifyInstance,
-  { authService, exposeVerificationToken }: AuthRoutesOptions
+  { authService, exposeVerificationToken, rateLimits }: AuthRoutesOptions
 ): void {
-  app.post('/v1/auth/register', async (req, reply) => {
-    const body = RegisterSchema.parse(req.body);
-    const result = await authService.register(body);
-    return reply.code(201).send({
-      user_id: result.userId,
-      email_verification: 'pending',
-      // El canal de correo llega con el motor de webhooks/email (F3). Hasta
-      // entonces el token SOLO se expone en entornos local/test.
-      ...(exposeVerificationToken ? { verification_token: result.verificationToken } : {}),
-    });
-  });
+  const limits = rateLimits ?? DEFAULT_AUTH_RATE_LIMITS;
+  const limiter = new FixedWindowLimiter();
+
+  app.post(
+    '/v1/auth/register',
+    {
+      preHandler: rateLimit(limiter, [{ keyOf: ipKey('register:ip'), rule: limits.registerPerIp }]),
+    },
+    async (req, reply) => {
+      const body = RegisterSchema.parse(req.body);
+      const result = await authService.register(body);
+      return reply.code(201).send({
+        user_id: result.userId,
+        email_verification: 'pending',
+        // El canal de correo llega con el motor de webhooks/email (F3). Hasta
+        // entonces el token SOLO se expone en entornos local/test.
+        ...(exposeVerificationToken ? { verification_token: result.verificationToken } : {}),
+      });
+    }
+  );
 
   app.post('/v1/auth/verify-email', async (req) => {
     const body = VerifyEmailSchema.parse(req.body);
@@ -37,33 +73,109 @@ export function registerAuthRoutes(
     return { verified: true };
   });
 
-  app.post('/v1/auth/login', async (req) => {
-    const body = LoginSchema.parse(req.body);
-    const result = await authService.login(body, {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-      requestId: String(req.id),
-    });
-    return {
-      session_token: result.sessionToken,
-      expires_at: result.expiresAt.toISOString(),
-    };
+  app.post(
+    '/v1/auth/login',
+    {
+      preHandler: rateLimit(limiter, [
+        // Por email: frena el ataque a UNA cuenta desde muchas IPs.
+        { keyOf: emailKey('login:email'), rule: limits.loginPerEmail },
+        // Por IP: frena el barrido de muchas cuentas desde una IP.
+        { keyOf: ipKey('login:ip'), rule: limits.loginPerIp },
+      ]),
+    },
+    async (req) => {
+      const body = LoginSchema.parse(req.body);
+      const outcome = await authService.login(body, meta(req));
+      if (outcome.mfaRequired) {
+        return {
+          mfa_required: true,
+          challenge_token: outcome.challengeToken,
+          expires_at: outcome.challengeExpiresAt.toISOString(),
+        };
+      }
+      return {
+        mfa_required: false,
+        session_token: outcome.sessionToken,
+        expires_at: outcome.expiresAt.toISOString(),
+      };
+    }
+  );
+
+  // Canje del reto MFA por sesion (publico: el reto ES la credencial).
+  app.post(
+    '/v1/auth/mfa/verify',
+    { preHandler: rateLimit(limiter, [{ keyOf: ipKey('mfa:ip'), rule: limits.mfaPerIp }]) },
+    async (req) => {
+      const body = MfaVerifySchema.parse(req.body);
+      const result = await authService.verifyMfaChallenge(body, meta(req));
+      return {
+        session_token: result.sessionToken,
+        expires_at: result.expiresAt.toISOString(),
+      };
+    }
+  );
+
+  // Enrolamiento (requiere sesion): setup -> activate (con codigo) -> enabled.
+  app.post('/v1/auth/mfa/setup', async (req) => {
+    const identity = await authService.authenticateSession(bearerToken(req));
+    const setup = await authService.setupMfa(identity.userId);
+    return { secret: setup.secret, otpauth_uri: setup.otpauthUri };
   });
 
-  app.post('/v1/auth/logout', async (req, reply) => {
-    await authService.logout(bearerToken(req), {
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-      requestId: String(req.id),
+  app.post('/v1/auth/mfa/activate', async (req) => {
+    const identity = await authService.authenticateSession(bearerToken(req));
+    const body = MfaCodeOnlySchema.parse(req.body);
+    const result = await authService.activateMfa(identity.userId, body.code, {
+      sessionId: identity.sessionId,
+      ...meta(req),
     });
+    // Los codigos de respaldo se muestran UNA sola vez.
+    return { enabled: true, backup_codes: result.backupCodes };
+  });
+
+  app.post('/v1/auth/mfa/disable', async (req) => {
+    const identity = await authService.authenticateSession(bearerToken(req));
+    const body = MfaCodeOnlySchema.parse(req.body);
+    await authService.disableMfa(identity.userId, body.code, meta(req));
+    return { enabled: false };
+  });
+
+  // Step-up: refresca la verificacion MFA de ESTA sesion para acciones sensibles.
+  app.post(
+    '/v1/auth/mfa/step-up',
+    { preHandler: rateLimit(limiter, [{ keyOf: ipKey('mfa:ip'), rule: limits.mfaPerIp }]) },
+    async (req) => {
+      const identity = await authService.authenticateSession(bearerToken(req));
+      const body = MfaCodeOnlySchema.parse(req.body);
+      const result = await authService.stepUp(
+        identity.userId,
+        identity.sessionId,
+        body.code,
+        meta(req)
+      );
+      return { mfa_verified_at: result.mfaVerifiedAt.toISOString() };
+    }
+  );
+
+  app.post('/v1/auth/logout', async (req, reply) => {
+    await authService.logout(bearerToken(req), meta(req));
     return reply.code(204).send();
   });
 
   app.get('/v1/auth/session', async (req) => {
     const identity = await authService.authenticateSession(bearerToken(req));
-    const memberships = await authService.listMemberships(identity.userId);
+    const [memberships, mfa] = await Promise.all([
+      authService.listMemberships(identity.userId),
+      authService.mfaStatus(identity.userId),
+    ]);
     return {
       user_id: identity.userId,
+      mfa: {
+        enabled: mfa.enabled,
+        pending_setup: mfa.pendingSetup,
+        backup_codes_remaining: mfa.backupCodesRemaining,
+        verified_at: identity.mfaVerifiedAt?.toISOString() ?? null,
+      },
       memberships: memberships.map((m) => ({
         organization_id: m.organizationId,
         organization_name: m.organizationName,

@@ -11,7 +11,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `docs/` | Paquete de Fase 0 (PRD, arquitectura, threat model, ADRs, gates) + gobernanza viva (backlog, estado, riesgos, decisiones) + **auditorías** (`docs/audits/`) |
 | `packages/money` | Value Object `Money`: bigint en unidades menores, sin float, `allocate` sin pérdida |
 | `packages/db` | Migraciones (DDL + RLS forzado + inmutabilidad + invariantes del ledger a nivel de motor), runner, `withTenantTransaction`, roles por plano |
-| `packages/auth` | Registro/login (scrypt versionado), sesiones, verificación de email, lockout, anti-enumeración |
+| `packages/auth` | Registro/login (scrypt versionado), sesiones, verificación de email, lockout, anti-enumeración, **MFA TOTP** (RFC 6238, secreto cifrado, backup codes) y step-up |
 | `packages/identity` | Organizaciones, merchants, membresías, RBAC declarativo, API keys con scopes (solo `test`) |
 | `packages/audit` | Log de auditoría append-only con redacción de secretos y operaciones de plataforma con razón obligatoria |
 | `packages/ledger` | Ledger de doble partida: postTransaction idempotente, proyecciones versionadas, Chart of Accounts cerrado, reglas de posting tipadas |
@@ -39,5 +39,5 @@ Variables: `ADMIN_DATABASE_URL`, `APP_DATABASE_URL`, `WORKER_DATABASE_URL`, `REL
 ## Gobernanza
 
 - Trabajo: [`docs/agents/BACKLOG.md`](docs/agents/BACKLOG.md) · Estado: [`docs/agents/STATE.md`](docs/agents/STATE.md) · Decisiones: [`docs/agents/DECISIONS.md`](docs/agents/DECISIONS.md) · Riesgos: [`docs/agents/RISKS.md`](docs/agents/RISKS.md)
-- Toda decisión arquitectónica pasa por ADR ([`docs/adr/`](docs/adr/)). Resueltas: PEND-001 (país inicial: Colombia), PEND-003 (Fase 0 aprobada). Abiertas al propietario humano: **PEND-002** (pricing), **PEND-004** (política de credenciales live).
+- Toda decisión arquitectónica pasa por ADR ([`docs/adr/`](docs/adr/)). Resueltas: PEND-001 (país inicial: Colombia), PEND-003 (Fase 0 aprobada). Abiertas al propietario humano: **PEND-002** (pricing), **PEND-004** (política de credenciales live), **PEND-006** (condiciones del sandbox compartido).
 - Auditorías: [`docs/audits/independent-audit-v1/`](docs/audits/) (hallazgos inmutables) + plan de integración y registro de cierre con evidencia por hallazgo.

@@ -187,9 +187,10 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
     const res = await ctx.admin.query<{ relname: string; ok: boolean }>(`
       SELECT relname, (relrowsecurity AND relforcerowsecurity) AS ok
       FROM pg_class
-      WHERE relname IN ('users', 'sessions', 'email_verification_tokens')
+      WHERE relname IN ('users', 'sessions', 'email_verification_tokens',
+                        'mfa_challenges', 'mfa_backup_codes')
     `);
-    expect(res.rowCount).toBe(3);
+    expect(res.rowCount).toBe(5);
     for (const row of res.rows) expect(row.ok, row.relname).toBe(true);
   });
 

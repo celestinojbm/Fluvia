@@ -3,19 +3,43 @@ export {
   type AuthServiceOptions,
   type RegisteredUser,
   type LoginResult,
+  type LoginOutcome,
   type SessionIdentity,
   type MembershipSummary,
+  type MfaSetup,
+  type MfaStatus,
 } from './service.js';
 export { hashPassword, verifyPassword } from './passwords.js';
 export { generateToken, hashToken, type GeneratedToken } from './tokens.js';
+export {
+  generateTotpSecret,
+  hotpCode,
+  totpCode,
+  totpStep,
+  verifyTotp,
+  otpauthUri,
+  base32Encode,
+  base32Decode,
+  encryptSecret,
+  decryptSecret,
+  parseMfaKey,
+  DEV_MFA_SECRET_KEY_HEX,
+  TOTP_DIGITS,
+  TOTP_STEP_SECONDS,
+  type VerifyTotpOptions,
+} from './totp.js';
 export {
   RegisterSchema,
   LoginSchema,
   VerifyEmailSchema,
   PasswordSchema,
+  MfaVerifySchema,
+  MfaCodeOnlySchema,
   type RegisterInput,
   type LoginInput,
   type VerifyEmailInput,
+  type MfaVerifyInput,
+  type MfaCodeOnlyInput,
 } from './schemas.js';
 export {
   AuthError,
@@ -25,4 +49,10 @@ export {
   AccountLockedError,
   InvalidSessionError,
   InvalidVerificationTokenError,
+  InvalidMfaCodeError,
+  InvalidMfaChallengeError,
+  MfaAlreadyEnabledError,
+  MfaNotEnabledError,
+  StepUpRequiredError,
+  RateLimitedError,
 } from './errors.js';

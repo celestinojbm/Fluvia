@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from '@fluvia/db';
 import { insertAuditEvent } from '@fluvia/audit';
 import {
@@ -5,16 +6,31 @@ import {
   EmailNotVerifiedError,
   EmailTakenError,
   InvalidCredentialsError,
+  InvalidMfaChallengeError,
+  InvalidMfaCodeError,
   InvalidSessionError,
   InvalidVerificationTokenError,
+  MfaAlreadyEnabledError,
+  MfaNotEnabledError,
 } from './errors.js';
 import { dummyPasswordHash, hashPassword, verifyPassword } from './passwords.js';
 import { generateToken, hashToken } from './tokens.js';
 import {
+  DEV_MFA_SECRET_KEY_HEX,
+  decryptSecret,
+  encryptSecret,
+  generateTotpSecret,
+  otpauthUri,
+  parseMfaKey,
+  verifyTotp,
+} from './totp.js';
+import {
   LoginSchema,
+  MfaVerifySchema,
   RegisterSchema,
   VerifyEmailSchema,
   type LoginInput,
+  type MfaVerifyInput,
   type RegisterInput,
   type VerifyEmailInput,
 } from './schemas.js';
@@ -25,6 +41,16 @@ export interface AuthServiceOptions {
   verificationTtlMs?: number;
   maxFailedAttempts?: number;
   lockoutMs?: number;
+  /**
+   * Clave AES-256-GCM (64 hex) para el secreto TOTP en reposo. El default es
+   * SOLO para local/test (regimen R-12); @fluvia/config la exige explicita
+   * fuera de local (MFA_SECRET_KEY, anti-mezcla).
+   */
+  mfaEncryptionKeyHex?: string;
+  /** TTL del reto MFA post-password (default 5 min). */
+  mfaChallengeTtlMs?: number;
+  /** Frescura maxima de la verificacion MFA para step-up (default 15 min). */
+  stepUpMaxAgeMs?: number;
 }
 
 export interface RegisteredUser {
@@ -43,9 +69,33 @@ export interface LoginResult {
   expiresAt: Date;
 }
 
+/**
+ * F1-04b: con MFA habilitado, el password correcto NO emite sesion — emite un
+ * reto de corta vida que se canjea en verifyMfaChallenge().
+ */
+export type LoginOutcome =
+  | ({ mfaRequired: false } & LoginResult)
+  | { mfaRequired: true; userId: string; challengeToken: string; challengeExpiresAt: Date };
+
 export interface SessionIdentity {
   sessionId: string;
   userId: string;
+  /** true si el usuario tiene MFA habilitado (base del step-up). */
+  mfaEnabled: boolean;
+  /** Ultima verificacion MFA de ESTA sesion (null si nunca). */
+  mfaVerifiedAt: Date | null;
+}
+
+export interface MfaSetup {
+  /** Secreto base32 — se muestra UNA vez para cargarlo en el authenticator. */
+  secret: string;
+  otpauthUri: string;
+}
+
+export interface MfaStatus {
+  enabled: boolean;
+  pendingSetup: boolean;
+  backupCodesRemaining: number;
 }
 
 export interface MembershipSummary {
@@ -61,6 +111,34 @@ interface LoginUserRow {
   email_verified_at: Date | null;
   failed_login_attempts: number;
   locked_until: Date | null;
+  totp_enabled_at: Date | null;
+}
+
+interface MfaUserRow {
+  id: string;
+  email: string;
+  failed_login_attempts: number;
+  locked_until: Date | null;
+  totp_secret_enc: string | null;
+  totp_pending_secret_enc: string | null;
+  totp_enabled_at: Date | null;
+  totp_last_used_step: string;
+}
+
+/** Codigos de respaldo: 10 hex agrupados xxxxx-xxxxx; se persiste solo sha256. */
+function generateBackupCodes(count = 10): string[] {
+  return Array.from({ length: count }, () => {
+    const hex = randomBytes(5).toString('hex');
+    return `${hex.slice(0, 5)}-${hex.slice(5)}`;
+  });
+}
+
+function normalizeBackupCode(code: string): string {
+  return code.toLowerCase().replace(/[^0-9a-f]/gu, '');
+}
+
+function hashBackupCode(code: string): string {
+  return createHash('sha256').update(normalizeBackupCode(code)).digest('hex');
 }
 
 /**
@@ -79,6 +157,10 @@ export class AuthService {
   private readonly verificationTtlMs: number;
   private readonly maxFailedAttempts: number;
   private readonly lockoutMs: number;
+  private readonly mfaKey: Buffer;
+  private readonly mfaChallengeTtlMs: number;
+  /** Publica: el guard de step-up (apps/api) la usa como unica fuente. */
+  readonly stepUpMaxAgeMs: number;
 
   constructor(
     private readonly authPool: Pool,
@@ -88,6 +170,9 @@ export class AuthService {
     this.verificationTtlMs = options.verificationTtlMs ?? 24 * 60 * 60 * 1000;
     this.maxFailedAttempts = options.maxFailedAttempts ?? 5;
     this.lockoutMs = options.lockoutMs ?? 15 * 60 * 1000;
+    this.mfaKey = parseMfaKey(options.mfaEncryptionKeyHex ?? DEV_MFA_SECRET_KEY_HEX);
+    this.mfaChallengeTtlMs = options.mfaChallengeTtlMs ?? 5 * 60 * 1000;
+    this.stepUpMaxAgeMs = options.stepUpMaxAgeMs ?? 15 * 60 * 1000;
   }
 
   private async withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -167,7 +252,7 @@ export class AuthService {
   async login(
     rawInput: LoginInput,
     meta: { ip?: string; userAgent?: string; requestId?: string } = {}
-  ): Promise<LoginResult> {
+  ): Promise<LoginOutcome> {
     const input = LoginSchema.parse(rawInput);
     const email = input.email.toLowerCase();
 
@@ -181,7 +266,8 @@ export class AuthService {
       await client.query('BEGIN');
       inTx = true;
       const res = await client.query<LoginUserRow>(
-        `SELECT id, password_hash, email_verified_at, failed_login_attempts, locked_until
+        `SELECT id, password_hash, email_verified_at, failed_login_attempts, locked_until,
+                totp_enabled_at
          FROM users
          WHERE lower(email) = $1 AND deleted_at IS NULL
          FOR UPDATE`,
@@ -233,13 +319,32 @@ export class AuthService {
         [user.id]
       );
 
-      const session = generateToken('fluvia_sess');
-      const expiresAt = new Date(Date.now() + this.sessionTtlMs);
-      await client.query(
-        `INSERT INTO sessions (user_id, token_hash, expires_at, ip, user_agent)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [user.id, session.hash, expiresAt, meta.ip ?? null, meta.userAgent ?? null]
-      );
+      // F1-04b: con MFA habilitado el password NO basta — se emite un reto
+      // de corta vida y la sesion solo nace en verifyMfaChallenge().
+      if (user.totp_enabled_at) {
+        const challenge = generateToken('fluvia_mfa');
+        const challengeExpiresAt = new Date(Date.now() + this.mfaChallengeTtlMs);
+        await client.query(
+          `INSERT INTO mfa_challenges (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+          [user.id, challenge.hash, challengeExpiresAt]
+        );
+        await insertAuditEvent(client, {
+          action: 'auth.mfa_challenge',
+          context: { actorType: 'user', actorId: user.id, authMethod: 'none', ...meta },
+          resourceType: 'user',
+          resourceId: user.id,
+        });
+        await client.query('COMMIT');
+        inTx = false;
+        return {
+          mfaRequired: true,
+          userId: user.id,
+          challengeToken: challenge.plaintext,
+          challengeExpiresAt,
+        };
+      }
+
+      const session = await this.createSession(client, user.id, meta, false);
       await insertAuditEvent(client, {
         action: 'auth.login_succeeded',
         context: { actorType: 'user', actorId: user.id, authMethod: 'session', ...meta },
@@ -248,7 +353,7 @@ export class AuthService {
       });
       await client.query('COMMIT');
       inTx = false;
-      return { userId: user.id, sessionToken: session.plaintext, expiresAt };
+      return { mfaRequired: false, ...session };
     } catch (err) {
       if (inTx) await client.query('ROLLBACK').catch(() => undefined);
       throw err;
@@ -257,17 +362,47 @@ export class AuthService {
     }
   }
 
+  private async createSession(
+    client: PoolClient,
+    userId: string,
+    meta: { ip?: string; userAgent?: string },
+    mfaVerified: boolean
+  ): Promise<LoginResult> {
+    const session = generateToken('fluvia_sess');
+    const expiresAt = new Date(Date.now() + this.sessionTtlMs);
+    await client.query(
+      `INSERT INTO sessions (user_id, token_hash, expires_at, ip, user_agent, mfa_verified_at)
+       VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END)`,
+      [userId, session.hash, expiresAt, meta.ip ?? null, meta.userAgent ?? null, mfaVerified]
+    );
+    return { userId, sessionToken: session.plaintext, expiresAt };
+  }
+
   async authenticateSession(sessionToken: string): Promise<SessionIdentity> {
-    const res = await this.authPool.query<{ id: string; user_id: string }>(
+    const res = await this.authPool.query<{
+      id: string;
+      user_id: string;
+      mfa_verified_at: Date | null;
+    }>(
       `UPDATE sessions
        SET last_seen_at = now()
        WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
-       RETURNING id, user_id`,
+       RETURNING id, user_id, mfa_verified_at`,
       [hashToken(sessionToken)]
     );
     const row = res.rows[0];
     if (!row) throw new InvalidSessionError();
-    return { sessionId: row.id, userId: row.user_id };
+    const user = await this.authPool.query<{ totp_enabled_at: Date | null }>(
+      `SELECT totp_enabled_at FROM users WHERE id = $1 AND deleted_at IS NULL`,
+      [row.user_id]
+    );
+    if (!user.rows[0]) throw new InvalidSessionError();
+    return {
+      sessionId: row.id,
+      userId: row.user_id,
+      mfaEnabled: user.rows[0].totp_enabled_at !== null,
+      mfaVerifiedAt: row.mfa_verified_at,
+    };
   }
 
   async logout(
@@ -312,6 +447,314 @@ export class AuthService {
       }
       return count;
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // F1-04b — MFA TOTP + codigos de respaldo + step-up (AUD-P1-006, PEND-005)
+  // --------------------------------------------------------------------------
+
+  private async lockUserForMfa(client: PoolClient, userId: string): Promise<MfaUserRow> {
+    const res = await client.query<MfaUserRow>(
+      `SELECT id, email, failed_login_attempts, locked_until,
+              totp_secret_enc, totp_pending_secret_enc, totp_enabled_at,
+              totp_last_used_step::text
+       FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [userId]
+    );
+    const user = res.rows[0];
+    if (!user) throw new InvalidSessionError();
+    return user;
+  }
+
+  /**
+   * Verifica un codigo TOTP contra el secreto ACTIVO con anti-replay: el step
+   * que produjo el match debe ser mayor que el ultimo usado (un codigo jamas
+   * vale dos veces). Devuelve el step o null.
+   */
+  private matchActiveTotp(user: MfaUserRow, code: string): bigint | null {
+    if (!user.totp_secret_enc) return null;
+    const secret = decryptSecret(this.mfaKey, user.totp_secret_enc);
+    const step = verifyTotp(secret, code);
+    if (step === null || step <= BigInt(user.totp_last_used_step)) return null;
+    return step;
+  }
+
+  /**
+   * Fallo de codigo MFA: cuenta al MISMO lockout que el password. Escribe el
+   * contador y el audit; el CALLER commitea antes de lanzar el error devuelto
+   * (mismo patron commit-before-throw del login).
+   */
+  private async prepareMfaFailure(
+    client: PoolClient,
+    user: MfaUserRow,
+    meta: { ip?: string; userAgent?: string; requestId?: string }
+  ): Promise<Error> {
+    const attempts = user.failed_login_attempts + 1;
+    const lock = attempts >= this.maxFailedAttempts;
+    await client.query(
+      `UPDATE users
+       SET failed_login_attempts = $2,
+           locked_until = CASE WHEN $3 THEN now() + make_interval(secs => $4) ELSE locked_until END
+       WHERE id = $1`,
+      [user.id, lock ? 0 : attempts, lock, this.lockoutMs / 1000]
+    );
+    await insertAuditEvent(client, {
+      action: lock ? 'auth.account_locked' : 'auth.mfa_failed',
+      context: { actorType: 'user', actorId: user.id, authMethod: 'none', ...meta },
+      resourceType: 'user',
+      resourceId: user.id,
+      result: 'failure',
+      riskLevel: lock ? 'high' : 'medium',
+      reason: lock ? 'max_failed_attempts_reached' : 'invalid_mfa_code',
+    });
+    return lock ? new AccountLockedError() : new InvalidMfaCodeError();
+  }
+
+  /** Canjea el reto post-password por una sesion, verificando TOTP o backup code. */
+  async verifyMfaChallenge(
+    rawInput: MfaVerifyInput,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<LoginResult> {
+    const input = MfaVerifySchema.parse(rawInput);
+    const client = await this.authPool.connect();
+    let inTx = false;
+    try {
+      await client.query('BEGIN');
+      inTx = true;
+      const challenge = await client.query<{ id: string; user_id: string }>(
+        `SELECT id, user_id FROM mfa_challenges
+         WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+         FOR UPDATE`,
+        [hashToken(input.challenge_token)]
+      );
+      const ch = challenge.rows[0];
+      if (!ch) throw new InvalidMfaChallengeError();
+
+      const user = await this.lockUserForMfa(client, ch.user_id);
+      if (user.locked_until && user.locked_until.getTime() > Date.now()) {
+        throw new AccountLockedError();
+      }
+      if (!user.totp_enabled_at) throw new MfaNotEnabledError();
+
+      let method: 'totp' | 'backup_code' | null = null;
+      const step = this.matchActiveTotp(user, input.code);
+      if (step !== null) {
+        await client.query(`UPDATE users SET totp_last_used_step = $2 WHERE id = $1`, [
+          user.id,
+          step.toString(),
+        ]);
+        method = 'totp';
+      } else {
+        // Codigo de respaldo: un solo uso, consumido atomicamente.
+        const used = await client.query(
+          `UPDATE mfa_backup_codes SET used_at = now()
+           WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+           RETURNING id`,
+          [user.id, hashBackupCode(input.code)]
+        );
+        if ((used.rowCount ?? 0) > 0) method = 'backup_code';
+      }
+      if (!method) {
+        const failure = await this.prepareMfaFailure(client, user, meta);
+        await client.query('COMMIT');
+        inTx = false;
+        throw failure;
+      }
+
+      await client.query(`UPDATE mfa_challenges SET consumed_at = now() WHERE id = $1`, [ch.id]);
+      await client.query(
+        `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`,
+        [user.id]
+      );
+      const session = await this.createSession(client, user.id, meta, true);
+      await insertAuditEvent(client, {
+        action: 'auth.mfa_verified',
+        context: { actorType: 'user', actorId: user.id, authMethod: 'session', ...meta },
+        resourceType: 'user',
+        resourceId: user.id,
+        reason: method,
+      });
+      await client.query('COMMIT');
+      inTx = false;
+      return session;
+    } catch (err) {
+      if (inTx) await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Paso 1 del enrolamiento: genera el secreto pendiente (se activa con un codigo valido). */
+  async setupMfa(userId: string): Promise<MfaSetup> {
+    return this.withTx(async (c) => {
+      const user = await this.lockUserForMfa(c, userId);
+      if (user.totp_enabled_at) throw new MfaAlreadyEnabledError();
+      const secret = generateTotpSecret();
+      await c.query(`UPDATE users SET totp_pending_secret_enc = $2 WHERE id = $1`, [
+        userId,
+        encryptSecret(this.mfaKey, secret),
+      ]);
+      return { secret, otpauthUri: otpauthUri(secret, user.email) };
+    });
+  }
+
+  /**
+   * Paso 2: el usuario demuestra que cargo el secreto (codigo valido) y MFA
+   * queda habilitado. Devuelve los codigos de respaldo UNA sola vez.
+   */
+  async activateMfa(
+    userId: string,
+    code: string,
+    meta: { sessionId?: string; ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<{ backupCodes: string[] }> {
+    return this.withTx(async (c) => {
+      const user = await this.lockUserForMfa(c, userId);
+      if (user.totp_enabled_at) throw new MfaAlreadyEnabledError();
+      if (!user.totp_pending_secret_enc) throw new MfaNotEnabledError();
+      const secret = decryptSecret(this.mfaKey, user.totp_pending_secret_enc);
+      const step = verifyTotp(secret, code);
+      if (step === null) throw new InvalidMfaCodeError();
+
+      await c.query(
+        `UPDATE users
+         SET totp_secret_enc = totp_pending_secret_enc,
+             totp_pending_secret_enc = NULL,
+             totp_enabled_at = now(),
+             totp_last_used_step = $2
+         WHERE id = $1`,
+        [userId, step.toString()]
+      );
+      const backupCodes = generateBackupCodes();
+      for (const bc of backupCodes) {
+        await c.query(`INSERT INTO mfa_backup_codes (user_id, code_hash) VALUES ($1, $2)`, [
+          userId,
+          hashBackupCode(bc),
+        ]);
+      }
+      // La sesion que activo MFA queda verificada (evita step-up inmediato).
+      if (meta.sessionId) {
+        await c.query(
+          `UPDATE sessions SET mfa_verified_at = now() WHERE id = $1 AND user_id = $2`,
+          [meta.sessionId, userId]
+        );
+      }
+      await insertAuditEvent(c, {
+        action: 'auth.mfa_enabled',
+        context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
+        resourceType: 'user',
+        resourceId: userId,
+        riskLevel: 'high',
+      });
+      return { backupCodes };
+    });
+  }
+
+  /** Deshabilita MFA. Exige un TOTP valido (un backup code NO basta para apagarla). */
+  async disableMfa(
+    userId: string,
+    code: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<void> {
+    return this.withTx(async (c) => {
+      const user = await this.lockUserForMfa(c, userId);
+      if (!user.totp_enabled_at) throw new MfaNotEnabledError();
+      const step = this.matchActiveTotp(user, code);
+      if (step === null) throw new InvalidMfaCodeError();
+      await c.query(
+        `UPDATE users
+         SET totp_secret_enc = NULL, totp_pending_secret_enc = NULL,
+             totp_enabled_at = NULL, totp_last_used_step = 0
+         WHERE id = $1`,
+        [userId]
+      );
+      // Los codigos de respaldo sin usar quedan invalidados (append-only: se marcan).
+      await c.query(
+        `UPDATE mfa_backup_codes SET used_at = now() WHERE user_id = $1 AND used_at IS NULL`,
+        [userId]
+      );
+      await insertAuditEvent(c, {
+        action: 'auth.mfa_disabled',
+        context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
+        resourceType: 'user',
+        resourceId: userId,
+        riskLevel: 'high',
+      });
+    });
+  }
+
+  /** Step-up: refresca mfa_verified_at de la sesion con un TOTP fresco. */
+  async stepUp(
+    userId: string,
+    sessionId: string,
+    code: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<{ mfaVerifiedAt: Date }> {
+    const client = await this.authPool.connect();
+    let inTx = false;
+    try {
+      await client.query('BEGIN');
+      inTx = true;
+      const user = await this.lockUserForMfa(client, userId);
+      if (user.locked_until && user.locked_until.getTime() > Date.now()) {
+        throw new AccountLockedError();
+      }
+      if (!user.totp_enabled_at) throw new MfaNotEnabledError();
+      const step = this.matchActiveTotp(user, code);
+      if (step === null) {
+        const failure = await this.prepareMfaFailure(client, user, meta);
+        await client.query('COMMIT');
+        inTx = false;
+        throw failure;
+      }
+      await client.query(`UPDATE users SET totp_last_used_step = $2 WHERE id = $1`, [
+        userId,
+        step.toString(),
+      ]);
+      const updated = await client.query<{ mfa_verified_at: Date }>(
+        `UPDATE sessions SET mfa_verified_at = now()
+         WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+         RETURNING mfa_verified_at`,
+        [sessionId, userId]
+      );
+      if (!updated.rows[0]) throw new InvalidSessionError();
+      await insertAuditEvent(client, {
+        action: 'auth.step_up',
+        context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
+        resourceType: 'session',
+        resourceId: sessionId,
+        riskLevel: 'medium',
+      });
+      await client.query('COMMIT');
+      inTx = false;
+      return { mfaVerifiedAt: updated.rows[0].mfa_verified_at };
+    } catch (err) {
+      if (inTx) await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async mfaStatus(userId: string): Promise<MfaStatus> {
+    const res = await this.authPool.query<{
+      totp_enabled_at: Date | null;
+      totp_pending_secret_enc: string | null;
+      remaining: number;
+    }>(
+      `SELECT u.totp_enabled_at, u.totp_pending_secret_enc,
+              (SELECT count(*)::int FROM mfa_backup_codes b
+               WHERE b.user_id = u.id AND b.used_at IS NULL) AS remaining
+       FROM users u WHERE u.id = $1 AND u.deleted_at IS NULL`,
+      [userId]
+    );
+    const row = res.rows[0];
+    if (!row) throw new InvalidSessionError();
+    return {
+      enabled: row.totp_enabled_at !== null,
+      pendingSetup: row.totp_pending_secret_enc !== null,
+      backupCodesRemaining: row.remaining,
+    };
   }
 
   async listMemberships(userId: string): Promise<MembershipSummary[]> {

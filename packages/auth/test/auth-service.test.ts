@@ -15,6 +15,13 @@ let ctx: TestContext;
 let auth: AuthService;
 
 const uniqueEmail = () => `user-${randomUUID().slice(0, 12)}@example.com`;
+/** Narrowing: en esta suite ningun usuario tiene MFA => siempre hay sesion. */
+async function loginSession(svc: AuthService, input: { email: string; password: string }) {
+  const outcome = await svc.login(input);
+  if (outcome.mfaRequired) throw new Error('unexpected MFA challenge in non-MFA suite');
+  return outcome;
+}
+
 const PASSWORD = 'a very strong password 42';
 
 async function registeredAndVerified(service = auth) {
@@ -44,7 +51,7 @@ describe('register + verify + login (camino feliz)', () => {
     await expect(auth.login({ email, password: PASSWORD })).rejects.toThrow(EmailNotVerifiedError);
 
     await auth.verifyEmail({ token: reg.verificationToken });
-    const login = await auth.login({ email, password: PASSWORD });
+    const login = await loginSession(auth, { email, password: PASSWORD });
     expect(login.sessionToken).toMatch(/^fluvia_sess_/);
     expect(login.userId).toBe(reg.userId);
     expect(login.expiresAt.getTime()).toBeGreaterThan(Date.now());
@@ -128,7 +135,7 @@ describe('anti-enumeracion y lockout', () => {
       AccountLockedError
     );
     await new Promise((r) => setTimeout(r, 120));
-    const ok = await service.login({ email, password: PASSWORD });
+    const ok = await loginSession(service, { email, password: PASSWORD });
     expect(ok.sessionToken).toBeTruthy();
   });
 });
@@ -136,7 +143,7 @@ describe('anti-enumeracion y lockout', () => {
 describe('sesiones', () => {
   it('authenticates a live session and rejects garbage tokens', async () => {
     const { email, userId } = await registeredAndVerified();
-    const { sessionToken } = await auth.login({ email, password: PASSWORD });
+    const { sessionToken } = await loginSession(auth, { email, password: PASSWORD });
     const identity = await auth.authenticateSession(sessionToken);
     expect(identity.userId).toBe(userId);
     await expect(auth.authenticateSession('fluvia_sess_garbage')).rejects.toThrow(
@@ -147,14 +154,14 @@ describe('sesiones', () => {
   it('rejects expired sessions', async () => {
     const service = new AuthService(ctx.auth, { sessionTtlMs: -1000 });
     const { email } = await registeredAndVerified(service);
-    const { sessionToken } = await service.login({ email, password: PASSWORD });
+    const { sessionToken } = await loginSession(service, { email, password: PASSWORD });
     await expect(service.authenticateSession(sessionToken)).rejects.toThrow(InvalidSessionError);
   });
 
   it('logout revokes exactly that session', async () => {
     const { email } = await registeredAndVerified();
-    const s1 = await auth.login({ email, password: PASSWORD });
-    const s2 = await auth.login({ email, password: PASSWORD });
+    const s1 = await loginSession(auth, { email, password: PASSWORD });
+    const s2 = await loginSession(auth, { email, password: PASSWORD });
     await auth.logout(s1.sessionToken);
     await expect(auth.authenticateSession(s1.sessionToken)).rejects.toThrow(InvalidSessionError);
     await expect(auth.authenticateSession(s2.sessionToken)).resolves.toBeTruthy();
@@ -162,8 +169,8 @@ describe('sesiones', () => {
 
   it('revokeAllSessions kills every live session for the user', async () => {
     const { email, userId } = await registeredAndVerified();
-    const s1 = await auth.login({ email, password: PASSWORD });
-    const s2 = await auth.login({ email, password: PASSWORD });
+    const s1 = await loginSession(auth, { email, password: PASSWORD });
+    const s2 = await loginSession(auth, { email, password: PASSWORD });
     const revoked = await auth.revokeAllSessions(userId);
     expect(revoked).toBeGreaterThanOrEqual(2);
     await expect(auth.authenticateSession(s1.sessionToken)).rejects.toThrow(InvalidSessionError);
@@ -200,7 +207,7 @@ describe('separacion de planos', () => {
 
   it('stored session tokens are hashes, never plaintext', async () => {
     const { email } = await registeredAndVerified();
-    const { sessionToken } = await auth.login({ email, password: PASSWORD });
+    const { sessionToken } = await loginSession(auth, { email, password: PASSWORD });
     const rows = await ctx.admin.query<{ token_hash: string }>(
       'SELECT token_hash FROM sessions ORDER BY created_at DESC LIMIT 5'
     );

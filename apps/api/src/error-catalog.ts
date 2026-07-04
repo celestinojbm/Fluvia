@@ -106,6 +106,16 @@ export const ERROR_CATALOG = {
     type: 'authentication_error',
     message: 'The webhook signature is invalid or stale',
   },
+  invalid_mfa_code: {
+    status: 401,
+    type: 'authentication_error',
+    message: 'The MFA code is invalid',
+  },
+  invalid_mfa_challenge: {
+    status: 401,
+    type: 'authentication_error',
+    message: 'The MFA challenge is invalid, expired or already used',
+  },
   // --- autorizacion ---
   email_not_verified: {
     status: 403,
@@ -126,6 +136,11 @@ export const ERROR_CATALOG = {
     status: 403,
     type: 'authorization_error',
     message: 'Live API keys are not available yet',
+  },
+  mfa_step_up_required: {
+    status: 403,
+    type: 'authorization_error',
+    message: 'This action requires recent MFA verification; call /v1/auth/mfa/step-up',
   },
   // --- no encontrado (anti-enumeracion: cross-tenant es indistinguible) ---
   not_found: {
@@ -178,6 +193,16 @@ export const ERROR_CATALOG = {
     status: 422,
     type: 'unprocessable_error',
     message: 'This idempotency key was already used with a different payload',
+  },
+  mfa_already_enabled: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'MFA is already enabled for this account',
+  },
+  mfa_not_enabled: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'MFA is not enabled (or not pending activation) for this account',
   },
   // --- bloqueos / limites ---
   account_locked: {
@@ -235,6 +260,13 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   IdempotencyKeyRequiredError: 'idempotency_key_required',
   ProcessingInFlightError: 'processing_in_flight',
   IdempotencyKeyReuseError: 'idempotency_key_reuse',
+  // MFA + step-up + rate limiting (F1-04b)
+  InvalidMfaCodeError: 'invalid_mfa_code',
+  InvalidMfaChallengeError: 'invalid_mfa_challenge',
+  MfaAlreadyEnabledError: 'mfa_already_enabled',
+  MfaNotEnabledError: 'mfa_not_enabled',
+  StepUpRequiredError: 'mfa_step_up_required',
+  RateLimitedError: 'rate_limited',
 };
 
 export interface PublicErrorBody {
