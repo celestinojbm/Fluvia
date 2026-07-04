@@ -22,3 +22,26 @@ export {
   OrganizationNotFoundError,
   MerchantNotFoundError,
 } from './errors.js';
+export {
+  ROLES,
+  PERMISSIONS,
+  ROLE_PERMISSIONS,
+  hasPermission,
+  assertPermission,
+  InsufficientPermissionError,
+  type Role,
+  type Permission,
+} from './rbac.js';
+export {
+  ApiKeyService,
+  API_KEY_SCOPES,
+  CreateApiKeySchema,
+  hashApiKeySecret,
+  ApiKeyNotFoundError,
+  InvalidApiKeyError,
+  InsufficientScopeError,
+  type ApiKeyScope,
+  type CreateApiKeyInput,
+  type CreatedApiKey,
+  type ApiKeyDto,
+} from './api-keys.js';

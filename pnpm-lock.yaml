@@ -35,6 +35,9 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fluvia/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
       fastify:
         specifier: ^5.2.0
         version: 5.9.0

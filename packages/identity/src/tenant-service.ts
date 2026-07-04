@@ -154,6 +154,17 @@ export class IdentityService {
     });
   }
 
+  /** Rol del usuario dentro del tenant (o null si no es miembro activo). RLS aplica. */
+  async getMemberRole(tenantId: string, userId: string): Promise<string | null> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<{ role: string }>(
+        'SELECT role FROM memberships WHERE user_id = $1 AND revoked_at IS NULL',
+        [userId]
+      );
+      return res.rows[0]?.role ?? null;
+    });
+  }
+
   async listMembers(tenantId: string): Promise<MemberDto[]> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<{

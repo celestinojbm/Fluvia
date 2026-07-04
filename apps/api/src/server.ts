@@ -1,13 +1,19 @@
 import { loadConfig } from '@fluvia/config';
 import { createPool } from '@fluvia/db';
 import { AuthService } from '@fluvia/auth';
+import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { buildApp } from './app.js';
 
 const config = loadConfig();
 const appPool = createPool({ connectionString: config.db.app });
 const authPool = createPool({ connectionString: config.db.auth, max: 5 });
-const authService = new AuthService(authPool);
-const app = buildApp({ config, appPool, authService });
+const app = buildApp({
+  config,
+  appPool,
+  authService: new AuthService(authPool),
+  identityService: new IdentityService(appPool),
+  apiKeyService: new ApiKeyService(appPool),
+});
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {

@@ -4,7 +4,10 @@ import { ZodError } from 'zod';
 import type { AppConfig } from '@fluvia/config';
 import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
+import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
+import { createSecurity } from './security.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -12,6 +15,8 @@ export interface BuildAppOptions {
   appPool: Pool;
   /** Servicio de autenticacion (pool fluvia_auth). Opcional en tests de plataforma. */
   authService?: AuthService;
+  identityService?: IdentityService;
+  apiKeyService?: ApiKeyService;
 }
 
 /**
@@ -25,6 +30,16 @@ const DOMAIN_ERROR_HTTP: Record<string, { status: number; code: string }> = {
   AccountLockedError: { status: 423, code: 'account_locked' },
   InvalidSessionError: { status: 401, code: 'invalid_session' },
   InvalidVerificationTokenError: { status: 400, code: 'invalid_verification_token' },
+  // Identidad / RBAC / API keys (F1-03, F1-04c). Los not-found cross-tenant
+  // son indistinguibles de los inexistentes por diseño (anti-enumeracion).
+  OrganizationNotFoundError: { status: 404, code: 'not_found' },
+  MerchantNotFoundError: { status: 404, code: 'not_found' },
+  ApiKeyNotFoundError: { status: 404, code: 'not_found' },
+  MerchantNameTakenError: { status: 409, code: 'merchant_name_taken' },
+  OrganizationSlugTakenError: { status: 409, code: 'organization_slug_taken' },
+  InsufficientPermissionError: { status: 403, code: 'insufficient_permissions' },
+  InvalidApiKeyError: { status: 401, code: 'invalid_api_key' },
+  InsufficientScopeError: { status: 403, code: 'insufficient_scope' },
 };
 
 /**
@@ -34,7 +49,13 @@ const DOMAIN_ERROR_HTTP: Record<string, { status: number; code: string }> = {
  * en logs y el sobre de error estable minimo. Los recursos de negocio llegan
  * con sus dominios (F3+); la taxonomia completa de errores es F1-08.
  */
-export function buildApp({ config, appPool, authService }: BuildAppOptions): FastifyInstance {
+export function buildApp({
+  config,
+  appPool,
+  authService,
+  identityService,
+  apiKeyService,
+}: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -77,6 +98,12 @@ export function buildApp({ config, appPool, authService }: BuildAppOptions): Fas
       authService,
       exposeVerificationToken: config.env === 'local' || config.env === 'test',
     });
+  }
+
+  if (authService && identityService && apiKeyService) {
+    const security = createSecurity({ authService, identityService, appPool });
+    registerOrganizationRoutes(app, { security, authService, identityService, apiKeyService });
+    registerAccountRoutes(app, { security, identityService });
   }
 
   app.setNotFoundHandler((req, reply) => {
