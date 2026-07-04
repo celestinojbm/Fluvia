@@ -56,6 +56,18 @@ export class IdempotencyConflictError extends LedgerError {
   }
 }
 
+export class UnknownAccountCodeError extends LedgerError {
+  constructor(readonly code: string) {
+    super(`Account code not in the Chart of Accounts: "${code}"`);
+  }
+}
+
+export class FeesExceedAmountError extends LedgerError {
+  constructor() {
+    super('Fees must leave a strictly positive net amount for the merchant');
+  }
+}
+
 export class LedgerRetriesExhaustedError extends LedgerError {
   constructor(
     readonly attempts: number,

@@ -20,29 +20,29 @@ Convención: `normal_side` indica el lado que incrementa el saldo. Toda cuenta e
 | `suspense` | Suspense account | Transitoria | debit | Movimientos no clasificables aún; saldo objetivo = 0; alerta si envejece |
 | `recon.differences` | Reconciliation differences | Transitoria | debit | Ajustes reconocidos por conciliación, siempre con caso asociado |
 
-## Reglas de posting del MVP (MockProvider)
+## Reglas de posting del MVP — IMPLEMENTADAS (F2-04; fuente de verdad: `packages/ledger/src/posting.ts`)
 
-**Captura exitosa de pago (monto M, fee proveedor Fp, fee plataforma Ff):**
+**Modelo contable sandbox v1 (bruto)** — desviación registrada respecto al borrador de Fase 0: la captura es **una sola transacción atómica** (no dos) porque la atomicidad domina a la trazabilidad-por-partes, y el modelo es "plataforma absorbe el fee del proveedor" (margen de Fluvia = Ff − Fp). El pricing definitivo depende de PEND-002 y del flujo de fondos de Fase 4.
+
+**`payment.capture` (bruto M, fee proveedor Fp, fee plataforma Ff) — golden: M=100000, Fp=2900, Ff=5000 COP:**
 
 ```
-debit  provider.clearing        M
-credit merchant.pending         M - Fp - Ff
-credit provider.fees(gasto)*    —  [MVP: Fp se registra debit provider.fees / credit provider.clearing]
-credit platform.fees            Ff
+debit  provider.clearing   M         (100000 — bruto por cobrar al proveedor)
+debit  provider.fees       Fp        (2900   — costo de procesamiento)
+credit provider.payable    Fp        (2900   — deuda con el proveedor)
+credit merchant.pending    M - Ff    (95000  — pasivo con el comercio)
+credit platform.fees       Ff        (5000   — ingreso Fluvia)
+⇒ débitos M+Fp == créditos Fp+(M−Ff)+Ff ✓   (con Fp=Ff=0 colapsa a 2 asientos)
 ```
 
-Concretamente en el MVP (dos transacciones para trazabilidad):
-1. `payment.capture`: `debit provider.clearing M` / `credit merchant.pending M`.
-2. `payment.fees`: `debit merchant.pending (Fp+Ff)` / `credit provider.fees Fp` + `credit platform.fees Ff`.
+**`settlement.release` X:** `debit merchant.pending X` / `credit merchant.available X`.
 
-**Liquidación simulada (settlement):** `debit merchant.pending X` / `credit merchant.available X`.
-
-**Refund total o parcial R:** `debit merchant.available R` (o `merchant.pending` según estado) / `credit refund.liability R`; al confirmar el proveedor: `debit refund.liability R` / `credit provider.clearing R`.
+**`refund.request` R:** `debit merchant.available R` / `credit refund.liability R`; **`refund.settle` R:** `debit refund.liability R` / `credit provider.clearing R`.
 
 **Discrepancia de conciliación aceptada:** siempre vía `recon.differences` con caso y aprobación; nunca edición de asientos.
 
-## Transiciones permitidas y compensaciones
+## Catálogo cerrado y aprovisionamiento
 
-Cada regla de posting declara sus cuentas origen/destino permitidas; el `LedgerService` rechaza combinaciones fuera del catálogo (`InvalidPostingRuleError`). Las compensaciones usan la transacción espejo con `reverses_tx_id`.
+`PostingService.ensureChart(tenant, merchant, moneda)` aprovisiona idempotentemente las 13 cuentas (8 platform-scope por tenant+moneda con nombre = code; 5 merchant-scope con nombre = `code:merchantId`). Solo existen las operaciones tipadas del catálogo: una combinación de cuentas fuera de él es **irrepresentable** (`UnknownAccountCodeError` para codes desconocidos). Las compensaciones usan la transacción espejo con `reverses_tx_id` (servicio de reversal: F2-07).
 
-Pendiente para F2: montos de ejemplo dorados (golden tests) por cada regla, incluyendo redondeo de fees por mayor residuo (auditoría D1).
+Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo exactamente = 13 cuentas con semántica contable verificada (activo/gasto = debit-normal, pasivo/ingreso = credit-normal), la captura golden de arriba asiento por asiento y balance por balance, fees que consumen todo el monto rechazados, monedas mixtas rechazadas, ciclo completo captura→liquidación→refund con balances exactos y cero drift, e idempotencia end-to-end de las operaciones.

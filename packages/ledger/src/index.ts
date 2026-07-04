@@ -1,5 +1,21 @@
 export { LedgerService } from './service.js';
 export {
+  PostingService,
+  type PostingContext,
+  type CapturePaymentInput,
+  type SimpleAmountInput,
+} from './posting.js';
+export {
+  CHART_OF_ACCOUNTS,
+  ACCOUNT_CODES,
+  accountName,
+  isAccountCode,
+  type AccountCode,
+  type AccountDefinition,
+  type AccountScope,
+  type AccountType,
+} from './chart-of-accounts.js';
+export {
   LEDGER_REASONS,
   type LedgerReason,
   type EntryDirection,
@@ -24,4 +40,6 @@ export {
   OptimisticLockError,
   IdempotencyConflictError,
   LedgerRetriesExhaustedError,
+  UnknownAccountCodeError,
+  FeesExceedAmountError,
 } from './errors.js';

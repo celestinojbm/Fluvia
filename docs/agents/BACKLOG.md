@@ -26,7 +26,7 @@ Estado: Activo · Fuente única de trabajo · Formato §48: cada ítem lleva ID,
 | F2-01 | `ledger_transactions` con source causal + `reverses_tx_id`; promover `@fluvia/money` del spike | F1-03 | Alto | M | **Completado 2026-07-04** (migración 0007; money ya operativo como paquete desde Fase 0) |
 | F2-02 | Constraint trigger diferido: balanceo por (tx, moneda) | F2-01 | Alto | S | **Completado 2026-07-04** (FLUVIA_UNBALANCED + FLUVIA_EMPTY_TRANSACTION; test negativo con superusuario incluido) |
 | F2-03 | `balance_projections` versionada separada + `LedgerService.postTransaction` (locking ordenado, retry limitado) | F2-02 | Alto | L | **Completado 2026-07-04** (@fluvia/ledger: posting normativo completo, idempotencia con huella, outbox en misma tx, verifyProjection; 10 tests de integración incl. carrera de idempotencia y smoke de concurrencia) |
-| F2-04 | Chart of Accounts + reglas de posting con golden tests | F2-03 | Alto | M | Catálogo en código == doc; combinaciones fuera de catálogo rechazadas |
+| F2-04 | Chart of Accounts + reglas de posting con golden tests | F2-03 | Alto | M | **Completado 2026-07-04** (CHART_OF_ACCOUNTS 13 cuentas + PostingService: capture/release/refund con golden tests exactos, modelo bruto sandbox v1, doc espejo actualizado con desviación registrada) |
 | F2-05 | Rebuild de proyecciones + drift check programado | F2-03 | Alto | M | rebuild == proyección (property test); alerta de drift |
 | F2-06 | `scripts/verify-ledger-invariants.sql` externo al ORM + integración CI | F2-02 | Medio | S | Corre en CI y por cron; detecta corrupción sembrada en test |
 | F2-07 | Compensaciones/reversals | F2-04 | Alto | M | Reversal referencia original; suma neta correcta; auditoría |
