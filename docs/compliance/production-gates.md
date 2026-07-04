@@ -6,12 +6,13 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 
 ## 1. Gates técnicos mínimos
 
-### Gate Ledger — 🔴
-- [ ] Cada transacción balancea por activo (constraint diferido + tests) — diseño F2-02
-- [x] *Precursor:* inmutabilidad de asientos a nivel motor verificada (spike, tests `FLUVIA_IMMUTABLE`)
+### Gate Ledger — 🟡 (en progreso, F2)
+- [x] **Cada transacción balancea por activo/moneda a nivel de MOTOR** (constraint trigger diferido `FLUVIA_UNBALANCED`; probado con SQL crudo incluso como superusuario; compensación cross-moneda rechazada; cabeceras vacías rechazadas — `ledger-invariants.test.ts`, F2-02)
+- [x] Inmutabilidad de asientos a nivel motor (`FLUVIA_IMMUTABLE`)
+- [x] Modelo causal: `source_type/source_id` + `reverses_tx_id` con FK (F2-01)
 - [ ] Scripts externos al ORM verifican invariantes (F2-06)
 - [ ] Rebuild de proyección == ledger (F2-05)
-- [ ] Compensaciones funcionan (F2-07)
+- [ ] Compensaciones vía servicio (F2-07; el modelo ya lo soporta)
 - [ ] Concurrencia sin duplicados ni drift (F2-08)
 
 ### Gate Multi-tenant — 🟢 técnico (revisión formal en Fase 6)

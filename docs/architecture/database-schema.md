@@ -14,6 +14,7 @@ Migraciones aplicadas y verificadas contra PostgreSQL 16:
 | `0004_auth_sessions.sql` | **F1-04a**: `sessions` (token solo como SHA-256, expiración, revocación, ip/UA), `email_verification_tokens` (un solo uso), lockout en `users` (`failed_login_attempts`, `locked_until`); rol **`fluvia_auth`** — único con acceso a users/sessions/tokens (política `auth_plane_access` acotada al rol); acceso de `fluvia_app`/`fluvia_worker` a sessions/tokens REVOCADO; `auth_list_memberships()` SECURITY DEFINER para elegir contexto de tenant tras login |
 | `0005_api_key_scopes.sql` | **F1-04c**: `api_keys` + `scopes TEXT[]`, `environment` (test/live), `key_prefix` visible, `created_by_user_id`, `last_used_at`; `authenticate_api_key()` recreada (DROP+CREATE por cambio de retorno) devolviendo scopes+environment y tocando `last_used_at` con throttle de 60s |
 | `0006_audit_log.sql` | **F1-05**: `audit_events` append-only (triggers UPDATE/DELETE/TRUNCATE + sin grant de UPDATE): actor, tenant, acción, recurso, resultado, risk_level, razón, before/after redactados, ip/UA/request_id; RLS: `tenant_isolation` para el plano app y política `auth_plane_audit` (INSERT-only, solo eventos sin tenant) para `fluvia_auth` |
+| `0007_ledger_core.sql` | **F2-01/F2-02**: `ledger_transactions` + `source_type`/`source_id`/`reverses_tx_id` (enlace causal y de reversión, catálogo de reasons ampliado); `balance_projections` separada (backfill + contracción de `ledger_accounts` a pura definición) con RLS+inmutabilidad; **constraint triggers diferidos**: `ledger_entries_balanced` (balanceo por tx y moneda al COMMIT — imposible desbalancear incluso como superusuario) y `ledger_transactions_nonempty` (sin cabeceras huérfanas) |
 
 Runner: `packages/db/src/migrate.ts` — orden lexicográfico, una transacción por archivo, registro en `schema_migrations`, `pg_advisory_lock` anti-concurrencia.
 
@@ -21,10 +22,8 @@ Runner: `packages/db/src/migrate.ts` — orden lexicográfico, una transacción 
 
 1. ~~`tenants` → modelo completo (F1-03)~~ **Aplicado en `0003_identity_tenancy.sql`.**
 2. Excepción de purga administrada para `idempotency_keys` expiradas (clasificación de datos; F1-09).
-3. `ledger_transactions`: columnas `source_type`, `source_id`, `reverses_tx_id` (F2-01).
-4. `balance_projections` como tabla separada de `ledger_accounts` (F2-03) — el spike cachea en la propia cuenta; la separación aísla el derivado de la definición.
-5. Constraint trigger diferido de balanceo por (tx, moneda) (F2-02).
-6. Tablas de inbox (`provider_events`) y webhooks salientes (F3).
+3. ~~`ledger_transactions` causal + `balance_projections` + constraint de balanceo~~ **Aplicado en `0007_ledger_core.sql`.**
+4. Tablas de inbox (`provider_events`) y webhooks salientes (F3).
 
 ## Convenciones para toda migración futura
 

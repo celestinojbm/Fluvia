@@ -1,6 +1,6 @@
 # STATE — Estado del proyecto
 
-Última actualización: 2026-07-04 · Fase actual: **1 — Fundación (en curso)**
+Última actualización: 2026-07-04 · Fase actual: **2 — Núcleo financiero (en curso)** · Fase 1: núcleo de seguridad completo (quedan intercalables F1-04b/07/08/09/10)
 
 ## Hitos
 
@@ -12,6 +12,7 @@
 - **F1-04c completado (2026-07-04)**: API keys con scopes y entorno test/live (migración 0005; secreto mostrado una única vez, solo hash+prefijo en BD, last_used_at con throttle) + RBAC declarativo (`packages/identity/src/rbac.ts`, matriz publicada en access-control.md y verificada celda a celda por test) + middleware de dos planos en el API (sesión+rol por organización para dashboard; API key+scope para integración; planos NO intercambiables) + primeros endpoints tenant-scoped reales: `/v1/organizations[...]` (org, members, merchants CRUD, api-keys) y `/v1/account`. Decisión de seguridad: no existe scope para gestionar API keys — una key robada no puede escalar. Suite total: **111/111** incl. tests BOLA (404 indistinguible), RBAC por rol y scopes.
 - **F1-05 completado (2026-07-04)**: audit log append-only — migración `0006_audit_log.sql` (tabla inmutable por triggers Y por grants, RLS por plano: tenant para app, INSERT-only sin tenant para fluvia_auth) + `@fluvia/audit` (evento en la MISMA transacción que la acción, redacción recursiva de claves sensibles, lector paginado). Acciones auditadas: api_key.created/revoked (risk high), merchant.created/updated (con before/after), user.registered/email_verified, auth.login_succeeded/login_failed/account_locked/logout/sessions_revoked. Permiso nuevo `audit:read` (owner/admin/finance/analyst) + endpoint `GET /v1/organizations/:orgId/audit-events` con cursor. Suite total: **120/120**.
 - **F1-06 completado (2026-07-04)** → **Gate Multi-tenant 🟢 técnico**: suite ampliada de tenant-escape (UPDATE por PK ajena, UPDATE masivo, INSERT…SELECT, JOINs, sondas EXISTS, agregados, fuga de contexto en la MISMA conexión del pool, SET ROLE denegado, worker sin DELETE) + **meta-tests estructurales** contra pg_catalog (toda tabla futura con tenant_id debe tener RLS forzado y política; ningún rol de runtime con DELETE; app/worker sin privilegios sobre credenciales) + `withPlatformOperation` como único bypass sancionado (razón obligatoria, auditoría atómica de riesgo alto, rollback conjunto). Límite residual documentado (SQL arbitrario ⇒ cambio de GUC) en multi-tenancy.md §6.5 y threat model. Suite total: **135/135**.
+- **F2-01+F2-02 completados (2026-07-04) — arranca el núcleo financiero**: migración `0007_ledger_core.sql` — enlace causal (`source_type/source_id`) y de reversión (`reverses_tx_id` con FK) en `ledger_transactions`; `balance_projections` separada con RLS+inmutabilidad (y `ledger_accounts` contraída a pura definición); **invariantes a nivel de motor**: constraint triggers diferidos que hacen imposible commitear un asiento desbalanceado por (tx, moneda) — probado con SQL crudo de superusuario — ni compensar un hueco USD con COP, ni dejar cabeceras sin asientos. Suite total: **144/144**.
 
 ## Resumen ejecutivo
 
@@ -59,4 +60,4 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 
 ## Próximo incremento propuesto
 
-**Fase 2 — núcleo financiero, empezando por F2-01+F2-02** (modelo definitivo del ledger con enlace causal + constraint diferido de balanceo por moneda a nivel de base de datos). El Gate Multi-tenant técnico está en verde y la idempotencia/outbox (F2-09/F2-11) siguen en el camino crítico antes de exponer el API de pagos. Los pendientes de Fase 1 (F1-04b MFA, F1-07 observabilidad, F1-08 taxonomía, F1-09 purga, F1-10 seeds) son intercalables y no bloquean F2-01→F2-08.
+**F2-03 — `LedgerService.postTransaction`** (talla L): el posting normativo de `ledger-design.md` §5 — locking pesimista ordenado anti-deadlock, idempotencia de asiento con replay, actualización versionada de `balance_projections` con guard optimista y retry limitado, y evento outbox en la misma transacción. Con F2-03 verde siguen F2-04 (Chart of Accounts) y F2-08 (suite de concurrencia).

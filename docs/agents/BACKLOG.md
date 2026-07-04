@@ -23,8 +23,8 @@ Estado: Activo · Fuente única de trabajo · Formato §48: cada ítem lleva ID,
 
 | ID | Título | Deps | Riesgo | Talla | CA / Pruebas |
 |----|--------|------|--------|-------|--------------|
-| F2-01 | `ledger_transactions` con source causal + `reverses_tx_id`; promover `@fluvia/money` del spike | F1-03 | Alto | M | Modelo final migrado; money tests portados |
-| F2-02 | Constraint trigger diferido: balanceo por (tx, moneda) | F2-01 | Alto | S | Asiento desbalanceado imposible aun con SQL manual (test negativo) |
+| F2-01 | `ledger_transactions` con source causal + `reverses_tx_id`; promover `@fluvia/money` del spike | F1-03 | Alto | M | **Completado 2026-07-04** (migración 0007; money ya operativo como paquete desde Fase 0) |
+| F2-02 | Constraint trigger diferido: balanceo por (tx, moneda) | F2-01 | Alto | S | **Completado 2026-07-04** (FLUVIA_UNBALANCED + FLUVIA_EMPTY_TRANSACTION; test negativo con superusuario incluido) |
 | F2-03 | `balance_projections` versionada separada + `LedgerService.postTransaction` (locking ordenado, retry limitado) | F2-02 | Alto | L | Posting normativo de `ledger-design.md` §5 con tests de integración |
 | F2-04 | Chart of Accounts + reglas de posting con golden tests | F2-03 | Alto | M | Catálogo en código == doc; combinaciones fuera de catálogo rechazadas |
 | F2-05 | Rebuild de proyecciones + drift check programado | F2-03 | Alto | M | rebuild == proyección (property test); alerta de drift |

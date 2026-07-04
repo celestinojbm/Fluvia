@@ -110,9 +110,10 @@ describe('audit_events bajo RLS (F1-05)', () => {
       withPlatformOperation(ctx.admin, { tenantId: orgA, reason: '  ' }, async () => 'x')
     ).rejects.toThrow(PlatformReasonRequiredError);
 
+    const requestId = `req-platform-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const result = await withPlatformOperation(
       ctx.admin,
-      { tenantId: orgA, reason: 'soporte: investigacion caso #42', requestId: 'req-platform-1' },
+      { tenantId: orgA, reason: 'soporte: investigacion caso #42', requestId },
       async (c) => {
         // Operacion cross-tenant legitima (plano de plataforma).
         const r = await c.query('SELECT count(*)::int AS n FROM audit_events');
@@ -123,7 +124,8 @@ describe('audit_events bajo RLS (F1-05)', () => {
 
     const trail = await ctx.admin.query(
       `SELECT reason, risk_level, auth_method FROM audit_events
-       WHERE action = 'platform.operation' AND request_id = 'req-platform-1'`
+       WHERE action = 'platform.operation' AND request_id = $1`,
+      [requestId]
     );
     expect(trail.rowCount).toBe(1);
     expect(trail.rows[0]!.reason).toBe('soporte: investigacion caso #42');
