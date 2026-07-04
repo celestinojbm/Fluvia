@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
 import { IdentityError } from './errors.js';
 
 /**
@@ -97,7 +98,7 @@ export class ApiKeyService {
   async create(
     tenantId: string,
     rawInput: CreateApiKeyInput,
-    createdByUserId?: string
+    audit?: AuditContext
   ): Promise<CreatedApiKey> {
     const input = CreateApiKeySchema.parse(rawInput);
     const secret = `fluvia_sk_${input.environment}_${randomBytes(24).toString('hex')}`;
@@ -115,11 +116,23 @@ export class ApiKeyService {
           input.label,
           input.scopes,
           input.environment,
-          createdByUserId ?? null,
+          audit?.actorId ?? null,
         ]
       );
+      const id = res.rows[0]!.id;
+      if (audit) {
+        await insertAuditEvent(c, {
+          action: 'api_key.created',
+          tenantId,
+          context: audit,
+          resourceType: 'api_key',
+          resourceId: id,
+          riskLevel: 'high',
+          after: { label: input.label, scopes: input.scopes, environment: input.environment },
+        });
+      }
       return {
-        id: res.rows[0]!.id,
+        id,
         secret,
         keyPrefix,
         label: input.label,
@@ -150,14 +163,26 @@ export class ApiKeyService {
     });
   }
 
-  async revoke(tenantId: string, apiKeyId: string): Promise<void> {
+  async revoke(tenantId: string, apiKeyId: string, audit?: AuditContext): Promise<void> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
-      const res = await c.query(
+      const res = await c.query<{ label: string }>(
         `UPDATE api_keys SET revoked_at = COALESCE(revoked_at, now())
-         WHERE id = $1 AND deleted_at IS NULL`,
+         WHERE id = $1 AND deleted_at IS NULL
+         RETURNING label`,
         [apiKeyId]
       );
       if ((res.rowCount ?? 0) === 0) throw new ApiKeyNotFoundError();
+      if (audit) {
+        await insertAuditEvent(c, {
+          action: 'api_key.revoked',
+          tenantId,
+          context: audit,
+          resourceType: 'api_key',
+          resourceId: apiKeyId,
+          riskLevel: 'high',
+          before: { label: res.rows[0]!.label },
+        });
+      }
     });
   }
 }

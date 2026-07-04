@@ -287,3 +287,88 @@ describe('plano de integracion: API key + scopes', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('audit log (F1-05)', () => {
+  it('sensitive actions produce audit events with actor and request id, atomically', async () => {
+    const orgId = await createOrg('Audit Org');
+    const owner = await sessionUser('owner', orgId);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgId}/api-keys`,
+      headers: owner.headers,
+      payload: { label: 'audited-key', scopes: ['read'] },
+    });
+    const keyId = created.json().id as string;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgId}/api-keys/${keyId}/revoke`,
+      headers: owner.headers,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgId}/merchants`,
+      headers: owner.headers,
+      payload: { name: 'Comercio Auditado' },
+    });
+
+    const events = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgId}/audit-events`,
+      headers: owner.headers,
+    });
+    expect(events.statusCode).toBe(200);
+    const list = events.json().audit_events as Array<{
+      action: string;
+      actor_id: string;
+      request_id: string | null;
+      risk_level: string;
+      resource_id: string;
+    }>;
+    const actions = list.map((e) => e.action);
+    expect(actions).toContain('api_key.created');
+    expect(actions).toContain('api_key.revoked');
+    expect(actions).toContain('merchant.created');
+    const keyEvent = list.find((e) => e.action === 'api_key.created')!;
+    expect(keyEvent.actor_id).toBe(owner.userId);
+    expect(keyEvent.request_id).toBeTruthy();
+    expect(keyEvent.risk_level).toBe('high');
+    expect(keyEvent.resource_id).toBe(keyId);
+    // El audit log jamas contiene el secreto de la key.
+    expect(JSON.stringify(list)).not.toContain(created.json().secret);
+  });
+
+  it('audit:read is enforced: developer and read_only get 403', async () => {
+    const orgId = await createOrg('Audit RBAC Org');
+    const developer = await sessionUser('developer', orgId);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgId}/audit-events`,
+      headers: developer.headers,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('insufficient_permissions');
+  });
+
+  it('audit events are tenant-isolated (BOLA on the audit trail)', async () => {
+    const orgA = await createOrg('Audit Iso A');
+    const orgB = await createOrg('Audit Iso B');
+    const ownerA = await sessionUser('owner', orgA);
+    const ownerB = await sessionUser('owner', orgB);
+    await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/merchants`,
+      headers: ownerA.headers,
+      payload: { name: 'Solo En A' },
+    });
+    const eventsB = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgB}/audit-events`,
+      headers: ownerB.headers,
+    });
+    const actionsB = (eventsB.json().audit_events as Array<{ action: string }>).map(
+      (e) => e.action
+    );
+    expect(actionsB).not.toContain('merchant.created');
+  });
+});

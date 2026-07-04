@@ -13,7 +13,7 @@ Estado: Versión inicial · Fase: 0 · Implementación en F1 (RBAC) y F4 (admin)
 
 ## Estado de implementación (F1-04a, 2026-07-04)
 
-Implementado: registro con verificación de email (token un solo uso, hash en BD), login con scrypt (formato versionado), error uniforme anti-enumeración con igualación de costo temporal, lockout configurable por intentos fallidos, sesiones opacas revocables (individual y global), separación dura del plano de auth (rol `fluvia_auth`). Pendiente (F1-04b/c): MFA TOTP, step-up, API keys con scopes, RBAC aplicado por endpoint, recuperación de contraseña, canal real de email (el token de verificación solo se expone por API en local/test).
+Implementado: registro con verificación de email (token un solo uso, hash en BD), login con scrypt (formato versionado), error uniforme anti-enumeración con igualación de costo temporal, lockout configurable por intentos fallidos, sesiones opacas revocables (individual y global), separación dura del plano de auth (rol `fluvia_auth`). Completado además (F1-04c): API keys con scopes y RBAC por endpoint. Completado (F1-05): audit log append-only — toda acción sensible (API keys, merchants, login/lockout/logout) escribe su evento EN LA MISMA transacción, con actor/razón/request-id y resúmenes redactados; consulta paginada vía `audit:read`. Pendiente (F1-04b): MFA TOTP, step-up, recuperación de contraseña, canal real de email.
 
 ## Matriz de permisos (v1 — F1-04c, fuente de verdad: `packages/identity/src/rbac.ts`)
 
@@ -25,6 +25,7 @@ Implementado: registro con verificación de email (token un solo uso, hash en BD
 | merchants:write | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | keys:read | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | keys:manage | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| audit:read | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
 
 El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda a celda; un cambio en código sin actualizar la matriz esperada rompe CI. La matriz crecerá con cada dominio nuevo (pagos, refunds, webhooks) en el mismo PR que exponga los endpoints.
 

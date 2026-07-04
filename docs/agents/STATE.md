@@ -10,6 +10,7 @@
 - **F1-03 completado (2026-07-04)**: modelo de identidad/tenancy real — migración `0003_identity_tenancy.sql` (`tenants`→`organizations`, `users` global con política RLS por membresía compartida, `memberships` RBAC, `merchants` con defaults Colombia) + paquete `@fluvia/identity` (plano plataforma y plano tenant) con 15 tests de integración: aislamiento cross-tenant de merchants/orgs/users, rollback atómico de alta de organización, unicidad case-insensitive de email, escritura de `users` denegada al rol app, inmutabilidad de las tablas nuevas y `authenticate_api_key` verificada tras el rename. Suite total: 61/61.
 - **F1-04a completado (2026-07-04)**: primera sub-entrega de auth — migración `0004_auth_sessions.sql` (sessions con hash SHA-256, tokens de verificación de un solo uso, lockout en users, rol dedicado `fluvia_auth` con acceso exclusivo al plano de credenciales y REVOKE a app/worker) + `@fluvia/auth` (scrypt versionado, login uniforme anti-enumeración con igualación de timing, lockout configurable, sesiones revocables, `auth_list_memberships`) + endpoints `/v1/auth/*` con mapeo estable de errores y ZodError→400. Bug real detectado y corregido por los tests: el contador de lockout se perdía en el ROLLBACK del propio error — ahora se commitea antes de lanzar. Suite total: **92/92** + smoke test HTTP del flujo completo (register→verify→login→session→bad-login→logout). Pendiente F1-04b (MFA TOTP + step-up).
 - **F1-04c completado (2026-07-04)**: API keys con scopes y entorno test/live (migración 0005; secreto mostrado una única vez, solo hash+prefijo en BD, last_used_at con throttle) + RBAC declarativo (`packages/identity/src/rbac.ts`, matriz publicada en access-control.md y verificada celda a celda por test) + middleware de dos planos en el API (sesión+rol por organización para dashboard; API key+scope para integración; planos NO intercambiables) + primeros endpoints tenant-scoped reales: `/v1/organizations[...]` (org, members, merchants CRUD, api-keys) y `/v1/account`. Decisión de seguridad: no existe scope para gestionar API keys — una key robada no puede escalar. Suite total: **111/111** incl. tests BOLA (404 indistinguible), RBAC por rol y scopes.
+- **F1-05 completado (2026-07-04)**: audit log append-only — migración `0006_audit_log.sql` (tabla inmutable por triggers Y por grants, RLS por plano: tenant para app, INSERT-only sin tenant para fluvia_auth) + `@fluvia/audit` (evento en la MISMA transacción que la acción, redacción recursiva de claves sensibles, lector paginado). Acciones auditadas: api_key.created/revoked (risk high), merchant.created/updated (con before/after), user.registered/email_verified, auth.login_succeeded/login_failed/account_locked/logout/sessions_revoked. Permiso nuevo `audit:read` (owner/admin/finance/analyst) + endpoint `GET /v1/organizations/:orgId/audit-events` con cursor. Suite total: **120/120**.
 
 ## Resumen ejecutivo
 
@@ -45,7 +46,8 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 | `packages/identity` + migración 0003 (organizations/users/memberships/merchants) | **Completado** (F1-03) |
 | `packages/auth` + migración 0004 + endpoints `/v1/auth/*` | **Completado F1-04a** (registro, verificación, login, lockout, sesiones) |
 | RBAC + API keys + endpoints organizations/merchants/api-keys + /v1/account (F1-04c) | **Completado** |
-| MFA/step-up (F1-04b), audit log (F1-05), ledger service, outbox worker, API de pagos… | No construido |
+| `packages/audit` + migración 0006 + endpoint de auditoría (F1-05) | **Completado** |
+| MFA/step-up (F1-04b), tenant-escape suite (F1-06), ledger service, outbox worker, API de pagos… | No construido |
 
 ## Bloqueadores
 
@@ -55,4 +57,4 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 
 ## Próximo incremento propuesto
 
-**F1-05 (audit log append-only)** — ahora desbloqueado y de alto valor: las acciones sensibles ya existen (crear/revocar API keys, crear merchants) y deben quedar auditadas con actor/razón. Alternativas: **F1-04b** (MFA TOTP + step-up) o **F1-06** (suite ampliada de tenant-escape). Con F1-05+F1-06 cerrados, la Fase 2 (núcleo financiero) queda lista para arrancar.
+**F1-06 (suite ampliada de tenant-escape + bypass administrativo)** — cierra el Gate Multi-tenant técnico y es el último bloqueante de seguridad antes de arrancar la **Fase 2 (núcleo financiero)**. Pendientes de Fase 1 no bloqueantes que pueden intercalarse: F1-04b (MFA), F1-07 (observabilidad), F1-08 (taxonomía de errores), F1-09 (purga clasificada), F1-10 (seeds).

@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from '@fluvia/db';
+import { insertAuditEvent } from '@fluvia/audit';
 import {
   AccountLockedError,
   EmailNotVerifiedError,
@@ -127,6 +128,12 @@ export class AuthService {
          VALUES ($1, $2, now() + make_interval(secs => $3))`,
         [userId, token.hash, this.verificationTtlMs / 1000]
       );
+      await insertAuditEvent(c, {
+        action: 'user.registered',
+        context: { actorType: 'user', actorId: userId, authMethod: 'none' },
+        resourceType: 'user',
+        resourceId: userId,
+      });
       return { userId, verificationToken: token.plaintext };
     });
   }
@@ -147,13 +154,19 @@ export class AuthService {
         'UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1',
         [row.user_id]
       );
+      await insertAuditEvent(c, {
+        action: 'user.email_verified',
+        context: { actorType: 'user', actorId: row.user_id, authMethod: 'none' },
+        resourceType: 'user',
+        resourceId: row.user_id,
+      });
       return { userId: row.user_id };
     });
   }
 
   async login(
     rawInput: LoginInput,
-    meta: { ip?: string; userAgent?: string } = {}
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
   ): Promise<LoginResult> {
     const input = LoginSchema.parse(rawInput);
     const email = input.email.toLowerCase();
@@ -197,6 +210,15 @@ export class AuthService {
            WHERE id = $1`,
           [user.id, lock ? 0 : attempts, lock, this.lockoutMs / 1000]
         );
+        await insertAuditEvent(client, {
+          action: lock ? 'auth.account_locked' : 'auth.login_failed',
+          context: { actorType: 'user', actorId: user.id, authMethod: 'none', ...meta },
+          resourceType: 'user',
+          resourceId: user.id,
+          result: 'failure',
+          riskLevel: lock ? 'high' : 'medium',
+          reason: lock ? 'max_failed_attempts_reached' : 'invalid_password',
+        });
         await client.query('COMMIT');
         inTx = false;
         throw lock ? new AccountLockedError() : new InvalidCredentialsError();
@@ -218,6 +240,12 @@ export class AuthService {
          VALUES ($1, $2, $3, $4, $5)`,
         [user.id, session.hash, expiresAt, meta.ip ?? null, meta.userAgent ?? null]
       );
+      await insertAuditEvent(client, {
+        action: 'auth.login_succeeded',
+        context: { actorType: 'user', actorId: user.id, authMethod: 'session', ...meta },
+        resourceType: 'user',
+        resourceId: user.id,
+      });
       await client.query('COMMIT');
       inTx = false;
       return { userId: user.id, sessionToken: session.plaintext, expiresAt };
@@ -242,19 +270,48 @@ export class AuthService {
     return { sessionId: row.id, userId: row.user_id };
   }
 
-  async logout(sessionToken: string): Promise<void> {
-    await this.authPool.query(
-      'UPDATE sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL',
-      [hashToken(sessionToken)]
-    );
+  async logout(
+    sessionToken: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<void> {
+    await this.withTx(async (c) => {
+      const res = await c.query<{ id: string; user_id: string }>(
+        `UPDATE sessions SET revoked_at = now()
+         WHERE token_hash = $1 AND revoked_at IS NULL
+         RETURNING id, user_id`,
+        [hashToken(sessionToken)]
+      );
+      const row = res.rows[0];
+      if (row) {
+        await insertAuditEvent(c, {
+          action: 'auth.logout',
+          context: { actorType: 'user', actorId: row.user_id, authMethod: 'session', ...meta },
+          resourceType: 'session',
+          resourceId: row.id,
+        });
+      }
+    });
   }
 
   async revokeAllSessions(userId: string): Promise<number> {
-    const res = await this.authPool.query(
-      'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
-      [userId]
-    );
-    return res.rowCount ?? 0;
+    return this.withTx(async (c) => {
+      const res = await c.query(
+        'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+        [userId]
+      );
+      const count = res.rowCount ?? 0;
+      if (count > 0) {
+        await insertAuditEvent(c, {
+          action: 'auth.sessions_revoked',
+          context: { actorType: 'user', actorId: userId, authMethod: 'session' },
+          resourceType: 'user',
+          resourceId: userId,
+          riskLevel: 'medium',
+          reason: `revoked_${count}_sessions`,
+        });
+      }
+      return count;
+    });
   }
 
   async listMemberships(userId: string): Promise<MembershipSummary[]> {

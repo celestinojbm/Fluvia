@@ -1,0 +1,169 @@
+import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
+
+/**
+ * Auditoria append-only (F1-05, V4 §36).
+ *
+ * Regla de uso: insertAuditEvent se llama con el CLIENT de la transaccion de
+ * la accion auditada — el evento y la accion se confirman atomicamente.
+ */
+
+export const AUDIT_ACTIONS = [
+  'user.registered',
+  'user.email_verified',
+  'auth.login_succeeded',
+  'auth.login_failed',
+  'auth.account_locked',
+  'auth.logout',
+  'auth.sessions_revoked',
+  'api_key.created',
+  'api_key.revoked',
+  'merchant.created',
+  'merchant.updated',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export type ActorType = 'user' | 'api_key' | 'system';
+export type AuthMethod = 'session' | 'api_key' | 'platform' | 'none';
+export type AuditResult = 'success' | 'failure';
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+/** Contexto del request que las capas superiores propagan a los servicios. */
+export interface AuditContext {
+  actorType: ActorType;
+  actorId?: string;
+  authMethod?: AuthMethod;
+  requestId?: string;
+  ip?: string;
+  userAgent?: string;
+}
+
+export interface AuditEventInput {
+  action: AuditAction;
+  /** NULL/undefined => evento del plano de autenticacion (sin tenant). */
+  tenantId?: string | null;
+  context: AuditContext;
+  resourceType?: string;
+  resourceId?: string;
+  result?: AuditResult;
+  riskLevel?: RiskLevel;
+  reason?: string;
+  before?: unknown;
+  after?: unknown;
+}
+
+const SENSITIVE_KEY_RE = /secret|token|password|key_hash|authorization|cvv|pan/i;
+
+/** Redaccion superficial-recursiva de claves sensibles en los resumenes. */
+export function redactSummary(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSummary);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        SENSITIVE_KEY_RE.test(k) ? '[REDACTED]' : redactSummary(v),
+      ])
+    );
+  }
+  return value;
+}
+
+export async function insertAuditEvent(
+  client: PoolClient | Pool,
+  event: AuditEventInput
+): Promise<void> {
+  const ctx = event.context;
+  await client.query(
+    `INSERT INTO audit_events
+       (tenant_id, actor_type, actor_id, auth_method, action, resource_type, resource_id,
+        result, risk_level, reason, before_summary, after_summary, ip, user_agent, request_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [
+      event.tenantId ?? null,
+      ctx.actorType,
+      ctx.actorId ?? null,
+      ctx.authMethod ?? null,
+      event.action,
+      event.resourceType ?? null,
+      event.resourceId ?? null,
+      event.result ?? 'success',
+      event.riskLevel ?? 'low',
+      event.reason ?? null,
+      event.before === undefined ? null : JSON.stringify(redactSummary(event.before)),
+      event.after === undefined ? null : JSON.stringify(redactSummary(event.after)),
+      ctx.ip ?? null,
+      ctx.userAgent ?? null,
+      ctx.requestId ?? null,
+    ]
+  );
+}
+
+export interface AuditEventDto {
+  id: string;
+  actorType: string;
+  actorId: string | null;
+  authMethod: string | null;
+  action: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  result: string;
+  riskLevel: string;
+  reason: string | null;
+  ip: string | null;
+  requestId: string | null;
+  createdAt: string;
+}
+
+export interface ListAuditOptions {
+  limit?: number;
+  /** Cursor: solo eventos con id < before (orden descendente). */
+  before?: string | number;
+}
+
+/** Lectura del plano de tenant (rol fluvia_app, RLS aplica). */
+export class AuditReader {
+  constructor(private readonly appPool: Pool) {}
+
+  async list(tenantId: string, options: ListAuditOptions = {}): Promise<AuditEventDto[]> {
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<{
+        id: string;
+        actor_type: string;
+        actor_id: string | null;
+        auth_method: string | null;
+        action: string;
+        resource_type: string | null;
+        resource_id: string | null;
+        result: string;
+        risk_level: string;
+        reason: string | null;
+        ip: string | null;
+        request_id: string | null;
+        created_at: Date;
+      }>(
+        `SELECT id, actor_type, actor_id, auth_method, action, resource_type, resource_id,
+                result, risk_level, reason, ip, request_id, created_at
+         FROM audit_events
+         WHERE ($2::bigint IS NULL OR id < $2)
+         ORDER BY id DESC
+         LIMIT $1`,
+        [limit, options.before ?? null]
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        actorType: r.actor_type,
+        actorId: r.actor_id,
+        authMethod: r.auth_method,
+        action: r.action,
+        resourceType: r.resource_type,
+        resourceId: r.resource_id,
+        result: r.result,
+        riskLevel: r.risk_level,
+        reason: r.reason,
+        ip: r.ip,
+        requestId: r.request_id,
+        createdAt: r.created_at.toISOString(),
+      }));
+    });
+  }
+}

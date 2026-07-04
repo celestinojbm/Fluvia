@@ -42,6 +42,7 @@ export function registerAuthRoutes(
     const result = await authService.login(body, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
+      requestId: String(req.id),
     });
     return {
       session_token: result.sessionToken,
@@ -50,7 +51,11 @@ export function registerAuthRoutes(
   });
 
   app.post('/v1/auth/logout', async (req, reply) => {
-    await authService.logout(bearerToken(req));
+    await authService.logout(bearerToken(req), {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      requestId: String(req.id),
+    });
     return reply.code(204).send();
   });
 

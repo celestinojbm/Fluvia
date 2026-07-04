@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import type { AppConfig } from '@fluvia/config';
 import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
+import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
@@ -102,7 +103,14 @@ export function buildApp({
 
   if (authService && identityService && apiKeyService) {
     const security = createSecurity({ authService, identityService, appPool });
-    registerOrganizationRoutes(app, { security, authService, identityService, apiKeyService });
+    const auditReader = new AuditReader(appPool);
+    registerOrganizationRoutes(app, {
+      security,
+      authService,
+      identityService,
+      apiKeyService,
+      auditReader,
+    });
     registerAccountRoutes(app, { security, identityService });
   }
 

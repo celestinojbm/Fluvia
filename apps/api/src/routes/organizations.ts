@@ -1,5 +1,7 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import type { AuthService } from '@fluvia/auth';
+import type { AuditContext, AuditReader } from '@fluvia/audit';
 import {
   CreateApiKeySchema,
   CreateMerchantSchema,
@@ -14,7 +16,27 @@ export interface OrganizationRoutesDeps {
   authService: AuthService;
   identityService: IdentityService;
   apiKeyService: ApiKeyService;
+  auditReader: AuditReader;
 }
+
+/** Contexto de auditoria derivado del request autenticado por sesion. */
+function auditContext(req: FastifyRequest): AuditContext {
+  return {
+    actorType: 'user',
+    actorId: req.identity!.userId,
+    authMethod: 'session',
+    requestId: String(req.id),
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  };
+}
+
+const AuditQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    before: z.coerce.number().int().positive().optional(),
+  })
+  .strict();
 
 /**
  * Plano de dashboard (sesion + rol por organizacion). Toda ruta bajo
@@ -23,7 +45,7 @@ export interface OrganizationRoutesDeps {
  */
 export function registerOrganizationRoutes(
   app: FastifyInstance,
-  { security, authService, identityService, apiKeyService }: OrganizationRoutesDeps
+  { security, authService, identityService, apiKeyService, auditReader }: OrganizationRoutesDeps
 ): void {
   app.get('/v1/organizations', { preHandler: [security.session] }, async (req) => {
     const memberships = await authService.listMemberships(req.identity!.userId);
@@ -68,7 +90,11 @@ export function registerOrganizationRoutes(
     { preHandler: [security.session, security.org('merchants:write')] },
     async (req, reply) => {
       const input = CreateMerchantSchema.parse(req.body);
-      const merchant = await identityService.createMerchant(req.org!.organizationId, input);
+      const merchant = await identityService.createMerchant(
+        req.org!.organizationId,
+        input,
+        auditContext(req)
+      );
       return reply.code(201).send(merchant);
     }
   );
@@ -94,7 +120,12 @@ export function registerOrganizationRoutes(
     async (req) => {
       const { merchantId } = req.params as { merchantId: string };
       const input = UpdateMerchantSchema.parse(req.body);
-      return identityService.updateMerchant(req.org!.organizationId, merchantId, input);
+      return identityService.updateMerchant(
+        req.org!.organizationId,
+        merchantId,
+        input,
+        auditContext(req)
+      );
     }
   );
 
@@ -103,11 +134,7 @@ export function registerOrganizationRoutes(
     { preHandler: [security.session, security.org('keys:manage')] },
     async (req, reply) => {
       const input = CreateApiKeySchema.parse(req.body);
-      const created = await apiKeyService.create(
-        req.org!.organizationId,
-        input,
-        req.identity!.userId
-      );
+      const created = await apiKeyService.create(req.org!.organizationId, input, auditContext(req));
       return reply.code(201).send({
         id: created.id,
         // Unica vez que el secreto viaja; no vuelve a ser recuperable.
@@ -145,8 +172,34 @@ export function registerOrganizationRoutes(
     { preHandler: [security.session, security.org('keys:manage')] },
     async (req, reply) => {
       const { apiKeyId } = req.params as { apiKeyId: string };
-      await apiKeyService.revoke(req.org!.organizationId, apiKeyId);
+      await apiKeyService.revoke(req.org!.organizationId, apiKeyId, auditContext(req));
       return reply.code(204).send();
+    }
+  );
+
+  app.get(
+    '/v1/organizations/:orgId/audit-events',
+    { preHandler: [security.session, security.org('audit:read')] },
+    async (req) => {
+      const query = AuditQuerySchema.parse(req.query);
+      const events = await auditReader.list(req.org!.organizationId, query);
+      return {
+        audit_events: events.map((e) => ({
+          id: e.id,
+          actor_type: e.actorType,
+          actor_id: e.actorId,
+          auth_method: e.authMethod,
+          action: e.action,
+          resource_type: e.resourceType,
+          resource_id: e.resourceId,
+          result: e.result,
+          risk_level: e.riskLevel,
+          reason: e.reason,
+          request_id: e.requestId,
+          created_at: e.createdAt,
+        })),
+        next_before: events.length > 0 ? events[events.length - 1]!.id : null,
+      };
     }
   );
 }

@@ -16,6 +16,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@fluvia/audit": "workspace:*",
     "@fluvia/auth": "workspace:*",
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",

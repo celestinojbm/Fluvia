@@ -1,4 +1,5 @@
 import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
 import {
   MerchantNameTakenError,
   MerchantNotFoundError,
@@ -85,7 +86,11 @@ export class IdentityService {
     });
   }
 
-  async createMerchant(tenantId: string, rawInput: CreateMerchantInput): Promise<MerchantDto> {
+  async createMerchant(
+    tenantId: string,
+    rawInput: CreateMerchantInput,
+    audit?: AuditContext
+  ): Promise<MerchantDto> {
     const input = CreateMerchantSchema.parse(rawInput);
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       try {
@@ -95,7 +100,18 @@ export class IdentityService {
            RETURNING id, name, country, default_currency, status, created_at`,
           [tenantId, input.name, input.country, input.defaultCurrency]
         );
-        return toMerchantDto(res.rows[0]!);
+        const dto = toMerchantDto(res.rows[0]!);
+        if (audit) {
+          await insertAuditEvent(c, {
+            action: 'merchant.created',
+            tenantId,
+            context: audit,
+            resourceType: 'merchant',
+            resourceId: dto.id,
+            after: { name: dto.name, country: dto.country, defaultCurrency: dto.defaultCurrency },
+          });
+        }
+        return dto;
       } catch (err) {
         if (isUniqueViolation(err, 'merchants_tenant_id_name_key')) {
           throw new MerchantNameTakenError(input.name);
@@ -131,20 +147,36 @@ export class IdentityService {
   async updateMerchant(
     tenantId: string,
     merchantId: string,
-    rawInput: UpdateMerchantInput
+    rawInput: UpdateMerchantInput,
+    audit?: AuditContext
   ): Promise<MerchantDto> {
     const input = UpdateMerchantSchema.parse(rawInput);
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       try {
+        const previous = await c.query<{ name: string }>(
+          'SELECT name FROM merchants WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+          [merchantId]
+        );
+        if (previous.rowCount === 0) throw new MerchantNotFoundError();
         const res = await c.query<MerchantRow>(
           `UPDATE merchants SET name = $2, updated_at = now()
            WHERE id = $1 AND deleted_at IS NULL
            RETURNING id, name, country, default_currency, status, created_at`,
           [merchantId, input.name]
         );
-        const row = res.rows[0];
-        if (!row) throw new MerchantNotFoundError();
-        return toMerchantDto(row);
+        const dto = toMerchantDto(res.rows[0]!);
+        if (audit) {
+          await insertAuditEvent(c, {
+            action: 'merchant.updated',
+            tenantId,
+            context: audit,
+            resourceType: 'merchant',
+            resourceId: dto.id,
+            before: { name: previous.rows[0]!.name },
+            after: { name: dto.name },
+          });
+        }
+        return dto;
       } catch (err) {
         if (isUniqueViolation(err, 'merchants_tenant_id_name_key')) {
           throw new MerchantNameTakenError(input.name);

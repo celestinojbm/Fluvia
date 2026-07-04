@@ -20,6 +20,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': true,
     'keys:read': true,
     'keys:manage': true,
+    'audit:read': true,
   },
   admin: {
     'org:read': true,
@@ -28,6 +29,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': true,
     'keys:read': true,
     'keys:manage': true,
+    'audit:read': true,
   },
   developer: {
     'org:read': true,
@@ -36,6 +38,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': false,
     'keys:read': true,
     'keys:manage': true,
+    'audit:read': false,
   },
   finance: {
     'org:read': true,
@@ -44,6 +47,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': false,
     'keys:read': true,
     'keys:manage': false,
+    'audit:read': true,
   },
   support: {
     'org:read': true,
@@ -52,6 +56,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': false,
     'keys:read': false,
     'keys:manage': false,
+    'audit:read': false,
   },
   analyst: {
     'org:read': true,
@@ -60,6 +65,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': false,
     'keys:read': false,
     'keys:manage': false,
+    'audit:read': true,
   },
   read_only: {
     'org:read': true,
@@ -68,6 +74,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'merchants:write': false,
     'keys:read': false,
     'keys:manage': false,
+    'audit:read': false,
   },
 };
 

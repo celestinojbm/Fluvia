@@ -23,6 +23,7 @@ export const PERMISSIONS = [
   'merchants:write',
   'keys:read',
   'keys:manage',
+  'audit:read',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -32,9 +33,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   owner: ALL,
   admin: ALL,
   developer: ['org:read', 'members:read', 'merchants:read', 'keys:read', 'keys:manage'],
-  finance: ['org:read', 'members:read', 'merchants:read', 'keys:read'],
+  finance: ['org:read', 'members:read', 'merchants:read', 'keys:read', 'audit:read'],
   support: ['org:read', 'members:read', 'merchants:read'],
-  analyst: ['org:read', 'members:read', 'merchants:read'],
+  analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read'],
   read_only: ['org:read', 'members:read', 'merchants:read'],
 };
 

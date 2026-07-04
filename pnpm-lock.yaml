@@ -26,6 +26,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@fluvia/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -83,8 +86,33 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
 
+  packages/audit:
+    dependencies:
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      pg:
+        specifier: ^8.13.0
+        version: 8.22.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
+
   packages/auth:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db
@@ -148,6 +176,9 @@ importers:
 
   packages/identity:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db

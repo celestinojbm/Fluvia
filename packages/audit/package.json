@@ -1,5 +1,5 @@
 {
-  "name": "@fluvia/auth",
+  "name": "@fluvia/audit",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,10 +14,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fluvia/audit": "workspace:*",
     "@fluvia/db": "workspace:*",
-    "pg": "^8.13.0",
-    "zod": "^3.25.0"
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
