@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0 · La conciliación es obligatoria (V4 §30) y llega en Fase 4; el modelo de datos se prepara desde Fase 2.
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO — nada construido.** No existe ningún job ni tabla de conciliación. Lo único vigente es la preparación del modelo: enlace causal `source_type/source_id` y `reverses_tx_id` en el ledger (F2-01) y `verifyProjection` (replay proyección↔entries). El resto llega en Fase 4.
+
 ## 1. Qué se compara
 
 Tres planos que deben contar la misma historia:

@@ -34,6 +34,14 @@ Este directorio contiene los entregables de la **Fase 0 (Descubrimiento y decisi
 
 Documentos operativos y de gobernanza para agentes: [agents/STATE.md](agents/STATE.md), [agents/HANDOFF.md](agents/HANDOFF.md).
 
+## Auditorías
+
+| Documento | Contenido |
+|-----------|-----------|
+| [audits/independent-audit-v1/](audits/independent-audit-v1/) | Informe de la auditoría independiente v1 (**inmutable** — hallazgos, severidades y evidencias del auditor tal como se recibieron) |
+| [audits/audit-integration-plan-v1.md](audits/audit-integration-plan-v1.md) | Reconciliación del constructor: clasificación evidencia-por-hallazgo y plan integrado |
+| [audits/audit-closure-register-v1.md](audits/audit-closure-register-v1.md) | Estado vivo de cada hallazgo (RESUELTO/MITIGADO/PLANIFICADO…) con evidencia individual |
+
 ## Convenciones
 
 - Idioma de la documentación: español. Código, identificadores y mensajes de commit: inglés.

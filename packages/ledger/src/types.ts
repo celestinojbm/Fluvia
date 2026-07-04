@@ -33,6 +33,12 @@ export interface PostTransactionInput {
   source: { type: string; id: string };
   entries: LedgerEntryInput[];
   reversesTxId?: string;
+  /**
+   * AUD-P1-010: cuentas que NO pueden quedar con saldo negativo tras aplicar
+   * el asiento. La verificacion ocurre DENTRO de la transaccion, bajo los
+   * locks de cuenta (race-safe); violacion => rollback total.
+   */
+  nonNegativeAccounts?: string[];
 }
 
 export interface PostedEntry {

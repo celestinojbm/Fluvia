@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0 · Este documento debe mapear EXACTAMENTE con el código (`packages/payments-core/src/fsm/*`); todo PR que toque una FSM actualiza ambos.
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO — nada construido.** `packages/payments-core` aún no existe; ninguna FSM está implementada. La regla de mapeo doc↔código aplica desde el momento en que ese paquete se cree (F3).
+
 ## 1. Payment Intent
 
 Estados: `created`, `requires_payment_method`, `requires_confirmation`, `requires_action`, `processing`, `authorized`, `partially_captured`, `succeeded`, `failed`, `canceled`, `partially_refunded`, `refunded`.

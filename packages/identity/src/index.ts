@@ -40,6 +40,7 @@ export {
   ApiKeyNotFoundError,
   InvalidApiKeyError,
   InsufficientScopeError,
+  LiveKeysDisabledError,
   type ApiKeyScope,
   type CreateApiKeyInput,
   type CreatedApiKey,

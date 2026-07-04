@@ -41,6 +41,10 @@ const DOMAIN_ERROR_HTTP: Record<string, { status: number; code: string }> = {
   InsufficientPermissionError: { status: 403, code: 'insufficient_permissions' },
   InvalidApiKeyError: { status: 401, code: 'invalid_api_key' },
   InsufficientScopeError: { status: 403, code: 'insufficient_scope' },
+  // Lote AUD-1: politica de live keys y guardas de saldo del ledger.
+  LiveKeysDisabledError: { status: 403, code: 'live_keys_disabled' },
+  InsufficientBalanceError: { status: 409, code: 'insufficient_balance' },
+  IdempotencyConflictError: { status: 409, code: 'idempotency_conflict' },
 };
 
 /**

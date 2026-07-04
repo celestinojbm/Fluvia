@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0 · ADR-0009 (internos primero; Svix como opción futura)
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO — nada construido.** No existen las tablas `webhook_endpoints`/`webhook_events`/`webhook_attempts` ni ningún worker de entrega. Este documento es contrato de diseño para F3; no describe capacidad actual.
+
 ## 1. Modelo
 
 `webhook_endpoints` (por merchant: url, secreto activo + secreto anterior durante rotación, eventos suscritos, estado) → `webhook_events` (instancia de evento a entregar, `event_id` público `whe_…`, `schema_version`) → `webhook_attempts` (uno por intento: status HTTP, latencia, error, `attempt_id`).

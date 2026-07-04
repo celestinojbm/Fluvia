@@ -6,6 +6,7 @@ import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,
   IdempotencyConflictError,
+  InsufficientBalanceError,
   InvalidEntriesError,
   LedgerAccountExistsError,
   LedgerService,
@@ -271,6 +272,54 @@ describe('idempotencia del asiento', () => {
     ).rejects.toThrow(IdempotencyConflictError);
   });
 
+  // AUD-P2-001: el replay debe comparar TODO el payload causal, no solo las
+  // entries. Mismo asiento con reason/source distintos = conflicto, no replay.
+  it('rejects key reuse when only the REASON differs (same entries)', async () => {
+    const idem = key();
+    const entries = transfer(321, clearing, merchant);
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: idem,
+      reason: 'transfer',
+      source: { type: 'manual', id: 'meta-conflict' },
+      entries,
+    });
+    await expect(
+      ledger.postTransaction({
+        tenantId: org,
+        idempotencyKey: idem,
+        reason: 'adjustment',
+        source: { type: 'manual', id: 'meta-conflict' },
+        entries,
+      })
+    ).rejects.toThrow(IdempotencyConflictError);
+  });
+
+  it('rejects key reuse when only the SOURCE differs (same entries)', async () => {
+    const idem = key();
+    const entries = transfer(654, clearing, merchant);
+    const before = await ledger.getBalance(org, merchant);
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: idem,
+      reason: 'transfer',
+      source: { type: 'payment', id: 'pay_A' },
+      entries,
+    });
+    await expect(
+      ledger.postTransaction({
+        tenantId: org,
+        idempotencyKey: idem,
+        reason: 'transfer',
+        source: { type: 'payment', id: 'pay_B' },
+        entries,
+      })
+    ).rejects.toThrow(IdempotencyConflictError);
+    // El conflicto no re-aplica saldos.
+    const after = await ledger.getBalance(org, merchant);
+    expect(BigInt(after.available) - BigInt(before.available)).toBe(654n);
+  });
+
   it('N concurrent posts with the same key apply exactly once', async () => {
     const idem = key();
     const input = () => ({
@@ -289,6 +338,78 @@ describe('idempotencia del asiento', () => {
     const ids = new Set(results.map((r) => r.transactionId));
     expect(ids.size).toBe(1);
     expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+  });
+});
+
+describe('AUD-P1-010: guarda de saldo no-negativo bajo lock', () => {
+  it('rejects a debit that would overdraw a protected account, with full rollback', async () => {
+    const funded = (
+      await ledger.createAccount({
+        tenantId: org,
+        name: 'guard.funded',
+        currency: 'USD',
+        normalSide: 'credit',
+      })
+    ).id;
+    const sink = (
+      await ledger.createAccount({
+        tenantId: org,
+        name: 'guard.sink',
+        currency: 'USD',
+        normalSide: 'credit',
+      })
+    ).id;
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: key(),
+      reason: 'transfer',
+      source: { type: 'manual', id: 'guard-fund' },
+      entries: transfer(1_000, clearing, funded),
+    });
+
+    // 1500 > 1000 disponibles -> InsufficientBalanceError y nada persiste.
+    await expect(
+      ledger.postTransaction({
+        tenantId: org,
+        idempotencyKey: key(),
+        reason: 'transfer',
+        source: { type: 'manual', id: 'guard-overdraw' },
+        entries: transfer(1_500, funded, sink),
+        nonNegativeAccounts: [funded],
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    const balance = await ledger.getBalance(org, funded);
+    expect(balance.available).toBe('1000');
+    expect((await ledger.getBalance(org, sink)).available).toBe('0');
+
+    // El monto exacto disponible SI pasa (frontera inclusiva: quedar en 0 es valido).
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: key(),
+      reason: 'transfer',
+      source: { type: 'manual', id: 'guard-exact' },
+      entries: transfer(1_000, funded, sink),
+      nonNegativeAccounts: [funded],
+    });
+    expect((await ledger.getBalance(org, funded)).available).toBe('0');
+    expect((await ledger.getBalance(org, sink)).available).toBe('1000');
+  });
+
+  it('unprotected accounts may still go negative (clearing/platform es por diseño)', async () => {
+    // provider.clearing debita contra saldo cero constantemente en el modelo
+    // bruto: la guarda es OPT-IN por cuenta, no un default global.
+    const before = await ledger.getBalance(org, clearing);
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: key(),
+      reason: 'transfer',
+      source: { type: 'manual', id: 'guard-optin' },
+      entries: transfer(50, merchant, clearing),
+    });
+    const after = await ledger.getBalance(org, clearing);
+    // clearing es debit-normal: un credito lo reduce; sin guarda no falla.
+    expect(BigInt(after.available) - BigInt(before.available)).toBe(-50n);
   });
 });
 

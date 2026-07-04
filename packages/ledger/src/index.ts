@@ -39,6 +39,7 @@ export {
   LedgerAccountExistsError,
   OptimisticLockError,
   IdempotencyConflictError,
+  InsufficientBalanceError,
   LedgerRetriesExhaustedError,
   UnknownAccountCodeError,
   FeesExceedAmountError,

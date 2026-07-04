@@ -195,6 +195,92 @@ describe('modelo F2-01: enlace causal, reversion y proyecciones', () => {
     expect(names).not.toContain('sequence_version');
   });
 
+  it("AUD-P1-001: an entry CANNOT reference another tenant's account (composite FK)", async () => {
+    const intruder = await ctx.createTenant('Coherence Intruder Org');
+    // Cuenta balanceadora legitima del tenant intruso.
+    const ownAccount = await ctx.createLedgerAccount({
+      tenantId: intruder,
+      name: 'intruder-own',
+      currency: 'USD',
+      normalSide: 'credit',
+    });
+    // Incluso el SUPERUSER (sin RLS) choca contra la FK compuesta:
+    // (account_id, tenant_id, currency) debe existir EN ledger_accounts.
+    const client = await ctx.admin.connect();
+    try {
+      await client.query('BEGIN');
+      const tx = await client.query<{ id: string }>(
+        `INSERT INTO ledger_transactions (tenant_id, idempotency_key, reason)
+         VALUES ($1, $2, 'adjustment') RETURNING id`,
+        [intruder, `xten-${randomUUID()}`]
+      );
+      await expect(
+        client.query(
+          `INSERT INTO ledger_entries (tenant_id, tx_root_id, account_id, direction, amount, currency, reason)
+           VALUES ($1, $2, $3, 'debit', 100, 'USD', 'adjustment')`,
+          [intruder, tx.rows[0]!.id, usdDebit] // usdDebit pertenece a OTRO tenant
+        )
+      ).rejects.toThrow(/ledger_entries_account_coherence_fk/);
+      await client.query('ROLLBACK');
+
+      // La misma cuenta en su PROPIO tenant si funciona (sanidad del FK).
+      await client.query('BEGIN');
+      const ok = await client.query<{ id: string }>(
+        `INSERT INTO ledger_transactions (tenant_id, idempotency_key, reason)
+         VALUES ($1, $2, 'adjustment') RETURNING id`,
+        [intruder, `xten-ok-${randomUUID()}`]
+      );
+      await client.query(
+        `INSERT INTO ledger_entries (tenant_id, tx_root_id, account_id, direction, amount, currency, reason)
+         VALUES ($1, $2, $3, 'debit', 100, 'USD', 'adjustment'),
+                ($1, $2, $4, 'credit', 100, 'USD', 'adjustment')`,
+        [intruder, ok.rows[0]!.id, ownAccount, ownAccount]
+      );
+      await client.query('COMMIT');
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
+    }
+  });
+
+  it('AUD-P1-001: an entry whose currency differs from its account is rejected', async () => {
+    await expect(
+      withTenantTransaction(ctx.app, org, (c) =>
+        insertTx(c, org, [
+          // usdDebit es una cuenta USD: un asiento COP contra ella es incoherente.
+          { account: usdDebit, direction: 'debit', amount: 5000, currency: 'COP' },
+          { account: copCredit, direction: 'credit', amount: 5000, currency: 'COP' },
+        ])
+      )
+    ).rejects.toThrow(/ledger_entries_account_coherence_fk/);
+  });
+
+  it('AUD-P1-009: idempotency keys are scoped per endpoint (same key, two endpoints)', async () => {
+    const key = `idem-${randomUUID()}`;
+    await withTenantTransaction(ctx.app, org, async (c) => {
+      await c.query(
+        `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash)
+         VALUES ($1, 'POST /v1/payments', $2, 'fp-a')`,
+        [org, key]
+      );
+      await c.query(
+        `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash)
+         VALUES ($1, 'POST /v1/refunds', $2, 'fp-b')`,
+        [org, key]
+      );
+    });
+    // Mismo (tenant, endpoint, key) por segunda vez -> conflicto de PK.
+    await expect(
+      withTenantTransaction(ctx.app, org, (c) =>
+        c.query(
+          `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash)
+           VALUES ($1, 'POST /v1/payments', $2, 'fp-c')`,
+          [org, key]
+        )
+      )
+    ).rejects.toThrow(/duplicate key|idempotency_keys_pkey/);
+  });
+
   it('balance_projections is tenant-isolated and append-protected', async () => {
     await withTenantTransaction(ctx.app, org, (c) =>
       c.query(

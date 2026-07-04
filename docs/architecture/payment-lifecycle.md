@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO (parcial).** Construido hoy: el plano contable del ciclo (F2-03/F2-04 — captura, liberación de liquidación y refunds como asientos tipados sobre el Chart of Accounts, con guardas de saldo). NO construido: API de pagos, FSMs, adapters de proveedor, checkout. `payment_intents` existe solo como tabla mínima placeholder (0001), sin máquina de estados ni endpoints.
+
 ## 1. Principio
 
 Un pago **no es una línea recta**. Se modela como la composición de máquinas de estado independientes (detalle en `payment-state-machines.md`): Payment Intent (intención del comercio), Payment Attempt (cada intento concreto contra un proveedor), Authorization/Capture (cuando el método los separa), Refund, Dispute, Settlement y Payout. Cada una tiene su tabla, su FSM, su auditoría y sus eventos.

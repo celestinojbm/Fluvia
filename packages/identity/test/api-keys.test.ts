@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '@fluvia/db/testing';
-import { ApiKeyNotFoundError, ApiKeyService, hashApiKeySecret } from '../src/index.js';
+import {
+  ApiKeyNotFoundError,
+  ApiKeyService,
+  LiveKeysDisabledError,
+  hashApiKeySecret,
+} from '../src/index.js';
 
 let ctx: TestContext;
 let service: ApiKeyService;
@@ -33,13 +38,18 @@ describe('ApiKeyService (F1-04c)', () => {
     expect(stored.rows[0]!.key_prefix.length).toBeLessThan(created.secret.length);
   });
 
-  it('live environment keys carry the live prefix', async () => {
-    const created = await service.create(orgA, {
-      label: 'prod-ish',
-      scopes: ['read'],
-      environment: 'live',
-    });
-    expect(created.secret.startsWith('fluvia_sk_live_')).toBe(true);
+  // AUD-P2-003: no existe plano live -> emitir keys live seria declarar una
+  // capacidad inexistente. Se rechaza SIEMPRE hasta pasar production gates.
+  it('refuses to create live-environment keys while no live plane exists', async () => {
+    await expect(
+      service.create(orgA, { label: 'prod-ish', scopes: ['read'], environment: 'live' })
+    ).rejects.toThrow(LiveKeysDisabledError);
+
+    const stored = await ctx.admin.query(
+      `SELECT 1 FROM api_keys WHERE tenant_id = $1 AND environment = 'live'`,
+      [orgA]
+    );
+    expect(stored.rowCount).toBe(0);
   });
 
   it('validates scopes strictly (unknown, duplicate, empty, extra fields)', async () => {

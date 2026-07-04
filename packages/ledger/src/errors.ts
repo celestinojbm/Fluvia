@@ -56,6 +56,19 @@ export class IdempotencyConflictError extends LedgerError {
   }
 }
 
+/** AUD-P1-010: un debito dejaria la cuenta protegida con saldo negativo. */
+export class InsufficientBalanceError extends LedgerError {
+  constructor(
+    readonly accountId: string,
+    readonly bucket: string,
+    readonly resulting: string
+  ) {
+    super(
+      `Operation would leave account ${accountId} with negative ${bucket} balance (${resulting})`
+    );
+  }
+}
+
 export class UnknownAccountCodeError extends LedgerError {
   constructor(readonly code: string) {
     super(`Account code not in the Chart of Accounts: "${code}"`);

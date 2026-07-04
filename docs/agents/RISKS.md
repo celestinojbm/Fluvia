@@ -15,5 +15,9 @@ Estado: Activo · Se revisa al cierre de cada fase
 | R-09 | Complejidad del monorepo crece sin dueño humano | Operativo | Media | Medio | Backlog único, ADRs, regla de dependencia justificada en PR | Abierto |
 | R-10 | Dependencia AGPL u otra licencia viral entra al árbol | Legal | Baja | Alto | Revisión de licencia por dependencia nueva (CONTRIBUTING) + scanning CI (F1-02) | Mitigado por proceso |
 | R-11 | SSRF vía webhooks salientes | Seguridad | Media | Alto | Guard obligatorio pre-primer-delivery (F3-07, bloqueante) | Abierto |
-| R-12 | Passwords dev de roles BD reutilizados fuera de local | Seguridad | Baja | Alto | Solo docker local; aprovisionamiento gestionado desde sandbox (F1-02); documentado | Aceptado temporalmente |
+| R-12 | Passwords dev de roles BD reutilizados fuera de local | Seguridad | Baja | Alto | Solo docker local; aprovisionamiento gestionado desde sandbox (F1-02); documentado; guard de entorno en F1-09 (AUD-P2-008) | Aceptado temporalmente |
 | R-13 | Licencias de referencias no verificadas en vivo (proxy de sesión) | Legal | Baja | Medio | F0-VER antes de adoptar cualquier código de referencia | Abierto |
+| R-14 | Sobregiro contable en operaciones two-legged (release/refund > saldo) | Financiero | — | Crítico | Guard `nonNegativeAccounts` bajo locks + golden tests (AUD-P1-010, lote AUD-1) | **Cerrado 2026-07-04** |
+| R-15 | Entrada cross-tenant/cross-moneda en `ledger_entries` si el servicio se puentea | Financiero | — | Crítico | FK compuesta a nivel de motor + tests SQL crudo (AUD-P1-001, migración 0008) | **Cerrado 2026-07-04** |
+| R-16 | Robo de API keys sin MFA/rate limiting en el plano de sesión | Seguridad | Media | Alto | F1-04b ampliado (AUD-P1-006): MFA TOTP + step-up + rate limiting antes de usuarios reales; live keys bloqueadas (decisión #19) | Abierto (gate de sandbox) |
+| R-17 | Credenciales dev conectando a una base no-local por variables ausentes | Operativo | — | Alto | Anti-mezcla en `dbUrlsFromEnv` + `@fluvia/config`: arranque falla fuera de local sin URLs explícitas (AUD-P2-014) | **Cerrado 2026-07-04** |

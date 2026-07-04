@@ -12,8 +12,10 @@ El ledger es la **fuente de verdad financiera**. Todo movimiento con significado
 ledger_accounts      cuenta contable por tenant, moneda y propósito
 ledger_transactions  unidad atómica de posting (idempotency_key, reason, causal link)
 ledger_entries       líneas débito/crédito, inmutables, amount > 0 en unidades menores
-balance_projections  rollups versionados (available, pending, reserved) — derivado
+balance_projections  rollups versionados (available, pending) — derivado
 ```
+
+**Reservas = cuentas, no bucket (AUD-P2-013, decidido en el cierre de la auditoría v1).** Los fondos retenidos se modelan como cuentas del Chart of Accounts (`merchant.reserve`, `dispute.reserve`, `refund.liability`): mover fondos a/desde reserva es un asiento de doble partida normal, auditable y con enlace causal. `balance_projections` solo tiene los buckets `available` y `pending`; no existe (ni se añadirá) una columna `reserved`.
 
 Reglas estructurales:
 
@@ -60,7 +62,8 @@ Sin llamadas de red dentro de la transacción (invariante Nivel A). Transacción
 
 ## 6. Proyecciones (V4 §17.5)
 
-- `balance_projections` guarda `available`, `pending`, `reserved` por cuenta con `version` monotónica.
+- `balance_projections` guarda `available` y `pending` por cuenta con `version` monotónica (las reservas son cuentas, ver §2).
+- Guarda de saldo no-negativo (AUD-P1-010): `postTransaction` acepta `nonNegativeAccounts`; la verificación ocurre dentro de la transacción, bajo los locks de cuenta, y una violación revierte todo el asiento (`InsufficientBalanceError`). Las reglas de posting la aplican a la cuenta debitada de cada operación two-legged (no se libera ni refunda más de lo que hay).
 - Reconstruibles desde `ledger_entries` en cualquier momento (`rebuildProjection(accountId)`); el rebuild debe coincidir exactamente con la proyección viva (test de Gate Ledger + verificación programada de drift con alerta).
 - Las lecturas de balance usan la proyección; nunca se recalcula el historial completo por request.
 

@@ -190,6 +190,9 @@ export class PostingService {
         { accountId: chart[debitCode], direction: 'debit', amount: input.amount },
         { accountId: chart[creditCode], direction: 'credit', amount: input.amount },
       ],
+      // AUD-P1-010: la cuenta debitada no puede quedar en negativo (no se
+      // libera/refunda mas de lo que hay). Verificado bajo lock en el motor.
+      nonNegativeAccounts: [chart[debitCode]],
     });
   }
 }

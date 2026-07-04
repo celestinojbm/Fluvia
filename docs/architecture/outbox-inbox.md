@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0 · ADR-0007
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): PARCIAL.** Construido: tabla `outbox_events` y escritura transaccional de eventos junto al asiento (`ledger.transaction.posted`, F2-03). NO construido: el relay/worker de publicación (F2-11, absorbe AUD-P1-007 y AUD-P2-005), el inbox de webhooks entrantes y toda entrega efectiva. Hoy los eventos quedan `pending` en la tabla.
+
 ## 1. Outbox (eventos salientes de dominio)
 
 Escritura: el cambio de dominio y su evento se insertan en `outbox_events` **en la misma transacción** (Nivel A: nada de llamadas externas dentro de la transacción). El spike ya define la tabla con `status pending|delivered|dead`, `attempts`, `next_attempt_at`, índice parcial por pendientes.

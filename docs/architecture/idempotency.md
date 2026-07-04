@@ -2,6 +2,8 @@
 
 Estado: Activo · Fase: 0 · ADR-0006 · Nota: el header `Idempotency-Key` sigue un draft IETF, no un RFC; este documento define el contrato propio de Fluvia.
 
+> **Estado de implementación (AUD-P3-002, 2026-07-04): PARCIAL.** Construido: idempotencia del ledger (`ledger_transactions.idempotency_key` único por tenant, replay exacto con comparación de payload completo — AUD-P2-001) y la tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` (0008, AUD-P1-009). NO construido: el middleware HTTP que consuma esa tabla (F2-12); ningún endpoint expone aún `Idempotency-Key`.
+
 ## 1. Principio
 
 La idempotencia se diseña **antes** de exponer cualquier endpoint mutante (V4 §19, §49). Fuente de verdad: **PostgreSQL**. Redis solo puede añadir un fast-path/lock corto, y su pérdida total no debe permitir duplicados (Gate Idempotencia §51).

@@ -6,6 +6,7 @@ import {
   ACCOUNT_CODES,
   CHART_OF_ACCOUNTS,
   FeesExceedAmountError,
+  InsufficientBalanceError,
   LedgerService,
   PostingService,
   UnknownAccountCodeError,
@@ -221,6 +222,64 @@ describe('GOLDEN: ciclo completo captura -> liquidacion -> refund', () => {
       const check = await ledger.verifyProjection(cycleOrg, chart[code]);
       expect(check.matches, `${code}: ${JSON.stringify(check)}`).toBe(true);
     }
+  });
+
+  // AUD-P1-010: sobre-liberacion y sobre-refund son irrepresentables — la
+  // cuenta debitada de cada operacion two-legged esta protegida bajo lock.
+  it('GOLDEN: cannot release more than merchant.pending nor refund more than merchant.available', async () => {
+    const guardOrg = await ctx.createTenant('Golden Guard Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(guardOrg, m, 'COP');
+    const base = { tenantId: guardOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-guard',
+      amount: cop(100_000),
+      providerFee: cop(2_900),
+      platformFee: cop(5_000),
+    });
+    // pending = 95000: liberar 95001 debe fallar sin efectos.
+    await expect(
+      posting.releaseSettlement({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'settle-over',
+        amount: cop(95_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-guard',
+      amount: cop(40_000),
+    });
+    // available = 40000: refund de 40001 debe fallar sin efectos.
+    await expect(
+      posting.requestRefund({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'ref-over',
+        amount: cop(40_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    // settleRefund sin reserva previa: refund.liability en 0, descargar 1 falla.
+    await expect(
+      posting.settleRefund({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'ref-phantom',
+        amount: cop(1),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    const b = await balances(guardOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.pending']).toBe('55000'); // 95000 - 40000; el intento fallido no toco nada
+    expect(b['merchant.available']).toBe('40000');
+    expect(b['refund.liability']).toBe('0');
   });
 
   it('posting operations are idempotent end-to-end (replay does not double-post)', async () => {

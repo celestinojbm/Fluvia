@@ -3,6 +3,7 @@ import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,
   IdempotencyConflictError,
+  InsufficientBalanceError,
   InvalidEntriesError,
   LedgerAccountExistsError,
   LedgerRetriesExhaustedError,
@@ -273,29 +274,61 @@ export class LedgerService {
     );
     const versionByAccount = new Map(versions.rows.map((r) => [r.account_id, r.version]));
 
+    const protectedAccounts = new Set(input.nonNegativeAccounts ?? []);
     for (const accountId of accountIds) {
       const d = deltas.get(accountId) ?? { available: 0n, pending: 0n };
-      const res = await c.query(
+      const res = await c.query<{ available: string; pending: string }>(
         `UPDATE balance_projections
          SET available = available + $2,
              pending = pending + $3,
              version = version + 1,
              updated_at = now()
-         WHERE account_id = $1 AND version = $4`,
+         WHERE account_id = $1 AND version = $4
+         RETURNING available::text, pending::text`,
         [accountId, d.available.toString(), d.pending.toString(), versionByAccount.get(accountId)]
       );
       if ((res.rowCount ?? 0) === 0) throw new OptimisticLockError(accountId);
+      // AUD-P1-010: guard semantico race-safe (bajo locks de cuenta).
+      if (protectedAccounts.has(accountId)) {
+        const row = res.rows[0]!;
+        if (BigInt(row.available) < 0n) {
+          throw new InsufficientBalanceError(accountId, 'available', row.available);
+        }
+        if (BigInt(row.pending) < 0n) {
+          throw new InsufficientBalanceError(accountId, 'pending', row.pending);
+        }
+      }
     }
   }
 
   private async replay(c: PoolClient, input: PostTransactionInput): Promise<PostedTransaction> {
-    const tx = await c.query<{ id: string; created_at: Date }>(
-      `SELECT id, created_at FROM ledger_transactions
+    const tx = await c.query<{
+      id: string;
+      created_at: Date;
+      reason: string;
+      source_type: string | null;
+      source_id: string | null;
+      reverses_tx_id: string | null;
+    }>(
+      `SELECT id, created_at, reason, source_type, source_id, reverses_tx_id
+       FROM ledger_transactions
        WHERE tenant_id = $1 AND idempotency_key = $2`,
       [input.tenantId, input.idempotencyKey]
     );
     const row = tx.rows[0];
     if (!row) throw new IdempotencyConflictError(input.idempotencyKey);
+
+    // AUD-P2-001: la huella idempotente incluye la metadata causal completa,
+    // no solo los asientos — mismo key con reason/source/reversal distinto
+    // es un conflicto, jamas un replay silencioso.
+    if (
+      row.reason !== input.reason ||
+      row.source_type !== input.source.type ||
+      row.source_id !== input.source.id ||
+      (row.reverses_tx_id ?? null) !== (input.reversesTxId ?? null)
+    ) {
+      throw new IdempotencyConflictError(input.idempotencyKey);
+    }
 
     const stored = await c.query<{
       account_id: string;

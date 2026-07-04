@@ -54,6 +54,18 @@ export class InsufficientScopeError extends IdentityError {
   }
 }
 
+/**
+ * AUD-P2-003: no existe backend live (adapters, KYC, gates de produccion).
+ * Emitir credenciales "live" sin plano live seria declarar una capacidad
+ * inexistente (invariante A del prompt maestro). Se desbloquea via los
+ * production gates (docs/compliance/production-gates.md) — DECISIONS PEND-004.
+ */
+export class LiveKeysDisabledError extends IdentityError {
+  constructor() {
+    super('Live API keys are not available: the live payments plane does not exist yet');
+  }
+}
+
 export interface CreatedApiKey {
   id: string;
   /** Secreto en claro — se entrega una unica vez y no vuelve a ser recuperable. */
@@ -101,6 +113,9 @@ export class ApiKeyService {
     audit?: AuditContext
   ): Promise<CreatedApiKey> {
     const input = CreateApiKeySchema.parse(rawInput);
+    if (input.environment === 'live') {
+      throw new LiveKeysDisabledError();
+    }
     const secret = `fluvia_sk_${input.environment}_${randomBytes(24).toString('hex')}`;
     const keyPrefix = secret.slice(0, PREFIX_DISPLAY_LENGTH);
 

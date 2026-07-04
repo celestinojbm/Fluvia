@@ -2,7 +2,7 @@
 
 Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlazará a su prueba cuando exista.
 
-## Estado global: 🔴 PRE-PRODUCCIÓN (Fase 0)
+## Estado global: 🔴 PRE-PRODUCCIÓN (Fase 2 — sandbox; live keys bloqueadas por código)
 
 ## 1. Gates técnicos mínimos
 
@@ -10,6 +10,9 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Cada transacción balancea por activo/moneda a nivel de MOTOR** (constraint trigger diferido `FLUVIA_UNBALANCED`; probado con SQL crudo incluso como superusuario; compensación cross-moneda rechazada; cabeceras vacías rechazadas — `ledger-invariants.test.ts`, F2-02)
 - [x] Inmutabilidad de asientos a nivel motor (`FLUVIA_IMMUTABLE`)
 - [x] Modelo causal: `source_type/source_id` + `reverses_tx_id` con FK (F2-01)
+- [x] **Coherencia cuenta-tenant-moneda a nivel de MOTOR**: FK compuesta `(account_id, tenant_id, currency)` — ni el superusuario puede enlazar un asiento a una cuenta de otro tenant u otra moneda (migración 0008, AUD-P1-001 — `ledger-invariants.test.ts`)
+- [x] **Guarda de saldo no-negativo race-safe** en operaciones que lo exigen (release/refund): `nonNegativeAccounts` bajo locks de cuenta, rollback total (AUD-P1-010 — golden tests en `posting.test.ts`)
+- [x] **Replay idempotente con huella causal completa**: reason/source/reverses divergentes ⇒ conflicto, jamás replay silencioso (AUD-P2-001 — `ledger-service.test.ts`)
 - [ ] Scripts externos al ORM verifican invariantes (F2-06)
 - [ ] Rebuild de proyección == ledger (F2-05)
 - [ ] Compensaciones vía servicio (F2-07; el modelo ya lo soporta)
@@ -21,9 +24,11 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] Autorización de aplicación (RBAC) activa con matriz verificada celda a celda (F1-04c)
 - [x] Tests de bypass administrativo: `withPlatformOperation` exige razón, audita en la misma transacción (riesgo alto) y hace rollback conjunto (F1-06)
 - [x] Suite ampliada de tenant escape en CI, incluidos **meta-tests estructurales** que verifican en `pg_catalog` que TODA tabla (presente o futura) con `tenant_id` tiene RLS forzado + política, que ningún rol de runtime tiene DELETE y que app/worker no tienen privilegio alguno sobre credenciales (F1-06)
+- [x] Reducción de privilegios del worker iniciada: sin privilegio alguno sobre ledger, proyecciones ni api_keys (migración 0008); rol relay definitivo de privilegio mínimo con ADR-0011 en F2-11 (AUD-P1-007)
 - Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §7); mitigación = consultas 100% parametrizadas + revisión Fase 6.
 
-### Gate Idempotencia — 🔴 (diseñado)
+### Gate Idempotencia — 🔴 (diseñado; schema corregido)
+- [x] Tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` conforme al contrato de `idempotency.md` (migración 0008, AUD-P1-009)
 - [ ] Mismo key + mismo payload → mismo resultado (F2-09)
 - [ ] Mismo key + payload distinto → rechazado (F2-09)
 - [ ] Crash recovery no duplica (F2-10)
@@ -34,6 +39,8 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [ ] Casos creados, sin corrección silenciosa, evidencia de resolución (F4-03)
 
 ### Gate Seguridad — 🔴
+- [x] Credenciales `live` imposibles de emitir por código (`LiveKeysDisabledError`) hasta pasar gates + decisión humana PEND-004 (AUD-P2-003)
+- [x] Anti-mezcla de entornos: arranque falla fuera de local/test sin URLs de BD explícitas (`dbUrlsFromEnv` + `@fluvia/config`, AUD-P2-014)
 - [ ] Sin High/Critical sin aceptación explícita; secret/dependency scanning; threat model actualizado; pruebas SSRF y tenant escape (F1-02, F3, F6)
 
 ### Gate Restore — 🔴
