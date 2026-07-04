@@ -1,0 +1,26 @@
+import { loadConfig } from '@fluvia/config';
+import { createPool } from '@fluvia/db';
+import { buildApp } from './app.js';
+
+const config = loadConfig();
+const appPool = createPool({ connectionString: config.db.app });
+const app = buildApp({ config, appPool });
+
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, 'graceful shutdown started');
+  await app.close();
+  await appPool.end();
+  process.exit(0);
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => void shutdown(signal));
+}
+
+app.listen({ port: config.port, host: '0.0.0.0' }).catch((err) => {
+  app.log.fatal({ err }, 'failed to start api');
+  process.exit(1);
+});

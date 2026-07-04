@@ -20,14 +20,16 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 | 12 | IDs públicos: UUID aleatorio + prefijo de recurso | B | en `data-model.md` |
 | 13 | Catálogo de eventos MVP normalizado (sin `charge.*`) | C | auditoría D3 |
 | 14 | Purga de datos técnicos por clasificación (excepción controlada al no-DELETE) | B | `data-classification.md` |
+| 15 | **País inicial: Colombia** (decidido por el propietario, 2026-07-04). Sin reglas legales codificadas hasta completar la matriz con revisión legal | Producto | `compliance/jurisdiction-matrix.md` |
+| 16 | **Paquete de Fase 0 y ADRs 0001–0010 aprobados** por el propietario (2026-07-04) → Fase 1 desbloqueada | Gobernanza | ex PEND-003 |
 
 ## Decisiones PENDIENTES que requieren humano
 
 | ID | Decisión | Bloquea | Contexto |
 |----|----------|---------|----------|
-| **PEND-001** | País/jurisdicción inicial | Fase 5 (proveedor real) | `compliance/jurisdiction-matrix.md` con candidatos CO/MX/CL |
 | **PEND-002** | Modelo comercial (pricing) | Diseño fino del motor de fees (Fase 4) | Opciones en PRD §8 |
-| **PEND-003** | Aprobación del paquete Fase 0 (este PR) y de los ADR 0001–0010 | Inicio de Fase 1 | El constructor no se auto-aprueba (§36: nadie propone y aprueba) |
+
+Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-003~~ → aprobado (decisión #16).
 
 ## Supuestos adoptados (más seguros y reversibles, §2)
 

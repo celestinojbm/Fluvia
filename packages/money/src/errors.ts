@@ -12,7 +12,10 @@ export class UnknownCurrencyError extends MoneyError {
 }
 
 export class CurrencyMismatchError extends MoneyError {
-  constructor(readonly left: string, readonly right: string) {
+  constructor(
+    readonly left: string,
+    readonly right: string
+  ) {
     super(`Currency mismatch: cannot operate on ${left} and ${right}`);
   }
 }
@@ -24,7 +27,11 @@ export class InvalidAmountError extends MoneyError {
 }
 
 export class PrecisionError extends MoneyError {
-  constructor(readonly currency: string, readonly maxDecimals: number, readonly received: string) {
+  constructor(
+    readonly currency: string,
+    readonly maxDecimals: number,
+    readonly received: string
+  ) {
     super(
       `Currency ${currency} supports at most ${maxDecimals} decimal places, received "${received}"`
     );

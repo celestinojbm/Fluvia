@@ -7,9 +7,9 @@ Estado: Activo · Fuente única de trabajo · Formato §48: cada ítem lleva ID,
 | ID | Título | Dominio | Deps | Riesgo | Talla | CA / Pruebas | Estado |
 |----|--------|---------|------|--------|-------|--------------|--------|
 | F0-VER | Verificar licencias/mantenimiento de referencias en vivo | Gobernanza | acceso a repos | Bajo | XS | Matriz actualizada con licencia verificada + fecha | Pendiente (bloqueado por red de esta sesión) |
-| F0-OK | Revisión humana del paquete de Fase 0 (este PR) | Gobernanza | — | — | S | Propietario aprueba decisiones PEND-001/002 y ADRs | **Bloqueado: requiere humano** |
-| F1-01 | Estructura de apps (`apps/api`, `apps/worker`) + config por entorno tipada | Plataforma | F0-OK | Bajo | S | App Fastify arranca con health/readiness; config Zod-validada falla rápido | Pendiente |
-| F1-02 | CI completo: install reproducible, lint, typecheck, unit, integración con PG+Redis reales, secret/dependency scanning, SBOM | Plataforma | F1-01 | Medio | M | Pipeline verde requerido para merge; migration dry-run incluido | Pendiente |
+| F0-OK | Revisión humana del paquete de Fase 0 | Gobernanza | — | — | S | Propietario aprueba decisiones y ADRs | **Completado 2026-07-04** (Fase 0 aprobada; país = Colombia) |
+| F1-01 | Estructura de apps (`apps/api`, `apps/worker`) + config por entorno tipada | Plataforma | F0-OK | Bajo | S | App Fastify arranca con health/readiness; config Zod-validada falla rápido | **Completado 2026-07-04** (46 tests verdes + smoke test) |
+| F1-02 | CI completo: install reproducible, lint, typecheck, unit, integración con PG real, secret/dependency scanning, SBOM | Plataforma | F1-01 | Medio | M | Pipeline verde requerido para merge; migration dry-run incluido | **Completado 2026-07-04** (workflow publicado; Redis se añade al pipeline cuando exista consumidor real) |
 | F1-03 | Modelo identidad/tenancy: organizations, merchants, users, memberships (migra el `tenants` del spike) | Identidad | F1-02 | Alto | L | CRUD con RLS; migración expand-contract desde spike; tests de integración | Pendiente |
 | F1-04 | Auth: registro, verificación email, login, MFA TOTP, sesiones revocables, RBAC, API keys con scopes | Identidad | F1-03 | Alto | XL | Suite authN/authZ + BOLA por endpoint; step-up para acciones sensibles | Pendiente |
 | F1-05 | Audit log append-only + access matrix | Seguridad | F1-04 | Medio | M | Acciones sensibles auditadas con actor/razón; matriz publicada | Pendiente |
@@ -73,7 +73,7 @@ graph TD
     F211 --> F307[F3-07 webhooks salientes]
     F301 --> F308[F3-08 refunds]
     F303 --> F401[F4 conciliación] --> F5[Fase 5 proveedor real]
-    PEND001[PEND-001 país - humano] --> F5
+    PEND001[PEND-001 país: Colombia ✓ - matriz por verificar] --> F5
 ```
 
 Regla §49 respetada: idempotencia (F2-09) precede a la exposición de la API financiera mutante (F3-02).

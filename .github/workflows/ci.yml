@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, types, migraciones y tests (PG real)
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/fluvia
+      APP_DATABASE_URL: postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia
+      WORKER_DATABASE_URL: postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fluvia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fluvia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (reproducible)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm build
+
+      - name: Migraciones (validación contra PG real)
+        run: pnpm migrate
+
+      - name: Migraciones (segunda corrida debe ser no-op — idempotencia)
+        run: |
+          out=$(pnpm --filter @fluvia/db run migrate)
+          echo "$out"
+          echo "$out" | grep -q "nothing applied"
+
+      - name: Tests (unit + integración con PostgreSQL real)
+        run: pnpm test
+
+  security:
+    name: Secret scanning, dependencias y SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scanning (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (reproducible)
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency audit (falla en High/Critical — Gate Seguridad)
+        run: pnpm audit --audit-level high
+
+      - name: SBOM (syft, SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: fluvia-sbom.spdx.json

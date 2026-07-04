@@ -90,10 +90,16 @@ describe('database-level immutability (Directiva A.4)', () => {
     // Creamos una entrada minima via transaccion contable manual del admin.
     const t = await ctx.createTenant();
     const acc1 = await ctx.createLedgerAccount({
-      tenantId: t, name: 'a1', currency: 'USD', normalSide: 'debit',
+      tenantId: t,
+      name: 'a1',
+      currency: 'USD',
+      normalSide: 'debit',
     });
     const acc2 = await ctx.createLedgerAccount({
-      tenantId: t, name: 'a2', currency: 'USD', normalSide: 'credit',
+      tenantId: t,
+      name: 'a2',
+      currency: 'USD',
+      normalSide: 'credit',
     });
     await withTenantTransaction(ctx.app, t, async (c) => {
       const tx = await c.query<{ id: string }>(

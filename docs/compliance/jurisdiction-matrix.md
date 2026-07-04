@@ -1,22 +1,34 @@
-# Matriz de jurisdicción
+# Matriz de jurisdicción — Colombia
 
-Estado: **Decisión pendiente (PEND-001)** · Fase: 0 · Bloquea Fase 5 (proveedor real), NO bloquea Fases 1–4
+Estado: **País seleccionado: Colombia** (PEND-001 resuelta por el propietario, 2026-07-04) · La **investigación con fuentes y la revisión legal siguen pendientes** y bloquean la Fase 5 (proveedor real). Nada de esta matriz se codifica en el producto hasta que cada fila esté verificada y revisada legalmente.
 
-## Decisión registrada
+## Implicaciones inmediatas para el MVP (sin riesgo legal)
 
-El MVP opera con **país abstracto** y moneda de prueba (USD/CLP en sandbox), sin reglas legales codificadas (V4 §7). La selección del primer país real requiere decisión humana del propietario del producto e investigación dedicada.
+- Moneda principal de sandbox: **COP** (exponente 2, ya soportada en `@fluvia/money`); USD/CLP se mantienen en tests multi-moneda.
+- El MockProvider simulará, además de tarjeta, un **método asíncrono de redirección tipo PSE** (el método dominante colombiano es asíncrono): ejercita `requires_action`, estados pendientes largos y webhooks tardíos desde la Fase 3.
+- Candidatos de proveedor para Fase 5 (evaluación formal pendiente): Wompi, PayU Latam, dLocal, Mercado Pago, ePayco.
 
-## Candidatos preliminares (para orientar la investigación, sin decisión)
+## Matriz (conocimiento preliminar — TODA fila requiere verificación con fuente y fecha antes de Fase 5)
 
-| Criterio | Colombia | México | Chile |
-|----------|----------|--------|-------|
-| Proveedores candidatos con sandbox | Wompi, dLocal, PayU, Mercado Pago | Stripe MX, Conekta, dLocal, Mercado Pago | Transbank (via PSP), dLocal, Mercado Pago |
-| Métodos dominantes | PSE, tarjetas, Nequi | Tarjetas, SPEI, OXXO | Webpay, tarjetas |
-| Moneda / exponente | COP (2) | MXN (2) | CLP (0) |
-| Nota regulatoria | Regulación SEDPE/pasarelas; PSE requiere convenios | CNBV/fintech law si se custodia; como orquestador puro, menor carga | Ley Fintech reciente; adquirencia abierta en evolución |
+| Dimensión | Conocimiento preliminar (NO verificado) | Verificación |
+|-----------|------------------------------------------|--------------|
+| Moneda | COP, exponente 2; alta sensibilidad a redondeos en montos grandes | Pendiente |
+| Métodos de pago | PSE (transferencia bancaria vía ACH Colombia, asíncrona), tarjetas, Nequi/Daviplata, efectivo (Efecty/Baloto) | Pendiente |
+| Proveedores/adquirentes | Wompi (Bancolombia), PayU, dLocal, Mercado Pago, ePayco; adquirencia: Credibanco, Redeban | Pendiente |
+| Regulador financiero | Superintendencia Financiera de Colombia (SFC); SEDPE para depósitos electrónicos (no aplica si no custodiamos) | Pendiente + revisión legal |
+| KYC/KYB · AML | SARLAFT como marco AML; listas ONU/OFAC + vinculantes locales | Pendiente + revisión legal |
+| Protección al consumidor | Estatuto del Consumidor (Ley 1480/2011); reglas de reversión de pagos (art. 51) relevantes para refunds/contracargos | Pendiente + revisión legal |
+| Privacidad / datos | Ley 1581/2012 (habeas data), registro de bases ante SIC; evaluar residencia de datos | Pendiente + revisión legal |
+| Facturación / impuestos | Factura electrónica DIAN; retenciones (retefuente/ICA) sobre fees; IVA sobre comisiones | Pendiente + revisión contable |
+| Contracargos/disputas | Reglas de franquicias + reversiones Ley 1480 | Pendiente |
+| Liquidaciones/payouts | Vía proveedor autorizado; Fluvia no custodia (invariante) | Pendiente por proveedor |
+| Reportes obligatorios | UIAF si aplicara por rol; a confirmar que como orquestador no-custodio no aplica | Pendiente + revisión legal |
+| Sandbox/calidad de API | Wompi y Mercado Pago con sandbox público; evaluar calidad de webhooks por proveedor | Pendiente (Fase 5) |
+| Riesgo cambiario | No aplica en MVP (solo COP doméstico); FX fuera de alcance | — |
 
-## Checklist a completar cuando se elija el país (plantilla V4 §7)
+## Proceso de cierre (gate de Fase 5)
 
-Monedas · métodos de pago · proveedores · adquirentes · bancos · KYC · KYB · AML · sanciones · protección al consumidor · privacidad · residencia de datos · retención · impuestos · retenciones fiscales · facturación · refunds · contracargos · disputas · liquidaciones · payouts · pagos internacionales · transmisión de dinero · límites · reportes obligatorios · restricciones por industria · requisitos de soporte · disponibilidad de sandbox · calidad de API/documentación/webhooks · SLA del proveedor · riesgo cambiario.
-
-Cada fila requerirá fuente y fecha de verificación. **Nada de esta matriz se codifica en el producto hasta que la decisión esté firmada y revisada legalmente.**
+1. Completar cada fila con fuente citada y fecha.
+2. Revisión legal externa de las filas marcadas.
+3. Selección del proveedor con evaluación formal (contrato + sandbox + contract tests).
+4. Registrar el cierre como ADR de jurisdicción con evidencia.

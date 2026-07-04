@@ -2,6 +2,7 @@
   "name": "fluvia",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "Fluvia — plataforma de pagos de extrema confiabilidad (Ledger de doble partida, Outbox transaccional, RLS multi-tenant)",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -10,9 +11,16 @@
   "scripts": {
     "build": "turbo run build",
     "test": "pnpm -r --workspace-concurrency=1 run test",
-    "migrate": "pnpm --filter @fluvia/db run migrate"
+    "migrate": "pnpm --filter @fluvia/db run migrate",
+    "lint": "eslint .",
+    "format": "prettier --write \"**/*.{ts,js,json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,yml,yaml}\""
   },
   "devDependencies": {
-    "turbo": "^2.5.0"
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.5.0",
+    "typescript-eslint": "^8.19.0"
   }
 }

@@ -1,13 +1,5 @@
-import {
-  assertCurrencyCode,
-  currencyExponent,
-  type CurrencyCode,
-} from './currency.js';
-import {
-  CurrencyMismatchError,
-  InvalidAmountError,
-  PrecisionError,
-} from './errors.js';
+import { assertCurrencyCode, currencyExponent, type CurrencyCode } from './currency.js';
+import { CurrencyMismatchError, InvalidAmountError, PrecisionError } from './errors.js';
 
 const INTEGER_RE = /^-?\d+$/;
 const DECIMAL_RE = /^(-?)(\d+)(?:\.(\d+))?$/;

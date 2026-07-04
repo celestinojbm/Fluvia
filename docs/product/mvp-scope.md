@@ -12,10 +12,10 @@ crear usuario → organización → comercio → API key sandbox → customer �
 
 | Dimensión | Decisión MVP |
 |-----------|--------------|
-| País | **Abstracto** (jurisdicción = decisión pendiente PEND-001; sin reglas legales codificadas) |
-| Moneda | Modelo multi-moneda desde el día 1; sandbox opera con USD como moneda de prueba + CLP para tests de exponente 0 |
-| Proveedor | **MockPaymentProvider** únicamente; el real llega en Fase 5 tras cerrar país |
-| Método de pago | Tarjeta simulada con tokenización del lado del "proveedor" (el backend de Fluvia nunca ve PAN/CVV, ni siquiera simulado) |
+| País | **Colombia** (decidido 2026-07-04). Sin reglas legales codificadas hasta completar `compliance/jurisdiction-matrix.md` con revisión legal (bloquea Fase 5, no F1–F4) |
+| Moneda | Modelo multi-moneda desde el día 1; sandbox opera con **COP** como moneda principal + USD y CLP (exponente 0) en tests multi-moneda |
+| Proveedor | **MockPaymentProvider** únicamente; candidatos reales para Fase 5: Wompi, PayU, dLocal, Mercado Pago |
+| Método de pago | Tarjeta simulada con tokenización del lado del "proveedor" (el backend de Fluvia nunca ve PAN/CVV, ni siquiera simulado) + **método asíncrono de redirección tipo PSE** en el MockProvider (ejercita `requires_action`, pendientes largos y webhooks tardíos) |
 | Tenancy | Organization → Merchant; multi-tenant real con RLS desde la primera migración |
 | Entornos | local y test; sandbox/staging al final de Fase 3 |
 

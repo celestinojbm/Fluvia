@@ -1,47 +1,52 @@
 # STATE — Estado del proyecto
 
-Última actualización: 2026-07-04 · Fase actual: **0 — Descubrimiento y decisiones (entregada, pendiente de aprobación humana PEND-003)**
+Última actualización: 2026-07-04 · Fase actual: **1 — Fundación (en curso)**
 
-## Resumen ejecutivo (entregable §52.1)
+## Hitos
 
-Fluvia arranca como capa de software y orquestación de pagos (no banco, no custodio, no procesador certificado; ver límites en `../compliance/production-gates.md`). En esta iteración se entregó el **paquete completo de Fase 0**: auditoría crítica del Prompt V4 con 10 deficiencias detectadas y corregidas, PRD y alcance estricto del MVP (país abstracto, MockProvider, multi-tenant real), arquitectura de monolito modular TypeScript sobre PostgreSQL, diseño del ledger de doble partida interno con Chart of Accounts inicial, máquinas de estado separadas (intent/attempt/refund/dispute), estrategias normativas de idempotencia durable, outbox/inbox, RLS, webhooks y conciliación, threat model, clasificación de datos, 10 ADRs aceptados, backlog ejecutable F1–F4 con DAG y production gates con checklist de evidencia.
+- **Fase 0 APROBADA por el propietario (2026-07-04)** — decisión #16. ADRs 0001–0010 aceptados.
+- **País inicial: Colombia** (decisión #15, ex PEND-001). Implicaciones MVP: COP como moneda principal de sandbox; el MockProvider incluirá un método asíncrono tipo PSE; candidatos de proveedor para Fase 5: Wompi/PayU/dLocal/Mercado Pago. La matriz de jurisdicción queda por verificar con fuentes y revisión legal (bloquea solo Fase 5).
+- **F1-01 y F1-02 completados** (este incremento).
 
-Además se validó empíricamente la fundación con un **spike ejecutado contra PostgreSQL 16 real**: Money VO exacto (bigint), RLS forzado con contexto SET LOCAL, triggers de inmutabilidad y runner de migraciones. El spike arrojó un hallazgo real incorporado a la normativa (política RLS con `NULLIF(current_setting(...), '')`).
+## Resumen ejecutivo
 
-## Evidencia de esta entrega (formato §47)
+Fluvia es una capa de software y orquestación de pagos (no banco, no custodio, no procesador certificado). La Fase 0 entregó el paquete completo de decisión (auditoría del prompt, PRD, arquitectura, ledger, FSMs, estrategias, threat model, ADRs, backlog+DAG, gates) validado con un spike contra PostgreSQL 16 real. La Fase 1 arrancó con la plataforma mínima: apps `api`/`worker` con configuración tipada que falla rápido, y pipeline de CI completo con Postgres real, validación de migraciones, secret scanning, audit de dependencias y SBOM.
 
-**Verificación ejecutada (2026-07-04, entorno de sesión):**
+## Evidencia del incremento F1-01/F1-02 (formato §47, 2026-07-04)
 
 ```
-pnpm install                 → OK (lockfile generado, save-exact)
-PostgreSQL 16.x local        → initdb + start OK
-pnpm migrate                 → applied 0001_foundation.sql, 0002_enable_rls.sql
-pnpm test                    → @fluvia/db     9/9 tests PASS (integración real:
-                                 RLS aislamiento, WITH CHECK cross-tenant, PK cruzada,
-                                 sin-contexto=0 filas, FLUVIA_IMMUTABLE en
-                                 DELETE/TRUNCATE/UPDATE, authenticate_api_key)
-                               @fluvia/money 20/20 tests PASS (precisión, exponentes,
-                                 allocate sin pérdida, JSON >2^53, schema strict)
-pnpm build (tsc --noEmit)    → 2/2 OK
+pnpm lint            → OK (ESLint 9 flat config; no-explicit-any=error)
+pnpm format:check    → OK (Prettier)
+pnpm build           → 5/5 paquetes typecheck OK
+pnpm test            → 46/46 PASS
+                       config  6/6  (defaults, coerción, anti-mezcla de credenciales)
+                       db      9/9  (RLS, inmutabilidad, authenticate_api_key — PG16 real)
+                       money  20/20
+                       api     7/7  (health, ready contra BD real, ready 503 con BD caída,
+                                     correlation-id con sanitización, sobre de error 404)
+                       worker  4/4  (checkReady rol worker, heartbeat, stop limpio, start idempotente)
+Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
+                       404 con sobre estable, x-request-id eco verificado
 ```
-
-**Fallo encontrado y corregido durante la verificación** (no ocultado, §46): la política RLS original casteaba `current_setting(...)::uuid` y rompía con cadena vacía tras reuso de conexión del pool; corregido con `NULLIF` en `0002_enable_rls.sql` + test que cubre exactamente ese escenario. Registrado en `../architecture/multi-tenancy.md`.
 
 ## Estado por componente
 
 | Componente | Estado real |
 |-----------|-------------|
-| Paquete documental Fase 0 (30 entregables §52) | **Completado** (índice: `../README.md`) |
-| Spike `@fluvia/money` | Completado como spike; se promueve formalmente en F2-01 |
-| Spike `@fluvia/db` (migraciones RLS/inmutabilidad, runner, withTenantTransaction) | Completado como spike; se migra a modelo completo en F1-03 |
-| Todo lo demás (auth, ledger service, outbox worker, API, checkout…) | **No construido** — backlog F1+ |
+| Documentación Fase 0 (30 entregables §52) | Completado y aprobado |
+| `packages/money`, `packages/db` (spike) | Completado; promoción formal en F2-01/F1-03 |
+| `packages/config` | **Completado** (F1-01) |
+| `apps/api` esqueleto (health/ready, correlation, sobre de error) | **Completado** (F1-01) — sin recursos de negocio aún |
+| `apps/worker` esqueleto (readiness, heartbeat, shutdown) | **Completado** (F1-01) — sin consumidores aún |
+| CI (`.github/workflows/ci.yml`) | **Completado** (F1-02) — pendiente de verse verde en GitHub Actions en el primer push |
+| Auth, organizations, RBAC, audit, ledger service, outbox worker, API de pagos… | No construido (F1-03+) |
 
 ## Bloqueadores
 
-1. **PEND-003**: aprobación humana del paquete de Fase 0 y ADRs (el constructor no se auto-aprueba).
-2. **PEND-001** (país) — no bloquea F1–F4.
-3. F0-VER: verificación en vivo de licencias de referencias (la red de esta sesión restringe repos externos).
+1. PEND-002 (pricing) — bloquea solo el motor de fees (Fase 4).
+2. F0-VER (verificación en vivo de licencias de referencias) — antes de adoptar código externo.
+3. Confirmar que el workflow de CI corre verde en GitHub Actions (primera ejecución con este push); `pnpm audit` puede reportar advisories nuevos en cualquier momento — tratarlos según Gate Seguridad, no silenciarlos.
 
 ## Próximo incremento propuesto
 
-F1-01 + F1-02 (apps api/worker esqueleto + CI completo). Criterios y dependencias en `BACKLOG.md`. No iniciar sin PEND-003.
+**F1-03** — Modelo completo de identidad/tenancy: `organizations` + `merchants` + `users` + `memberships` (migración expand-contract desde el `tenants` del spike), con RLS y tests de integración. Después F1-04 (auth completo). Criterios en `BACKLOG.md`.

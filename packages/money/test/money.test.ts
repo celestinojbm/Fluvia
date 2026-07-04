@@ -140,8 +140,6 @@ describe('MoneySchema (Zod boundary validation)', () => {
   });
 
   it('is strict: extra keys are rejected (anti mass-assignment)', () => {
-    expect(() =>
-      MoneySchema.parse({ amount: '1025', currency: 'USD', isAdmin: true })
-    ).toThrow();
+    expect(() => MoneySchema.parse({ amount: '1025', currency: 'USD', isAdmin: true })).toThrow();
   });
 });

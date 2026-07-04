@@ -50,10 +50,11 @@ export async function createTestContext(): Promise<TestContext> {
 
     async createApiKey(tenantId, label = 'test') {
       const plaintext = `fluvia_sk_${randomBytes(24).toString('hex')}`;
-      await admin.query(
-        'INSERT INTO api_keys (tenant_id, key_hash, label) VALUES ($1, $2, $3)',
-        [tenantId, hashApiKey(plaintext), label]
-      );
+      await admin.query('INSERT INTO api_keys (tenant_id, key_hash, label) VALUES ($1, $2, $3)', [
+        tenantId,
+        hashApiKey(plaintext),
+        label,
+      ]);
       return plaintext;
     },
 
