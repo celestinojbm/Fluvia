@@ -33,7 +33,7 @@ pnpm test && pnpm build
 
 1. `DELETE`/`TRUNCATE` están bloqueados por trigger en TODAS las tablas core del spike — los tests no limpian datos: crean tenants frescos por corrida (aislamiento por RLS). La purga clasificada llega en F1-09.
 2. Los passwords de `fluvia_app`/`fluvia_worker` en `0002` son SOLO para local (R-12).
-3. `fluvia_worker` tiene BYPASSRLS pero desde 0008 CERO privilegios sobre ledger/proyecciones/api_keys; el rol definitivo del relay se diseña en F2-11 (ADR-0011). Jamás en código de API.
+3. NINGÚN rol de runtime tiene BYPASSRLS (ADR-0011): `fluvia_relay` es el único con visión cross-tenant, SOLO sobre `outbox_events` y por política explícita; `fluvia_worker` es un cascarón sin privilegios. El relay corre en `apps/worker` con publisher de log (la entrega real llega con F2-12/F3-07).
 3bis. La tabla `idempotency_keys` ya tiene PK `(tenant_id, endpoint, key)` — el middleware de F2-09 debe usar SIEMPRE el endpoint normalizado en la clave.
 4. El runner de migraciones usa advisory lock global; no lo ejecutes en paralelo con tests que abran transacciones largas de admin.
 

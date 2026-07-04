@@ -7,7 +7,7 @@ Estado: Activo · Se revisa al cierre de cada fase
 | R-01 | Drift entre proyección de balance y ledger | Financiero | Media | Crítico | Guard optimista + rebuild verificable + drift check con alerta + script de invariantes externo (F2-05/06) | Abierto (diseño listo) |
 | R-02 | Duplicación de efectos por retry/carrera | Financiero | Media | Crítico | Idempotencia multicapa durable (ADR-0006) + Gate Idempotencia | Abierto (diseño listo) |
 | R-03 | Tenant escape | Seguridad | Baja | Crítico | Defensa en profundidad + RLS forzado + suite de escape en CI | Parcialmente mitigado (spike verde) |
-| R-04 | Pérdida de eventos salientes/entrantes | Operativo | Baja | Alto | Outbox/Inbox durable + DLQ + replay auditado (ADR-0007) | Abierto (diseño listo) |
+| R-04 | Pérdida de eventos salientes/entrantes | Operativo | Baja | Alto | Outbox durable + relay multi-worker + DLQ + replay auditado **construidos y probados (F2-11)**; falta el plano entrante (inbox F2-12) y consumidores reales (F3-07) | Parcialmente mitigado |
 | R-05 | Estado ambiguo del proveedor tratado como fallo → doble cobro | Financiero | Media | Alto | Estado `indeterminate` + consulta/webhook/conciliación; nunca retry ciego (§23) | Abierto (diseño listo) |
 | R-06 | Codificar supuestos legales sin jurisdicción definida | Regulatorio | Media | Alto | País abstracto; matriz PEND-001 bloquea Fase 5; nada legal en código | Mitigado por proceso |
 | R-07 | Presentar sandbox como capacidad productiva | Regulatorio | Baja | Crítico | Production gates con evidencia obligatoria; lenguaje de docs; Nivel A | Mitigado por gobernanza |

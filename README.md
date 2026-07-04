@@ -15,8 +15,11 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `packages/identity` | Organizaciones, merchants, membresías, RBAC declarativo, API keys con scopes (solo `test`) |
 | `packages/audit` | Log de auditoría append-only con redacción de secretos y operaciones de plataforma con razón obligatoria |
 | `packages/ledger` | Ledger de doble partida: postTransaction idempotente, proyecciones versionadas, Chart of Accounts cerrado, reglas de posting tipadas |
+| `packages/events` | Envelope común de eventos (`event_id`, `schema_version`, `occurred_at`, `producer`, `resource`) con validación Zod |
+| `packages/outbox` | Relay del outbox: claim-lease con `SKIP LOCKED` multi-worker, backoff+jitter, DLQ y replay auditado (rol `fluvia_relay` de privilegio mínimo) |
 | `packages/config` | Configuración tipada de la aplicación |
 | `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope) |
+| `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |
 
 ## Ejecutar localmente
@@ -28,7 +31,7 @@ pnpm migrate                       # aplica packages/db/migrations (idempotente)
 pnpm test                          # unit + integración real contra PostgreSQL (RLS, inmutabilidad, ledger)
 ```
 
-Variables: `ADMIN_DATABASE_URL`, `APP_DATABASE_URL`, `WORKER_DATABASE_URL`, `AUTH_DATABASE_URL`. Los defaults locales solo aplican con `NODE_ENV`/`FLUVIA_ENV` local/test; en cualquier otro entorno el arranque falla si falta alguna (anti-mezcla de entornos).
+Variables: `ADMIN_DATABASE_URL`, `APP_DATABASE_URL`, `WORKER_DATABASE_URL`, `RELAY_DATABASE_URL`, `AUTH_DATABASE_URL`. Los defaults locales solo aplican con `NODE_ENV`/`FLUVIA_ENV` local/test; en cualquier otro entorno el arranque falla si falta alguna (anti-mezcla de entornos).
 
 ## Gobernanza
 

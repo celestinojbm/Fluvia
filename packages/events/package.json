@@ -1,5 +1,5 @@
 {
-  "name": "@fluvia/ledger",
+  "name": "@fluvia/events",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,14 +14,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fluvia/db": "workspace:*",
-    "@fluvia/events": "workspace:*",
-    "@fluvia/money": "workspace:*",
-    "pg": "^8.13.0"
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "@types/pg": "^8.11.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

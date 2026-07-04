@@ -6,18 +6,17 @@ export interface WorkerLogger {
 }
 
 export interface WorkerProcessOptions {
-  /** Pool con rol fluvia_worker (BYPASSRLS, solo colas). */
+  /** Pool con rol fluvia_worker (cascaron de proceso: sin privilegios de tabla, ADR-0011). */
   pool: Pool;
   logger: WorkerLogger;
   heartbeatIntervalMs?: number;
 }
 
 /**
- * Esqueleto del proceso worker (F1-01).
- *
- * Por ahora solo: verificacion de conectividad, heartbeat observable y
- * apagado limpio. Los consumidores reales (outbox relay F2-11, inbox F2-12,
- * webhook delivery F3-07) se registraran aqui como tareas.
+ * Proceso worker: readiness, heartbeat y apagado limpio (F1-01).
+ * Las tareas corren con roles dedicados de privilegio minimo; la primera es
+ * el outbox relay (F2-11, rol fluvia_relay — ver main.ts). Siguientes:
+ * inbox F2-12, webhook delivery F3-07.
  */
 export class WorkerProcess {
   private timer: NodeJS.Timeout | undefined;

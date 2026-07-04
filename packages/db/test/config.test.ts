@@ -24,10 +24,10 @@ describe('dbUrlsFromEnv', () => {
         FLUVIA_ENV: 'staging',
         ADMIN_DATABASE_URL: 'postgres://a',
         APP_DATABASE_URL: 'postgres://b',
-        // WORKER_DATABASE_URL ausente
+        // WORKER_DATABASE_URL y RELAY_DATABASE_URL ausentes
         AUTH_DATABASE_URL: 'postgres://d',
       } as NodeJS.ProcessEnv)
-    ).toThrow(/WORKER_DATABASE_URL/);
+    ).toThrow(/WORKER_DATABASE_URL.*RELAY_DATABASE_URL|RELAY_DATABASE_URL.*WORKER_DATABASE_URL/);
   });
 
   it('accepts non-local environments when every URL is explicit', () => {
@@ -36,9 +36,11 @@ describe('dbUrlsFromEnv', () => {
       ADMIN_DATABASE_URL: 'postgres://a',
       APP_DATABASE_URL: 'postgres://b',
       WORKER_DATABASE_URL: 'postgres://c',
+      RELAY_DATABASE_URL: 'postgres://r',
       AUTH_DATABASE_URL: 'postgres://d',
     } as NodeJS.ProcessEnv);
     expect(urls.worker).toBe('postgres://c');
+    expect(urls.relay).toBe('postgres://r');
   });
 
   it('FLUVIA_ENV takes precedence over NODE_ENV', () => {

@@ -111,15 +111,31 @@ describe('postTransaction — camino feliz', () => {
     expect(BigInt(mBal.available)).toBeGreaterThanOrEqual(9_700n);
     expect(BigInt(fBal.available)).toBeGreaterThanOrEqual(300n);
 
-    // Outbox en la misma transaccion.
-    const outbox = await ctx.admin.query(
+    // Outbox en la misma transaccion, con el envelope comun (AUD-P2-005).
+    const outbox = await ctx.admin.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM outbox_events
        WHERE tenant_id = $1 AND topic = 'ledger.transaction.posted'
-         AND payload->>'transaction_id' = $2`,
+         AND payload->'data'->>'transaction_id' = $2`,
       [org, result.transactionId]
     );
     expect(outbox.rowCount).toBe(1);
-    expect(outbox.rows[0]!.payload.entries).toHaveLength(3);
+    const envelope = outbox.rows[0]!.payload as {
+      event_id: string;
+      schema_version: number;
+      occurred_at: string;
+      producer: string;
+      resource: { type: string; id: string };
+      data: { entries: unknown[] };
+    };
+    expect(envelope.event_id).toMatch(/^evt_/);
+    expect(envelope.schema_version).toBe(1);
+    expect(envelope.producer).toBe('fluvia.ledger');
+    expect(envelope.resource).toEqual({
+      type: 'ledger_transaction',
+      id: result.transactionId,
+    });
+    expect(envelope.occurred_at).toBe(result.createdAt);
+    expect(envelope.data.entries).toHaveLength(3);
   });
 
   it('pending bucket entries update the pending projection column', async () => {
@@ -246,7 +262,7 @@ describe('idempotencia del asiento', () => {
 
     const outbox = await ctx.admin.query(
       `SELECT count(*)::int AS n FROM outbox_events
-       WHERE payload->>'transaction_id' = $1`,
+       WHERE payload->'data'->>'transaction_id' = $1`,
       [first.transactionId]
     );
     expect(outbox.rows[0]!.n).toBe(1);

@@ -149,7 +149,7 @@ describe('fuga de contexto y escalada de rol', () => {
     }
   });
 
-  it('the worker role (BYPASSRLS) still has NO DELETE anywhere', async () => {
+  it('the worker role still has NO DELETE anywhere', async () => {
     await expect(ctx.worker.query('DELETE FROM outbox_events')).rejects.toThrow(
       /permission denied/i
     );
@@ -196,19 +196,66 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
   it('no runtime role holds DELETE on ANY table (defensa por grants)', async () => {
     const res = await ctx.admin.query(`
       SELECT grantee, table_name FROM information_schema.role_table_grants
-      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_auth')
+      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_auth')
         AND privilege_type = 'DELETE'
     `);
     expect(res.rows).toEqual([]);
   });
 
-  it('the app and worker roles hold NO privileges on credential tables', async () => {
+  it('the app, worker and relay roles hold NO privileges on credential tables', async () => {
     const res = await ctx.admin.query(`
       SELECT grantee, table_name, privilege_type
       FROM information_schema.role_table_grants
-      WHERE grantee IN ('fluvia_app', 'fluvia_worker')
+      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay')
         AND table_name IN ('sessions', 'email_verification_tokens')
     `);
     expect(res.rows).toEqual([]);
+  });
+
+  it('AUD-P1-007: NO runtime role has BYPASSRLS (cross-tenant reads are explicit policies)', async () => {
+    const res = await ctx.admin.query<{ rolname: string; rolbypassrls: boolean }>(`
+      SELECT rolname, rolbypassrls FROM pg_roles
+      WHERE rolname IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_auth')
+    `);
+    expect(res.rowCount).toBe(4);
+    for (const row of res.rows) {
+      expect(row.rolbypassrls, `${row.rolname} tiene BYPASSRLS`).toBe(false);
+    }
+  });
+
+  it('ADR-0011: fluvia_worker is a process shell — ZERO table privileges', async () => {
+    const res = await ctx.admin.query(`
+      SELECT table_name, privilege_type FROM information_schema.role_table_grants
+      WHERE grantee = 'fluvia_worker'
+    `);
+    expect(res.rows).toEqual([]);
+  });
+
+  it('ADR-0011: fluvia_relay holds ONLY outbox_events SELECT + column-scoped UPDATE', async () => {
+    const tables = await ctx.admin.query<{ table_name: string; privilege_type: string }>(`
+      SELECT DISTINCT table_name, privilege_type
+      FROM information_schema.role_table_grants
+      WHERE grantee = 'fluvia_relay'
+    `);
+    for (const row of tables.rows) {
+      expect(row.table_name, `privilegio inesperado en ${row.table_name}`).toBe('outbox_events');
+      expect(['SELECT', 'UPDATE']).toContain(row.privilege_type);
+    }
+
+    // El UPDATE es por columna: exactamente los campos de despacho.
+    const cols = await ctx.admin.query<{ column_name: string }>(`
+      SELECT column_name FROM information_schema.column_privileges
+      WHERE grantee = 'fluvia_relay' AND table_name = 'outbox_events'
+        AND privilege_type = 'UPDATE'
+      ORDER BY column_name
+    `);
+    expect(cols.rows.map((r) => r.column_name)).toEqual([
+      'attempts',
+      'delivered_at',
+      'last_error',
+      'locked_by',
+      'next_attempt_at',
+      'status',
+    ]);
   });
 });

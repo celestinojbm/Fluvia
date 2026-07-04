@@ -54,7 +54,7 @@ postTransaction(tenant, idempotencyKey, reason, entries[], source):
  6. INSERT ledger_entries (todas las líneas).
  7. UPDATE balance_projections por cuenta con version = version + 1
     y guarda optimista (WHERE version = expected); fallo → retry limitado de toda la tx.
- 8. INSERT outbox_events ('ledger.transaction.posted') en la MISMA transacción.
+ 8. INSERT outbox_events ('ledger.transaction.posted', envelope común de @fluvia/events) en la MISMA transacción.
  9. COMMIT. El constraint diferido verifica balanceo en este punto.
 ```
 

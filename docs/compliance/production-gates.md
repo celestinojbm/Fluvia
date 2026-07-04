@@ -24,7 +24,8 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] Autorización de aplicación (RBAC) activa con matriz verificada celda a celda (F1-04c)
 - [x] Tests de bypass administrativo: `withPlatformOperation` exige razón, audita en la misma transacción (riesgo alto) y hace rollback conjunto (F1-06)
 - [x] Suite ampliada de tenant escape en CI, incluidos **meta-tests estructurales** que verifican en `pg_catalog` que TODA tabla (presente o futura) con `tenant_id` tiene RLS forzado + política, que ningún rol de runtime tiene DELETE y que app/worker no tienen privilegio alguno sobre credenciales (F1-06)
-- [x] Reducción de privilegios del worker iniciada: sin privilegio alguno sobre ledger, proyecciones ni api_keys (migración 0008); rol relay definitivo de privilegio mínimo con ADR-0011 en F2-11 (AUD-P1-007)
+- [x] **AUD-P1-007 CERRADO (F2-11, ADR-0011)**: NINGÚN rol de runtime tiene BYPASSRLS (meta-test permanente en `tenant-escape.test.ts`); `fluvia_worker` = cascarón sin privilegios; `fluvia_relay` solo ve `outbox_events` (políticas RLS explícitas + UPDATE por columna)
+- [x] Relay del outbox sin doble entrega con 2 workers concurrentes (SKIP LOCKED + lease, probado en `packages/outbox/test/relay.test.ts`); dead + replay exclusivamente vía operación de plataforma auditada
 - Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §7); mitigación = consultas 100% parametrizadas + revisión Fase 6.
 
 ### Gate Idempotencia — 🔴 (diseñado; schema corregido)

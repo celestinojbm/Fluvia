@@ -25,6 +25,7 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 | 17 | **Auditoría Independiente v1 integrada** (2026-07-04): informe inmutable en `docs/audits/independent-audit-v1/`; reconciliación evidencia-por-hallazgo en `audit-integration-plan-v1.md`; lote AUD-1 ejecutado; veredicto adoptado (continuar; congelar pagos públicos/live hasta cerrar bloqueantes) | Gobernanza | `docs/audits/` |
 | 18 | **Reservas = cuentas del Chart, no bucket de proyección** (AUD-P2-013): `merchant.reserve`/`dispute.reserve`/`refund.liability` como cuentas; buckets solo `available`/`pending`. Cambiarlo exigirá ADR | B | `ledger-design.md` §2 |
 | 19 | **Credenciales `live` bloqueadas por código** (AUD-P2-003): `LiveKeysDisabledError` hasta pasar production gates + decisión humana (PEND-004). Opción más restrictiva y reversible | A/B | `api-keys.ts` |
+| 20 | **Rol dedicado del relay sin BYPASSRLS** (cierra AUD-P1-007): `fluvia_relay` con políticas RLS explícitas y UPDATE por columna solo en `outbox_events`; `fluvia_worker` reducido a cascarón; NINGÚN rol de runtime con BYPASSRLS (meta-test) | B | 0011 |
 
 ## Decisiones PENDIENTES que requieren humano
 

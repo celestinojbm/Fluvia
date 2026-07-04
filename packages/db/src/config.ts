@@ -5,13 +5,17 @@
  *
  *  - admin  -> superusuario: SOLO migraciones y seeding administrativo.
  *  - app    -> fluvia_app: rol de la API, RLS forzado.
- *  - worker -> fluvia_worker: rol del relay del outbox (privilegios minimos).
+ *  - worker -> fluvia_worker: cascaron del proceso worker (solo SELECT 1;
+ *              sin privilegios de tabla desde 0009, ADR-0011).
+ *  - relay  -> fluvia_relay: rol del outbox relay, privilegio minimo
+ *              (SELECT + UPDATE por columna SOLO en outbox_events).
  *  - auth   -> fluvia_auth: unico rol con acceso a credenciales/sesiones.
  */
 export interface DbUrls {
   admin: string;
   app: string;
   worker: string;
+  relay: string;
   auth: string;
 }
 
@@ -50,6 +54,11 @@ export function dbUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): DbUrls {
       'WORKER_DATABASE_URL',
       env.WORKER_DATABASE_URL,
       'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia'
+    ),
+    relay: pick(
+      'RELAY_DATABASE_URL',
+      env.RELAY_DATABASE_URL,
+      'postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia'
     ),
     auth: pick(
       'AUTH_DATABASE_URL',

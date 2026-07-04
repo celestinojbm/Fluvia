@@ -1,29 +1,29 @@
 {
-  "name": "@fluvia/worker",
+  "name": "@fluvia/outbox",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/worker.ts",
-      "default": "./src/worker.ts"
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
     }
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run",
-    "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@fluvia/config": "workspace:*",
+    "@fluvia/audit": "workspace:*",
     "@fluvia/db": "workspace:*",
-    "@fluvia/outbox": "workspace:*",
-    "pino": "^9.5.0"
+    "@fluvia/events": "workspace:*",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@fluvia/ledger": "workspace:*",
+    "@fluvia/money": "workspace:*",
     "@types/node": "^22.10.0",
-    "tsx": "^4.19.0",
+    "@types/pg": "^8.11.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

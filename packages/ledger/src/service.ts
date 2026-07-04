@@ -1,4 +1,5 @@
 import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
+import { EVENT_TOPICS, buildEnvelope } from '@fluvia/events';
 import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,
@@ -224,17 +225,24 @@ export class LedgerService {
 
       await this.applyProjectionDeltas(c, input, accounts, accountIds);
 
-      await c.query(`INSERT INTO outbox_events (tenant_id, topic, payload) VALUES ($1, $2, $3)`, [
-        input.tenantId,
-        'ledger.transaction.posted',
-        JSON.stringify({
-          schema_version: 1,
+      // AUD-P2-005: todo evento sale con el envelope comun; el relay lo
+      // valida y trata cualquier payload no conforme como veneno.
+      const envelope = buildEnvelope({
+        producer: 'fluvia.ledger',
+        resource: { type: 'ledger_transaction', id: txId },
+        occurredAt: createdAt,
+        data: {
           transaction_id: txId,
           reason: input.reason,
           source: input.source,
           reverses_tx_id: input.reversesTxId ?? null,
           entries: postedEntries,
-        }),
+        },
+      });
+      await c.query(`INSERT INTO outbox_events (tenant_id, topic, payload) VALUES ($1, $2, $3)`, [
+        input.tenantId,
+        EVENT_TOPICS.ledgerTransactionPosted,
+        JSON.stringify(envelope),
       ]);
 
       return { transactionId: txId, replayed: false, createdAt, entries: postedEntries };

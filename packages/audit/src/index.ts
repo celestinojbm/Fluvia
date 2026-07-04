@@ -135,6 +135,11 @@ export interface PlatformOperationOptions {
   /** OBLIGATORIA: sin razon no hay bypass. */
   reason: string;
   requestId?: string;
+  /** Recurso afectado (p.ej. 'outbox_event'), para trazabilidad fina. */
+  resourceType?: string;
+  resourceId?: string;
+  /** Detalle estructurado del efecto (se redacta y persiste como after). */
+  details?: unknown;
 }
 
 /**
@@ -158,6 +163,8 @@ export async function withPlatformOperation<T>(
   try {
     await client.query('BEGIN');
     const result = await fn(client);
+    // options.details se lee DESPUES de fn: un caller puede pasar un objeto
+    // mutable y rellenarlo dentro de fn con el efecto real (p.ej. ids tocados).
     await insertAuditEvent(client, {
       action: 'platform.operation',
       tenantId: options.tenantId ?? null,
@@ -167,8 +174,11 @@ export async function withPlatformOperation<T>(
         authMethod: 'platform',
         requestId: options.requestId,
       },
+      resourceType: options.resourceType,
+      resourceId: options.resourceId,
       riskLevel: 'high',
       reason: options.reason.trim(),
+      after: options.details,
     });
     await client.query('COMMIT');
     return result;
