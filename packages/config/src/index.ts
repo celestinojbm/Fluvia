@@ -20,6 +20,7 @@ const EnvSchema = z.object({
   ADMIN_DATABASE_URL: z.string().min(1).optional(),
   APP_DATABASE_URL: z.string().min(1).optional(),
   WORKER_DATABASE_URL: z.string().min(1).optional(),
+  AUTH_DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).optional(),
 });
 
@@ -28,6 +29,7 @@ const LOCAL_DEFAULTS = {
   admin: 'postgres://postgres:postgres@127.0.0.1:5432/fluvia',
   app: 'postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia',
   worker: 'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia',
+  auth: 'postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia',
   redis: 'redis://127.0.0.1:6379',
 } as const;
 
@@ -39,6 +41,7 @@ export interface AppConfig {
     admin: string;
     app: string;
     worker: string;
+    auth: string;
   };
   redisUrl: string;
 }
@@ -77,6 +80,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       admin: required('ADMIN_DATABASE_URL', e.ADMIN_DATABASE_URL, LOCAL_DEFAULTS.admin),
       app: required('APP_DATABASE_URL', e.APP_DATABASE_URL, LOCAL_DEFAULTS.app),
       worker: required('WORKER_DATABASE_URL', e.WORKER_DATABASE_URL, LOCAL_DEFAULTS.worker),
+      auth: required('AUTH_DATABASE_URL', e.AUTH_DATABASE_URL, LOCAL_DEFAULTS.auth),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
   };

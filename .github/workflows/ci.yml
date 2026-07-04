@@ -16,6 +16,7 @@ jobs:
       ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/fluvia
       APP_DATABASE_URL: postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia
       WORKER_DATABASE_URL: postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia
+      AUTH_DATABASE_URL: postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia
     services:
       postgres:
         image: postgres:16

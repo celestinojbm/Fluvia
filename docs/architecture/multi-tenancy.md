@@ -36,8 +36,9 @@ COMMIT;
 | Rol | RLS | Uso |
 |-----|-----|-----|
 | dueño/migraciones | bypass implícito (superuser en local; rol owner en cloud) | migraciones y seeding administrativo |
-| `fluvia_app` | **forzado** | API; sin DELETE concedido |
+| `fluvia_app` | **forzado** | API de negocio; sin DELETE; **sin acceso a sessions/tokens/credenciales** |
 | `fluvia_worker` | `BYPASSRLS` | relay de outbox/entrega de webhooks (procesa todos los tenants); sin DELETE |
+| `fluvia_auth` | política `USING(true)` acotada al rol, solo sobre `users`/`sessions`/`email_verification_tokens` | módulo de autenticación del API (la autenticación es pre-tenant por naturaleza: el aislamiento aquí es por rol, no por fila); sin DELETE |
 
 Bypass controlado: el panel admin NO usa `BYPASSRLS`; opera con un contexto explícito de tenant + permiso auditado, o mediante funciones `SECURITY DEFINER` acotadas (patrón ya validado con `authenticate_api_key`).
 

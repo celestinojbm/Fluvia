@@ -8,6 +8,7 @@
 - **País inicial: Colombia** (decisión #15, ex PEND-001). Implicaciones MVP: COP como moneda principal de sandbox; el MockProvider incluirá un método asíncrono tipo PSE; candidatos de proveedor para Fase 5: Wompi/PayU/dLocal/Mercado Pago. La matriz de jurisdicción queda por verificar con fuentes y revisión legal (bloquea solo Fase 5).
 - **F1-01 y F1-02 completados** (apps + config + CI; primer run de CI verde en GitHub Actions).
 - **F1-03 completado (2026-07-04)**: modelo de identidad/tenancy real — migración `0003_identity_tenancy.sql` (`tenants`→`organizations`, `users` global con política RLS por membresía compartida, `memberships` RBAC, `merchants` con defaults Colombia) + paquete `@fluvia/identity` (plano plataforma y plano tenant) con 15 tests de integración: aislamiento cross-tenant de merchants/orgs/users, rollback atómico de alta de organización, unicidad case-insensitive de email, escritura de `users` denegada al rol app, inmutabilidad de las tablas nuevas y `authenticate_api_key` verificada tras el rename. Suite total: 61/61.
+- **F1-04a completado (2026-07-04)**: primera sub-entrega de auth — migración `0004_auth_sessions.sql` (sessions con hash SHA-256, tokens de verificación de un solo uso, lockout en users, rol dedicado `fluvia_auth` con acceso exclusivo al plano de credenciales y REVOKE a app/worker) + `@fluvia/auth` (scrypt versionado, login uniforme anti-enumeración con igualación de timing, lockout configurable, sesiones revocables, `auth_list_memberships`) + endpoints `/v1/auth/*` con mapeo estable de errores y ZodError→400. Bug real detectado y corregido por los tests: el contador de lockout se perdía en el ROLLBACK del propio error — ahora se commitea antes de lanzar. Suite total: **92/92** + smoke test HTTP del flujo completo (register→verify→login→session→bad-login→logout). Pendiente F1-04b (MFA TOTP + step-up) y F1-04c (API keys con scopes + RBAC por endpoint).
 
 ## Resumen ejecutivo
 
@@ -41,7 +42,8 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 | `apps/worker` esqueleto (readiness, heartbeat, shutdown) | **Completado** (F1-01) — sin consumidores aún |
 | CI (`.github/workflows/ci.yml`) | **Completado** (F1-02) — pendiente de verse verde en GitHub Actions en el primer push |
 | `packages/identity` + migración 0003 (organizations/users/memberships/merchants) | **Completado** (F1-03) |
-| Auth (login/MFA/API keys con scopes), audit log, ledger service, outbox worker, API de pagos… | No construido (F1-04+) |
+| `packages/auth` + migración 0004 + endpoints `/v1/auth/*` | **Completado F1-04a** (registro, verificación, login, lockout, sesiones) |
+| MFA/step-up (F1-04b), API keys scopes+RBAC (F1-04c), audit log, ledger service, outbox worker, API de pagos… | No construido |
 
 ## Bloqueadores
 
@@ -51,4 +53,4 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 
 ## Próximo incremento propuesto
 
-**F1-04** — Auth completo: registro sancionado (plano plataforma), verificación de email, login con MFA TOTP, sesiones revocables, RBAC aplicado por endpoint y API keys con scopes. Es talla XL: se partirá en sub-entregas (a. password+sesiones, b. MFA+step-up, c. API keys con scopes+RBAC). En paralelo puede avanzar F1-06 (suite ampliada de tenant-escape) que solo depende de F1-03.
+**F1-04b** — MFA TOTP + step-up authentication (enrolamiento, verificación en login, re-auth para acciones sensibles). Alternativas paralelas: **F1-04c** (API keys con scopes + RBAC por endpoint, prerequisito del API de pagos) o **F1-06** (suite ampliada de tenant-escape).

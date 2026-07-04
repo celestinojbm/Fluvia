@@ -1,13 +1,31 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import { ZodError } from 'zod';
 import type { AppConfig } from '@fluvia/config';
 import type { Pool } from '@fluvia/db';
+import type { AuthService } from '@fluvia/auth';
+import { registerAuthRoutes } from './routes/auth.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
   /** Pool con rol fluvia_app (RLS forzado). */
   appPool: Pool;
+  /** Servicio de autenticacion (pool fluvia_auth). Opcional en tests de plataforma. */
+  authService?: AuthService;
 }
+
+/**
+ * Mapa de errores de dominio -> HTTP. Baseline previa a la taxonomia completa
+ * (F1-08). La clave es el nombre de la clase de error de dominio.
+ */
+const DOMAIN_ERROR_HTTP: Record<string, { status: number; code: string }> = {
+  EmailTakenError: { status: 409, code: 'email_taken' },
+  InvalidCredentialsError: { status: 401, code: 'invalid_credentials' },
+  EmailNotVerifiedError: { status: 403, code: 'email_not_verified' },
+  AccountLockedError: { status: 423, code: 'account_locked' },
+  InvalidSessionError: { status: 401, code: 'invalid_session' },
+  InvalidVerificationTokenError: { status: 400, code: 'invalid_verification_token' },
+};
 
 /**
  * Construye la instancia Fastify del API (F1-01).
@@ -16,7 +34,7 @@ export interface BuildAppOptions {
  * en logs y el sobre de error estable minimo. Los recursos de negocio llegan
  * con sus dominios (F3+); la taxonomia completa de errores es F1-08.
  */
-export function buildApp({ config, appPool }: BuildAppOptions): FastifyInstance {
+export function buildApp({ config, appPool, authService }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
@@ -54,6 +72,13 @@ export function buildApp({ config, appPool }: BuildAppOptions): FastifyInstance 
     }
   });
 
+  if (authService) {
+    registerAuthRoutes(app, {
+      authService,
+      exposeVerificationToken: config.env === 'local' || config.env === 'test',
+    });
+  }
+
   app.setNotFoundHandler((req, reply) => {
     reply.code(404).send({
       error: { code: 'not_found', message: 'Resource not found', request_id: req.id },
@@ -61,6 +86,25 @@ export function buildApp({ config, appPool }: BuildAppOptions): FastifyInstance 
   });
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
+    if (err instanceof ZodError) {
+      return reply.code(400).send({
+        error: {
+          code: 'validation_error',
+          message: 'Invalid request payload',
+          details: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+          request_id: req.id,
+        },
+      });
+    }
+
+    const mapped = DOMAIN_ERROR_HTTP[err.name];
+    if (mapped) {
+      req.log.info({ errName: err.name }, 'domain error');
+      return reply.code(mapped.status).send({
+        error: { code: mapped.code, message: err.message, request_id: req.id },
+      });
+    }
+
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     req.log.error({ err }, 'request failed');
     // Los errores 5xx jamas filtran detalle interno al cliente.

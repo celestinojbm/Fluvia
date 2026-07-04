@@ -30,6 +30,15 @@ describe('loadConfig', () => {
         APP_DATABASE_URL: 'postgres://y',
         WORKER_DATABASE_URL: 'postgres://z',
       })
+    ).toThrow(/AUTH_DATABASE_URL/);
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        AUTH_DATABASE_URL: 'postgres://a',
+      })
     ).toThrow(/REDIS_URL/);
   });
 
@@ -39,6 +48,7 @@ describe('loadConfig', () => {
       ADMIN_DATABASE_URL: 'postgres://a',
       APP_DATABASE_URL: 'postgres://b',
       WORKER_DATABASE_URL: 'postgres://c',
+      AUTH_DATABASE_URL: 'postgres://d',
       REDIS_URL: 'redis://r',
     });
     expect(cfg.env).toBe('production');

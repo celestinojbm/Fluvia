@@ -11,6 +11,7 @@ export interface DbUrls {
   admin: string;
   app: string;
   worker: string;
+  auth: string;
 }
 
 export function dbUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): DbUrls {
@@ -21,5 +22,8 @@ export function dbUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): DbUrls {
     worker:
       env.WORKER_DATABASE_URL ??
       'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia',
+    auth:
+      env.AUTH_DATABASE_URL ??
+      'postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia',
   };
 }

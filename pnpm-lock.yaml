@@ -26,6 +26,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fluvia/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@fluvia/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -70,6 +73,31 @@ importers:
       tsx:
         specifier: ^4.19.0
         version: 4.23.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
+
+  packages/auth:
+    dependencies:
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      pg:
+        specifier: ^8.13.0
+        version: 8.22.0
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      '@types/pg':
+        specifier: ^8.11.0
+        version: 8.20.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
