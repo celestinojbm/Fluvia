@@ -69,6 +69,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - **F2-07/F2-08 (Gate Ledger 🟢 técnico): run #22 VERDE** — commit `616138b`, `https://github.com/celestinojbm/Fluvia/actions/runs/28720890852` (migrate ×2 incl. 0012, 233 tests incl. reversiones bajo carrera y suite formal de concurrencia).
 - **F1-08 (cierra AUD-P2-009): run #24 VERDE** — commit `4303a93`, `https://github.com/celestinojbm/Fluvia/actions/runs/28721370832` (241 tests incl. contrato golden del catálogo de errores y tests de no-fuga de mensajes internos).
 - **F2-09/F2-10 (cierra AUD-P1-003; Gate Idempotencia 🟢; Fase 2 completa): run #26 VERDE** — commit `29695d9`, `https://github.com/celestinojbm/Fluvia/actions/runs/28721992797` (migrate ×2 incl. 0013, 255 tests incl. crash-recovery y carrera N→1 de la capa de idempotencia).
+- **F1-04b (cierra AUD-P1-006; criterio de re-auditoría 5/5): run #29 VERDE** — commits `d8d1090` + `b65cb68`, `https://github.com/celestinojbm/Fluvia/actions/runs/28723083681` (migrate ×2 incl. 0014, 278 tests incl. vectores RFC 6238, anti-replay por step, lockout compartido, step-up HTTP y rate limiting 429). Nota de proceso: el run #28 (`d8d1090`) tuvo el job de calidad VERDE (lint, types, migrate ×2, 278 tests, invariantes) pero gitleaks marcó como falso positivo la clave de desarrollo local documentada (patrón `00112233…`, régimen R-12); anotada puntualmente con `gitleaks:allow` — el escáner no se silenció globalmente.
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
