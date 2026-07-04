@@ -25,6 +25,8 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().min(1).optional(),
   RELAY_ENABLED: z.enum(['true', 'false']).default('true'),
   RELAY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
+  DRIFT_CHECK_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -50,6 +52,10 @@ export interface AppConfig {
   };
   redisUrl: string;
   relay: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  driftCheck: {
     enabled: boolean;
     intervalMs: number;
   };
@@ -96,6 +102,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     relay: {
       enabled: e.RELAY_ENABLED === 'true',
       intervalMs: e.RELAY_INTERVAL_MS,
+    },
+    driftCheck: {
+      enabled: e.DRIFT_CHECK_ENABLED === 'true',
+      intervalMs: e.DRIFT_CHECK_INTERVAL_MS,
     },
   };
 }

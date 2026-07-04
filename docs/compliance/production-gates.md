@@ -13,8 +13,8 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Coherencia cuenta-tenant-moneda a nivel de MOTOR**: FK compuesta `(account_id, tenant_id, currency)` — ni el superusuario puede enlazar un asiento a una cuenta de otro tenant u otra moneda (migración 0008, AUD-P1-001 — `ledger-invariants.test.ts`)
 - [x] **Guarda de saldo no-negativo race-safe** en operaciones que lo exigen (release/refund): `nonNegativeAccounts` bajo locks de cuenta, rollback total (AUD-P1-010 — golden tests en `posting.test.ts`)
 - [x] **Replay idempotente con huella causal completa**: reason/source/reverses divergentes ⇒ conflicto, jamás replay silencioso (AUD-P2-001 — `ledger-service.test.ts`)
-- [ ] Scripts externos al ORM verifican invariantes (F2-06)
-- [ ] Rebuild de proyección == ledger (F2-05)
+- [x] **Scripts externos al ORM verifican invariantes** (F2-06): `scripts/verify-ledger-invariants.sql` autocontenido, en CI tras la suite y ejecutable por cron/post-restore; detecta corrupción sembrada (probado en `drift.test.ts`)
+- [x] **Rebuild de proyección == ledger** (F2-05): `rebuildProjection` bajo lock de cuenta, property test con transferencias y rebuilds concurrentes; drift check programado (`ledger_projection_drift()` + watcher en worker)
 - [ ] Compensaciones vía servicio (F2-07; el modelo ya lo soporta)
 - [ ] Concurrencia sin duplicados ni drift (F2-08)
 

@@ -20,6 +20,7 @@ import {
   type PostTransactionInput,
   type PostedEntry,
   type PostedTransaction,
+  type ProjectionRebuild,
   type ProjectionVerification,
 } from './types.js';
 
@@ -421,6 +422,66 @@ export class LedgerService {
         matches: p.available === r.available && p.pending === r.pending,
         projected: { available: p.available, pending: p.pending },
         recomputed: { available: r.available, pending: r.pending },
+      };
+    });
+  }
+
+  /**
+   * F2-05: reconstruye la proyeccion desde ledger_entries, race-safe.
+   * Toma el MISMO lock de cuenta que el posting: mientras el rebuild corre,
+   * ningun asiento puede tocar esta proyeccion (y viceversa) — el recomputo
+   * y la escritura ven un estado consistente. La version avanza para que
+   * cualquier posting en vuelo con version leida vieja falle y reintente.
+   */
+  async rebuildProjection(tenantId: string, accountId: string): Promise<ProjectionRebuild> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const locked = await c.query(
+        `SELECT id FROM ledger_accounts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [accountId]
+      );
+      if ((locked.rowCount ?? 0) === 0) throw new AccountNotFoundError([accountId]);
+
+      const recomputed = await c.query<{ available: string; pending: string }>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN e.bucket = 'available'
+             THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
+             ELSE 0 END), 0)::text AS available,
+           COALESCE(SUM(CASE WHEN e.bucket = 'pending'
+             THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
+             ELSE 0 END), 0)::text AS pending
+         FROM ledger_entries e
+         JOIN ledger_accounts a ON a.id = e.account_id
+         WHERE e.account_id = $1`,
+        [accountId]
+      );
+      const r = recomputed.rows[0]!;
+
+      // La fila puede faltar (cuenta creada fuera del servicio): eso tambien
+      // es drift y se repara creandola.
+      await c.query(
+        `INSERT INTO balance_projections (account_id, tenant_id)
+         VALUES ($1, $2) ON CONFLICT (account_id) DO NOTHING`,
+        [accountId, tenantId]
+      );
+      const before = await c.query<{ available: string; pending: string }>(
+        `SELECT available::text, pending::text FROM balance_projections WHERE account_id = $1 FOR UPDATE`,
+        [accountId]
+      );
+      const b = before.rows[0]!;
+      const drifted = b.available !== r.available || b.pending !== r.pending;
+
+      await c.query(
+        `UPDATE balance_projections
+         SET available = $2, pending = $3, version = version + 1, updated_at = now()
+         WHERE account_id = $1`,
+        [accountId, r.available, r.pending]
+      );
+
+      return {
+        accountId,
+        drifted,
+        before: { available: b.available, pending: b.pending },
+        after: { available: r.available, pending: r.pending },
       };
     });
   }

@@ -30,7 +30,7 @@ Para **cada** `ledger_transaction`: `Σ débitos = Σ créditos` **por moneda/ac
 
 1. Servicio (`LedgerService.postTransaction`): valida antes de tocar la base; lanza `UnbalancedLedgerError`.
 2. Base de datos: `CONSTRAINT TRIGGER` diferido (`INITIALLY DEFERRED`) que al commit verifica el balanceo por (tx, currency). Nada que el ORM u otro cliente haga puede publicar una transacción desbalanceada.
-3. Auditoría externa: `scripts/verify-ledger-invariants.sql` (fuera del ORM, exigido por Gate Ledger §51) recalcula balanceo y compara proyecciones, ejecutable por cron y CI.
+3. Auditoría externa: `scripts/verify-ledger-invariants.sql` **(implementado, F2-06; corre en CI tras la suite)** — autocontenido, recalcula balanceo por (tx, moneda), montos positivos, coherencia cuenta-tenant-moneda, cabeceras huérfanas, reversiones cross-tenant y drift de proyecciones; detecta corrupción sembrada (probado).
 
 Prohibido compensar entre monedas: un descuadre en USD jamás se "arregla" con un asiento en COP (invariante Nivel A).
 
@@ -64,7 +64,9 @@ Sin llamadas de red dentro de la transacción (invariante Nivel A). Transacción
 
 - `balance_projections` guarda `available` y `pending` por cuenta con `version` monotónica (las reservas son cuentas, ver §2).
 - Guarda de saldo no-negativo (AUD-P1-010): `postTransaction` acepta `nonNegativeAccounts`; la verificación ocurre dentro de la transacción, bajo los locks de cuenta, y una violación revierte todo el asiento (`InsufficientBalanceError`). Las reglas de posting la aplican a la cuenta debitada de cada operación two-legged (no se libera ni refunda más de lo que hay).
-- Reconstruibles desde `ledger_entries` en cualquier momento (`rebuildProjection(accountId)`); el rebuild debe coincidir exactamente con la proyección viva (test de Gate Ledger + verificación programada de drift con alerta).
+- Reconstruibles desde `ledger_entries` en cualquier momento: `rebuildProjection(tenantId, accountId)` **(implementado, F2-05)** — corre bajo el MISMO lock de cuenta que el posting (race-safe), avanza `version` (cualquier posting en vuelo reintenta) y reporta `drifted` con before/after; la reparación es siempre explícita, jamás automática (V4 §30).
+- **Detección programada de drift (F2-05)**: función `ledger_projection_drift()` (SECURITY DEFINER, ventana de solo lectura otorgada únicamente a `fluvia_worker`) + `ProjectionDriftWatcher` en el worker (log error como alerta baseline; métricas formales con F1-07). Verificación externa al ORM: `scripts/verify-ledger-invariants.sql` en CI y ejecutable por cron (F2-06).
+- Semántica del check: el drift silencioso es una **fila de proyección viva que miente** sobre el ledger. Una fila AUSENTE no es drift silencioso: `getBalance` falla ruidosamente (`AccountNotFoundError`) y `rebuildProjection` la materializa — probado.
 - Las lecturas de balance usan la proyección; nunca se recalcula el historial completo por request.
 
 ## 7. Multimoneda

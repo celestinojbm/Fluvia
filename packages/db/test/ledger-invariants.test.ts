@@ -282,18 +282,26 @@ describe('modelo F2-01: enlace causal, reversion y proyecciones', () => {
   });
 
   it('balance_projections is tenant-isolated and append-protected', async () => {
+    // Cuenta sonda SIN asientos: la fila de proyeccion (0,0) queda coherente
+    // con el recomputo (F2-06 verifica globalmente proyeccion == entries;
+    // este suite inserta asientos crudos sin proyeccion a proposito y esas
+    // cuentas NO deben tener fila).
+    const probe = await ctx.createLedgerAccount({
+      tenantId: org,
+      name: 'projection-probe',
+      currency: 'USD',
+      normalSide: 'debit',
+    });
     await withTenantTransaction(ctx.app, org, (c) =>
       c.query(
         `INSERT INTO balance_projections (account_id, tenant_id) VALUES ($1, $2)
          ON CONFLICT (account_id) DO NOTHING`,
-        [usdDebit, org]
+        [probe, org]
       )
     );
     const other = await ctx.createTenant('Projections Other Org');
     const visible = await withTenantTransaction(ctx.app, other, async (c) => {
-      const res = await c.query('SELECT 1 FROM balance_projections WHERE account_id = $1', [
-        usdDebit,
-      ]);
+      const res = await c.query('SELECT 1 FROM balance_projections WHERE account_id = $1', [probe]);
       return res.rowCount;
     });
     expect(visible).toBe(0);

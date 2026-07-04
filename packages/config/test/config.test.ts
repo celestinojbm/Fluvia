@@ -76,6 +76,14 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ RELAY_ENABLED: 'yes' })).toThrow(ConfigError);
   });
 
+  it('parses drift-check toggles with safe defaults', () => {
+    const cfg = loadConfig({});
+    expect(cfg.driftCheck).toEqual({ enabled: true, intervalMs: 60_000 });
+    expect(loadConfig({ DRIFT_CHECK_ENABLED: 'false' }).driftCheck.enabled).toBe(false);
+    expect(loadConfig({ DRIFT_CHECK_INTERVAL_MS: '5000' }).driftCheck.intervalMs).toBe(5000);
+    expect(() => loadConfig({ DRIFT_CHECK_INTERVAL_MS: '10' })).toThrow(ConfigError);
+  });
+
   it('treats empty string as missing (no silent empty credentials)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', ADMIN_DATABASE_URL: '' })).toThrow(
       ConfigError

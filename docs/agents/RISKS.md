@@ -4,7 +4,7 @@ Estado: Activo · Se revisa al cierre de cada fase
 
 | ID | Riesgo | Clase | Prob. | Impacto | Mitigación | Dueño/Estado |
 |----|--------|-------|-------|---------|------------|--------------|
-| R-01 | Drift entre proyección de balance y ledger | Financiero | Media | Crítico | Guard optimista + rebuild verificable + drift check con alerta + script de invariantes externo (F2-05/06) | Abierto (diseño listo) |
+| R-01 | Drift entre proyección de balance y ledger | Financiero | Baja | Crítico | Guard optimista + `rebuildProjection` race-safe + drift check programado con alerta + script externo en CI — **todo construido y probado (F2-05/06)**; alerta por métricas formales llega con F1-07 | Mitigado |
 | R-02 | Duplicación de efectos por retry/carrera | Financiero | Media | Crítico | Idempotencia multicapa durable (ADR-0006) + Gate Idempotencia | Abierto (diseño listo) |
 | R-03 | Tenant escape | Seguridad | Baja | Crítico | Defensa en profundidad + RLS forzado + suite de escape en CI | Parcialmente mitigado (spike verde) |
 | R-04 | Pérdida de eventos salientes/entrantes | Operativo | Baja | Alto | Ambos planos durables construidos y probados: outbox+relay (F2-11) e inbox con firma/dedup/DLQ (F2-12); faltan consumidores/productores reales (F3-03/F3-07) | Mitigado (infra); residual en F3 |

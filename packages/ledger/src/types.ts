@@ -85,3 +85,12 @@ export interface ProjectionVerification {
   projected: { available: string; pending: string };
   recomputed: { available: string; pending: string };
 }
+
+/** Resultado de rebuildProjection (F2-05). */
+export interface ProjectionRebuild {
+  accountId: string;
+  /** true si la proyeccion viva NO coincidia con el recomputo (se corrigio). */
+  drifted: boolean;
+  before: { available: string; pending: string };
+  after: { available: string; pending: string };
+}

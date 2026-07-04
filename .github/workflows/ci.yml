@@ -67,6 +67,9 @@ jobs:
       - name: Tests (unit + integración con PostgreSQL real)
         run: pnpm test
 
+      - name: Invariantes del ledger — SQL externo al ORM (F2-06, Gate Ledger)
+        run: psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/verify-ledger-invariants.sql
+
   security:
     name: Secret scanning, dependencias y SBOM
     runs-on: ubuntu-latest

@@ -1,4 +1,5 @@
 export { LedgerService } from './service.js';
+export { ProjectionDriftWatcher, type DriftLogger, type ProjectionDriftRow } from './drift.js';
 export {
   PostingService,
   type PostingContext,
@@ -28,6 +29,7 @@ export {
   type CreateAccountInput,
   type LedgerAccountDto,
   type BalanceDto,
+  type ProjectionRebuild,
   type ProjectionVerification,
 } from './types.js';
 export {
