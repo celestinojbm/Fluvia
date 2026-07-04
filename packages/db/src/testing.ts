@@ -41,9 +41,10 @@ export async function createTestContext(): Promise<TestContext> {
     worker,
 
     async createTenant(name = `tenant-${randomUUID()}`) {
+      // "tenant" = organization (convencion de columna tenant_id, ver 0003).
       const res = await admin.query<{ id: string }>(
-        'INSERT INTO tenants (name) VALUES ($1) RETURNING id',
-        [name]
+        'INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id',
+        [name, `org-${randomUUID()}`]
       );
       return res.rows[0]!.id;
     },

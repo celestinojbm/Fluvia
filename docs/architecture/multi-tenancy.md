@@ -41,6 +41,10 @@ COMMIT;
 
 Bypass controlado: el panel admin NO usa `BYPASSRLS`; opera con un contexto explícito de tenant + permiso auditado, o mediante funciones `SECURITY DEFINER` acotadas (patrón ya validado con `authenticate_api_key`).
 
+**Plano de plataforma vs plano de tenant (desde F1-03):** las operaciones que ocurren antes de que exista contexto de tenant (crear organización + owner) corren en el "plano de plataforma" con el pool administrativo — en cloud ese rol necesita `BYPASSRLS` o políticas propias, porque `FORCE RLS` somete incluso al owner de la tabla (solo el superusuario local lo bypasea siempre). Todo lo demás corre en el plano de tenant con `fluvia_app`.
+
+**Tabla global `users`:** no tiene `tenant_id`. Política `user_visible_via_membership`: el rol app solo VE usuarios con una membresía activa en el tenant en contexto (la subconsulta a `memberships` ejecuta con la RLS del propio rol — sin recursión). Sin política de escritura: `INSERT/UPDATE` sobre `users` está denegado para `fluvia_app` por defecto (verificado por test); el camino de registro sancionado llega en F1-04.
+
 ## 5. Tablas globales y de plataforma
 
 Tablas sin `tenant_id` (catálogos, `schema_migrations`, `platforms`): sin política de tenant, acceso solo lectura para `fluvia_app` cuando corresponda. Toda tabla nueva se clasifica en el PR: tenant-scoped (RLS obligatorio) o global (justificación).

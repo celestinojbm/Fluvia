@@ -55,4 +55,9 @@ Toda `ledger_transaction` referencia su origen de dominio; toda transición de F
 
 ## 4. Estado actual
 
-Implementado en el spike (sujeto a revisión en F1/F2): `tenants` (se renombrará a `organizations` en F1 con la entidad completa), `api_keys`, `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `outbox_events`, `idempotency_keys`, `payment_intents` (mínima), `raw_provider_payloads_dlq`, con RLS + triggers de inmutabilidad verdes contra PG16. El resto se crea por fase según `agents/BACKLOG.md`.
+Implementado y verificado contra PG16:
+
+- **Identidad/tenancy (F1-03)**: `organizations` (ex `tenants`), `users` (global), `memberships` (RBAC), `merchants` (defaults Colombia CO/COP), con RLS, inmutabilidad y servicios en `@fluvia/identity` (plano plataforma: `createOrganizationWithOwner`; plano tenant: `IdentityService`).
+- Del spike (a promover en F2): `api_keys`, `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `outbox_events`, `idempotency_keys`, `payment_intents` (mínima), `raw_provider_payloads_dlq`.
+
+El resto se crea por fase según `agents/BACKLOG.md`.

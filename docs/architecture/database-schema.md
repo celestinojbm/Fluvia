@@ -10,12 +10,13 @@ Migraciones aplicadas y verificadas contra PostgreSQL 16:
 |-----------|-----------|
 | `0001_foundation.sql` | `tenants`, `api_keys`, `ledger_accounts`, `ledger_transactions`, `ledger_entries`, `outbox_events`, `idempotency_keys`, `payment_intents` (mínima), `raw_provider_payloads_dlq`; función `fluvia_forbid_mutation()` + triggers: DELETE/TRUNCATE bloqueados en todas las tablas core, UPDATE bloqueado en `ledger_entries`, `ledger_transactions`, DLQ |
 | `0002_enable_rls.sql` | Roles `fluvia_app` (RLS forzado) y `fluvia_worker` (BYPASSRLS); grants sin DELETE; `ENABLE`+`FORCE ROW LEVEL SECURITY`; política `tenant_isolation` (`USING`/`WITH CHECK` por `app.tenant_id`); `tenants` solo self-read; `authenticate_api_key()` SECURITY DEFINER con `search_path` fijo |
+| `0003_identity_tenancy.sql` | **F1-03**: `tenants`→`organizations` (rename + `slug` único con backfill); `users` (global, unique por `lower(email)`), `memberships` (rol RBAC, unique tenant+user), `merchants` (país/moneda default CO/COP, status active/frozen); triggers de inmutabilidad; RLS: `tenant_isolation` en memberships/merchants y política especial `user_visible_via_membership` en `users` (SELECT solo con membresía activa compartida; sin política de escritura → INSERT/UPDATE denegado al rol app); `authenticate_api_key()` recreada contra `organizations` |
 
 Runner: `packages/db/src/migrate.ts` — orden lexicográfico, una transacción por archivo, registro en `schema_migrations`, `pg_advisory_lock` anti-concurrencia.
 
 ## Cambios ya decididos para Fase 1/2 (no aplicados)
 
-1. `tenants` → modelo completo `organizations` + `merchants` + `users`/`memberships` (F1-03).
+1. ~~`tenants` → modelo completo (F1-03)~~ **Aplicado en `0003_identity_tenancy.sql`.**
 2. Excepción de purga administrada para `idempotency_keys` expiradas (clasificación de datos; F1-09).
 3. `ledger_transactions`: columnas `source_type`, `source_id`, `reverses_tx_id` (F2-01).
 4. `balance_projections` como tabla separada de `ledger_accounts` (F2-03) — el spike cachea en la propia cuenta; la separación aísla el derivado de la definición.

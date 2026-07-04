@@ -6,7 +6,8 @@
 
 - **Fase 0 APROBADA por el propietario (2026-07-04)** — decisión #16. ADRs 0001–0010 aceptados.
 - **País inicial: Colombia** (decisión #15, ex PEND-001). Implicaciones MVP: COP como moneda principal de sandbox; el MockProvider incluirá un método asíncrono tipo PSE; candidatos de proveedor para Fase 5: Wompi/PayU/dLocal/Mercado Pago. La matriz de jurisdicción queda por verificar con fuentes y revisión legal (bloquea solo Fase 5).
-- **F1-01 y F1-02 completados** (este incremento).
+- **F1-01 y F1-02 completados** (apps + config + CI; primer run de CI verde en GitHub Actions).
+- **F1-03 completado (2026-07-04)**: modelo de identidad/tenancy real — migración `0003_identity_tenancy.sql` (`tenants`→`organizations`, `users` global con política RLS por membresía compartida, `memberships` RBAC, `merchants` con defaults Colombia) + paquete `@fluvia/identity` (plano plataforma y plano tenant) con 15 tests de integración: aislamiento cross-tenant de merchants/orgs/users, rollback atómico de alta de organización, unicidad case-insensitive de email, escritura de `users` denegada al rol app, inmutabilidad de las tablas nuevas y `authenticate_api_key` verificada tras el rename. Suite total: 61/61.
 
 ## Resumen ejecutivo
 
@@ -39,7 +40,8 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 | `apps/api` esqueleto (health/ready, correlation, sobre de error) | **Completado** (F1-01) — sin recursos de negocio aún |
 | `apps/worker` esqueleto (readiness, heartbeat, shutdown) | **Completado** (F1-01) — sin consumidores aún |
 | CI (`.github/workflows/ci.yml`) | **Completado** (F1-02) — pendiente de verse verde en GitHub Actions en el primer push |
-| Auth, organizations, RBAC, audit, ledger service, outbox worker, API de pagos… | No construido (F1-03+) |
+| `packages/identity` + migración 0003 (organizations/users/memberships/merchants) | **Completado** (F1-03) |
+| Auth (login/MFA/API keys con scopes), audit log, ledger service, outbox worker, API de pagos… | No construido (F1-04+) |
 
 ## Bloqueadores
 
@@ -49,4 +51,4 @@ Smoke test manual    → servidor arrancado: /health OK, /ready OK (BD real),
 
 ## Próximo incremento propuesto
 
-**F1-03** — Modelo completo de identidad/tenancy: `organizations` + `merchants` + `users` + `memberships` (migración expand-contract desde el `tenants` del spike), con RLS y tests de integración. Después F1-04 (auth completo). Criterios en `BACKLOG.md`.
+**F1-04** — Auth completo: registro sancionado (plano plataforma), verificación de email, login con MFA TOTP, sesiones revocables, RBAC aplicado por endpoint y API keys con scopes. Es talla XL: se partirá en sub-entregas (a. password+sesiones, b. MFA+step-up, c. API keys con scopes+RBAC). En paralelo puede avanzar F1-06 (suite ampliada de tenant-escape) que solo depende de F1-03.

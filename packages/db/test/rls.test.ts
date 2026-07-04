@@ -78,7 +78,7 @@ describe('database-level immutability (Directiva A.4)', () => {
     await expect(ctx.admin.query('DELETE FROM ledger_accounts')).rejects.toThrow(
       /FLUVIA_IMMUTABLE/
     );
-    await expect(ctx.admin.query('DELETE FROM tenants')).rejects.toThrow(/FLUVIA_IMMUTABLE/);
+    await expect(ctx.admin.query('DELETE FROM organizations')).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   });
 
   it('TRUNCATE is forbidden', async () => {
