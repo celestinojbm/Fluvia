@@ -119,7 +119,7 @@ export function otpauthUri(secretBase32: string, accountEmail: string, issuer = 
 
 /** SOLO desarrollo local (regimen R-12); fuera de local la clave viene por entorno. */
 export const DEV_MFA_SECRET_KEY_HEX =
-  '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+  '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'; // gitleaks:allow
 
 export function parseMfaKey(hex: string): Buffer {
   if (!/^[0-9a-f]{64}$/iu.test(hex)) {

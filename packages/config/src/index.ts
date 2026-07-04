@@ -36,7 +36,7 @@ const EnvSchema = z.object({
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
 const LOCAL_DEFAULTS = {
   // Clave SOLO local (regimen R-12): patron obvio, jamas usable fuera de local.
-  mfaSecretKey: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+  mfaSecretKey: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff', // gitleaks:allow
   admin: 'postgres://postgres:postgres@127.0.0.1:5432/fluvia',
   app: 'postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia',
   worker: 'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia',
