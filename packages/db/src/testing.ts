@@ -14,6 +14,7 @@ export interface TestContext {
   app: Pool;
   worker: Pool;
   relay: Pool;
+  inbox: Pool;
   auth: Pool;
   createTenant(name?: string): Promise<string>;
   createApiKey(tenantId: string, label?: string): Promise<string>;
@@ -37,6 +38,7 @@ export async function createTestContext(): Promise<TestContext> {
   const app = createPool({ connectionString: urls.app, max: 12 });
   const worker = createPool({ connectionString: urls.worker, max: 4 });
   const relay = createPool({ connectionString: urls.relay, max: 4 });
+  const inbox = createPool({ connectionString: urls.inbox, max: 4 });
   const auth = createPool({ connectionString: urls.auth, max: 4 });
 
   return {
@@ -44,6 +46,7 @@ export async function createTestContext(): Promise<TestContext> {
     app,
     worker,
     relay,
+    inbox,
     auth,
 
     async createTenant(name = `tenant-${randomUUID()}`) {
@@ -77,7 +80,14 @@ export async function createTestContext(): Promise<TestContext> {
     },
 
     async close() {
-      await Promise.all([admin.end(), app.end(), worker.end(), relay.end(), auth.end()]);
+      await Promise.all([
+        admin.end(),
+        app.end(),
+        worker.end(),
+        relay.end(),
+        inbox.end(),
+        auth.end(),
+      ]);
     },
   };
 }

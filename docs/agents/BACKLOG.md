@@ -34,7 +34,7 @@ Estado: Activo · Fuente única de trabajo · Formato §48: cada ítem lleva ID,
 | F2-09 | Capa de idempotencia API (`idempotency_keys` + contrato de `idempotency.md`) (**AUD-P1-003**; tabla ya corregida por 0008/AUD-P1-009) | F1-08 | Alto | M | Los 5 casos del contrato con tests; carrera N→1 |
 | F2-10 | Pruebas de crash-recovery de idempotencia (kill pre/post COMMIT) | F2-09 | Alto | S | Gate Idempotencia verde |
 | F2-11 | Outbox relay worker (**AUD-P1-004** + **AUD-P1-007** + **AUD-P2-005**) | F1-01 | Alto | M | **Completado 2026-07-04** (migración 0009 + `@fluvia/events` + `@fluvia/outbox` + ADR-0011: claim-lease SKIP LOCKED, 2 workers sin doble entrega probado, backoff+jitter, veneno→dead, replay auditado con razón, rol relay de privilegio mínimo SIN BYPASSRLS, envelope validado en producción y despacho) |
-| F2-12 | Inbox `provider_events` (dedup, raw, verificación, DLQ Zod) (**AUD-P1-005**) | F2-11 | Alto | M | Duplicados → 1 procesamiento; fuera de orden manejado |
+| F2-12 | Inbox `provider_events` (**AUD-P1-005**) | F2-11 | Alto | M | **Completado 2026-07-04** (migración 0010 + `@fluvia/inbox`: firma HMAC pre-persistencia, dedup UNIQUE race-safe probado con N entregas concurrentes, procesador claim-lease con rol `fluvia_inbox` mínimo, veneno→dead+DLQ redactada, `ignored_out_of_order` terminal, replay auditado) |
 
 ## P2 — Fase 3 (Sandbox de pagos)
 

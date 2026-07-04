@@ -9,6 +9,8 @@
  *              sin privilegios de tabla desde 0009, ADR-0011).
  *  - relay  -> fluvia_relay: rol del outbox relay, privilegio minimo
  *              (SELECT + UPDATE por columna SOLO en outbox_events).
+ *  - inbox  -> fluvia_inbox: rol del procesador del inbox, privilegio minimo
+ *              (SELECT + UPDATE por columna en provider_events + INSERT DLQ).
  *  - auth   -> fluvia_auth: unico rol con acceso a credenciales/sesiones.
  */
 export interface DbUrls {
@@ -16,6 +18,7 @@ export interface DbUrls {
   app: string;
   worker: string;
   relay: string;
+  inbox: string;
   auth: string;
 }
 
@@ -59,6 +62,11 @@ export function dbUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): DbUrls {
       'RELAY_DATABASE_URL',
       env.RELAY_DATABASE_URL,
       'postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia'
+    ),
+    inbox: pick(
+      'INBOX_DATABASE_URL',
+      env.INBOX_DATABASE_URL,
+      'postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia'
     ),
     auth: pick(
       'AUTH_DATABASE_URL',

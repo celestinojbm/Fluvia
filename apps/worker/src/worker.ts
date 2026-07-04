@@ -15,8 +15,10 @@ export interface WorkerProcessOptions {
 /**
  * Proceso worker: readiness, heartbeat y apagado limpio (F1-01).
  * Las tareas corren con roles dedicados de privilegio minimo; la primera es
- * el outbox relay (F2-11, rol fluvia_relay — ver main.ts). Siguientes:
- * inbox F2-12, webhook delivery F3-07.
+ * el outbox relay (F2-11, rol fluvia_relay — ver main.ts). El InboxProcessor
+ * (F2-12, @fluvia/inbox) se cablea aqui cuando exista el primer handler de
+ * provider (F3-03); arrancarlo sin registro solo haria polling vacio.
+ * Despues: webhook delivery F3-07.
  */
 export class WorkerProcess {
   private timer: NodeJS.Timeout | undefined;

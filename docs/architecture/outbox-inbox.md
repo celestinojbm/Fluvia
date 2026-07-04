@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0→2 · ADR-0007 · ADR-0011 (rol del relay)
 
-> **Estado de implementación (2026-07-04, F2-11): OUTBOX COMPLETO en sandbox.** Construido: tabla `outbox_events`, escritura transaccional con **envelope común** (`@fluvia/events`, AUD-P2-005), relay multi-worker (`@fluvia/outbox`, rol `fluvia_relay` de privilegio mínimo — ADR-0011), DLQ y replay auditado. Publisher actual = log estructurado (sandbox): la entrega efectiva a consumidores llega con F2-12 (inbox) y F3-07 (webhooks). NO construido: el inbox (§3).
+> **Estado de implementación (2026-07-04, F2-11+F2-12): OUTBOX e INBOX COMPLETOS en sandbox.** Outbox: tabla + envelope común (`@fluvia/events`) + relay multi-worker (`@fluvia/outbox`, rol `fluvia_relay` — ADR-0011) + DLQ + replay auditado; publisher actual = log estructurado (la entrega a consumidores llega con F3-07). Inbox: `provider_events` + `@fluvia/inbox` (firma HMAC verificada antes de persistir, dedup por motor, procesador claim-lease con rol `fluvia_inbox`, DLQ redactada, replay auditado); los handlers de negocio reales llegan con los adapters (F3-03).
 
 ## 1. Envelope común de eventos (AUD-P2-005)
 
@@ -53,23 +53,39 @@ Rol `fluvia_relay` (ADR-0011): sin BYPASSRLS — visibilidad cross-tenant por po
 
 Destinos del relay en el MVP: motor de webhooks salientes y colas internas de jobs. El relay NO contiene lógica de negocio.
 
-## 3. Inbox (eventos entrantes del proveedor)
+## 3. Inbox: semántica normativa (espejo de `packages/inbox`)
 
-Recepción de webhook del proveedor (V4 §28):
+Recepción (V4 §28 — `InboxIngestService.ingest`, rol `fluvia_app` con SOLO INSERT):
 
 ```
-1. Leer raw body (necesario para verificar firma) con límite de tamaño.
-2. Verificar firma + timestamp (tolerancia configurable, default ±5 min).
-3. INSERT provider_events (provider, provider_event_id UNIQUE, raw, headers permitidos)
-   ON CONFLICT DO NOTHING  → duplicado = respuesta 200 sin reprocesar.
-4. Responder éxito SOLO tras persistencia durable (COMMIT).
-5. Procesamiento asíncrono: worker consume provider_events pendientes,
-   valida payload con Zod (inválido → raw_provider_payloads_dlq con datos
-   sensibles redactados + métrica + caso), aplica transición FSM idempotente,
-   postea ledger si corresponde, registra resultado.
+1. Límite de tamaño sobre el raw body (default 1 MiB) → PayloadTooLargeError.
+2. Verificar firma ANTES de persistir: HMAC-SHA256 hex de `${timestampMs}.${rawBody}`
+   con timestamp FIRMADO y tolerancia ±5 min (configurable); comparación en
+   tiempo constante. Firma inválida ⇒ excepción y CERO persistencia
+   (un emisor no autenticado no llena la base).
+3. INSERT provider_events (UNIQUE (provider, provider_event_id), raw exacto,
+   headers allowlisted) ON CONFLICT DO NOTHING → duplicado detectado por
+   rowCount, race-safe: N entregas concurrentes = 1 fila (probado).
+4. El endpoint HTTP (F3) responde éxito SOLO después del COMMIT de la ingesta.
 ```
 
-Eventos fuera de orden: el handler consulta el estado actual y la FSM decide; lo no aplicable queda registrado como `ignored_out_of_order` para conciliación.
+Procesamiento asíncrono (`InboxProcessor`, rol `fluvia_inbox` — mismo patrón claim-lease/backoff/zombie-sweep que el relay §2):
+
+```
+- Registro por provider: { schema Zod, handler }. Sin registro ⇒ dead
+  ('no handler registered' — hueco de config, recuperable con replay auditado).
+- JSON inválido o schema no conforme ⇒ VENENO: dead + copia REDACTADA en
+  raw_provider_payloads_dlq (redactSummary; card_token y similares jamás
+  viajan en claro). El handler NUNCA ve un payload no validado.
+- handler → applied ⇒ processed · ignored_out_of_order / ignored ⇒ ignored
+  (terminal, con result). Excepción ⇒ backoff con jitter; agotado ⇒ dead.
+- dead → pending SOLO vía replayDeadProviderEvents (operación de plataforma
+  auditada con razón e ids reales, pool admin).
+```
+
+Eventos fuera de orden: el handler consulta el estado actual y la FSM decide (F3); lo no aplicable queda registrado como `ignored_out_of_order` para conciliación — el estado terminal `ignored` no se reintenta.
+
+Roles: `fluvia_app` solo INSERT (+ SELECT de las columnas del árbitro de dedup exigidas por ON CONFLICT); `fluvia_inbox` SELECT + UPDATE por columna de los campos de despacho + INSERT en la DLQ vía política RLS explícita. Sin BYPASSRLS (patrón ADR-0011); meta-tests permanentes.
 
 ## 4. Poison messages
 

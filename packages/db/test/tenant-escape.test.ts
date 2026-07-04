@@ -196,17 +196,17 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
   it('no runtime role holds DELETE on ANY table (defensa por grants)', async () => {
     const res = await ctx.admin.query(`
       SELECT grantee, table_name FROM information_schema.role_table_grants
-      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_auth')
+      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_inbox', 'fluvia_auth')
         AND privilege_type = 'DELETE'
     `);
     expect(res.rows).toEqual([]);
   });
 
-  it('the app, worker and relay roles hold NO privileges on credential tables', async () => {
+  it('the app, worker, relay and inbox roles hold NO privileges on credential tables', async () => {
     const res = await ctx.admin.query(`
       SELECT grantee, table_name, privilege_type
       FROM information_schema.role_table_grants
-      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay')
+      WHERE grantee IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_inbox')
         AND table_name IN ('sessions', 'email_verification_tokens')
     `);
     expect(res.rows).toEqual([]);
@@ -215,9 +215,9 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
   it('AUD-P1-007: NO runtime role has BYPASSRLS (cross-tenant reads are explicit policies)', async () => {
     const res = await ctx.admin.query<{ rolname: string; rolbypassrls: boolean }>(`
       SELECT rolname, rolbypassrls FROM pg_roles
-      WHERE rolname IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_auth')
+      WHERE rolname IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_inbox', 'fluvia_auth')
     `);
-    expect(res.rowCount).toBe(4);
+    expect(res.rowCount).toBe(5);
     for (const row of res.rows) {
       expect(row.rolbypassrls, `${row.rolname} tiene BYPASSRLS`).toBe(false);
     }
@@ -229,6 +229,47 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
       WHERE grantee = 'fluvia_worker'
     `);
     expect(res.rows).toEqual([]);
+  });
+
+  it('F2-12: fluvia_inbox holds ONLY provider_events (SELECT + column UPDATE) and DLQ INSERT', async () => {
+    const tables = await ctx.admin.query<{ table_name: string; privilege_type: string }>(`
+      SELECT DISTINCT table_name, privilege_type
+      FROM information_schema.role_table_grants
+      WHERE grantee = 'fluvia_inbox'
+    `);
+    for (const row of tables.rows) {
+      const allowed =
+        (row.table_name === 'provider_events' && row.privilege_type === 'SELECT') ||
+        (row.table_name === 'raw_provider_payloads_dlq' && row.privilege_type === 'INSERT');
+      expect(allowed, `privilegio inesperado: ${row.privilege_type} en ${row.table_name}`).toBe(
+        true
+      );
+    }
+
+    const cols = await ctx.admin.query<{ column_name: string }>(`
+      SELECT column_name FROM information_schema.column_privileges
+      WHERE grantee = 'fluvia_inbox' AND table_name = 'provider_events'
+        AND privilege_type = 'UPDATE'
+      ORDER BY column_name
+    `);
+    expect(cols.rows.map((r) => r.column_name)).toEqual([
+      'attempts',
+      'last_error',
+      'locked_by',
+      'next_attempt_at',
+      'processed_at',
+      'result',
+      'status',
+    ]);
+  });
+
+  it('F2-12: the app role can only INSERT into provider_events (no read, no update)', async () => {
+    const tables = await ctx.admin.query<{ privilege_type: string }>(`
+      SELECT DISTINCT privilege_type
+      FROM information_schema.role_table_grants
+      WHERE grantee = 'fluvia_app' AND table_name = 'provider_events'
+    `);
+    expect(tables.rows.map((r) => r.privilege_type)).toEqual(['INSERT']);
   });
 
   it('ADR-0011: fluvia_relay holds ONLY outbox_events SELECT + column-scoped UPDATE', async () => {

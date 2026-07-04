@@ -37,10 +37,12 @@ describe('dbUrlsFromEnv', () => {
       APP_DATABASE_URL: 'postgres://b',
       WORKER_DATABASE_URL: 'postgres://c',
       RELAY_DATABASE_URL: 'postgres://r',
+      INBOX_DATABASE_URL: 'postgres://i',
       AUTH_DATABASE_URL: 'postgres://d',
     } as NodeJS.ProcessEnv);
     expect(urls.worker).toBe('postgres://c');
     expect(urls.relay).toBe('postgres://r');
+    expect(urls.inbox).toBe('postgres://i');
   });
 
   it('FLUVIA_ENV takes precedence over NODE_ENV', () => {
