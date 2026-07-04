@@ -1,0 +1,18 @@
+{
+  "name": "fluvia",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Fluvia — plataforma de pagos de extrema confiabilidad (Ledger de doble partida, Outbox transaccional, RLS multi-tenant)",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "migrate": "pnpm --filter @fluvia/db run migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  }
+}
