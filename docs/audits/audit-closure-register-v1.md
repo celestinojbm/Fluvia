@@ -63,6 +63,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - Runs #1–#10: verdes (uno por commit hasta `a665b4f` = commit auditado, run #10).
 - Runs #11–#12: rama documental de la auditoría (`9c17888`), verdes.
 - **Lote AUD-1: run #13 VERDE** — commit `4cdfcb0`, `https://github.com/celestinojbm/Fluvia/actions/runs/28716967441` (install, lint, format, typecheck, migrate ×2 incl. 0008, 174 tests contra PG16, gitleaks, audit, SBOM).
+- **F2-11 (cierra AUD-P1-004/007 y AUD-P2-005): run #15 VERDE** — commit `1ecc533`, `https://github.com/celestinojbm/Fluvia/actions/runs/28717692510` (migrate ×2 incl. 0009, 195 tests incl. relay multi-worker y meta-tests de roles).
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
