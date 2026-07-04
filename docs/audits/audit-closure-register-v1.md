@@ -68,6 +68,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - **F2-05/F2-06 (cierran AUD-P2-004 y AUD-P2-012): run #20 VERDE** — commit `0ce18a9`, `https://github.com/celestinojbm/Fluvia/actions/runs/28719493607` (migrate ×2 incl. 0011, 224 tests, y el NUEVO paso de CI ejecutando `scripts/verify-ledger-invariants.sql` vía psql sobre la base poblada por la suite).
 - **F2-07/F2-08 (Gate Ledger 🟢 técnico): run #22 VERDE** — commit `616138b`, `https://github.com/celestinojbm/Fluvia/actions/runs/28720890852` (migrate ×2 incl. 0012, 233 tests incl. reversiones bajo carrera y suite formal de concurrencia).
 - **F1-08 (cierra AUD-P2-009): run #24 VERDE** — commit `4303a93`, `https://github.com/celestinojbm/Fluvia/actions/runs/28721370832` (241 tests incl. contrato golden del catálogo de errores y tests de no-fuga de mensajes internos).
+- **F2-09/F2-10 (cierra AUD-P1-003; Gate Idempotencia 🟢; Fase 2 completa): run #26 VERDE** — commit `29695d9`, `https://github.com/celestinojbm/Fluvia/actions/runs/28721992797` (migrate ×2 incl. 0013, 255 tests incl. crash-recovery y carrera N→1 de la capa de idempotencia).
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
