@@ -46,7 +46,7 @@ F4-01 Reportes del MockProvider con discrepancias inyectables · F4-02 Motor de 
 
 ## Futuro (no planificar aún)
 
-Proveedor real (Fase 5, bloqueado por PEND-001), hardening (Fase 6), production readiness (Fase 7), disputas completas, billing (ver Lago), multi-país.
+Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verificación legal de la matriz de jurisdicción), hardening (Fase 6), production readiness (Fase 7), disputas completas, billing (ver Lago), multi-país.
 
 ## DAG
 
