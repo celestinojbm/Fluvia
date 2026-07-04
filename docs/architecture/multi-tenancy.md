@@ -1,0 +1,50 @@
+# Multi-tenancy y RLS
+
+Estado: Activo · Fase: 0 · ADR-0005 · Evidencia: tests de RLS del spike verdes contra PG16
+
+## 1. Modelo de tenancy
+
+`Organization` es el tenant de aislamiento (= `tenant_id` en RLS). `Merchant` es una subdivisión del tenant con autorización de aplicación (scopes/roles), no una frontera RLS separada en el MVP. Usuarios pertenecen a organizaciones vía `memberships` con rol.
+
+## 2. Defensa en profundidad (V4 §14.1)
+
+| Capa | Control |
+|------|---------|
+| 1. AuthN | El tenant se deriva SIEMPRE de identidad autenticada (API key hasheada o sesión), jamás de un `organization_id` del payload |
+| 2. AuthZ aplicación | RBAC + scopes de API key por endpoint |
+| 3. RLS Postgres | Políticas `USING`/`WITH CHECK` por `tenant_id`, `ENABLE` + `FORCE` en toda tabla tenant-scoped |
+| 4. Constraints | Uniques compuestos con `tenant_id`; FKs |
+| 5. Pruebas | Suite de tenant-escape en CI (lectura cruzada, escritura cruzada, PK directa, bypass de contexto) |
+| 6. Auditoría | Acceso administrativo cross-tenant registrado con actor y razón |
+
+## 3. Patrón de contexto (regla normativa)
+
+```sql
+BEGIN;
+SELECT set_config('app.tenant_id', $tenant, true);  -- is_local => muere en COMMIT/ROLLBACK
+-- ... trabajo ...
+COMMIT;
+```
+
+- Prohibido `SET app.tenant_id` a nivel de sesión: una conexión de pool reutilizada filtraría el tenant anterior (fuga de contexto).
+- Implementado como único punto de entrada `withTenantTransaction(pool, tenantId, fn)` (spike `packages/db/src/pool.ts`); el acceso a datos fuera de ese wrapper no ve filas.
+- **Hallazgo empírico del spike (obligatorio en toda política):** tras revertirse un `set_config(..., local)` al terminar la transacción, `current_setting('app.tenant_id', true)` devuelve **cadena vacía, no NULL**, en esa misma sesión del pool; la política debe usar `NULLIF(current_setting(...), '')::uuid` — sin eso, la consulta sin contexto falla con error de cast (falla cerrado, pero rompe el request) en lugar de devolver 0 filas.
+- **PgBouncer**: compatible con transaction pooling porque el contexto es transaction-scoped. Si algún día se usa session-state alguna otra variable, revisar. Documentar en despliegue.
+
+## 4. Roles de base de datos
+
+| Rol | RLS | Uso |
+|-----|-----|-----|
+| dueño/migraciones | bypass implícito (superuser en local; rol owner en cloud) | migraciones y seeding administrativo |
+| `fluvia_app` | **forzado** | API; sin DELETE concedido |
+| `fluvia_worker` | `BYPASSRLS` | relay de outbox/entrega de webhooks (procesa todos los tenants); sin DELETE |
+
+Bypass controlado: el panel admin NO usa `BYPASSRLS`; opera con un contexto explícito de tenant + permiso auditado, o mediante funciones `SECURITY DEFINER` acotadas (patrón ya validado con `authenticate_api_key`).
+
+## 5. Tablas globales y de plataforma
+
+Tablas sin `tenant_id` (catálogos, `schema_migrations`, `platforms`): sin política de tenant, acceso solo lectura para `fluvia_app` cuando corresponda. Toda tabla nueva se clasifica en el PR: tenant-scoped (RLS obligatorio) o global (justificación).
+
+## 6. Pruebas automatizadas (estado)
+
+Ya verdes en el spike: visibilidad limitada al tenant propio, contexto ausente = 0 filas, `WITH CHECK` bloquea inserción cross-tenant, lectura por PK cruzada = 0 filas, `authenticate_api_key` resuelve sin contexto. Pendiente F1: suite de escape ampliada (UPDATE cruzado, joins, funciones), test de no-fuga de contexto entre requests consecutivos del pool, y bypass administrativo auditado.
