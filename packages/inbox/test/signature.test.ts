@@ -5,7 +5,8 @@ import {
   verifyWebhookSignature,
 } from '../src/index.js';
 
-const SECRET = 'whsec_test_0123456789abcdef';
+// Fixture de test, NO es un secreto real (falso positivo de gitleaks en CI).
+const SECRET = 'whsec_test_fixture_not_a_real_secret'; // gitleaks:allow
 const BODY = '{"id":"evt_1","type":"payment.captured","amount":1000}';
 
 describe('firma de webhooks entrantes (F2-12, V4 §28)', () => {
