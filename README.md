@@ -19,7 +19,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `packages/outbox` | Relay del outbox: claim-lease con `SKIP LOCKED` multi-worker, backoff+jitter, DLQ y replay auditado (rol `fluvia_relay` de privilegio mínimo) |
 | `packages/inbox` | Inbox durable de webhooks de proveedores: firma HMAC verificada pre-persistencia, dedup por motor, procesador claim-lease, DLQ redactada, replay auditado (rol `fluvia_inbox`) |
 | `packages/config` | Configuración tipada de la aplicación |
-| `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope) |
+| `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
 | `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones |
 | `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |

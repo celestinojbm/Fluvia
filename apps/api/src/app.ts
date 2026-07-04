@@ -9,6 +9,7 @@ import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { createSecurity } from './security.js';
+import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
 
 export interface BuildAppOptions {
   config: AppConfig;
@@ -20,37 +21,8 @@ export interface BuildAppOptions {
   apiKeyService?: ApiKeyService;
 }
 
-/**
- * Mapa de errores de dominio -> HTTP. Baseline previa a la taxonomia completa
- * (F1-08). La clave es el nombre de la clase de error de dominio.
- */
-const DOMAIN_ERROR_HTTP: Record<string, { status: number; code: string }> = {
-  EmailTakenError: { status: 409, code: 'email_taken' },
-  InvalidCredentialsError: { status: 401, code: 'invalid_credentials' },
-  EmailNotVerifiedError: { status: 403, code: 'email_not_verified' },
-  AccountLockedError: { status: 423, code: 'account_locked' },
-  InvalidSessionError: { status: 401, code: 'invalid_session' },
-  InvalidVerificationTokenError: { status: 400, code: 'invalid_verification_token' },
-  // Identidad / RBAC / API keys (F1-03, F1-04c). Los not-found cross-tenant
-  // son indistinguibles de los inexistentes por diseño (anti-enumeracion).
-  OrganizationNotFoundError: { status: 404, code: 'not_found' },
-  MerchantNotFoundError: { status: 404, code: 'not_found' },
-  ApiKeyNotFoundError: { status: 404, code: 'not_found' },
-  MerchantNameTakenError: { status: 409, code: 'merchant_name_taken' },
-  OrganizationSlugTakenError: { status: 409, code: 'organization_slug_taken' },
-  InsufficientPermissionError: { status: 403, code: 'insufficient_permissions' },
-  InvalidApiKeyError: { status: 401, code: 'invalid_api_key' },
-  InsufficientScopeError: { status: 403, code: 'insufficient_scope' },
-  // Lote AUD-1: politica de live keys y guardas de saldo del ledger.
-  LiveKeysDisabledError: { status: 403, code: 'live_keys_disabled' },
-  InsufficientBalanceError: { status: 409, code: 'insufficient_balance' },
-  IdempotencyConflictError: { status: 409, code: 'idempotency_conflict' },
-  // F2-07: reversiones.
-  TransactionNotFoundError: { status: 404, code: 'not_found' },
-  TransactionAlreadyReversedError: { status: 409, code: 'already_reversed' },
-  CannotReverseReversalError: { status: 409, code: 'cannot_reverse_reversal' },
-  ReversalNoteRequiredError: { status: 400, code: 'reversal_note_required' },
-};
+// F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
+// contract test). Este archivo solo enruta hacia ella.
 
 /**
  * Construye la instancia Fastify del API (F1-01).
@@ -124,41 +96,51 @@ export function buildApp({
   }
 
   app.setNotFoundHandler((req, reply) => {
-    reply.code(404).send({
-      error: { code: 'not_found', message: 'Resource not found', request_id: req.id },
-    });
+    reply.code(404).send(errorBody('not_found', req.id));
   });
 
+  // F1-08: TODA respuesta de error sale del catalogo. El message interno de
+  // los errores de dominio va SOLO a logs (AUD-P2-009); el cliente recibe el
+  // texto publico y estable del catalogo.
   app.setErrorHandler((err: FastifyError, req, reply) => {
     if (err instanceof ZodError) {
-      return reply.code(400).send({
-        error: {
-          code: 'validation_error',
-          message: 'Invalid request payload',
-          details: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-          request_id: req.id,
-        },
-      });
+      return reply.code(ERROR_CATALOG.validation_error.status).send(
+        errorBody(
+          'validation_error',
+          req.id,
+          err.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))
+        )
+      );
     }
 
-    const mapped = DOMAIN_ERROR_HTTP[err.name];
-    if (mapped) {
-      req.log.info({ errName: err.name }, 'domain error');
-      return reply.code(mapped.status).send({
-        error: { code: mapped.code, message: err.message, request_id: req.id },
-      });
+    const code = DOMAIN_ERROR_CODES[err.name];
+    if (code) {
+      req.log.info({ errName: err.name, errMessage: err.message, code }, 'domain error');
+      return reply.code(ERROR_CATALOG[code].status).send(errorBody(code, req.id));
     }
 
-    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    // Errores del propio Fastify (forma del request), tambien via catalogo.
+    if (err.statusCode === 413) {
+      return reply.code(413).send(errorBody('payload_too_large', req.id));
+    }
+    if (err.statusCode === 415) {
+      return reply.code(415).send(errorBody('unsupported_media_type', req.id));
+    }
+    if (
+      err.statusCode === 400 &&
+      typeof err.code === 'string' &&
+      err.code.startsWith('FST_ERR_CTP')
+    ) {
+      return reply.code(400).send(errorBody('invalid_json', req.id));
+    }
+    if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+      req.log.warn({ err }, 'unmapped 4xx request error');
+      return reply.code(400).send(errorBody('bad_request', req.id));
+    }
+
+    // 5xx: jamas filtra detalle interno al cliente.
     req.log.error({ err }, 'request failed');
-    // Los errores 5xx jamas filtran detalle interno al cliente.
-    reply.code(status).send({
-      error: {
-        code: status >= 500 ? 'internal_error' : (err.code ?? 'request_error'),
-        message: status >= 500 ? 'Internal server error' : err.message,
-        request_id: req.id,
-      },
-    });
+    reply.code(500).send(errorBody('internal_error', req.id));
   });
 
   return app;

@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "catalog": {
+    "validation_error": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "Invalid request payload",
+      "hasDetails": true
+    },
+    "invalid_json": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "Request body is not valid JSON"
+    },
+    "bad_request": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "The request could not be processed"
+    },
+    "payload_too_large": {
+      "status": 413,
+      "type": "validation_error",
+      "message": "Request body exceeds the size limit"
+    },
+    "unsupported_media_type": {
+      "status": 415,
+      "type": "validation_error",
+      "message": "Unsupported content type"
+    },
+    "invalid_verification_token": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "The verification token is invalid, expired or already used"
+    },
+    "reversal_note_required": {
+      "status": 400,
+      "type": "validation_error",
+      "message": "Reversals require an explicit, non-empty note"
+    },
+    "invalid_credentials": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "Invalid email or password"
+    },
+    "invalid_session": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "The session is invalid, expired or revoked"
+    },
+    "invalid_api_key": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "The API key is invalid or revoked"
+    },
+    "invalid_signature": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "The webhook signature is invalid or stale"
+    },
+    "email_not_verified": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "Email address must be verified before logging in"
+    },
+    "insufficient_permissions": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "Your role does not allow this action"
+    },
+    "insufficient_scope": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "The API key lacks the required scope"
+    },
+    "live_keys_disabled": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "Live API keys are not available yet"
+    },
+    "not_found": {
+      "status": 404,
+      "type": "not_found_error",
+      "message": "Resource not found"
+    },
+    "email_taken": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "An account with this email already exists"
+    },
+    "merchant_name_taken": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "A merchant with this name already exists in the organization"
+    },
+    "organization_slug_taken": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This organization slug is already in use"
+    },
+    "insufficient_balance": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "The operation would leave a protected balance negative"
+    },
+    "idempotency_conflict": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This idempotency key was already used with a different request"
+    },
+    "already_reversed": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This transaction has already been reversed"
+    },
+    "cannot_reverse_reversal": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "A reversal cannot be reversed; post a new forward transaction"
+    },
+    "account_locked": {
+      "status": 423,
+      "type": "locked_error",
+      "message": "The account is temporarily locked after repeated failed logins"
+    },
+    "rate_limited": {
+      "status": 429,
+      "type": "rate_limit_error",
+      "message": "Too many requests; retry later"
+    },
+    "internal_error": {
+      "status": 500,
+      "type": "internal_error",
+      "message": "Internal server error"
+    }
+  },
+  "domain_error_codes": {
+    "EmailTakenError": "email_taken",
+    "InvalidCredentialsError": "invalid_credentials",
+    "EmailNotVerifiedError": "email_not_verified",
+    "AccountLockedError": "account_locked",
+    "InvalidSessionError": "invalid_session",
+    "InvalidVerificationTokenError": "invalid_verification_token",
+    "OrganizationNotFoundError": "not_found",
+    "MerchantNotFoundError": "not_found",
+    "ApiKeyNotFoundError": "not_found",
+    "MerchantNameTakenError": "merchant_name_taken",
+    "OrganizationSlugTakenError": "organization_slug_taken",
+    "InsufficientPermissionError": "insufficient_permissions",
+    "InvalidApiKeyError": "invalid_api_key",
+    "InsufficientScopeError": "insufficient_scope",
+    "LiveKeysDisabledError": "live_keys_disabled",
+    "InsufficientBalanceError": "insufficient_balance",
+    "IdempotencyConflictError": "idempotency_conflict",
+    "TransactionNotFoundError": "not_found",
+    "TransactionAlreadyReversedError": "already_reversed",
+    "CannotReverseReversalError": "cannot_reverse_reversal",
+    "ReversalNoteRequiredError": "reversal_note_required",
+    "InvalidWebhookSignatureError": "invalid_signature",
+    "PayloadTooLargeError": "payload_too_large"
+  }
+}
