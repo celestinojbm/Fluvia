@@ -2,3 +2,6 @@ node_modules
 dist
 .turbo
 pnpm-lock.yaml
+
+# Next.js build output
+**/.next/

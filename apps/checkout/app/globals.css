@@ -1,0 +1,137 @@
+/* Estilos de la página de checkout. Contraste AA (WCAG 2.1): texto sobre fondo
+   con ratio >= 4.5:1; foco visible; targets táctiles >= 44px. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a; /* 15:1 sobre blanco */
+  --muted: #595959; /* 7:1 sobre blanco */
+  --brand: #0b5cad; /* 5.9:1 sobre blanco */
+  --ok: #0f6b3d; /* 5.5:1 */
+  --bad: #a4171a; /* 6.4:1 */
+  --border: #767676; /* 4.5:1 */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  color: var(--fg);
+  background: #f2f4f7;
+}
+
+.checkout {
+  max-width: 30rem;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 1.5rem;
+}
+
+.amount {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #d0d5dd;
+}
+
+.amount-label {
+  color: var(--muted);
+}
+.amount-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.status {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.status-ok {
+  color: var(--ok);
+  background: #e7f4ec;
+}
+.status-bad {
+  color: var(--bad);
+  background: #fbeaea;
+}
+.status-neutral {
+  color: var(--fg);
+  background: #eef2f6;
+}
+
+fieldset {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+legend {
+  padding: 0 0.4rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.method {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+.method input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.pay {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--brand);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.pay:hover {
+  background: #094a8c;
+}
+.pay:disabled {
+  background: var(--muted);
+  cursor: progress;
+}
+
+.error {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.notice {
+  margin-top: 1.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
