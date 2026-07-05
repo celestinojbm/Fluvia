@@ -8,7 +8,7 @@ import { AuditReader } from '@fluvia/audit';
 import { CustomerService, type ApiKeyService, type IdentityService } from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
-import { WebhookEndpointService } from '@fluvia/webhooks';
+import { WebhookEndpointService, WebhookEventService } from '@fluvia/webhooks';
 import {
   CheckoutSessionService,
   MockPaymentProvider,
@@ -29,6 +29,7 @@ import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerPaymentLinkRoutes } from './routes/payment-links.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
+import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -195,6 +196,12 @@ export function buildApp({
         // Redes privadas SOLO local/test (guard por entorno, no configurable).
         allowPrivateNetworks: config.env === 'local' || config.env === 'test',
       }),
+    });
+    // F3-09a: visibilidad de la cola de webhooks + reenvío manual auditado de
+    // eventos `dead` (plano de operación; primera acción del futuro dashboard).
+    registerWebhookEventRoutes(app, {
+      security,
+      webhookEventService: new WebhookEventService(appPool),
     });
   }
 

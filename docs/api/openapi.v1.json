@@ -717,7 +717,11 @@
     "/v1/payment_links": {
       "post": {
         "summary": "Crear un payment link (scope payments:write; idempotente). Plantilla reutilizable 'págame': cada apertura genera un payment_intent + checkout_session frescos. Devuelve la URL pública {base}/l/{id}. La apertura (POST :id/sessions) es pública, sin API key.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -727,25 +731,52 @@
                 "additionalProperties": false,
                 "required": ["merchant_id", "amount", "currency"],
                 "properties": {
-                  "merchant_id": { "type": "string", "format": "uuid" },
-                  "amount": { "type": "integer", "minimum": 1 },
-                  "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
-                  "description": { "type": "string", "maxLength": 500 },
-                  "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+                  "merchant_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Payment link creado (o replay exacto)" },
-          "400": { "description": "validation_error (merchant inexistente, etc.)" },
-          "422": { "description": "idempotency_key_reuse" }
+          "201": {
+            "description": "Payment link creado (o replay exacto)"
+          },
+          "400": {
+            "description": "validation_error (merchant inexistente, etc.)"
+          },
+          "422": {
+            "description": "idempotency_key_reuse"
+          }
         }
       },
       "get": {
         "summary": "Listar payment links (scope read), más reciente primero",
-        "responses": { "200": { "description": "Lista" } }
+        "responses": {
+          "200": {
+            "description": "Lista"
+          }
+        }
       }
     },
     "/v1/payment_links/{id}": {
@@ -756,12 +787,19 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Payment link" },
-          "404": { "description": "not_found" }
+          "200": {
+            "description": "Payment link"
+          },
+          "404": {
+            "description": "not_found"
+          }
         }
       }
     },
@@ -773,12 +811,58 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Payment link deshabilitado" },
-          "404": { "description": "not_found" }
+          "200": {
+            "description": "Payment link deshabilitado"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/v1/webhook_events": {
+      "get": {
+        "summary": "Listar eventos de webhook de la cola (scope read). Filtros: endpoint_id, status (pending|delivered|dead), limit.",
+        "responses": {
+          "200": {
+            "description": "Lista de eventos de webhook"
+          }
+        }
+      }
+    },
+    "/v1/webhook_events/{id}": {
+      "get": {
+        "summary": "Detalle de un evento de webhook con su payload y el historial de intentos (scope read).",
+        "responses": {
+          "200": {
+            "description": "Evento con attempts_history"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/v1/webhook_events/{id}/resend": {
+      "post": {
+        "summary": "Reenviar un evento en estado dead: genera un evento fresco (pending) enlazado al muerto y audita la accion (scope webhooks:manage).",
+        "responses": {
+          "201": {
+            "description": "Evento fresco encolado"
+          },
+          "404": {
+            "description": "not_found"
+          },
+          "409": {
+            "description": "invalid_state_transition (el evento no esta dead)"
+          }
         }
       }
     }

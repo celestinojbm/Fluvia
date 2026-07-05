@@ -286,6 +286,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   WebhookEndpointNotFoundError: 'not_found',
   InvalidWebhookTopicError: 'validation_error',
   UnsafeWebhookUrlError: 'validation_error',
+  // webhooks: cola + reenvío F3-09a
+  WebhookEventNotFoundError: 'not_found',
+  WebhookEventNotDeadError: 'invalid_state_transition',
   InvalidStateTransitionError: 'invalid_state_transition',
   UnknownCurrencyError: 'validation_error',
   InvalidAmountError: 'validation_error',

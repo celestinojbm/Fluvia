@@ -3,6 +3,8 @@
 Estado: Activo · Fase: 0 · ADR-0009 (internos primero; Svix como opción futura)
 
 > **Estado de implementación (F3-07, 2026-07-05): IMPLEMENTADO.** Migración `0019` (tablas `webhook_endpoints`/`webhook_events`/`webhook_attempts` + rol `fluvia_webhook` de privilegio mínimo), paquete `@fluvia/webhooks` (firma §2, calendario de reintentos §3, SSRF guard con pinning §4, catálogo §5 con meta-test doc↔código), fan-out desde el relay del outbox y deliverer claim-lease en el worker, gestión por API (`/v1/webhook_endpoints`, scope `webhooks:manage`). Desviaciones registradas en backlog: reenvío manual auditado y auto-disable con notificación quedan para F3-09/F6.
+>
+> **F3-09a (2026-07-05): visibilidad de la cola + reenvío manual auditado de eventos `dead`.** Migración `0026` (columna `resent_from_event_id` + función SECURITY DEFINER acotada `webhook_event_resend`). API de operación: `GET /v1/webhook_events` (lista con filtros endpoint/status, scope `read`), `GET /v1/webhook_events/:id` (detalle con `payload` + historial de intentos), `POST /v1/webhook_events/:id/resend` (scope `webhooks:manage`). Reenviar NO resucita el evento muerto (estado terminal inmutable): genera un evento `pending` fresco que clona (tenant, endpoint, topic, payload) enlazado vía `resent_from_event_id`, y escribe un audit event `webhook_event.resent` en la misma transacción. Solo eventos `dead` se reenvían (si no, `invalid_state_transition`). Pendiente F6: auto-disable de endpoints crónicos con notificación.
 
 ## 1. Modelo
 

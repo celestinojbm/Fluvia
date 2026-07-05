@@ -525,6 +525,9 @@ importers:
 
   packages/webhooks:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db

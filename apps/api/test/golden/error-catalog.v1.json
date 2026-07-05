@@ -221,6 +221,8 @@
     "WebhookEndpointNotFoundError": "not_found",
     "InvalidWebhookTopicError": "validation_error",
     "UnsafeWebhookUrlError": "validation_error",
+    "WebhookEventNotFoundError": "not_found",
+    "WebhookEventNotDeadError": "invalid_state_transition",
     "InvalidStateTransitionError": "invalid_state_transition",
     "UnknownCurrencyError": "validation_error",
     "InvalidAmountError": "validation_error",

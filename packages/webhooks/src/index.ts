@@ -28,6 +28,17 @@ export {
   type WebhookEndpointDto,
   type WebhookEndpointServiceOptions,
 } from './endpoints.js';
+export {
+  WEBHOOK_EVENT_STATUSES,
+  WebhookEventNotDeadError,
+  WebhookEventNotFoundError,
+  WebhookEventService,
+  type ListWebhookEventsOptions,
+  type WebhookAttemptDto,
+  type WebhookEventDetail,
+  type WebhookEventDto,
+  type WebhookEventStatus,
+} from './webhook-events.js';
 export { createWebhookFanoutPublisher } from './fanout.js';
 export {
   RETRY_SCHEDULE_MS,

@@ -29,6 +29,7 @@ export const AUDIT_ACTIONS = [
   'platform.operation',
   'platform.technical_purge',
   'payment_attempt.swept_indeterminate',
+  'webhook_event.resent',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
