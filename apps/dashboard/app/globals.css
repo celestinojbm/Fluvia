@@ -210,6 +210,33 @@ code {
   color: var(--warn);
 }
 
+.resend-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.resend {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--brand);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.resend:hover {
+  background: #094a8c;
+}
+.resend:disabled {
+  background: var(--muted);
+  cursor: progress;
+}
+.resent {
+  color: var(--ok);
+  font-weight: 600;
+}
+
 .empty {
   color: var(--muted);
 }

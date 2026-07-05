@@ -1,5 +1,6 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { AuditContext } from '@fluvia/audit';
 import type {
   CheckoutSessionService,
   PaymentIntentService,
@@ -59,6 +60,14 @@ export function registerDashboardRoutes(
 ): void {
   const guard = { preHandler: [security.session, security.org('payments:read')] };
   const tenant = (req: { org?: { organizationId: string } }) => req.org!.organizationId;
+  const userAuditContext = (req: FastifyRequest): AuditContext => ({
+    actorType: 'user',
+    actorId: req.identity!.userId,
+    authMethod: 'session',
+    requestId: String(req.id),
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
 
   // --- payment intents ---
   app.get('/v1/organizations/:orgId/payment_intents', guard, async (req) => {
@@ -128,4 +137,17 @@ export function registerDashboardRoutes(
       attempts_history: detail.attemptsHistory.map(publicAttempt),
     };
   });
+
+  // Acción de OPERACIÓN por sesión: reenviar un evento `dead` (espeja F3-09a del
+  // plano de API key). Exige el permiso RBAC `webhooks:manage` (owner/admin/
+  // developer), no solo `payments:read`. Auditado como actor `user`.
+  app.post(
+    '/v1/organizations/:orgId/webhook_events/:id/resend',
+    { preHandler: [security.session, security.org('webhooks:manage')] },
+    async (req, reply) => {
+      const { id } = IdParams.parse(req.params);
+      const created = await webhookEventService.resend(tenant(req), id, userAuditContext(req));
+      return reply.code(201).send(publicEvent(created));
+    }
+  );
 }

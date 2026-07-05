@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { apiBase, fetchDashboardData, fetchOrganizations } from '../../lib/api';
+import { apiBase, canResendRole, fetchDashboardData, fetchOrganizations } from '../../lib/api';
 import { DashboardView } from '../../lib/dashboard-view';
 import { normalizeLocale } from '../../messages';
 
@@ -30,7 +30,17 @@ export default async function OrgDashboardPage({
     fetchOrganizations({ apiBase: base, token }),
     fetchDashboardData({ apiBase: base, token, orgId }),
   ]);
-  const orgName = orgs.find((o) => o.organization_id === orgId)?.name ?? orgId;
+  const org = orgs.find((o) => o.organization_id === orgId);
+  const orgName = org?.name ?? orgId;
 
-  return <DashboardView data={data} locale={locale} orgName={orgName} signOutHref="/logout" />;
+  return (
+    <DashboardView
+      data={data}
+      locale={locale}
+      orgId={orgId}
+      orgName={orgName}
+      signOutHref="/logout"
+      canResend={canResendRole(org?.role)}
+    />
+  );
 }

@@ -70,6 +70,22 @@ async function createMerchant(orgId: string): Promise<string> {
   );
   return res.rows[0]!.id;
 }
+async function seedDeadWebhook(
+  orgId: string,
+  status: 'dead' | 'delivered' = 'dead'
+): Promise<string> {
+  const ep = await adminPool.query<{ id: string }>(
+    `INSERT INTO webhook_endpoints (tenant_id, url, secret_enc, events)
+     VALUES ($1, 'https://example.test/hook', 'enc:dummy', '{}') RETURNING id`,
+    [orgId]
+  );
+  const ev = await adminPool.query<{ id: string }>(
+    `INSERT INTO webhook_events (tenant_id, endpoint_id, topic, payload, status, attempts)
+     VALUES ($1, $2, 'merchant.updated', '{}'::jsonb, $3, $4) RETURNING id`,
+    [orgId, ep.rows[0]!.id, status, status === 'dead' ? 7 : 0]
+  );
+  return ev.rows[0]!.id;
+}
 const apiAuth = (key: string) => ({ authorization: `Bearer ${key}` });
 
 beforeAll(async () => {
@@ -197,5 +213,51 @@ describe('aislamiento y autenticación', () => {
     });
     // orgB member, but the intent belongs to orgA -> not found under RLS.
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('reenvío de webhooks dead por sesión (webhooks:manage)', () => {
+  it('an admin resends a dead event as a fresh pending one', async () => {
+    const dead = await seedDeadWebhook(orgA);
+    const admin = await sessionUser('admin', orgA);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_events/${dead}/resend`,
+      headers: admin.headers,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe('pending');
+    expect(res.json().resent_from_event_id).toBe(dead);
+  });
+
+  it('a read_only role lacks webhooks:manage (403)', async () => {
+    const dead = await seedDeadWebhook(orgA);
+    const ro = await sessionUser('read_only', orgA);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_events/${dead}/resend`,
+      headers: ro.headers,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('refuses to resend a non-dead event (409) and 404s for a non-member', async () => {
+    const delivered = await seedDeadWebhook(orgA, 'delivered');
+    const admin = await sessionUser('admin', orgA);
+    const notDead = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_events/${delivered}/resend`,
+      headers: admin.headers,
+    });
+    expect(notDead.statusCode).toBe(409);
+
+    const dead = await seedDeadWebhook(orgA);
+    const outsider = await sessionUser('admin', orgB);
+    const foreign = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_events/${dead}/resend`,
+      headers: outsider.headers,
+    });
+    expect(foreign.statusCode).toBe(404);
   });
 });

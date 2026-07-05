@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchDashboardData, fetchOrganizations, login } from '../app/lib/api';
+import { canResendRole, fetchDashboardData, fetchOrganizations, login } from '../app/lib/api';
 
 /**
  * F3-09b — lógica pura del cliente de la API (server-side), probada en CI sin
@@ -51,6 +51,15 @@ describe('login', () => {
       fetchImpl: jsonFetch({ '/v1/auth/login': { status: 401, body: {} } }),
     });
     expect(res).toEqual({ ok: false, mfaRequired: false });
+  });
+});
+
+describe('canResendRole', () => {
+  it('allows integration-managing roles and rejects read-only ones', () => {
+    for (const r of ['owner', 'admin', 'developer']) expect(canResendRole(r)).toBe(true);
+    for (const r of ['finance', 'support', 'analyst', 'read_only', undefined]) {
+      expect(canResendRole(r)).toBe(false);
+    }
   });
 });
 

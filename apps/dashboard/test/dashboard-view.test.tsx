@@ -47,7 +47,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('DashboardView', () => {
   it('renders every section, formats amounts, and shows empty states (es)', () => {
-    render(<DashboardView data={DATA} locale="es" orgName="Org A" signOutHref="/logout" />);
+    render(<DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />);
     expect(screen.getByRole('heading', { name: 'Panel de operación' })).toBeInTheDocument();
     expect(screen.getByText('Org A')).toBeInTheDocument();
     // Payment intents: monto formateado COP (exponente 0).
@@ -60,17 +60,59 @@ describe('DashboardView', () => {
   });
 
   it('renders English section titles for locale=en', () => {
-    render(<DashboardView data={DATA} locale="en" orgName="Org A" signOutHref="/logout" />);
+    render(<DashboardView data={DATA} locale="en" orgId="o1" orgName="Org A" signOutHref="/logout" />);
     expect(screen.getByRole('heading', { name: 'Operations dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Webhook queue/ })).toBeInTheDocument();
   });
 
   it('has no structural accessibility violations (axe)', async () => {
     const { container } = render(
-      <DashboardView data={DATA} locale="es" orgName="Org A" signOutHref="/logout" />
+      <DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />
     );
     const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it('shows a resend button for dead events only when the role can resend', () => {
+    const { rerender } = render(
+      <DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />
+    );
+    expect(screen.queryByRole('button', { name: 'Reenviar' })).toBeNull();
+    rerender(
+      <DashboardView
+        data={DATA}
+        locale="es"
+        orgId="o1"
+        orgName="Org A"
+        signOutHref="/logout"
+        canResend
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Reenviar' })).toBeInTheDocument();
+  });
+
+  it('posts to the resend route handler and reloads on success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ status: 201, json: () => Promise.resolve({}) }))
+    );
+    vi.stubGlobal('location', { reload: vi.fn() } as unknown as Location);
+    render(
+      <DashboardView
+        data={DATA}
+        locale="es"
+        orgId="o1"
+        orgName="Org A"
+        signOutHref="/logout"
+        canResend
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Reenviar' }));
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/orgs/o1/webhook-events/whe_1/resend',
+      expect.objectContaining({ method: 'POST' })
+    );
+    await waitFor(() => expect(screen.getByText('Reenviado ✓')).toBeInTheDocument());
   });
 });
 

@@ -28,6 +28,10 @@ export const PERMISSIONS = [
   // checkout sessions, payment links y la cola de webhooks. Dato de tenant de
   // solo lectura, así que lo tiene todo rol (todos ya tienen org:read).
   'payments:read',
+  // F3-09b-iii: acción de operación sobre webhooks (reenvío de eventos `dead`)
+  // por SESIÓN. Espeja el scope de API key homónimo en el plano de sesión; solo
+  // roles que gestionan la integración (owner/admin/developer).
+  'webhooks:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -43,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'keys:read',
     'keys:manage',
     'payments:read',
+    'webhooks:manage',
   ],
   finance: [
     'org:read',

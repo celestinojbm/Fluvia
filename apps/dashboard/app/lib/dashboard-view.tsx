@@ -1,5 +1,6 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { DashboardData } from './api';
+import { ResendButton } from './resend-button';
 
 /**
  * Vista del panel de operación (presentación pura, sin interactividad → server
@@ -75,13 +76,18 @@ function Section({
 export function DashboardView({
   data,
   locale,
+  orgId,
   orgName,
   signOutHref,
+  canResend = false,
 }: {
   data: DashboardData;
   locale: Locale;
+  orgId: string;
   orgName: string;
   signOutHref: string;
+  /** El operador puede reenviar eventos `dead` (rol con webhooks:manage). */
+  canResend?: boolean;
 }) {
   const t = MESSAGES[locale];
   const statusBadge = (row: Record<string, unknown>) => (
@@ -157,7 +163,14 @@ export function DashboardView({
 
       <Section
         title={t.sectionWebhooks}
-        columns={[t.colId, t.colTopic, t.colStatus, t.colAttempts, t.colCreated]}
+        columns={[
+          t.colId,
+          t.colTopic,
+          t.colStatus,
+          t.colAttempts,
+          t.colCreated,
+          ...(canResend ? [t.colAction] : []),
+        ]}
         empty={t.empty}
         rows={data.webhookEvents.map((r) => ({
           key: String(r.id),
@@ -167,6 +180,20 @@ export function DashboardView({
             statusBadge(r),
             String(r.attempts ?? 0),
             when(r.created_at),
+            ...(canResend
+              ? [
+                  r.status === 'dead' ? (
+                    <ResendButton
+                      key="resend"
+                      orgId={orgId}
+                      eventId={String(r.id)}
+                      locale={locale}
+                    />
+                  ) : (
+                    <span key="resend">—</span>
+                  ),
+                ]
+              : []),
           ],
         }))}
       />

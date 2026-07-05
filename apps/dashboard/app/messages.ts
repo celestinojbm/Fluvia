@@ -36,6 +36,11 @@ interface Messages {
   colCreated: string;
   colTopic: string;
   colAttempts: string;
+  colAction: string;
+  resend: string;
+  resending: string;
+  resendError: string;
+  resent: string;
   sandboxNotice: string;
 }
 
@@ -66,6 +71,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     colCreated: 'Creado',
     colTopic: 'Topic',
     colAttempts: 'Intentos',
+    colAction: 'Acción',
+    resend: 'Reenviar',
+    resending: 'Reenviando…',
+    resendError: 'No se pudo reenviar.',
+    resent: 'Reenviado ✓',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
   },
   en: {
@@ -94,6 +104,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     colCreated: 'Created',
     colTopic: 'Topic',
     colAttempts: 'Attempts',
+    colAction: 'Action',
+    resend: 'Resend',
+    resending: 'Resending…',
+    resendError: 'Could not resend.',
+    resent: 'Resent ✓',
     sandboxNotice: 'Test environment — no real money moves.',
   },
 };

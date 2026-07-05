@@ -18,6 +18,16 @@ export interface Org {
   role: string;
 }
 
+/**
+ * Roles que pueden reenviar webhooks `dead` (permiso RBAC `webhooks:manage`;
+ * espeja `ROLE_PERMISSIONS` en @fluvia/identity). Solo es una PISTA de UX: el API
+ * es la fuente de verdad y rechaza (403) a quien no lo tenga.
+ */
+const RESEND_ROLES = new Set(['owner', 'admin', 'developer']);
+export function canResendRole(role: string | undefined): boolean {
+  return role !== undefined && RESEND_ROLES.has(role);
+}
+
 export type LoginResult =
   | { ok: true; sessionToken: string }
   | { ok: false; mfaRequired: true }
