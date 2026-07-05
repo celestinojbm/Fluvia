@@ -541,6 +541,33 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(jsdom@25.0.1)(tsx@4.23.0)
 
+  packages/sdk:
+    devDependencies:
+      '@fluvia/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@fluvia/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@fluvia/config':
+        specifier: workspace:*
+        version: link:../config
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      '@fluvia/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(jsdom@25.0.1)(tsx@4.23.0)
+
   packages/seeds:
     dependencies:
       '@fluvia/auth':
