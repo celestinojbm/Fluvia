@@ -73,6 +73,7 @@ Contexto: commit auditado `a665b4f` == HEAD al iniciar la integración (cero dri
 - **F1-07 (AUD-P2-007 → PARCIAL, pata de observabilidad): run #31 VERDE** — commit `4dd46c8`, `https://github.com/celestinojbm/Fluvia/actions/runs/28726862210` (298 tests incl. formato de exposición Prometheus, anti-cardinalidad por plantilla de ruta, /metrics sin identificadores de tenant y aislamiento de fallos del observador de métricas en relay/drift/heartbeat).
 - **F1-09 (cierra AUD-P2-008): run #33 VERDE** — commit `1d17ec0`, `https://github.com/celestinojbm/Fluvia/actions/runs/28727371526` (migrate ×2 incl. 0015 y las migraciones de roles CON guard aplicadas sobre PG fresco; 310 tests incl. purga de alcance exacto, no-escape financiero con GUC activo, DELETE de superusuario bloqueado y el guard probado en ambos sentidos sobre BD efímera).
 - **F1-10 (Fase 1 completa; sin hallazgo asociado — evidencia de proceso): run #35 VERDE** — commit `89169e8`, `https://github.com/celestinojbm/Fluvia/actions/runs/28727678396` (315 tests incl. seeds deterministas: segunda corrida con CERO filas nuevas y guard de entorno probado antes de tocar la BD).
+- **AUD-P2-015 (HMAC server-side) + diseño F3-01: run #37 VERDE** — commit `24050a2`, `https://github.com/celestinojbm/Fluvia/actions/runs/28728095481` (migrate ×2 incl. 0016 sobre PG fresco; 316 tests incl. upgrade perezoso v1→v2 y dump-resistance del hash de API keys).
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
