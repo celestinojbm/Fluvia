@@ -31,6 +31,7 @@ const EnvSchema = z.object({
   RELAY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
   DRIFT_CHECK_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -67,6 +68,8 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Puerto de /health y /metrics del worker (F1-07; default estandar 9464). */
+  workerMetricsPort: number;
 }
 
 export class ConfigError extends Error {
@@ -116,5 +119,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.DRIFT_CHECK_ENABLED === 'true',
       intervalMs: e.DRIFT_CHECK_INTERVAL_MS,
     },
+    workerMetricsPort: e.WORKER_METRICS_PORT,
   };
 }

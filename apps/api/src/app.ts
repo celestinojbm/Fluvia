@@ -6,9 +6,11 @@ import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
+import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { createSecurity } from './security.js';
+import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
 
 export interface BuildAppOptions {
@@ -21,6 +23,8 @@ export interface BuildAppOptions {
   apiKeyService?: ApiKeyService;
   /** Override de limites de tasa de /v1/auth/* (tests usan ventanas cortas). */
   authRateLimits?: AuthRateLimits;
+  /** Registro de metricas (F1-07). Por defecto cada app crea el suyo. */
+  metricsRegistry?: MetricsRegistry;
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -40,6 +44,7 @@ export function buildApp({
   identityService,
   apiKeyService,
   authRateLimits,
+  metricsRegistry,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -61,6 +66,9 @@ export function buildApp({
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);
   });
+
+  // F1-07: contadores/histogramas HTTP + GET /metrics (agregados anonimos).
+  registerMetrics(app, metricsRegistry ?? new MetricsRegistry());
 
   app.get('/health', async () => ({
     status: 'ok',

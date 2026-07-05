@@ -54,6 +54,8 @@ export interface InboxProcessorOptions {
   maxBackoffMs?: number;
   jitterRatio?: number;
   logger?: InboxLogger;
+  /** F1-07: observador de metricas por ciclo. Sus errores JAMAS afectan al processor. */
+  onStats?: (stats: InboxRunStats) => void;
 }
 
 export interface InboxRunStats {
@@ -114,7 +116,10 @@ export class InboxProcessor {
       jitterRatio: options.jitterRatio ?? 0.2,
     };
     this.logger = options.logger;
+    this.onStats = options.onStats;
   }
+
+  private readonly onStats: ((stats: InboxRunStats) => void) | undefined;
 
   register(provider: string, registration: ProviderRegistration): void {
     this.registry.set(provider, registration);
@@ -222,6 +227,11 @@ export class InboxProcessor {
           stats.retried += 1;
         }
       }
+    }
+    try {
+      this.onStats?.(stats);
+    } catch (err) {
+      this.logger?.error({ err: String(err) }, 'inbox stats observer failed (ignored)');
     }
     return stats;
   }

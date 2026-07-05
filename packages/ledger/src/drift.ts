@@ -35,6 +35,11 @@ interface DriftRowRaw {
   recomputed_pending: string;
 }
 
+export interface DriftWatcherOptions {
+  /** F1-07: observador de metricas por chequeo. Sus errores JAMAS afectan al watcher. */
+  onCheck?: (rows: ProjectionDriftRow[]) => void;
+}
+
 export class ProjectionDriftWatcher {
   private timer: NodeJS.Timeout | undefined;
   private running = false;
@@ -43,7 +48,8 @@ export class ProjectionDriftWatcher {
   constructor(
     /** Pool con rol fluvia_worker (EXECUTE sobre ledger_projection_drift). */
     private readonly workerPool: Pool,
-    private readonly logger?: DriftLogger
+    private readonly logger?: DriftLogger,
+    private readonly options: DriftWatcherOptions = {}
   ) {}
 
   async runOnce(): Promise<ProjectionDriftRow[]> {
@@ -66,6 +72,11 @@ export class ProjectionDriftWatcher {
         { driftCount: rows.length, accounts: rows.map((r) => r.accountId) },
         'LEDGER PROJECTION DRIFT DETECTED — investigate before any rebuild'
       );
+    }
+    try {
+      this.options.onCheck?.(rows);
+    } catch (err) {
+      this.logger?.error({ err: String(err) }, 'drift metrics observer failed (ignored)');
     }
     return rows;
   }

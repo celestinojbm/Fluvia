@@ -97,6 +97,12 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DRIFT_CHECK_INTERVAL_MS: '10' })).toThrow(ConfigError);
   });
 
+  it('parses the worker metrics port with the standard default (F1-07)', () => {
+    expect(loadConfig({}).workerMetricsPort).toBe(9464);
+    expect(loadConfig({ WORKER_METRICS_PORT: '9100' }).workerMetricsPort).toBe(9100);
+    expect(() => loadConfig({ WORKER_METRICS_PORT: '0' })).toThrow(ConfigError);
+  });
+
   it('treats empty string as missing (no silent empty credentials)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', ADMIN_DATABASE_URL: '' })).toThrow(
       ConfigError

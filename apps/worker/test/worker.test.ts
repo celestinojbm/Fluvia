@@ -50,6 +50,30 @@ describe('WorkerProcess (F1-01)', () => {
     }
   });
 
+  it('onHeartbeat observer fires per beat and its failures never break the worker (F1-07)', async () => {
+    vi.useFakeTimers();
+    try {
+      let observed = 0;
+      const worker = new WorkerProcess({
+        pool: workerPool,
+        logger: silentLogger,
+        heartbeatIntervalMs: 100,
+        onHeartbeat: () => {
+          observed += 1;
+          throw new Error('metrics observer exploded');
+        },
+      });
+      worker.start();
+      await vi.advanceTimersByTimeAsync(250);
+      // El observador fallo en cada latido y el worker siguio latiendo igual.
+      expect(observed).toBe(2);
+      expect(worker.heartbeats).toBe(2);
+      await worker.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('start is idempotent (double start does not double the heartbeat rate)', async () => {
     vi.useFakeTimers();
     try {

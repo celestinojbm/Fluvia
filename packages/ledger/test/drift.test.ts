@@ -154,6 +154,30 @@ describe('F2-05: ledger_projection_drift() + watcher programado', () => {
       /permission denied/i
     );
   });
+
+  it('F1-07: onCheck observer sees each check result and its failures never break the watcher', async () => {
+    await tamperProjection(accA, 77);
+    const seen: number[] = [];
+    const watcher = new ProjectionDriftWatcher(
+      ctx.worker,
+      { info: () => undefined, error: () => undefined },
+      {
+        onCheck: (rows) => {
+          seen.push(rows.filter((r) => r.accountId === accA).length);
+          throw new Error('metrics observer exploded');
+        },
+      }
+    );
+
+    // El observador lanzo y aun asi runOnce devolvio las filas.
+    const rows = await watcher.runOnce();
+    expect(rows.some((r) => r.accountId === accA)).toBe(true);
+    expect(seen).toEqual([1]);
+
+    await ledger.rebuildProjection(org, accA);
+    await watcher.runOnce();
+    expect(seen).toEqual([1, 0]); // el gauge volveria a 0: base de la alerta drift>0
+  });
 });
 
 describe('F2-06: scripts/verify-ledger-invariants.sql (externo al ORM)', () => {

@@ -44,6 +44,9 @@ importers:
       '@fluvia/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@fluvia/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       fastify:
         specifier: ^5.2.0
         version: 5.9.0
@@ -75,6 +78,9 @@ importers:
       '@fluvia/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@fluvia/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@fluvia/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
@@ -316,6 +322,18 @@ importers:
       zod:
         specifier: ^3.25.0
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
+
+  packages/observability:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

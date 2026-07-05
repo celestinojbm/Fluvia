@@ -10,6 +10,8 @@ export interface WorkerProcessOptions {
   pool: Pool;
   logger: WorkerLogger;
   heartbeatIntervalMs?: number;
+  /** F1-07: observador de metricas por latido. Sus errores JAMAS afectan al worker. */
+  onHeartbeat?: () => void;
 }
 
 /**
@@ -42,6 +44,11 @@ export class WorkerProcess {
     this.timer = setInterval(() => {
       this.beats += 1;
       this.opts.logger.info({ heartbeat: this.beats }, 'worker heartbeat');
+      try {
+        this.opts.onHeartbeat?.();
+      } catch (err) {
+        this.opts.logger.error({ err: String(err) }, 'heartbeat metrics observer failed (ignored)');
+      }
     }, interval);
   }
 

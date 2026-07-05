@@ -55,6 +55,8 @@ export interface OutboxRelayOptions {
   /** Jitter multiplicativo +/- ratio (0.2 => 80%..120% del backoff). */
   jitterRatio?: number;
   logger?: RelayLogger;
+  /** F1-07: observador de metricas por ciclo. Sus errores JAMAS afectan al relay. */
+  onStats?: (stats: RelayRunStats) => void;
 }
 
 export interface RelayRunStats {
@@ -113,9 +115,11 @@ export class OutboxRelay {
       jitterRatio: options.jitterRatio ?? 0.2,
     };
     this.logger = options.logger;
+    this.onStats = options.onStats;
   }
 
   private readonly logger: RelayLogger | undefined;
+  private readonly onStats: ((stats: RelayRunStats) => void) | undefined;
 
   /**
    * Un ciclo completo: barrido de zombies -> claim -> publicar -> marcar.
@@ -204,6 +208,11 @@ export class OutboxRelay {
           stats.retried += 1;
         }
       }
+    }
+    try {
+      this.onStats?.(stats);
+    } catch (err) {
+      this.logger?.error({ err: String(err) }, 'relay stats observer failed (ignored)');
     }
     return stats;
   }

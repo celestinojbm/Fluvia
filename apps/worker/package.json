@@ -19,6 +19,7 @@
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
     "@fluvia/ledger": "workspace:*",
+    "@fluvia/observability": "workspace:*",
     "@fluvia/outbox": "workspace:*",
     "pino": "^9.5.0"
   },

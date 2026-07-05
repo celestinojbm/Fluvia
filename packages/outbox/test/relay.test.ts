@@ -111,6 +111,28 @@ describe('OutboxRelay (F2-11)', () => {
     expect(published.length).toBeGreaterThanOrEqual(before); // otros tests pueden sembrar
   });
 
+  it('F1-07: onStats observer receives cycle stats and its failures never break the relay', async () => {
+    const id = await seedEvent(orgA);
+    const { published, publisher } = recordingPublisher();
+    const observed: Array<{ claimed: number; delivered: number }> = [];
+    const relay = new OutboxRelay(ctx.relay, publisher, {
+      workerId: 'w-stats',
+      batchSize: 50,
+      onStats: (stats) => {
+        observed.push({ claimed: stats.claimed, delivered: stats.delivered });
+        throw new Error('metrics observer exploded');
+      },
+    });
+
+    // El observador lanzo y aun asi el ciclo completo y entrego.
+    const stats = await relay.runOnce();
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toEqual({ claimed: stats.claimed, delivered: stats.delivered });
+    expect(stats.delivered).toBeGreaterThanOrEqual(1);
+    expect(published.some((e) => e.id === id)).toBe(true);
+    expect((await eventRow(id)).status).toBe('delivered');
+  });
+
   it('CA Gate: two concurrent relays never double-deliver (SKIP LOCKED)', async () => {
     const ids = await Promise.all(Array.from({ length: 30 }, () => seedEvent(orgA)));
     const seen = new Map<string, number>();
