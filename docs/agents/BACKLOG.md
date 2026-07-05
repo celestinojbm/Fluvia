@@ -38,7 +38,7 @@ Estado: Activo · Fuente única de trabajo · Formato §48: cada ítem lleva ID,
 
 ## P2 — Fase 3 (Sandbox de pagos)
 
-F3-01 FSMs declarativas (intent/attempt/refund) + servicio de transiciones + rediseño `payment_intents` con **meta-test FSM↔DDL** (AUD-P2-002/011) · F3-02 API `/v1/payment_intents` + customers (idempotente, OpenAPI) · F3-03 MockPaymentProvider (tokenización simulada, eventos asíncronos, fallas inyectables) + contract tests del adapter · F3-04 Circuit breaker + timeouts + política de indeterminado · F3-05 Checkout session app (Next.js, i18n es/en, WCAG AA) · F3-06 Payment links · F3-07 Webhooks salientes (motor + SSRF guard + rotación) · F3-08 Refunds E2E con ledger compensatorio · F3-09 Dashboard mínimo · F3-10 SDK TS generado de OpenAPI · F3-11 CORS + security headers + Dockerfile/compose completo (AUD-P2-016, AUD-P3-003).
+~~F3-01~~ **Completado 2026-07-05** (decisión #24: adelantado a la re-auditoría; migración 0017 + `@fluvia/payments-core` + meta-test triple doc↔TS↔DDL + matriz de motor 144+64 pares — cierra AUD-P2-002 y AUD-P2-011) · F3-02 API `/v1/payment_intents` + customers (idempotente, OpenAPI) · F3-03 MockPaymentProvider (tokenización simulada, eventos asíncronos, fallas inyectables) + contract tests del adapter · F3-04 Circuit breaker + timeouts + política de indeterminado · F3-05 Checkout session app (Next.js, i18n es/en, WCAG AA) · F3-06 Payment links · F3-07 Webhooks salientes (motor + SSRF guard + rotación) · F3-08 Refunds E2E con ledger compensatorio · F3-09 Dashboard mínimo · F3-10 SDK TS generado de OpenAPI · F3-11 CORS + security headers + Dockerfile/compose completo (AUD-P2-016, AUD-P3-003).
 
 ## P3 — Fase 4 (Conciliación y operaciones)
 

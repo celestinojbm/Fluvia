@@ -24,6 +24,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones + purga auditada de datos técnicos + `/health`+`/metrics` (puerto 9464) |
 | `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
 | `packages/seeds` | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10) |
+| `packages/payments-core` | FSMs declarativas de pagos (intent/attempt/refund) + `PaymentIntentService`; transiciones hechas cumplir EN el motor con meta-test doc↔TS↔DDL (F3-01) |
 | `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |
 

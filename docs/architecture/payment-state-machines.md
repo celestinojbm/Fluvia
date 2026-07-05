@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0 · Este documento debe mapear EXACTAMENTE con el código (`packages/payments-core/src/fsm/*`); todo PR que toque una FSM actualiza ambos.
 
-> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO — nada construido.** `packages/payments-core` aún no existe; ninguna FSM está implementada. La regla de mapeo doc↔código aplica desde el momento en que ese paquete se cree (F3).
+> **Estado de implementación (2026-07-05, F3-01): FSMs de intent/attempt/refund IMPLEMENTADAS** en `@fluvia/payments-core` (mapas declarativos) y — para intent/attempt — en el MOTOR (tablas `payment_intent_transitions`/`payment_attempt_transitions` + triggers, migración 0017). Un meta-test exige igualdad exacta entre los mermaid de este doc, los mapas TS y las tablas de la base, y prueba la matriz completa de transiciones ilegales con SQL de superusuario. Los endpoints públicos (F3-02+), checkout, providers y disputas siguen sin construir.
 
 ## 1. Payment Intent
 
@@ -39,11 +39,40 @@ Terminales: `failed`, `canceled`, `refunded`. Nota: `failed` del intent es termi
 
 Estados: `created`, `submitting`, `submitted`, `requires_action`, `indeterminate`, `succeeded`, `failed`, `expired`.
 
-Transiciones clave: `submitting → indeterminate` en timeout ambiguo (V4 §23); `indeterminate → succeeded|failed` solo por consulta al proveedor, webhook o conciliación — nunca por asunción. `indeterminate` genera alerta si envejece más del umbral (Nivel C).
+```mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> submitting
+    created --> expired
+    submitting --> submitted : aceptado async
+    submitting --> requires_action : 3DS/redirect
+    submitting --> succeeded : aprobación síncrona
+    submitting --> failed : rechazo síncrono
+    submitting --> indeterminate : timeout ambiguo
+    submitted --> succeeded
+    submitted --> failed
+    submitted --> indeterminate
+    submitted --> expired
+    requires_action --> submitted : acción completada
+    requires_action --> expired : acción no completada
+    indeterminate --> succeeded : resolución verificada
+    indeterminate --> failed : resolución verificada
+```
+
+Terminales: `succeeded`, `failed`, `expired`. Transiciones clave: `submitting → indeterminate` en timeout ambiguo (V4 §23); `indeterminate → succeeded|failed` solo por consulta al proveedor, webhook o conciliación — nunca por asunción. `indeterminate` genera alerta si envejece más del umbral (Nivel C).
 
 ## 3. Refund
 
 Estados: `created`, `processing`, `succeeded`, `failed`, `canceled` (si el proveedor lo permite).
+
+```mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> processing
+    created --> canceled : antes de enviarse
+    processing --> succeeded
+    processing --> failed
+```
 
 Invariantes: `Σ refunds no-fallidos ≤ monto capturado` (servicio + property test); todo `succeeded` publica asiento compensatorio en la misma unidad de consistencia; idempotencia por `(tenant, refund idempotency key)`.
 
