@@ -204,3 +204,81 @@ describe('GET + list', () => {
     expect(foreignGet.statusCode).toBe(404);
   });
 });
+
+describe('GET /v1/checkout_sessions/:id/status (plano alojado, sin API key)', () => {
+  async function createSession(): Promise<{ id: string; clientSecret: string }> {
+    const intentId = await newIntent();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/checkout_sessions',
+      headers: { ...auth(keyA), 'idempotency-key': `cs-${randomUUID()}` },
+      payload: { payment_intent_id: intentId },
+    });
+    return { id: res.json().id as string, clientSecret: res.json().client_secret as string };
+  }
+
+  it('returns the redacted hosted view with the client_secret and NO API key', async () => {
+    const { id, clientSecret } = await createSession();
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}/status`,
+      headers: { 'x-checkout-client-secret': clientSecret },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.object).toBe('checkout_session.hosted');
+    expect(body.status).toBe('open');
+    expect(body.payment_intent.amount).toBe(50_000);
+    expect(body.payment_intent.currency).toBe('COP');
+    // Vista redactada: sin secreto ni internos del comercio.
+    expect(body).not.toHaveProperty('client_secret');
+    expect(JSON.stringify(body)).not.toContain('tenant');
+  });
+
+  it('completes and reflects succeeded after the intent is confirmed (tok_approve)', async () => {
+    const intentId = await newIntent();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/checkout_sessions',
+      headers: { ...auth(keyA), 'idempotency-key': `cs-${randomUUID()}` },
+      payload: { payment_intent_id: intentId },
+    });
+    const { id, client_secret } = created.json();
+
+    // El pago se confirma por la vía existente (F3-03); la sesión se sincroniza.
+    const confirm = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${intentId}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': `cf-${randomUUID()}` },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(confirm.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}/status`,
+      headers: { 'x-checkout-client-secret': client_secret },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('completed');
+    expect(res.json().payment_intent.status).toBe('succeeded');
+  });
+
+  it('a wrong or missing client_secret is 404 (anti-enumeration)', async () => {
+    const { id } = await createSession();
+    const wrong = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}/status`,
+      headers: { 'x-checkout-client-secret': 'cs_wrong' },
+    });
+    expect(wrong.statusCode).toBe(404);
+    expect(wrong.json().error.code).toBe('not_found');
+
+    const missing = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}/status`,
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error.code).toBe('not_found');
+  });
+});

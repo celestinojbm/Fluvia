@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { buildEnvelope } from '@fluvia/events';
 import {
   CheckoutSessionInvalidCustomerError,
   CheckoutSessionNotFoundError,
@@ -51,6 +52,21 @@ export interface CheckoutSessionDto {
 export interface CreatedCheckoutSession extends CheckoutSessionDto {
   /** Credencial de la página alojada — se entrega UNA única vez. */
   clientSecret: string;
+}
+
+/**
+ * Vista REDACTADA para la página alojada (autenticada por client_secret): lo
+ * justo para renderizar el checkout — jamás internos del comercio, tenant ni
+ * el propio secreto.
+ */
+export interface HostedCheckoutView {
+  id: string;
+  status: string;
+  url: string;
+  expiresAt: string;
+  successUrl: string | null;
+  cancelUrl: string | null;
+  paymentIntent: { id: string; status: string; amount: string; currency: string };
 }
 
 export interface CreateCheckoutSessionInput {
@@ -184,5 +200,115 @@ export class CheckoutSessionService {
       );
       return res.rows.map((r) => this.toDto(r));
     });
+  }
+
+  /**
+   * Plano ALOJADO (F3-05c): la página del comprador consulta la sesión con el
+   * `client_secret` (sin API key). Autenticación cross-tenant vía la función
+   * SECURITY DEFINER `checkout_session_authenticate` (0023); ya con el tenant
+   * resuelto, sincroniza el estado de forma perezosa (completed si el intent
+   * tuvo éxito; expired si venció el TTL) emitiendo el evento
+   * `checkout_session.*`, y devuelve una vista redactada. Un secreto/ id
+   * equivocado es indistinguible de inexistente (anti-enumeración).
+   */
+  async getByClientSecret(sessionId: string, clientSecret: string): Promise<HostedCheckoutView> {
+    const auth = await this.appPool.query<{ tenant_id: string | null }>(
+      `SELECT checkout_session_authenticate($1, $2) AS tenant_id`,
+      [sessionId, hashClientSecret(clientSecret)]
+    );
+    const tenantId = auth.rows[0]?.tenant_id ?? null;
+    if (!tenantId) throw new CheckoutSessionNotFoundError();
+    return withTenantTransaction(this.appPool, tenantId, (c) =>
+      this.syncStatusIn(c, tenantId, sessionId)
+    );
+  }
+
+  /**
+   * Avance perezoso e idempotente del estado bajo lock de la sesión: open ->
+   * completed (intent succeeded) | expired (TTL vencido). Solo transiciona una
+   * vez; una segunda consulta ve el estado terminal sin re-emitir.
+   */
+  private async syncStatusIn(
+    c: TxClient,
+    tenantId: string,
+    sessionId: string
+  ): Promise<HostedCheckoutView> {
+    const res = await c.query<{
+      id: string;
+      payment_intent_id: string;
+      status: string;
+      success_url: string | null;
+      cancel_url: string | null;
+      expires_at: Date;
+      intent_status: string;
+      intent_amount: string;
+      intent_currency: string;
+      expired_now: boolean;
+    }>(
+      `SELECT cs.id, cs.payment_intent_id, cs.status, cs.success_url, cs.cancel_url, cs.expires_at,
+              i.status AS intent_status, i.amount::text AS intent_amount, i.currency AS intent_currency,
+              (cs.expires_at <= now()) AS expired_now
+       FROM checkout_sessions cs
+       JOIN payment_intents i ON i.id = cs.payment_intent_id
+       WHERE cs.id = $1
+       FOR UPDATE OF cs`,
+      [sessionId]
+    );
+    const row = res.rows[0];
+    if (!row) throw new CheckoutSessionNotFoundError();
+
+    let status = row.status;
+    if (status === 'open') {
+      if (row.intent_status === 'succeeded') {
+        await c.query(
+          `UPDATE checkout_sessions SET status = 'completed', completed_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [sessionId]
+        );
+        status = 'completed';
+        await this.emit(c, tenantId, sessionId, row.payment_intent_id, 'completed');
+      } else if (row.expired_now) {
+        await c.query(
+          `UPDATE checkout_sessions SET status = 'expired', updated_at = now() WHERE id = $1`,
+          [sessionId]
+        );
+        status = 'expired';
+        await this.emit(c, tenantId, sessionId, row.payment_intent_id, 'expired');
+      }
+    }
+
+    return {
+      id: row.id,
+      status,
+      url: `${this.baseUrl}/c/${row.id}`,
+      expiresAt: row.expires_at.toISOString(),
+      successUrl: row.success_url,
+      cancelUrl: row.cancel_url,
+      paymentIntent: {
+        id: row.payment_intent_id,
+        status: row.intent_status,
+        amount: row.intent_amount,
+        currency: row.intent_currency.trim(),
+      },
+    };
+  }
+
+  private async emit(
+    c: TxClient,
+    tenantId: string,
+    sessionId: string,
+    paymentIntentId: string,
+    status: 'completed' | 'expired'
+  ): Promise<void> {
+    const envelope = buildEnvelope({
+      producer: 'fluvia.payments',
+      resource: { type: 'checkout_session', id: sessionId },
+      data: { checkout_session_id: sessionId, payment_intent_id: paymentIntentId, status },
+    });
+    await c.query(`INSERT INTO outbox_events (tenant_id, topic, payload) VALUES ($1, $2, $3)`, [
+      tenantId,
+      `checkout_session.${status}`,
+      JSON.stringify(envelope),
+    ]);
   }
 }

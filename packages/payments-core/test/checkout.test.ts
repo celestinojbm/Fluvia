@@ -13,6 +13,22 @@ import {
   hashClientSecret,
 } from '../src/index.js';
 
+/** Camino legal de la FSM del intent hasta succeeded (sin tocar el ledger). */
+async function driveIntentToSucceeded(
+  intents: PaymentIntentService,
+  org: string,
+  intentId: string
+) {
+  for (const to of [
+    'requires_payment_method',
+    'requires_confirmation',
+    'processing',
+    'succeeded',
+  ] as const) {
+    await intents.transition(org, intentId, to);
+  }
+}
+
 /**
  * F3-05b — CheckoutSessionService contra PG real: creación sobre un intent
  * abierto, guard de intent resuelto, client_secret (hash en reposo) entregado
@@ -162,5 +178,101 @@ describe('get + list', () => {
     expect(list.map((s) => s.id)).toEqual([s2.id, s1.id]);
     // Otro tenant no ve nada de estos.
     expect((await service.list(orgB, 100)).some((s) => s.id === s1.id)).toBe(false);
+  });
+});
+
+async function checkoutTopics(sessionId: string): Promise<string[]> {
+  const res = await ctx.admin.query<{ topic: string }>(
+    `SELECT topic FROM outbox_events
+     WHERE payload->'data'->>'checkout_session_id' = $1 ORDER BY id`,
+    [sessionId]
+  );
+  return res.rows.map((r) => r.topic);
+}
+
+describe('plano alojado (getByClientSecret, F3-05c)', () => {
+  it('returns a REDACTED view for a valid client_secret; a wrong secret is not found', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    const view = await service.getByClientSecret(s.id, s.clientSecret);
+    expect(view.id).toBe(s.id);
+    expect(view.status).toBe('open');
+    expect(view.paymentIntent).toEqual({
+      id: intentId,
+      status: 'created',
+      amount: '50000',
+      currency: 'COP',
+    });
+    // Sin secretos ni internos del comercio.
+    expect(view).not.toHaveProperty('clientSecret');
+    expect(JSON.stringify(view)).not.toContain('tenant');
+
+    await expect(service.getByClientSecret(s.id, 'cs_wrong')).rejects.toThrow(
+      CheckoutSessionNotFoundError
+    );
+    // Secreto correcto pero id equivocado: tampoco.
+    await expect(service.getByClientSecret(randomUUID(), s.clientSecret)).rejects.toThrow(
+      CheckoutSessionNotFoundError
+    );
+  });
+
+  it('completes when the intent succeeds and emits checkout_session.completed ONCE', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    await driveIntentToSucceeded(intents, org, intentId);
+
+    const view = await service.getByClientSecret(s.id, s.clientSecret);
+    expect(view.status).toBe('completed');
+    expect(view.paymentIntent.status).toBe('succeeded');
+    expect(await checkoutTopics(s.id)).toEqual(['checkout_session.completed']);
+
+    // Segunda consulta: sigue completed, sin re-emitir.
+    const again = await service.getByClientSecret(s.id, s.clientSecret);
+    expect(again.status).toBe('completed');
+    expect(await checkoutTopics(s.id)).toEqual(['checkout_session.completed']);
+
+    // completed_at quedó sellado.
+    const row = await ctx.admin.query<{ completed_at: Date | null }>(
+      `SELECT completed_at FROM checkout_sessions WHERE id = $1`,
+      [s.id]
+    );
+    expect(row.rows[0]!.completed_at).not.toBeNull();
+  });
+
+  it('expires an open session past its TTL and emits checkout_session.expired ONCE', async () => {
+    // TTL mínimo del servicio es 5 min; se siembra una sesión ya vencida vía
+    // admin con un client_secret conocido para ejercitar la expiración.
+    const intentId = await newIntent();
+    const secret = `cs_${randomUUID()}`;
+    const seeded = await ctx.admin.query<{ id: string }>(
+      `INSERT INTO checkout_sessions
+         (tenant_id, payment_intent_id, client_secret_hash, expires_at)
+       VALUES ($1, $2, $3, now() - interval '1 minute') RETURNING id`,
+      [org, intentId, hashClientSecret(secret)]
+    );
+    const id = seeded.rows[0]!.id;
+
+    const view = await service.getByClientSecret(id, secret);
+    expect(view.status).toBe('expired');
+    expect(await checkoutTopics(id)).toEqual(['checkout_session.expired']);
+
+    // Idempotente: segunda consulta no re-emite.
+    await service.getByClientSecret(id, secret);
+    expect(await checkoutTopics(id)).toEqual(['checkout_session.expired']);
+  });
+
+  it('a succeeded intent wins over an expired TTL (completed, not expired)', async () => {
+    const intentId = await newIntent();
+    await driveIntentToSucceeded(intents, org, intentId);
+    const secret = `cs_${randomUUID()}`;
+    const seeded = await ctx.admin.query<{ id: string }>(
+      `INSERT INTO checkout_sessions
+         (tenant_id, payment_intent_id, client_secret_hash, expires_at)
+       VALUES ($1, $2, $3, now() - interval '1 minute') RETURNING id`,
+      [org, intentId, hashClientSecret(secret)]
+    );
+    const view = await service.getByClientSecret(seeded.rows[0]!.id, secret);
+    expect(view.status).toBe('completed');
+    expect(await checkoutTopics(seeded.rows[0]!.id)).toEqual(['checkout_session.completed']);
   });
 });

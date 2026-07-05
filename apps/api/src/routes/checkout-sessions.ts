@@ -5,7 +5,12 @@ import {
   assertValidIdempotencyKey,
   computeRequestHash,
 } from '@fluvia/idempotency';
-import { CheckoutSessionService, type CheckoutSessionDto } from '@fluvia/payments-core';
+import {
+  CheckoutSessionNotFoundError,
+  CheckoutSessionService,
+  type CheckoutSessionDto,
+  type HostedCheckoutView,
+} from '@fluvia/payments-core';
 import type { Security } from '../security.js';
 
 /**
@@ -35,6 +40,24 @@ export interface CheckoutSessionRoutesOptions {
   security: Security;
   idempotencyService: IdempotencyService;
   checkoutSessionService: CheckoutSessionService;
+}
+
+function hostedView(v: HostedCheckoutView) {
+  return {
+    id: v.id,
+    object: 'checkout_session.hosted',
+    status: v.status,
+    url: v.url,
+    expires_at: v.expiresAt,
+    success_url: v.successUrl,
+    cancel_url: v.cancelUrl,
+    payment_intent: {
+      id: v.paymentIntent.id,
+      status: v.paymentIntent.status,
+      amount: Number(v.paymentIntent.amount),
+      currency: v.paymentIntent.currency,
+    },
+  };
 }
 
 function publicSession(s: CheckoutSessionDto) {
@@ -103,5 +126,20 @@ export function registerCheckoutSessionRoutes(
     const { limit } = ListQuery.parse(req.query ?? {});
     const sessions = await checkoutSessionService.list(req.apiKey!.tenantId, limit);
     return { object: 'list', data: sessions.map(publicSession) };
+  });
+
+  // Plano ALOJADO (F3-05c): la página del comprador, SIN API key — la
+  // credencial es el `client_secret` (header). Sincroniza el estado de forma
+  // perezosa (completed/expired + evento) y devuelve una vista redactada. Un
+  // secreto/id equivocado da el mismo 404 que uno inexistente (anti-enumeración).
+  app.get('/v1/checkout_sessions/:id/status', async (req) => {
+    const { id } = IdParam.parse(req.params);
+    const secret = req.headers['x-checkout-client-secret'];
+    const clientSecret = Array.isArray(secret) ? secret[0] : secret;
+    // Secreto ausente o de tamaño absurdo = mismo 404 del catálogo que uno malo.
+    if (!clientSecret || clientSecret.length < 1 || clientSecret.length > 200) {
+      throw new CheckoutSessionNotFoundError();
+    }
+    return hostedView(await checkoutSessionService.getByClientSecret(id, clientSecret));
   });
 }

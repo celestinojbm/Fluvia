@@ -30,6 +30,7 @@ export {
   type CheckoutSessionDto,
   type CreateCheckoutSessionInput,
   type CreatedCheckoutSession,
+  type HostedCheckoutView,
 } from './checkout.js';
 export {
   PaymentIntentService,
