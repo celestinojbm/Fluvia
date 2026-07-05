@@ -490,6 +490,133 @@
           }
         }
       }
+    },
+    "/v1/customers": {
+      "post": {
+        "summary": "Crear un customer (scope customers:write). Semántica tipo Stripe: el email no es único; se exige al menos uno de email/name/phone. metadata: hasta 50 claves (clave ≤40, valor ≤500).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Customer creado"
+          },
+          "400": {
+            "description": "validation_error (ningún identificador, metadata inválida, etc.)"
+          }
+        }
+      },
+      "get": {
+        "summary": "Listar customers (scope read), más reciente primero",
+        "responses": {
+          "200": {
+            "description": "Lista"
+          }
+        }
+      }
+    },
+    "/v1/customers/{id}": {
+      "get": {
+        "summary": "Recuperar un customer por id (scope read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      },
+      "post": {
+        "summary": "Actualizar un customer (scope customers:write). Update parcial: solo las claves presentes cambian; null en email/name/phone/description limpia el campo; metadata reemplaza la bolsa completa.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer actualizado"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/v1/customers/{id}/delete": {
+      "post": {
+        "summary": "Baja lógica de un customer (scope customers:write); desaparece de get/list, el histórico permanece. Idempotente.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer dado de baja"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
     }
   }
 }

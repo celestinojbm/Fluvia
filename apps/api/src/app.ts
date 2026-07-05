@@ -5,7 +5,7 @@ import type { AppConfig } from '@fluvia/config';
 import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
-import type { ApiKeyService, IdentityService } from '@fluvia/identity';
+import { CustomerService, type ApiKeyService, type IdentityService } from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService } from '@fluvia/webhooks';
@@ -22,6 +22,7 @@ import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
+import { registerCustomerRoutes } from './routes/customers.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { createSecurity } from './security.js';
@@ -152,6 +153,11 @@ export function buildApp({
       security,
       idempotencyService,
       refundService: new RefundService(appPool, paymentIntentService, postingService, provider),
+    });
+    // F3-05a: customers (plano de integracion; primer consumidor = checkout).
+    registerCustomerRoutes(app, {
+      security,
+      customerService: new CustomerService(appPool),
     });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
     registerProviderWebhookRoutes(app, {

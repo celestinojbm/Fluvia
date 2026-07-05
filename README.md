@@ -6,28 +6,28 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 
 ## Qué hay en este repositorio
 
-| Ruta | Contenido |
-|------|-----------|
-| `docs/` | Paquete de Fase 0 (PRD, arquitectura, threat model, ADRs, gates) + gobernanza viva (backlog, estado, riesgos, decisiones) + **auditorías** (`docs/audits/`) |
-| `packages/money` | Value Object `Money`: bigint en unidades menores, sin float, `allocate` sin pérdida |
-| `packages/db` | Migraciones (DDL + RLS forzado + inmutabilidad + invariantes del ledger a nivel de motor), runner, `withTenantTransaction`, roles por plano |
-| `packages/auth` | Registro/login (scrypt versionado), sesiones, verificación de email, lockout, anti-enumeración, **MFA TOTP** (RFC 6238, secreto cifrado, backup codes) y step-up |
-| `packages/identity` | Organizaciones, merchants, membresías, RBAC declarativo, API keys con scopes (solo `test`) |
-| `packages/audit` | Log de auditoría append-only con redacción de secretos y operaciones de plataforma con razón obligatoria |
-| `packages/ledger` | Ledger de doble partida: postTransaction idempotente, proyecciones versionadas, Chart of Accounts cerrado, reglas de posting tipadas |
-| `packages/events` | Envelope común de eventos (`event_id`, `schema_version`, `occurred_at`, `producer`, `resource`) con validación Zod |
-| `packages/outbox` | Relay del outbox: claim-lease con `SKIP LOCKED` multi-worker, backoff+jitter, DLQ y replay auditado (rol `fluvia_relay` de privilegio mínimo) |
-| `packages/inbox` | Inbox durable de webhooks de proveedores: firma HMAC verificada pre-persistencia, dedup por motor, procesador claim-lease, DLQ redactada, replay auditado (rol `fluvia_inbox`) |
-| `packages/idempotency` | Capa de idempotencia API: claim en la misma transacción que el efecto, hash canónico, replay exacto, crash-safe (Gate Idempotencia) |
-| `packages/config` | Configuración tipada de la aplicación |
-| `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
-| `apps/worker` | Proceso worker: heartbeat + outbox relay (fan-out a webhooks) + deliverer de webhooks salientes + procesador del inbox + watchdog de attempts (barrido/salud de indeterminados) + vigilancia de drift + purga auditada + `/health`+`/metrics` (9464) |
-| `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
-| `packages/seeds` | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10) |
+| Ruta                     | Contenido                                                                                                                                                                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/`                  | Paquete de Fase 0 (PRD, arquitectura, threat model, ADRs, gates) + gobernanza viva (backlog, estado, riesgos, decisiones) + **auditorías** (`docs/audits/`)                                                                                                                   |
+| `packages/money`         | Value Object `Money`: bigint en unidades menores, sin float, `allocate` sin pérdida                                                                                                                                                                                           |
+| `packages/db`            | Migraciones (DDL + RLS forzado + inmutabilidad + invariantes del ledger a nivel de motor), runner, `withTenantTransaction`, roles por plano                                                                                                                                   |
+| `packages/auth`          | Registro/login (scrypt versionado), sesiones, verificación de email, lockout, anti-enumeración, **MFA TOTP** (RFC 6238, secreto cifrado, backup codes) y step-up                                                                                                              |
+| `packages/identity`      | Organizaciones, merchants, membresías, RBAC declarativo, API keys con scopes (solo `test`), customers con metadata validada (F3-05a)                                                                                                                                          |
+| `packages/audit`         | Log de auditoría append-only con redacción de secretos y operaciones de plataforma con razón obligatoria                                                                                                                                                                      |
+| `packages/ledger`        | Ledger de doble partida: postTransaction idempotente, proyecciones versionadas, Chart of Accounts cerrado, reglas de posting tipadas                                                                                                                                          |
+| `packages/events`        | Envelope común de eventos (`event_id`, `schema_version`, `occurred_at`, `producer`, `resource`) con validación Zod                                                                                                                                                            |
+| `packages/outbox`        | Relay del outbox: claim-lease con `SKIP LOCKED` multi-worker, backoff+jitter, DLQ y replay auditado (rol `fluvia_relay` de privilegio mínimo)                                                                                                                                 |
+| `packages/inbox`         | Inbox durable de webhooks de proveedores: firma HMAC verificada pre-persistencia, dedup por motor, procesador claim-lease, DLQ redactada, replay auditado (rol `fluvia_inbox`)                                                                                                |
+| `packages/idempotency`   | Capa de idempotencia API: claim en la misma transacción que el efecto, hash canónico, replay exacto, crash-safe (Gate Idempotencia)                                                                                                                                           |
+| `packages/config`        | Configuración tipada de la aplicación                                                                                                                                                                                                                                         |
+| `apps/api`               | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden                                                                                                                       |
+| `apps/worker`            | Proceso worker: heartbeat + outbox relay (fan-out a webhooks) + deliverer de webhooks salientes + procesador del inbox + watchdog de attempts (barrido/salud de indeterminados) + vigilancia de drift + purga auditada + `/health`+`/metrics` (9464)                          |
+| `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07)                                                                                                                                                   |
+| `packages/seeds`         | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10)                                                                                                                                                                                |
 | `packages/payments-core` | FSMs declarativas de pagos (intent/attempt/refund) hechas cumplir EN el motor con meta-test doc↔TS↔DDL; `PaymentIntentService`, confirmación en dos fases con MockProvider + `ResilientProvider` (F3-01/03/04) y `RefundService` end-to-end con asiento compensatorio (F3-08) |
-| `packages/webhooks` | Webhooks salientes: catálogo de topics, firma versionada `v1=` con rotación dual, secretos cifrados en reposo, SSRF guard con pinning de IP, fan-out desde el outbox y deliverer claim-lease (rol `fluvia_webhook`, F3-07) |
-| `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
-| `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |
+| `packages/webhooks`      | Webhooks salientes: catálogo de topics, firma versionada `v1=` con rotación dual, secretos cifrados en reposo, SSRF guard con pinning de IP, fan-out desde el outbox y deliverer claim-lease (rol `fluvia_webhook`, F3-07)                                                    |
+| `scripts/`               | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore)                                                                                                                                                                                  |
+| `docker-compose.yml`     | Infra local: PostgreSQL 16 + Redis 7                                                                                                                                                                                                                                          |
 
 ## Ejecutar localmente
 

@@ -249,6 +249,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // son indistinguibles de los inexistentes por diseño (anti-enumeracion).
   OrganizationNotFoundError: 'not_found',
   MerchantNotFoundError: 'not_found',
+  CustomerNotFoundError: 'not_found',
   ApiKeyNotFoundError: 'not_found',
   MerchantNameTakenError: 'merchant_name_taken',
   OrganizationSlugTakenError: 'organization_slug_taken',

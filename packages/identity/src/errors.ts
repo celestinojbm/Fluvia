@@ -37,6 +37,12 @@ export class MerchantNotFoundError extends IdentityError {
   }
 }
 
+export class CustomerNotFoundError extends IdentityError {
+  constructor() {
+    super('Customer not found');
+  }
+}
+
 /** true si err es una violacion de unicidad de Postgres (23505), opcionalmente de un constraint concreto. */
 export function isUniqueViolation(err: unknown, constraint?: string): boolean {
   const e = err as { code?: string; constraint?: string } | null;

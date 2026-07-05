@@ -5,14 +5,20 @@ export {
   type MerchantDto,
   type MemberDto,
 } from './tenant-service.js';
+export { CustomerService, type CustomerDto } from './customers.js';
 export {
   CreateOrganizationSchema,
   CreateMerchantSchema,
   UpdateMerchantSchema,
+  CreateCustomerSchema,
+  UpdateCustomerSchema,
+  ResourceMetadataSchema,
   SLUG_RE,
   type CreateOrganizationInput,
   type CreateMerchantInput,
   type UpdateMerchantInput,
+  type CreateCustomerInput,
+  type UpdateCustomerInput,
 } from './schemas.js';
 export {
   IdentityError,
@@ -21,6 +27,7 @@ export {
   MerchantNameTakenError,
   OrganizationNotFoundError,
   MerchantNotFoundError,
+  CustomerNotFoundError,
 } from './errors.js';
 export {
   ROLES,
