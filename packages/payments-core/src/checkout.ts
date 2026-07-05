@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { withTenantTransaction, type Pool } from '@fluvia/db';
 import { buildEnvelope } from '@fluvia/events';
+import type { PaymentConfirmationService } from './confirmation.js';
 import {
   CheckoutSessionInvalidCustomerError,
   CheckoutSessionNotFoundError,
@@ -9,6 +10,13 @@ import {
 } from './errors.js';
 import type { IntentStatus } from './fsm.js';
 import type { TxClient } from './service.js';
+
+/** Estados del intent en los que la página alojada aún puede iniciar el pago. */
+const INTENT_CONFIRMABLE: ReadonlySet<IntentStatus> = new Set<IntentStatus>([
+  'created',
+  'requires_payment_method',
+  'requires_confirmation',
+]);
 
 /**
  * Checkout sessions (F3-05b) — el recurso: una sesión de checkout alojado
@@ -93,6 +101,11 @@ interface SessionRow {
 export interface CheckoutSessionServiceOptions {
   /** Base de la URL alojada; el buyer se redirige a `{base}/c/{id}`. */
   checkoutBaseUrl?: string;
+  /**
+   * Servicio de confirmación (F3-03). Necesario SOLO para el confirm alojado
+   * (F3-05c-iii): sin él, `confirmByClientSecret` no está disponible.
+   */
+  confirmation?: PaymentConfirmationService;
 }
 
 export function hashClientSecret(secret: string): string {
@@ -101,6 +114,7 @@ export function hashClientSecret(secret: string): string {
 
 export class CheckoutSessionService {
   private readonly baseUrl: string;
+  private readonly confirmation: PaymentConfirmationService | undefined;
 
   constructor(
     /** Pool con rol fluvia_app (RLS forzado). */
@@ -108,6 +122,18 @@ export class CheckoutSessionService {
     options: CheckoutSessionServiceOptions = {}
   ) {
     this.baseUrl = (options.checkoutBaseUrl ?? 'https://checkout.fluvia.local').replace(/\/+$/, '');
+    this.confirmation = options.confirmation;
+  }
+
+  /** Resuelve (session_id + client_secret) -> tenant_id (cross-tenant, 0023). */
+  private async authenticate(sessionId: string, clientSecret: string): Promise<string> {
+    const auth = await this.appPool.query<{ tenant_id: string | null }>(
+      `SELECT checkout_session_authenticate($1, $2) AS tenant_id`,
+      [sessionId, hashClientSecret(clientSecret)]
+    );
+    const tenantId = auth.rows[0]?.tenant_id ?? null;
+    if (!tenantId) throw new CheckoutSessionNotFoundError();
+    return tenantId;
   }
 
   private toDto(r: SessionRow): CheckoutSessionDto {
@@ -212,12 +238,62 @@ export class CheckoutSessionService {
    * equivocado es indistinguible de inexistente (anti-enumeración).
    */
   async getByClientSecret(sessionId: string, clientSecret: string): Promise<HostedCheckoutView> {
-    const auth = await this.appPool.query<{ tenant_id: string | null }>(
-      `SELECT checkout_session_authenticate($1, $2) AS tenant_id`,
-      [sessionId, hashClientSecret(clientSecret)]
+    const tenantId = await this.authenticate(sessionId, clientSecret);
+    return withTenantTransaction(this.appPool, tenantId, (c) =>
+      this.syncStatusIn(c, tenantId, sessionId)
     );
-    const tenantId = auth.rows[0]?.tenant_id ?? null;
-    if (!tenantId) throw new CheckoutSessionNotFoundError();
+  }
+
+  /**
+   * Confirm ALOJADO (F3-05c-iii): la página del comprador envía un método de
+   * pago y confirma, SIN API key — la credencial es el `client_secret`. Mismo
+   * patrón de dos fases que el confirm de la API (V4 Nivel A): fase 1 (intent
+   * -> processing + attempt submitting) bajo lock; el proveedor FUERA de la tx;
+   * luego sincroniza la sesión. Idempotente ante doble submit: si el intent ya
+   * no es confirmable (una confirmación previa lo dejó en processing/terminal),
+   * devuelve la vista actual sin crear un segundo attempt.
+   */
+  async confirmByClientSecret(
+    sessionId: string,
+    clientSecret: string,
+    paymentMethodToken: string
+  ): Promise<HostedCheckoutView> {
+    if (!this.confirmation) {
+      throw new Error('CheckoutSessionService was constructed without a confirmation service');
+    }
+    const confirmation = this.confirmation;
+    const tenantId = await this.authenticate(sessionId, clientSecret);
+
+    // Fase 1 bajo lock de la sesión: decide si hay algo que confirmar.
+    const phase1 = await withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<{
+        status: string;
+        payment_intent_id: string;
+        intent_status: string;
+      }>(
+        `SELECT cs.status, cs.payment_intent_id, i.status AS intent_status
+         FROM checkout_sessions cs
+         JOIN payment_intents i ON i.id = cs.payment_intent_id
+         WHERE cs.id = $1
+         FOR UPDATE OF cs`,
+        [sessionId]
+      );
+      const row = res.rows[0];
+      if (!row) throw new CheckoutSessionNotFoundError();
+      // Sesión ya terminal, o intent ya en curso/resuelto: nada que iniciar.
+      if (row.status !== 'open' || !INTENT_CONFIRMABLE.has(row.intent_status as IntentStatus)) {
+        return { attemptId: null as string | null };
+      }
+      const begun = await confirmation.beginIn(c, tenantId, row.payment_intent_id);
+      return { attemptId: begun.attemptId };
+    });
+
+    // Fase 2 FUERA de toda tx (Nivel A): solo si iniciamos una confirmación.
+    if (phase1.attemptId) {
+      await confirmation.execute(tenantId, phase1.attemptId, paymentMethodToken);
+    }
+
+    // Estado final: sincroniza (completed si el intent tuvo éxito) y devuelve.
     return withTenantTransaction(this.appPool, tenantId, (c) =>
       this.syncStatusIn(c, tenantId, sessionId)
     );

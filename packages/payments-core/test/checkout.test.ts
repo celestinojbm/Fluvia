@@ -3,11 +3,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTenantTransaction } from '@fluvia/db';
 import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import { Money } from '@fluvia/money';
+import { LedgerService, PostingService } from '@fluvia/ledger';
 import {
   CheckoutSessionInvalidCustomerError,
   CheckoutSessionNotFoundError,
   CheckoutSessionService,
   InvalidStateTransitionError,
+  MockPaymentProvider,
+  PaymentConfirmationService,
   PaymentIntentNotFoundError,
   PaymentIntentService,
   hashClientSecret,
@@ -38,6 +41,7 @@ async function driveIntentToSucceeded(
 let ctx: TestContext;
 let intents: PaymentIntentService;
 let service: CheckoutSessionService;
+let serviceWithConfirm: CheckoutSessionService;
 let org: string;
 let orgB: string;
 let merchantId: string;
@@ -60,6 +64,15 @@ beforeAll(async () => {
   ctx = await createTestContext();
   intents = new PaymentIntentService(ctx.app);
   service = new CheckoutSessionService(ctx.app, { checkoutBaseUrl: 'https://pay.fluvia.test/' });
+  const posting = new PostingService(new LedgerService(ctx.app), ctx.app);
+  serviceWithConfirm = new CheckoutSessionService(ctx.app, {
+    confirmation: new PaymentConfirmationService(
+      ctx.app,
+      intents,
+      posting,
+      new MockPaymentProvider()
+    ),
+  });
   org = await ctx.createTenant(`CO ${randomUUID().slice(0, 8)}`);
   orgB = await ctx.createTenant(`CO-B ${randomUUID().slice(0, 8)}`);
   const m = await ctx.admin.query<{ id: string }>(
@@ -274,5 +287,68 @@ describe('plano alojado (getByClientSecret, F3-05c)', () => {
     const view = await service.getByClientSecret(seeded.rows[0]!.id, secret);
     expect(view.status).toBe('completed');
     expect(await checkoutTopics(seeded.rows[0]!.id)).toEqual(['checkout_session.completed']);
+  });
+});
+
+describe('confirm alojado (confirmByClientSecret, F3-05c-iii)', () => {
+  async function attemptCount(intentId: string): Promise<number> {
+    const r = await ctx.admin.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM payment_attempts WHERE intent_id = $1`,
+      [intentId]
+    );
+    return Number(r.rows[0]!.n);
+  }
+
+  it('tok_approve confirms the intent, completes the session and emits the event', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    const view = await serviceWithConfirm.confirmByClientSecret(
+      s.id,
+      s.clientSecret,
+      'tok_approve'
+    );
+    expect(view.status).toBe('completed');
+    expect(view.paymentIntent.status).toBe('succeeded');
+    expect(await checkoutTopics(s.id)).toEqual(['checkout_session.completed']);
+    expect(await attemptCount(intentId)).toBe(1);
+  });
+
+  it('tok_decline fails the intent; the session stays open reflecting the failure', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    const view = await serviceWithConfirm.confirmByClientSecret(
+      s.id,
+      s.clientSecret,
+      'tok_decline'
+    );
+    expect(view.paymentIntent.status).toBe('failed');
+    // El intent falló (terminal); la sesión no completa — expirará por TTL.
+    expect(view.status).toBe('open');
+    expect(await checkoutTopics(s.id)).toEqual([]);
+  });
+
+  it('double submit is idempotent: no second attempt, returns the current view', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    await serviceWithConfirm.confirmByClientSecret(s.id, s.clientSecret, 'tok_approve');
+    const again = await serviceWithConfirm.confirmByClientSecret(
+      s.id,
+      s.clientSecret,
+      'tok_approve'
+    );
+    expect(again.status).toBe('completed');
+    expect(await attemptCount(intentId)).toBe(1); // jamás un segundo attempt
+  });
+
+  it('a wrong client_secret is not found; without a confirmation service it throws', async () => {
+    const intentId = await newIntent();
+    const s = await createSession(org, { paymentIntentId: intentId });
+    await expect(
+      serviceWithConfirm.confirmByClientSecret(s.id, 'cs_wrong', 'tok_approve')
+    ).rejects.toThrow(CheckoutSessionNotFoundError);
+    // `service` se construyó SIN confirmation: el confirm alojado no aplica.
+    await expect(
+      service.confirmByClientSecret(s.id, s.clientSecret, 'tok_approve')
+    ).rejects.toThrow(/without a confirmation service/);
   });
 });

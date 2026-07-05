@@ -132,14 +132,38 @@ export function registerCheckoutSessionRoutes(
   // credencial es el `client_secret` (header). Sincroniza el estado de forma
   // perezosa (completed/expired + evento) y devuelve una vista redactada. Un
   // secreto/id equivocado da el mismo 404 que uno inexistente (anti-enumeración).
-  app.get('/v1/checkout_sessions/:id/status', async (req) => {
-    const { id } = IdParam.parse(req.params);
+  function clientSecretOf(req: { headers: Record<string, unknown> }): string {
     const secret = req.headers['x-checkout-client-secret'];
-    const clientSecret = Array.isArray(secret) ? secret[0] : secret;
+    const value = Array.isArray(secret) ? secret[0] : secret;
     // Secreto ausente o de tamaño absurdo = mismo 404 del catálogo que uno malo.
-    if (!clientSecret || clientSecret.length < 1 || clientSecret.length > 200) {
+    if (typeof value !== 'string' || value.length < 1 || value.length > 200) {
       throw new CheckoutSessionNotFoundError();
     }
-    return hostedView(await checkoutSessionService.getByClientSecret(id, clientSecret));
+    return value;
+  }
+
+  app.get('/v1/checkout_sessions/:id/status', async (req) => {
+    const { id } = IdParam.parse(req.params);
+    return hostedView(
+      await checkoutSessionService.getByClientSecret(id, clientSecretOf(req as never))
+    );
+  });
+
+  // Confirm ALOJADO (F3-05c-iii): la página del comprador envía el método de
+  // pago y confirma, SIN API key (credencial = client_secret en header). El
+  // estado final se refleja en la vista devuelta (y en GET :id/status).
+  app.post('/v1/checkout_sessions/:id/confirm', async (req) => {
+    const { id } = IdParam.parse(req.params);
+    const body = z
+      .object({ payment_method_token: z.string().min(1).max(100) })
+      .strict()
+      .parse(req.body);
+    return hostedView(
+      await checkoutSessionService.confirmByClientSecret(
+        id,
+        clientSecretOf(req as never),
+        body.payment_method_token
+      )
+    );
   });
 }

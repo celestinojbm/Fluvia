@@ -281,4 +281,50 @@ describe('GET /v1/checkout_sessions/:id/status (plano alojado, sin API key)', ()
     expect(missing.statusCode).toBe(404);
     expect(missing.json().error.code).toBe('not_found');
   });
+
+  it('POST /confirm with the client_secret pays and completes the session (tok_approve)', async () => {
+    const { id, clientSecret } = await createSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${id}/confirm`,
+      headers: { 'x-checkout-client-secret': clientSecret },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('completed');
+    expect(res.json().payment_intent.status).toBe('succeeded');
+  });
+
+  it('POST /confirm with tok_decline reflects a failed intent; session stays open', async () => {
+    const { id, clientSecret } = await createSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${id}/confirm`,
+      headers: { 'x-checkout-client-secret': clientSecret },
+      payload: { payment_method_token: 'tok_decline' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('open');
+    expect(res.json().payment_intent.status).toBe('failed');
+  });
+
+  it('POST /confirm rejects a wrong secret (404) and a missing token (400)', async () => {
+    const { id, clientSecret } = await createSession();
+    const wrong = await app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${id}/confirm`,
+      headers: { 'x-checkout-client-secret': 'cs_wrong' },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(wrong.statusCode).toBe(404);
+
+    const badBody = await app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${id}/confirm`,
+      headers: { 'x-checkout-client-secret': clientSecret },
+      payload: {},
+    });
+    expect(badBody.statusCode).toBe(400);
+    expect(badBody.json().error.code).toBe('validation_error');
+  });
 });

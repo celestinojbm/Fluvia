@@ -139,16 +139,17 @@ export function buildApp({
     // proveedor comparte circuito entre confirm y refund.
     const provider = new ResilientProvider(new MockPaymentProvider());
     const idempotencyService = new IdempotencyService(appPool);
+    const confirmationService = new PaymentConfirmationService(
+      appPool,
+      paymentIntentService,
+      postingService,
+      provider
+    );
     registerPaymentIntentRoutes(app, {
       security,
       idempotencyService,
       paymentIntentService,
-      confirmationService: new PaymentConfirmationService(
-        appPool,
-        paymentIntentService,
-        postingService,
-        provider
-      ),
+      confirmationService,
     });
     // F3-08: refunds end-to-end (asiento compensatorio via la via normativa).
     registerRefundRoutes(app, {
@@ -161,12 +162,14 @@ export function buildApp({
       security,
       customerService: new CustomerService(appPool),
     });
-    // F3-05b: checkout sessions (recurso; el flujo alojado llega en F3-05c).
+    // F3-05b/c: checkout sessions (recurso + flujo alojado: /status y /confirm
+    // por client_secret, sin API key).
     registerCheckoutSessionRoutes(app, {
       security,
       idempotencyService,
       checkoutSessionService: new CheckoutSessionService(appPool, {
         checkoutBaseUrl: config.checkoutBaseUrl,
+        confirmation: confirmationService,
       }),
     });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
