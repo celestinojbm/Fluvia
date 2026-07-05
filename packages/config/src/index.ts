@@ -53,6 +53,8 @@ const EnvSchema = z.object({
   WEBHOOK_DELIVERY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   // Base de la URL de checkout alojado (F3-05b); no es secreto.
   CHECKOUT_BASE_URL: z.string().url().default('https://checkout.fluvia.local'),
+  CHECKOUT_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  CHECKOUT_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -127,6 +129,11 @@ export interface AppConfig {
   };
   /** Base de la URL de checkout alojado (F3-05b); el buyer va a `{base}/c/{id}`. */
   checkoutBaseUrl: string;
+  /** Watchdog de sesiones de checkout: entrega garantizada de eventos (F3-05c-ii). */
+  checkoutWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -211,5 +218,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       intervalMs: e.WEBHOOK_DELIVERY_INTERVAL_MS,
     },
     checkoutBaseUrl: e.CHECKOUT_BASE_URL,
+    checkoutWatchdog: {
+      enabled: e.CHECKOUT_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.CHECKOUT_WATCHDOG_INTERVAL_MS,
+    },
   };
 }

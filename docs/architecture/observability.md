@@ -4,14 +4,14 @@ Estado: Activo · Espejo del código en `@fluvia/observability`, `apps/api/src/m
 
 ## 1. Qué existe (y qué no)
 
-| Capa | Estado | Dónde |
-|------|--------|-------|
-| Logs estructurados (pino) con redacción de secretos | ✅ desde F1-01 | `apps/api/src/app.ts`, `apps/worker/src/main.ts` |
-| Correlación por `request_id` (header `x-request-id` saneado o UUID; eco en respuesta y en el sobre de error) | ✅ desde F1-01 | `app.ts` (`genReqId`), `error-catalog.ts` |
-| Métricas en proceso + exposición Prometheus (`GET /metrics` en API y worker) | ✅ F1-07 | `@fluvia/observability` |
-| Health/readiness: API `GET /health` + `GET /ready` (toca la BD); worker `GET /health` en `WORKER_METRICS_PORT` | ✅ F1-01 / F1-07 | `app.ts`, `metrics-server.ts` |
-| Trazas distribuidas (OTel) | ❌ diferido | ver §5 |
-| Dashboards/alertmanager desplegados | ❌ fuera del repo | las reglas baseline viven en §4 |
+| Capa                                                                                                           | Estado            | Dónde                                            |
+| -------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------ |
+| Logs estructurados (pino) con redacción de secretos                                                            | ✅ desde F1-01    | `apps/api/src/app.ts`, `apps/worker/src/main.ts` |
+| Correlación por `request_id` (header `x-request-id` saneado o UUID; eco en respuesta y en el sobre de error)   | ✅ desde F1-01    | `app.ts` (`genReqId`), `error-catalog.ts`        |
+| Métricas en proceso + exposición Prometheus (`GET /metrics` en API y worker)                                   | ✅ F1-07          | `@fluvia/observability`                          |
+| Health/readiness: API `GET /health` + `GET /ready` (toca la BD); worker `GET /health` en `WORKER_METRICS_PORT` | ✅ F1-01 / F1-07  | `app.ts`, `metrics-server.ts`                    |
+| Trazas distribuidas (OTel)                                                                                     | ❌ diferido       | ver §5                                           |
+| Dashboards/alertmanager desplegados                                                                            | ❌ fuera del repo | las reglas baseline viven en §4                  |
 
 ## 2. Métricas expuestas
 
@@ -29,28 +29,29 @@ de texto Prometheus 0.0.4). Reglas duras:
 
 ### API (mismo puerto que la API)
 
-| Métrica | Tipo | Labels |
-|---------|------|--------|
-| `fluvia_http_requests_total` | counter | `method`, `route`, `status` |
-| `fluvia_http_request_duration_seconds` | histogram | `method`, `route` |
+| Métrica                                | Tipo      | Labels                      |
+| -------------------------------------- | --------- | --------------------------- |
+| `fluvia_http_requests_total`           | counter   | `method`, `route`, `status` |
+| `fluvia_http_request_duration_seconds` | histogram | `method`, `route`           |
 
 ### Worker (`WORKER_METRICS_PORT`, default 9464)
 
-| Métrica | Tipo | Labels |
-|---------|------|--------|
-| `fluvia_worker_heartbeats_total` | counter | — |
-| `fluvia_outbox_relay_cycles_total` | counter | — |
-| `fluvia_outbox_relay_events_total` | counter | `result` = `delivered` \| `retried` \| `dead` |
-| `fluvia_ledger_projection_drift_checks_total` | counter | — |
-| `fluvia_ledger_projection_drift_accounts` | gauge | — (0 = sano) |
-| `fluvia_technical_purge_runs_total` | counter | — |
-| `fluvia_technical_purge_rows_total` | counter | `class` (F1-09) |
-| `fluvia_inbox_cycles_total` | counter | — (F3-03b) |
-| `fluvia_inbox_events_total` | counter | `result` = `processed` \| `ignored` \| `retried` \| `dead` |
-| `fluvia_payment_attempts_swept_total` | counter | — (F3-04) |
-| `fluvia_payment_attempts_indeterminate` | gauge | — |
-| `fluvia_payment_attempts_indeterminate_aged` | gauge | — (0 = sano) |
-| `fluvia_webhook_deliveries_total` | counter | `result` = `delivered` \| `retried` \| `dead` (F3-07) |
+| Métrica                                       | Tipo    | Labels                                                     |
+| --------------------------------------------- | ------- | ---------------------------------------------------------- |
+| `fluvia_worker_heartbeats_total`              | counter | —                                                          |
+| `fluvia_outbox_relay_cycles_total`            | counter | —                                                          |
+| `fluvia_outbox_relay_events_total`            | counter | `result` = `delivered` \| `retried` \| `dead`              |
+| `fluvia_ledger_projection_drift_checks_total` | counter | —                                                          |
+| `fluvia_ledger_projection_drift_accounts`     | gauge   | — (0 = sano)                                               |
+| `fluvia_technical_purge_runs_total`           | counter | —                                                          |
+| `fluvia_technical_purge_rows_total`           | counter | `class` (F1-09)                                            |
+| `fluvia_inbox_cycles_total`                   | counter | — (F3-03b)                                                 |
+| `fluvia_inbox_events_total`                   | counter | `result` = `processed` \| `ignored` \| `retried` \| `dead` |
+| `fluvia_payment_attempts_swept_total`         | counter | — (F3-04)                                                  |
+| `fluvia_payment_attempts_indeterminate`       | gauge   | —                                                          |
+| `fluvia_payment_attempts_indeterminate_aged`  | gauge   | — (0 = sano)                                               |
+| `fluvia_webhook_deliveries_total`             | counter | `result` = `delivered` \| `retried` \| `dead` (F3-07)      |
+| `fluvia_checkout_sessions_swept_total`        | counter | `result` = `completed` \| `expired` (F3-05c-ii)            |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -61,19 +62,19 @@ identificador desde el cliente hasta la fila de auditoría.
 
 ## 4. Alertas baseline (reglas para el scraper que exista)
 
-| Alerta | Expresión (PromQL orientativo) | Severidad | Acción |
-|--------|-------------------------------|-----------|--------|
-| Drift contable | `fluvia_ledger_projection_drift_accounts > 0` | CRÍTICA | Incidente: investigar ANTES de cualquier rebuild (V4 §30; la reparación es siempre explícita) |
-| Chequeos de drift detenidos | `increase(fluvia_ledger_projection_drift_checks_total[10m]) == 0` | ALTA | El watcher no corre: revisar worker |
-| Eventos dead en outbox | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0` | ALTA | Revisar DLQ; replay SOLO auditado |
-| Eventos dead en inbox | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0` | ALTA | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado |
-| Indeterminados envejecidos | `fluvia_payment_attempts_indeterminate_aged > 0` | ALTA | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción |
-| Webhooks salientes dead | `increase(fluvia_webhook_deliveries_total{result="dead"}[15m]) > 0` | MEDIA | Endpoint del comercio agotó el calendario de reintentos: revisar `webhook_attempts` (IP/status/error por intento); reenvío manual auditado llega en F3-09 |
-| Worker sin latido | `increase(fluvia_worker_heartbeats_total[5m]) == 0` | ALTA | Proceso caído o colgado |
-| Tasa de 5xx | `rate(fluvia_http_requests_total{status=~"5.."}[5m]) > 0` | ALTA | 5xx debe ser ~0; cualquier valor sostenido es bug |
-| Latencia p99 | `histogram_quantile(0.99, rate(fluvia_http_request_duration_seconds_bucket[5m])) > 1` | MEDIA | Contra baseline SLO de `system-overview.md` §5 |
-| Abuso de auth | `rate(fluvia_http_requests_total{route=~"/v1/auth/.*",status="429"}[5m])` elevado | MEDIA | Posible credential stuffing; correlacionar con lockouts en `audit_log` |
-| API no lista | `GET /ready` ≠ 200 (probe) | CRÍTICA | BD inaccesible |
+| Alerta                      | Expresión (PromQL orientativo)                                                        | Severidad | Acción                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Drift contable              | `fluvia_ledger_projection_drift_accounts > 0`                                         | CRÍTICA   | Incidente: investigar ANTES de cualquier rebuild (V4 §30; la reparación es siempre explícita)                                                             |
+| Chequeos de drift detenidos | `increase(fluvia_ledger_projection_drift_checks_total[10m]) == 0`                     | ALTA      | El watcher no corre: revisar worker                                                                                                                       |
+| Eventos dead en outbox      | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0`                   | ALTA      | Revisar DLQ; replay SOLO auditado                                                                                                                         |
+| Eventos dead en inbox       | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0`                          | ALTA      | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado                                                                                        |
+| Indeterminados envejecidos  | `fluvia_payment_attempts_indeterminate_aged > 0`                                      | ALTA      | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción                                        |
+| Webhooks salientes dead     | `increase(fluvia_webhook_deliveries_total{result="dead"}[15m]) > 0`                   | MEDIA     | Endpoint del comercio agotó el calendario de reintentos: revisar `webhook_attempts` (IP/status/error por intento); reenvío manual auditado llega en F3-09 |
+| Worker sin latido           | `increase(fluvia_worker_heartbeats_total[5m]) == 0`                                   | ALTA      | Proceso caído o colgado                                                                                                                                   |
+| Tasa de 5xx                 | `rate(fluvia_http_requests_total{status=~"5.."}[5m]) > 0`                             | ALTA      | 5xx debe ser ~0; cualquier valor sostenido es bug                                                                                                         |
+| Latencia p99                | `histogram_quantile(0.99, rate(fluvia_http_request_duration_seconds_bucket[5m])) > 1` | MEDIA     | Contra baseline SLO de `system-overview.md` §5                                                                                                            |
+| Abuso de auth               | `rate(fluvia_http_requests_total{route=~"/v1/auth/.*",status="429"}[5m])` elevado     | MEDIA     | Posible credential stuffing; correlacionar con lockouts en `audit_log`                                                                                    |
+| API no lista                | `GET /ready` ≠ 200 (probe)                                                            | CRÍTICA   | BD inaccesible                                                                                                                                            |
 
 ## 5. Límites honestos y decisiones (Nivel C, reversibles)
 

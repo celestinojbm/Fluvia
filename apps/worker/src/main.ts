@@ -15,6 +15,7 @@ import {
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
 import { AttemptsWatchdog } from './attempts-watchdog.js';
+import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -89,6 +90,11 @@ const webhookDeliveriesTotal = registry.counter(
   'Entregas de webhooks salientes por resultado',
   ['result']
 );
+const checkoutSweptTotal = registry.counter(
+  'fluvia_checkout_sessions_swept_total',
+  'Sesiones de checkout barridas por el watchdog (entrega garantizada)',
+  ['result']
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -154,6 +160,14 @@ const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {
     attemptsIndeterminateAged.set({}, health.indeterminateAged);
   },
 });
+// F3-05c-ii: entrega garantizada de eventos de checkout. La politica vive en
+// sweep_checkout_sessions() (0024); el job la invoca y expone metricas.
+const checkoutWatchdog = new CheckoutSessionWatchdog(workerPool, logger, {
+  onResult: (r) => {
+    if (r.completed > 0) checkoutSweptTotal.inc({ result: 'completed' }, r.completed);
+    if (r.expired > 0) checkoutSweptTotal.inc({ result: 'expired' }, r.expired);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -180,6 +194,7 @@ async function shutdown(signal: string): Promise<void> {
   purgeJob.stop();
   inboxProcessor.stop();
   attemptsWatchdog.stop();
+  checkoutWatchdog.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -236,6 +251,12 @@ worker
       logger.info({ intervalMs: config.attemptsWatchdog.intervalMs }, 'attempts watchdog started');
     } else {
       logger.info({}, 'attempts watchdog disabled by config (ATTEMPTS_WATCHDOG_ENABLED=false)');
+    }
+    if (config.checkoutWatchdog.enabled) {
+      checkoutWatchdog.start(config.checkoutWatchdog.intervalMs);
+      logger.info({ intervalMs: config.checkoutWatchdog.intervalMs }, 'checkout watchdog started');
+    } else {
+      logger.info({}, 'checkout watchdog disabled by config (CHECKOUT_WATCHDOG_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);

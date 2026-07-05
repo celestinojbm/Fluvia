@@ -112,6 +112,12 @@ importers:
         specifier: ^9.5.0
         version: 9.14.0
     devDependencies:
+      '@fluvia/events':
+        specifier: workspace:*
+        version: link:../../packages/events
+      '@fluvia/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.0

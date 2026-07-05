@@ -27,6 +27,8 @@
     "pino": "^9.5.0"
   },
   "devDependencies": {
+    "@fluvia/events": "workspace:*",
+    "@fluvia/money": "workspace:*",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
