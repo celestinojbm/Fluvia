@@ -23,6 +23,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
 | `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones + purga auditada de datos técnicos + `/health`+`/metrics` (puerto 9464) |
 | `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
+| `packages/seeds` | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10) |
 | `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |
 
@@ -33,6 +34,7 @@ pnpm install
 docker compose up -d postgres      # o un PostgreSQL 16 local en :5432
 pnpm migrate                       # aplica packages/db/migrations (idempotente)
 pnpm test                          # unit + integración real contra PostgreSQL (RLS, inmutabilidad, ledger)
+pnpm seed                          # datos de demo deterministas (SOLO local/test; re-ejecutar no duplica)
 ```
 
 Variables: `ADMIN_DATABASE_URL`, `APP_DATABASE_URL`, `WORKER_DATABASE_URL`, `RELAY_DATABASE_URL`, `INBOX_DATABASE_URL`, `AUTH_DATABASE_URL`. Los defaults locales solo aplican con `NODE_ENV`/`FLUVIA_ENV` local/test; en cualquier otro entorno el arranque falla si falta alguna (anti-mezcla de entornos).

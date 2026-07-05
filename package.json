@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Fluvia — plataforma de pagos de extrema confiabilidad (Ledger de doble partida, Outbox transaccional, RLS multi-tenant)",
+  "description": "Fluvia \u2014 plataforma de pagos de extrema confiabilidad (Ledger de doble partida, Outbox transaccional, RLS multi-tenant)",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
@@ -14,7 +14,8 @@
     "migrate": "pnpm --filter @fluvia/db run migrate",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,js,json,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,yml,yaml}\""
+    "format:check": "prettier --check \"**/*.{ts,js,json,yml,yaml}\"",
+    "seed": "pnpm --filter @fluvia/seeds run seed"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
