@@ -24,7 +24,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `apps/worker` | Proceso worker: heartbeat + outbox relay (fan-out a webhooks) + deliverer de webhooks salientes + procesador del inbox + watchdog de attempts (barrido/salud de indeterminados) + vigilancia de drift + purga auditada + `/health`+`/metrics` (9464) |
 | `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
 | `packages/seeds` | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10) |
-| `packages/payments-core` | FSMs declarativas de pagos (intent/attempt/refund) + `PaymentIntentService`; transiciones hechas cumplir EN el motor con meta-test doc↔TS↔DDL (F3-01) |
+| `packages/payments-core` | FSMs declarativas de pagos (intent/attempt/refund) hechas cumplir EN el motor con meta-test doc↔TS↔DDL; `PaymentIntentService`, confirmación en dos fases con MockProvider + `ResilientProvider` (F3-01/03/04) y `RefundService` end-to-end con asiento compensatorio (F3-08) |
 | `packages/webhooks` | Webhooks salientes: catálogo de topics, firma versionada `v1=` con rotación dual, secretos cifrados en reposo, SSRF guard con pinning de IP, fan-out desde el outbox y deliverer claim-lease (rol `fluvia_webhook`, F3-07) |
 | `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |

@@ -32,6 +32,8 @@ export interface CapturePaymentInput extends PostingContext {
 
 export interface SimpleAmountInput extends PostingContext {
   amount: Money;
+  /** Composicion atomica (F3-03/F3-08): corre DENTRO de la tx del posting. */
+  onPosted?: PostTransactionInput['onPosted'];
 }
 
 /**
@@ -53,6 +55,9 @@ export interface SimpleAmountInput extends PostingContext {
  *   settlement.release X:  debit merchant.pending X  / credit merchant.available X
  *   refund.request R:      debit merchant.available R / credit refund.liability R
  *   refund.settle R:       debit refund.liability R   / credit provider.clearing R
+ *   refund.cancel R:       debit refund.liability R   / credit merchant.available R
+ *                          (el proveedor RECHAZO el refund: la reserva vuelve
+ *                          integra al comercio — F3-08)
  */
 export class PostingService {
   constructor(
@@ -174,6 +179,11 @@ export class PostingService {
     return this.twoLegged(input, 'refund', 'refund.liability', 'provider.clearing');
   }
 
+  /** El proveedor RECHAZO el refund: la reserva vuelve integra al comercio. */
+  async cancelRefundReservation(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'refund', 'refund.liability', 'merchant.available');
+  }
+
   private async twoLegged(
     input: SimpleAmountInput,
     reason: 'settlement' | 'refund',
@@ -196,6 +206,7 @@ export class PostingService {
       // AUD-P1-010: la cuenta debitada no puede quedar en negativo (no se
       // libera/refunda mas de lo que hay). Verificado bajo lock en el motor.
       nonNegativeAccounts: [chart[debitCode]],
+      onPosted: input.onPosted,
     });
   }
 }

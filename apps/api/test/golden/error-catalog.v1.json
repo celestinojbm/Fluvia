@@ -152,6 +152,11 @@
       "type": "unprocessable_error",
       "message": "This idempotency key was already used with a different payload"
     },
+    "refund_amount_exceeds_remaining": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The refund amount exceeds the remaining refundable amount for this payment"
+    },
     "mfa_already_enabled": {
       "status": 409,
       "type": "conflict_error",
@@ -206,6 +211,8 @@
     "ProcessingInFlightError": "processing_in_flight",
     "IdempotencyKeyReuseError": "idempotency_key_reuse",
     "PaymentIntentNotFoundError": "not_found",
+    "RefundNotFoundError": "not_found",
+    "RefundAmountExceedsRemainingError": "refund_amount_exceeds_remaining",
     "WebhookEndpointNotFoundError": "not_found",
     "InvalidWebhookTopicError": "validation_error",
     "UnsafeWebhookUrlError": "validation_error",

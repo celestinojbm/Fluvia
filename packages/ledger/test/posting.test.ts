@@ -282,6 +282,54 @@ describe('GOLDEN: ciclo completo captura -> liquidacion -> refund', () => {
     expect(b['refund.liability']).toBe('0');
   });
 
+  // F3-08: el proveedor RECHAZA el refund tras reservar — la reserva vuelve
+  // integra al comercio (refund.liability -> merchant.available), sin tocar
+  // provider.clearing (el dinero jamas se movio del proveedor).
+  it('cancelRefundReservation returns the reserved amount to the merchant available', async () => {
+    const cancelOrg = await ctx.createTenant('Refund Cancel Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(cancelOrg, m, 'COP');
+    const base = { tenantId: cancelOrg, merchantId: m, sourceType: 'refund' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-c',
+      amount: cop(100_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-c',
+      amount: cop(100_000),
+    });
+    await posting.requestRefund({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'ref-c',
+      amount: cop(30_000),
+    });
+    // available = 70000, refund.liability = 30000 tras la reserva.
+    let b = await balances(cancelOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('70000');
+    expect(b['refund.liability']).toBe('30000');
+
+    await posting.cancelRefundReservation({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'ref-c',
+      amount: cop(30_000),
+    });
+    b = await balances(cancelOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('100000'); // reserva devuelta integra
+    expect(b['refund.liability']).toBe('0');
+    expect(b['provider.clearing']).toBe('100000'); // intacto: el dinero no se movio
+    for (const code of ['merchant.available', 'refund.liability'] as AccountCode[]) {
+      const check = await ledger.verifyProjection(cancelOrg, chart[code]);
+      expect(check.matches, `${code}: ${JSON.stringify(check)}`).toBe(true);
+    }
+  });
+
   it('posting operations are idempotent end-to-end (replay does not double-post)', async () => {
     const m = randomUUID();
     const chart = await posting.ensureChart(org, m, 'COP');

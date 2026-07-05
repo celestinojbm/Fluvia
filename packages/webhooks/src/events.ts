@@ -14,6 +14,7 @@ export const WEBHOOK_TOPICS = [
   'refund.processing',
   'refund.succeeded',
   'refund.failed',
+  'refund.canceled',
   'checkout_session.completed',
   'checkout_session.expired',
   'merchant.updated',

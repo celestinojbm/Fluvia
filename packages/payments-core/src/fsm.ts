@@ -72,16 +72,24 @@ export const ATTEMPT_TRANSITIONS: Record<AttemptStatus, readonly AttemptStatus[]
 export const REFUND_STATUSES = [
   'created',
   'processing',
+  'indeterminate',
   'succeeded',
   'failed',
   'canceled',
 ] as const;
 export type RefundStatus = (typeof REFUND_STATUSES)[number];
 
-/** `canceled` solo antes de enviarse al proveedor (si este lo permite). */
+/**
+ * `canceled` solo antes de enviarse al proveedor (si este lo permite).
+ * `indeterminate` (V4 §23, igual que attempts): desenlace DESCONOCIDO tras
+ * llamar al proveedor (throw/timeout o aceptación asíncrona `pending`); la
+ * reserva contable queda RETENIDA y SOLO una fuente verificada — webhook,
+ * consulta o conciliación — puede cerrarlo (jamás por asunción).
+ */
 export const REFUND_TRANSITIONS: Record<RefundStatus, readonly RefundStatus[]> = {
   created: ['processing', 'canceled'],
-  processing: ['succeeded', 'failed'],
+  processing: ['succeeded', 'failed', 'indeterminate'],
+  indeterminate: ['succeeded', 'failed'],
   succeeded: [],
   failed: [],
   canceled: [],

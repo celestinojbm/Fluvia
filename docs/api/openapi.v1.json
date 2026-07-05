@@ -406,6 +406,90 @@
           }
         }
       }
+    },
+    "/v1/refunds": {
+      "post": {
+        "summary": "Crear un refund (scope payments:write; idempotente). ASINCRONO por contrato: responde el refund en created; el estado final (succeeded/failed/canceled) se lee via GET o webhooks (topics refund.*). amount ausente = reembolso total de lo remanente reembolsable. El asiento compensatorio usa la via normativa del ledger; el intent pasa a partially_refunded o refunded.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["payment_intent_id"],
+                "properties": {
+                  "payment_intent_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Unidades menores; ausente = todo lo remanente reembolsable"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Refund en created (o replay exacto)"
+          },
+          "404": {
+            "description": "not_found (intent inexistente o de otro tenant)"
+          },
+          "409": {
+            "description": "invalid_state_transition (el intent no está en succeeded/partially_refunded)"
+          },
+          "422": {
+            "description": "refund_amount_exceeds_remaining o idempotency_key_reuse"
+          }
+        }
+      },
+      "get": {
+        "summary": "Listar refunds (scope read); filtro opcional por payment_intent_id",
+        "responses": {
+          "200": {
+            "description": "Lista"
+          }
+        }
+      }
+    },
+    "/v1/refunds/{id}": {
+      "get": {
+        "summary": "Recuperar un refund por id (scope read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refund"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
     }
   }
 }

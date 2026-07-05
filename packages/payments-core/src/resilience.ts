@@ -2,6 +2,7 @@ import {
   ProviderTimeoutError,
   type PaymentProvider,
   type ProviderOutcome,
+  type RefundPaymentInput,
   type SubmitPaymentInput,
 } from './provider.js';
 
@@ -75,6 +76,19 @@ export class ResilientProvider implements PaymentProvider {
   }
 
   async submitPayment(input: SubmitPaymentInput): Promise<ProviderOutcome> {
+    return this.guarded(() => this.inner.submitPayment(input));
+  }
+
+  /** Mismo circuito y timeout para refunds (F3-08): el proveedor es UNO. */
+  async refundPayment(input: RefundPaymentInput): Promise<ProviderOutcome> {
+    const refund = this.inner.refundPayment?.bind(this.inner);
+    if (!refund) {
+      throw new Error(`Provider ${this.name} does not support refunds`);
+    }
+    return this.guarded(() => refund(input));
+  }
+
+  private async guarded(call: () => Promise<ProviderOutcome>): Promise<ProviderOutcome> {
     if (this.state === 'open') {
       const elapsed = this.now() - this.openedAt;
       if (elapsed < this.cooldownMs) {
@@ -85,7 +99,7 @@ export class ResilientProvider implements PaymentProvider {
     }
 
     try {
-      const outcome = await this.withTimeout(this.inner.submitPayment(input));
+      const outcome = await this.withTimeout(call());
       // Cualquier respuesta del proveedor (incluidos declines) = proveedor vivo.
       this.consecutiveFailures = 0;
       this.state = 'closed';

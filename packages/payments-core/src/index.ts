@@ -16,6 +16,8 @@ export {
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
   PaymentsCoreError,
+  RefundAmountExceedsRemainingError,
+  RefundNotFoundError,
 } from './errors.js';
 export {
   PaymentIntentService,
@@ -29,9 +31,11 @@ export {
   ProviderTimeoutError,
   type PaymentProvider,
   type ProviderOutcome,
+  type RefundPaymentInput,
   type SubmitPaymentInput,
 } from './provider.js';
 export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';
+export { RefundService, type CreateRefundInput, type RefundDto } from './refunds.js';
 export {
   CircuitOpenError,
   ResilientProvider,

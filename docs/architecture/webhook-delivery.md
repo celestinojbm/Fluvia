@@ -31,7 +31,7 @@ Backoff exponencial con jitter, calendario configurable (Nivel C; baseline: 0s, 
 ## 5. Catálogo de eventos del MVP (normalizado; auditoría D3)
 
 `payment_intent.created|processing|requires_action|succeeded|failed|canceled`,
-`refund.created|processing|succeeded|failed`,
+`refund.created|processing|succeeded|failed|canceled`,
 `checkout_session.completed|expired`,
 `merchant.updated`.
 

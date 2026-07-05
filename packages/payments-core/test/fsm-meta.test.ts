@@ -9,6 +9,7 @@ import {
   ATTEMPT_TRANSITIONS,
   INTENT_STATUSES,
   INTENT_TRANSITIONS,
+  REFUND_STATUSES,
   REFUND_TRANSITIONS,
   transitionPairs,
 } from '../src/index.js';
@@ -50,6 +51,7 @@ let org: string;
 let merchantId: string;
 let intentId: string;
 let attemptId: string;
+let refundId: string;
 
 beforeAll(async () => {
   ctx = await createTestContext();
@@ -71,6 +73,12 @@ beforeAll(async () => {
     [org, intentId]
   );
   attemptId = a.rows[0]!.id;
+  const r = await ctx.admin.query<{ id: string }>(
+    `INSERT INTO refunds (tenant_id, payment_intent_id, amount, currency, provider)
+     VALUES ($1, $2, 100000, 'COP', 'mock') RETURNING id`,
+    [org, intentId]
+  );
+  refundId = r.rows[0]!.id;
 }, 30_000);
 
 afterAll(async () => {
@@ -86,7 +94,7 @@ describe('doc (mermaid) == mapa TS', () => {
     expect(transitionPairs(ATTEMPT_TRANSITIONS)).toEqual(docPairs('2. Payment Attempt'));
   });
 
-  it('refund FSM matches §3 exactly (DDL llega con la tabla refunds, F3-08)', () => {
+  it('refund FSM matches §3 exactly', () => {
     expect(transitionPairs(REFUND_TRANSITIONS)).toEqual(docPairs('3. Refund'));
   });
 });
@@ -112,6 +120,16 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
     );
   });
 
+  it('refund_transitions equals the TS map (F3-08)', async () => {
+    const res = await ctx.admin.query<{ from_status: string; to_status: string }>(
+      `SELECT from_status, to_status FROM refund_transitions
+       ORDER BY from_status, to_status`
+    );
+    expect(res.rows.map((r) => [r.from_status, r.to_status])).toEqual(
+      transitionPairs(REFUND_TRANSITIONS)
+    );
+  });
+
   it('the transition tables are immutable even for the superuser', async () => {
     await expect(
       ctx.admin.query(`DELETE FROM payment_intent_transitions WHERE from_status = 'created'`)
@@ -120,6 +138,9 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
       ctx.admin.query(
         `UPDATE payment_attempt_transitions SET to_status = 'succeeded' WHERE from_status = 'created'`
       )
+    ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
+    await expect(
+      ctx.admin.query(`DELETE FROM refund_transitions WHERE from_status = 'created'`)
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   });
 });
@@ -170,5 +191,9 @@ describe('el MOTOR hace cumplir la matriz completa (superusuario incluido)', () 
 
   it('payment_attempts: all 64 pairs behave exactly as the map dictates', async () => {
     await assertEngineMatrix('payment_attempts', attemptId, ATTEMPT_STATUSES, ATTEMPT_TRANSITIONS);
+  }, 60_000);
+
+  it('refunds: all 36 pairs behave exactly as the map dictates (F3-08)', async () => {
+    await assertEngineMatrix('refunds', refundId, REFUND_STATUSES, REFUND_TRANSITIONS);
   }, 60_000);
 });

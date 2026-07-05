@@ -1,4 +1,9 @@
-import { ATTEMPT_TRANSITIONS, INTENT_TRANSITIONS, transitionPairs } from '../src/fsm.js';
+import {
+  ATTEMPT_TRANSITIONS,
+  INTENT_TRANSITIONS,
+  REFUND_TRANSITIONS,
+  transitionPairs,
+} from '../src/fsm.js';
 
 /**
  * Genera el seed SQL de las tablas *_transitions para la migración 0017.
@@ -21,3 +26,7 @@ console.log(seed('payment_intent_transitions', INTENT_TRANSITIONS));
 console.log();
 // eslint-disable-next-line no-console
 console.log(seed('payment_attempt_transitions', ATTEMPT_TRANSITIONS));
+// eslint-disable-next-line no-console
+console.log();
+// eslint-disable-next-line no-console
+console.log(seed('refund_transitions', REFUND_TRANSITIONS));

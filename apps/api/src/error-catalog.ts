@@ -199,6 +199,11 @@ export const ERROR_CATALOG = {
     type: 'unprocessable_error',
     message: 'This idempotency key was already used with a different payload',
   },
+  refund_amount_exceeds_remaining: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The refund amount exceeds the remaining refundable amount for this payment',
+  },
   mfa_already_enabled: {
     status: 409,
     type: 'conflict_error',
@@ -267,6 +272,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   IdempotencyKeyReuseError: 'idempotency_key_reuse',
   // pagos F3-01/F3-02
   PaymentIntentNotFoundError: 'not_found',
+  // refunds F3-08
+  RefundNotFoundError: 'not_found',
+  RefundAmountExceedsRemainingError: 'refund_amount_exceeds_remaining',
   // webhooks salientes F3-07
   WebhookEndpointNotFoundError: 'not_found',
   InvalidWebhookTopicError: 'validation_error',

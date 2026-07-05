@@ -37,7 +37,7 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 **`settlement.release` X:** `debit merchant.pending X` / `credit merchant.available X`.
 
-**`refund.request` R:** `debit merchant.available R` / `credit refund.liability R`; **`refund.settle` R:** `debit refund.liability R` / `credit provider.clearing R`.
+**`refund.request` R:** `debit merchant.available R` / `credit refund.liability R`; **`refund.settle` R:** `debit refund.liability R` / `credit provider.clearing R`; **`refund.cancel` R** (el proveedor RECHAZÓ el refund tras reservar, F3-08): `debit refund.liability R` / `credit merchant.available R` — la reserva vuelve íntegra al comercio, sin tocar `provider.clearing` (el dinero jamás se movió del proveedor).
 
 **Discrepancia de conciliación aceptada:** siempre vía `recon.differences` con caso y aprobación; nunca edición de asientos.
 

@@ -28,9 +28,25 @@ export interface ProviderOutcome {
   failureCode?: string;
 }
 
+export interface RefundPaymentInput {
+  refundId: string;
+  /** Unidades menores, como string decimal. */
+  amount: string;
+  currency: string;
+  /** Referencia del cargo original en el proveedor (attempt succeeded). */
+  chargeProviderRef: string | null;
+}
+
 export interface PaymentProvider {
   readonly name: string;
   submitPayment(input: SubmitPaymentInput): Promise<ProviderOutcome>;
+  /**
+   * Refund contra el proveedor (F3-08). Mismas reglas que submitPayment:
+   * SIEMPRE fuera de tx; un throw = desenlace DESCONOCIDO (el refund queda
+   * `processing` con la reserva contable retenida hasta fuente verificada).
+   * Opcional: un adapter sin refunds hace fallar la config del RefundService.
+   */
+  refundPayment?(input: RefundPaymentInput): Promise<ProviderOutcome>;
 }
 
 export class ProviderTimeoutError extends Error {
@@ -81,5 +97,15 @@ export class MockPaymentProvider implements PaymentProvider {
           failureCode: 'invalid_payment_method',
         });
     }
+  }
+
+  /**
+   * Refunds del sandbox: siempre aprobados (los rechazos de refund son raros
+   * en PSPs reales; las ramas declined/timeout se prueban con adapters
+   * inyectados). Deterministico: mismo refund -> misma referencia.
+   */
+  refundPayment(input: RefundPaymentInput): Promise<ProviderOutcome> {
+    const providerRef = `mockr_${createHash('sha256').update(input.refundId).digest('hex').slice(0, 24)}`;
+    return Promise.resolve({ outcome: 'approved', providerRef });
   }
 }
