@@ -85,7 +85,16 @@ Invariantes: `Σ refunds no-fallidos ≤ monto capturado` (servicio + property t
 
 ## 5. Checkout Session
 
-`open → completed | expired | canceled`. `completed` requiere intent en estado post-confirmación. Expiración por TTL (Nivel C). Protección de doble submit: la confirmación es idempotente por sesión.
+Estados: `open`, `completed`, `expired`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> open
+    open --> completed : intent con éxito
+    open --> expired : TTL vencido
+```
+
+`completed` cuando el payment intent asociado tiene éxito; `expired` por TTL (Nivel C, default 24 h). Un comprador que cancela se redirige a `cancel_url` pero la sesión sigue `open` hasta expirar (puede reintentar) — no hay estado `canceled` explícito. Protección de doble submit: la confirmación es idempotente por sesión. Terminales: `completed`, `expired`. FSM hecha cumplir EN el motor (migración 0022); el disparo de completed/expired y sus eventos `checkout_session.*` llegan con el flujo alojado (F3-05c).
 
 ## 6. Settlement / Payout (abstracciones en Fase 4)
 

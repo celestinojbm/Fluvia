@@ -1,5 +1,6 @@
 import {
   ATTEMPT_TRANSITIONS,
+  CHECKOUT_SESSION_TRANSITIONS,
   INTENT_TRANSITIONS,
   REFUND_TRANSITIONS,
   transitionPairs,
@@ -30,3 +31,7 @@ console.log(seed('payment_attempt_transitions', ATTEMPT_TRANSITIONS));
 console.log();
 // eslint-disable-next-line no-console
 console.log(seed('refund_transitions', REFUND_TRANSITIONS));
+// eslint-disable-next-line no-console
+console.log();
+// eslint-disable-next-line no-console
+console.log(seed('checkout_session_transitions', CHECKOUT_SESSION_TRANSITIONS));

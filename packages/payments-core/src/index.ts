@@ -1,6 +1,8 @@
 export {
   ATTEMPT_STATUSES,
   ATTEMPT_TRANSITIONS,
+  CHECKOUT_SESSION_STATUSES,
+  CHECKOUT_SESSION_TRANSITIONS,
   INTENT_STATUSES,
   INTENT_TRANSITIONS,
   REFUND_STATUSES,
@@ -9,16 +11,26 @@ export {
   terminalStates,
   transitionPairs,
   type AttemptStatus,
+  type CheckoutSessionStatus,
   type IntentStatus,
   type RefundStatus,
 } from './fsm.js';
 export {
+  CheckoutSessionInvalidCustomerError,
+  CheckoutSessionNotFoundError,
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
   PaymentsCoreError,
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
 } from './errors.js';
+export {
+  CheckoutSessionService,
+  hashClientSecret,
+  type CheckoutSessionDto,
+  type CreateCheckoutSessionInput,
+  type CreatedCheckoutSession,
+} from './checkout.js';
 export {
   PaymentIntentService,
   type CreateIntentInput,

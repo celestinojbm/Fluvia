@@ -51,6 +51,8 @@ const EnvSchema = z.object({
     .optional(),
   WEBHOOK_DELIVERY_ENABLED: z.enum(['true', 'false']).default('true'),
   WEBHOOK_DELIVERY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  // Base de la URL de checkout alojado (F3-05b); no es secreto.
+  CHECKOUT_BASE_URL: z.string().url().default('https://checkout.fluvia.local'),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -123,6 +125,8 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Base de la URL de checkout alojado (F3-05b); el buyer va a `{base}/c/{id}`. */
+  checkoutBaseUrl: string;
 }
 
 export class ConfigError extends Error {
@@ -206,5 +210,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.WEBHOOK_DELIVERY_ENABLED === 'true',
       intervalMs: e.WEBHOOK_DELIVERY_INTERVAL_MS,
     },
+    checkoutBaseUrl: e.CHECKOUT_BASE_URL,
   };
 }

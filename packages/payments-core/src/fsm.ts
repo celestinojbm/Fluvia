@@ -95,6 +95,24 @@ export const REFUND_TRANSITIONS: Record<RefundStatus, readonly RefundStatus[]> =
   canceled: [],
 };
 
+export const CHECKOUT_SESSION_STATUSES = ['open', 'completed', 'expired'] as const;
+export type CheckoutSessionStatus = (typeof CHECKOUT_SESSION_STATUSES)[number];
+
+/**
+ * Sesión de checkout (F3-05b). `open` mientras el comprador puede pagar;
+ * `completed` cuando el payment intent asociado tiene éxito; `expired` si
+ * vence antes de completarse. El disparo de completed/expired + sus eventos
+ * `checkout_session.*` llegan con el flujo alojado (F3-05c).
+ */
+export const CHECKOUT_SESSION_TRANSITIONS: Record<
+  CheckoutSessionStatus,
+  readonly CheckoutSessionStatus[]
+> = {
+  open: ['completed', 'expired'],
+  completed: [],
+  expired: [],
+};
+
 export function canTransition<S extends string>(
   map: Record<S, readonly S[]>,
   from: S,

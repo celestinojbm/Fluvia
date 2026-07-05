@@ -26,6 +26,19 @@ export class RefundNotFoundError extends PaymentsCoreError {
   }
 }
 
+export class CheckoutSessionNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Checkout session not found');
+  }
+}
+
+/** F3-05b: la sesión referencia un customer inexistente o de otro tenant. */
+export class CheckoutSessionInvalidCustomerError extends PaymentsCoreError {
+  constructor() {
+    super('The referenced customer does not exist');
+  }
+}
+
 /** F3-08: Σ refunds activos+aplicados jamás supera lo capturado (V4 Nivel A). */
 export class RefundAmountExceedsRemainingError extends PaymentsCoreError {
   constructor(

@@ -7,6 +7,8 @@ import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import {
   ATTEMPT_STATUSES,
   ATTEMPT_TRANSITIONS,
+  CHECKOUT_SESSION_STATUSES,
+  CHECKOUT_SESSION_TRANSITIONS,
   INTENT_STATUSES,
   INTENT_TRANSITIONS,
   REFUND_STATUSES,
@@ -52,6 +54,7 @@ let merchantId: string;
 let intentId: string;
 let attemptId: string;
 let refundId: string;
+let checkoutId: string;
 
 beforeAll(async () => {
   ctx = await createTestContext();
@@ -79,6 +82,12 @@ beforeAll(async () => {
     [org, intentId]
   );
   refundId = r.rows[0]!.id;
+  const cs = await ctx.admin.query<{ id: string }>(
+    `INSERT INTO checkout_sessions (tenant_id, payment_intent_id, client_secret_hash, expires_at)
+     VALUES ($1, $2, 'deadbeef', now() + interval '1 hour') RETURNING id`,
+    [org, intentId]
+  );
+  checkoutId = cs.rows[0]!.id;
 }, 30_000);
 
 afterAll(async () => {
@@ -96,6 +105,10 @@ describe('doc (mermaid) == mapa TS', () => {
 
   it('refund FSM matches §3 exactly', () => {
     expect(transitionPairs(REFUND_TRANSITIONS)).toEqual(docPairs('3. Refund'));
+  });
+
+  it('checkout session FSM matches §5 exactly (F3-05b)', () => {
+    expect(transitionPairs(CHECKOUT_SESSION_TRANSITIONS)).toEqual(docPairs('5. Checkout Session'));
   });
 });
 
@@ -130,6 +143,16 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
     );
   });
 
+  it('checkout_session_transitions equals the TS map (F3-05b)', async () => {
+    const res = await ctx.admin.query<{ from_status: string; to_status: string }>(
+      `SELECT from_status, to_status FROM checkout_session_transitions
+       ORDER BY from_status, to_status`
+    );
+    expect(res.rows.map((r) => [r.from_status, r.to_status])).toEqual(
+      transitionPairs(CHECKOUT_SESSION_TRANSITIONS)
+    );
+  });
+
   it('the transition tables are immutable even for the superuser', async () => {
     await expect(
       ctx.admin.query(`DELETE FROM payment_intent_transitions WHERE from_status = 'created'`)
@@ -141,6 +164,9 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
     await expect(
       ctx.admin.query(`DELETE FROM refund_transitions WHERE from_status = 'created'`)
+    ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
+    await expect(
+      ctx.admin.query(`DELETE FROM checkout_session_transitions WHERE from_status = 'open'`)
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   });
 });
@@ -195,5 +221,14 @@ describe('el MOTOR hace cumplir la matriz completa (superusuario incluido)', () 
 
   it('refunds: all 36 pairs behave exactly as the map dictates (F3-08)', async () => {
     await assertEngineMatrix('refunds', refundId, REFUND_STATUSES, REFUND_TRANSITIONS);
+  }, 60_000);
+
+  it('checkout_sessions: all 9 pairs behave exactly as the map dictates (F3-05b)', async () => {
+    await assertEngineMatrix(
+      'checkout_sessions',
+      checkoutId,
+      CHECKOUT_SESSION_STATUSES,
+      CHECKOUT_SESSION_TRANSITIONS
+    );
   }, 60_000);
 });

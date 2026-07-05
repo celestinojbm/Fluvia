@@ -276,6 +276,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // refunds F3-08
   RefundNotFoundError: 'not_found',
   RefundAmountExceedsRemainingError: 'refund_amount_exceeds_remaining',
+  // checkout sessions F3-05b
+  CheckoutSessionNotFoundError: 'not_found',
+  CheckoutSessionInvalidCustomerError: 'validation_error',
   // webhooks salientes F3-07
   WebhookEndpointNotFoundError: 'not_found',
   InvalidWebhookTopicError: 'validation_error',

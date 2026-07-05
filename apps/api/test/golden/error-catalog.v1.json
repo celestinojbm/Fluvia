@@ -214,6 +214,8 @@
     "PaymentIntentNotFoundError": "not_found",
     "RefundNotFoundError": "not_found",
     "RefundAmountExceedsRemainingError": "refund_amount_exceeds_remaining",
+    "CheckoutSessionNotFoundError": "not_found",
+    "CheckoutSessionInvalidCustomerError": "validation_error",
     "WebhookEndpointNotFoundError": "not_found",
     "InvalidWebhookTopicError": "validation_error",
     "UnsafeWebhookUrlError": "validation_error",

@@ -10,6 +10,7 @@ import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService } from '@fluvia/webhooks';
 import {
+  CheckoutSessionService,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
@@ -23,6 +24,7 @@ import { registerAccountRoutes, registerOrganizationRoutes } from './routes/orga
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
 import { registerCustomerRoutes } from './routes/customers.js';
+import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { createSecurity } from './security.js';
@@ -158,6 +160,14 @@ export function buildApp({
     registerCustomerRoutes(app, {
       security,
       customerService: new CustomerService(appPool),
+    });
+    // F3-05b: checkout sessions (recurso; el flujo alojado llega en F3-05c).
+    registerCheckoutSessionRoutes(app, {
+      security,
+      idempotencyService,
+      checkoutSessionService: new CheckoutSessionService(appPool, {
+        checkoutBaseUrl: config.checkoutBaseUrl,
+      }),
     });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
     registerProviderWebhookRoutes(app, {

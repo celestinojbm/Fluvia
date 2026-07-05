@@ -617,6 +617,102 @@
           }
         }
       }
+    },
+    "/v1/checkout_sessions": {
+      "post": {
+        "summary": "Crear una checkout session sobre un payment intent abierto (scope payments:write; idempotente). Devuelve la URL alojada + el client_secret (UNA sola vez). El intent debe estar sin resolver; customer opcional. TTL 5 min–24 h (default 24 h). Alcance F3-05b: el recurso; el flujo alojado (retrieval por client_secret, completed/expired, eventos checkout_session.*) llega en F3-05c.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["payment_intent_id"],
+                "properties": {
+                  "payment_intent_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "customer_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "success_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2000
+                  },
+                  "cancel_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2000
+                  },
+                  "expires_in_minutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 1440
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Sesión creada (incluye client_secret una única vez, o replay exacto)"
+          },
+          "400": {
+            "description": "validation_error (customer inexistente, url inválida, etc.)"
+          },
+          "404": {
+            "description": "not_found (intent inexistente o de otro tenant)"
+          },
+          "409": {
+            "description": "invalid_state_transition (el intent ya está resuelto)"
+          },
+          "422": {
+            "description": "idempotency_key_reuse"
+          }
+        }
+      },
+      "get": {
+        "summary": "Listar checkout sessions (scope read), más reciente primero",
+        "responses": {
+          "200": {
+            "description": "Lista"
+          }
+        }
+      }
+    },
+    "/v1/checkout_sessions/{id}": {
+      "get": {
+        "summary": "Recuperar una checkout session por id (scope read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Checkout session"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
     }
   }
 }
