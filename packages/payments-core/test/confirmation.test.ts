@@ -154,6 +154,90 @@ describe('PaymentConfirmationService (F3-03)', () => {
     expect((await attemptRow(attemptId)).status).toBe('indeterminate');
   });
 
+  it('tok_pse (async): attempt SUBMITTED with provider_ref, intent stays processing', async () => {
+    const intent = await intents.create({ tenantId: org, merchantId, amount: cop(70_000) });
+    const { attemptId } = await begin(intent.id);
+    await confirmation.execute(org, attemptId, 'tok_pse');
+    const att = await attemptRow(attemptId);
+    expect(att.status).toBe('submitted');
+    expect(att.provider_ref).toMatch(/^mock_/);
+    expect((await intents.get(org, intent.id)).status).toBe('processing');
+  });
+
+  it('resolveFromProvider succeeds a SUBMITTED attempt with the same atomic capture', async () => {
+    const amount = 88_000;
+    const intent = await intents.create({ tenantId: org, merchantId, amount: cop(amount) });
+    const { attemptId } = await begin(intent.id);
+    await confirmation.execute(org, attemptId, 'tok_pse');
+    const ref = (await attemptRow(attemptId)).provider_ref!;
+
+    const outcome = await confirmation.resolveFromProvider(org, {
+      attemptId,
+      providerRef: ref,
+      result: 'succeeded',
+    });
+    expect(outcome).toBe('applied');
+    expect((await attemptRow(attemptId)).status).toBe('succeeded');
+    const after = await intents.get(org, intent.id);
+    expect(after.status).toBe('succeeded');
+    expect(after.amountCaptured).toBe(String(amount));
+
+    // Webhook tardio/duplicado (otro event_id): fuera de orden, SIN doble asiento.
+    const late = await confirmation.resolveFromProvider(org, {
+      attemptId,
+      providerRef: ref,
+      result: 'failed',
+    });
+    expect(late).toBe('ignored_out_of_order');
+    const txs = await ctx.admin.query(
+      `SELECT count(*)::int AS n FROM ledger_transactions
+       WHERE tenant_id = $1 AND source_type = 'payment_attempt' AND source_id = $2`,
+      [org, attemptId]
+    );
+    expect((txs.rows[0] as { n: number }).n).toBe(1);
+  });
+
+  it('resolveFromProvider is THE verified source that closes an INDETERMINATE attempt', async () => {
+    const intent = await intents.create({ tenantId: org, merchantId, amount: cop(15_000) });
+    const { attemptId } = await begin(intent.id);
+    await confirmation.execute(org, attemptId, 'tok_timeout');
+    expect((await attemptRow(attemptId)).status).toBe('indeterminate');
+
+    const outcome = await confirmation.resolveFromProvider(org, {
+      attemptId,
+      providerRef: 'mock_late_ref_from_webhook',
+      result: 'failed',
+      failureCode: 'card_declined',
+    });
+    expect(outcome).toBe('applied');
+    expect((await attemptRow(attemptId)).status).toBe('failed');
+    const after = await intents.get(org, intent.id);
+    expect(after.status).toBe('failed');
+    expect(after.failureCode).toBe('card_declined');
+  });
+
+  it('resolveFromProvider ignores unknown attempts and mismatched references', async () => {
+    expect(
+      await confirmation.resolveFromProvider(org, {
+        attemptId: '00000000-0000-4000-8000-000000000000',
+        providerRef: 'mock_x',
+        result: 'succeeded',
+      })
+    ).toBe('ignored');
+
+    const intent = await intents.create({ tenantId: org, merchantId, amount: cop(9_000) });
+    const { attemptId } = await begin(intent.id);
+    await confirmation.execute(org, attemptId, 'tok_pse');
+    expect(
+      await confirmation.resolveFromProvider(org, {
+        attemptId,
+        providerRef: 'mock_WRONG_reference',
+        result: 'succeeded',
+      })
+    ).toBe('ignored');
+    expect((await attemptRow(attemptId)).status).toBe('submitted');
+  });
+
   it('begin rejects intents already processing or terminal (FSM decides)', async () => {
     const intent = await intents.create({ tenantId: org, merchantId, amount: cop(5_000) });
     await begin(intent.id);

@@ -45,6 +45,8 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_ledger_projection_drift_accounts` | gauge | — (0 = sano) |
 | `fluvia_technical_purge_runs_total` | counter | — |
 | `fluvia_technical_purge_rows_total` | counter | `class` (F1-09) |
+| `fluvia_inbox_cycles_total` | counter | — (F3-03b) |
+| `fluvia_inbox_events_total` | counter | `result` = `processed` \| `ignored` \| `retried` \| `dead` |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -60,6 +62,7 @@ identificador desde el cliente hasta la fila de auditoría.
 | Drift contable | `fluvia_ledger_projection_drift_accounts > 0` | CRÍTICA | Incidente: investigar ANTES de cualquier rebuild (V4 §30; la reparación es siempre explícita) |
 | Chequeos de drift detenidos | `increase(fluvia_ledger_projection_drift_checks_total[10m]) == 0` | ALTA | El watcher no corre: revisar worker |
 | Eventos dead en outbox | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0` | ALTA | Revisar DLQ; replay SOLO auditado |
+| Eventos dead en inbox | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0` | ALTA | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado |
 | Worker sin latido | `increase(fluvia_worker_heartbeats_total[5m]) == 0` | ALTA | Proceso caído o colgado |
 | Tasa de 5xx | `rate(fluvia_http_requests_total{status=~"5.."}[5m]) > 0` | ALTA | 5xx debe ser ~0; cualquier valor sostenido es bug |
 | Latencia p99 | `histogram_quantile(0.99, rate(fluvia_http_request_duration_seconds_bucket[5m])) > 1` | MEDIA | Contra baseline SLO de `system-overview.md` §5 |

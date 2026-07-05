@@ -49,6 +49,17 @@ describe('loadConfig', () => {
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
       })
+    ).toThrow(/INBOX_DATABASE_URL/);
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        RELAY_DATABASE_URL: 'postgres://w',
+        AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
+      })
     ).toThrow(/REDIS_URL/);
     // F1-04b: la clave de cifrado MFA tambien es anti-mezcla.
     expect(() =>
@@ -59,6 +70,7 @@ describe('loadConfig', () => {
         WORKER_DATABASE_URL: 'postgres://z',
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
         REDIS_URL: 'redis://r',
       })
     ).toThrow(/MFA_SECRET_KEY/);
@@ -71,10 +83,26 @@ describe('loadConfig', () => {
         WORKER_DATABASE_URL: 'postgres://z',
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
         REDIS_URL: 'redis://r',
         MFA_SECRET_KEY: 'a'.repeat(64),
       })
     ).toThrow(/API_KEY_HMAC_SECRET/);
+    // F3-03b: el secreto de webhooks del MockProvider tambien.
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        RELAY_DATABASE_URL: 'postgres://w',
+        AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
+        REDIS_URL: 'redis://r',
+        MFA_SECRET_KEY: 'a'.repeat(64),
+        API_KEY_HMAC_SECRET: 'b'.repeat(64),
+      })
+    ).toThrow(/MOCK_WEBHOOK_SECRET/);
   });
 
   it('accepts fully explicit non-local config', () => {
@@ -88,8 +116,11 @@ describe('loadConfig', () => {
       REDIS_URL: 'redis://r',
       MFA_SECRET_KEY: 'a'.repeat(64),
       API_KEY_HMAC_SECRET: 'b'.repeat(64),
+      INBOX_DATABASE_URL: 'postgres://i',
+      MOCK_WEBHOOK_SECRET: 'whsec_explicit_secret_value',
     });
     expect(cfg.env).toBe('production');
+    expect(cfg.db.inbox).toBe('postgres://i');
     expect(cfg.db.worker).toBe('postgres://c');
     expect(cfg.db.relay).toBe('postgres://e');
   });
@@ -115,6 +146,13 @@ describe('loadConfig', () => {
     expect(loadConfig({}).workerMetricsPort).toBe(9464);
     expect(loadConfig({ WORKER_METRICS_PORT: '9100' }).workerMetricsPort).toBe(9100);
     expect(() => loadConfig({ WORKER_METRICS_PORT: '0' })).toThrow(ConfigError);
+  });
+
+  it('parses inbox-processor toggles with safe defaults (F3-03b)', () => {
+    expect(loadConfig({}).inbox).toEqual({ enabled: true, intervalMs: 1000 });
+    expect(loadConfig({ INBOX_ENABLED: 'false' }).inbox.enabled).toBe(false);
+    expect(() => loadConfig({ INBOX_INTERVAL_MS: '5' })).toThrow(ConfigError);
+    expect(() => loadConfig({ MOCK_WEBHOOK_SECRET: 'short' })).toThrow(ConfigError);
   });
 
   it('parses purge-job toggles with safe defaults (F1-09)', () => {

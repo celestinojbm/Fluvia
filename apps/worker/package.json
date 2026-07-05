@@ -18,9 +18,11 @@
   "dependencies": {
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
+    "@fluvia/inbox": "workspace:*",
     "@fluvia/ledger": "workspace:*",
     "@fluvia/observability": "workspace:*",
     "@fluvia/outbox": "workspace:*",
+    "@fluvia/payments-core": "workspace:*",
     "pino": "^9.5.0"
   },
   "devDependencies": {

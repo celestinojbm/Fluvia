@@ -126,47 +126,23 @@ export class PaymentConfirmationService {
     }
 
     if (outcome.outcome === 'approved') {
-      // Asiento + attempt + intent + amount_captured: UNA transaccion.
-      await this.posting.capturePayment({
-        tenantId,
-        merchantId: row.merchant_id,
-        idempotencyKey: `attempt:${attemptId}:capture`,
-        sourceType: 'payment_attempt',
-        sourceId: attemptId,
-        amount: Money.of(row.amount, row.currency),
-        onPosted: async (client) => {
-          await client.query(
-            `UPDATE payment_attempts
-             SET status = 'succeeded', provider_ref = $2, resolved_at = now(), updated_at = now()
-             WHERE id = $1`,
-            [attemptId, outcome.providerRef]
-          );
-          await this.intents.transitionIn(client, row.intent_id, 'succeeded');
-          await client.query(`UPDATE payment_intents SET amount_captured = amount WHERE id = $1`, [
-            row.intent_id,
-          ]);
-        },
-      });
+      await this.recordApproved(tenantId, attemptId, row, outcome.providerRef);
       return;
     }
 
     if (outcome.outcome === 'declined') {
-      await withTenantTransaction(this.appPool, tenantId, async (c) => {
-        await c.query(
-          `UPDATE payment_attempts
-           SET status = 'failed', provider_ref = $2, last_error = $3, resolved_at = now(), updated_at = now()
-           WHERE id = $1`,
-          [attemptId, outcome.providerRef, outcome.failureCode ?? 'declined']
-        );
-        await this.intents.transitionIn(c, row.intent_id, 'failed', {
-          failureCode: outcome.failureCode ?? 'declined',
-        });
-      });
+      await this.recordDeclined(
+        tenantId,
+        attemptId,
+        row.intent_id,
+        outcome.providerRef,
+        outcome.failureCode ?? 'declined'
+      );
       return;
     }
 
-    // pending (aceptado asincrono): submitted — la resolucion llega por el
-    // inbox (F3-03b). El mock aun no emite este outcome.
+    // pending (aceptado asincrono, p.ej. PSE): submitted — la resolucion
+    // llega por webhook firmado via el inbox (resolveFromProvider).
     await withTenantTransaction(this.appPool, tenantId, (c) =>
       c.query(
         `UPDATE payment_attempts
@@ -175,5 +151,115 @@ export class PaymentConfirmationService {
         [attemptId, outcome.providerRef]
       )
     );
+  }
+
+  /**
+   * Resolucion por FUENTE VERIFICADA (F3-03b): la unica via legitima para
+   * cerrar attempts `submitted` (asincronos) o `indeterminate` (V4 §23).
+   * La llama el handler del inbox tras verificar firma + dedup + schema.
+   * Devuelve el outcome del contrato del inbox:
+   *  - applied: attempt e intent resueltos (con captura atomica si aprobo).
+   *  - ignored_out_of_order: el attempt ya es terminal (webhook tardio).
+   *  - ignored: attempt inexistente para este tenant/proveedor/referencia.
+   */
+  async resolveFromProvider(
+    tenantId: string,
+    input: {
+      attemptId: string;
+      providerRef: string;
+      result: 'succeeded' | 'failed';
+      failureCode?: string;
+    }
+  ): Promise<'applied' | 'ignored_out_of_order' | 'ignored'> {
+    const att = await withTenantTransaction(this.appPool, tenantId, (c) =>
+      c.query<{
+        status: string;
+        provider_ref: string | null;
+        intent_id: string;
+        amount: string;
+        currency: string;
+        merchant_id: string;
+      }>(
+        `SELECT a.status, a.provider_ref, a.intent_id, a.amount::text, a.currency, i.merchant_id
+         FROM payment_attempts a
+         JOIN payment_intents i ON i.id = a.intent_id
+         WHERE a.id = $1 AND a.provider = $2`,
+        [input.attemptId, this.provider.name]
+      )
+    );
+    const row = att.rows[0];
+    if (!row) return 'ignored';
+    // La referencia debe coincidir; un attempt indeterminate por timeout
+    // puede no tenerla aun (el webhook la aporta).
+    if (row.provider_ref !== null && row.provider_ref !== input.providerRef) return 'ignored';
+    if (row.status === 'succeeded' || row.status === 'failed' || row.status === 'expired') {
+      return 'ignored_out_of_order';
+    }
+    if (row.status !== 'submitted' && row.status !== 'indeterminate') {
+      // submitting/created: la fase 2 sigue en vuelo; el retry del inbox
+      // volvera a intentarlo (backoff) en lugar de perder el evento.
+      throw new Error(`attempt ${input.attemptId} still ${row.status}; retry later`);
+    }
+
+    if (input.result === 'succeeded') {
+      await this.recordApproved(tenantId, input.attemptId, row, input.providerRef);
+    } else {
+      await this.recordDeclined(
+        tenantId,
+        input.attemptId,
+        row.intent_id,
+        input.providerRef,
+        input.failureCode ?? 'declined'
+      );
+    }
+    return 'applied';
+  }
+
+  /** Asiento + attempt + intent + amount_captured: UNA transaccion (onPosted). */
+  private async recordApproved(
+    tenantId: string,
+    attemptId: string,
+    row: { intent_id: string; amount: string; currency: string; merchant_id: string },
+    providerRef: string
+  ): Promise<void> {
+    await this.posting.capturePayment({
+      tenantId,
+      merchantId: row.merchant_id,
+      // Misma key que la via sincrona: doble procesamiento => replay, 1 asiento.
+      idempotencyKey: `attempt:${attemptId}:capture`,
+      sourceType: 'payment_attempt',
+      sourceId: attemptId,
+      amount: Money.of(row.amount, row.currency),
+      onPosted: async (client) => {
+        await client.query(
+          `UPDATE payment_attempts
+           SET status = 'succeeded', provider_ref = $2, resolved_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [attemptId, providerRef]
+        );
+        await this.intents.transitionIn(client, row.intent_id, 'succeeded');
+        await client.query(`UPDATE payment_intents SET amount_captured = amount WHERE id = $1`, [
+          row.intent_id,
+        ]);
+      },
+    });
+  }
+
+  private async recordDeclined(
+    tenantId: string,
+    attemptId: string,
+    intentId: string,
+    providerRef: string,
+    failureCode: string
+  ): Promise<void> {
+    await withTenantTransaction(this.appPool, tenantId, async (c) => {
+      await c.query(
+        `UPDATE payment_attempts
+         SET status = 'failed', provider_ref = $2, last_error = $3, resolved_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [attemptId, providerRef, failureCode]
+      );
+      await this.intents.transitionIn(c, intentId, 'failed', { failureCode });
+    });
   }
 }

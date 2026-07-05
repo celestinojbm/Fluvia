@@ -22,6 +22,7 @@ const EnvSchema = z.object({
   WORKER_DATABASE_URL: z.string().min(1).optional(),
   RELAY_DATABASE_URL: z.string().min(1).optional(),
   AUTH_DATABASE_URL: z.string().min(1).optional(),
+  INBOX_DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).optional(),
   MFA_SECRET_KEY: z
     .string()
@@ -38,6 +39,9 @@ const EnvSchema = z.object({
   WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
   PURGE_ENABLED: z.enum(['true', 'false']).default('true'),
   PURGE_INTERVAL_MS: z.coerce.number().int().min(1000).max(86_400_000).default(3_600_000),
+  INBOX_ENABLED: z.enum(['true', 'false']).default('true'),
+  INBOX_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  MOCK_WEBHOOK_SECRET: z.string().min(16).optional(),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -50,6 +54,9 @@ const LOCAL_DEFAULTS = {
   worker: 'postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia',
   relay: 'postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia',
   auth: 'postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia',
+  inbox: 'postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia',
+  // Secreto de firma del MockProvider, SOLO local/test (regimen R-12).
+  mockWebhookSecret: 'whsec_mock_dev_secret_00112233', // gitleaks:allow
   redis: 'redis://127.0.0.1:6379',
 } as const;
 
@@ -63,6 +70,7 @@ export interface AppConfig {
     worker: string;
     relay: string;
     auth: string;
+    inbox: string;
   };
   redisUrl: string;
   /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
@@ -84,6 +92,13 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Procesador del inbox de webhooks entrantes (F3-03b). */
+  inbox: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Secreto HMAC de los webhooks del MockProvider (F3-03b). */
+  mockWebhookSecret: string;
 }
 
 export class ConfigError extends Error {
@@ -122,6 +137,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       worker: required('WORKER_DATABASE_URL', e.WORKER_DATABASE_URL, LOCAL_DEFAULTS.worker),
       relay: required('RELAY_DATABASE_URL', e.RELAY_DATABASE_URL, LOCAL_DEFAULTS.relay),
       auth: required('AUTH_DATABASE_URL', e.AUTH_DATABASE_URL, LOCAL_DEFAULTS.auth),
+      inbox: required('INBOX_DATABASE_URL', e.INBOX_DATABASE_URL, LOCAL_DEFAULTS.inbox),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
     mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
@@ -143,5 +159,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.PURGE_ENABLED === 'true',
       intervalMs: e.PURGE_INTERVAL_MS,
     },
+    inbox: {
+      enabled: e.INBOX_ENABLED === 'true',
+      intervalMs: e.INBOX_INTERVAL_MS,
+    },
+    mockWebhookSecret: required(
+      'MOCK_WEBHOOK_SECRET',
+      e.MOCK_WEBHOOK_SECRET,
+      LOCAL_DEFAULTS.mockWebhookSecret
+    ),
   };
 }

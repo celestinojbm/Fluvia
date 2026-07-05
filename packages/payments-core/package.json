@@ -17,8 +17,10 @@
   "dependencies": {
     "@fluvia/db": "workspace:*",
     "@fluvia/events": "workspace:*",
+    "@fluvia/inbox": "workspace:*",
     "@fluvia/ledger": "workspace:*",
-    "@fluvia/money": "workspace:*"
+    "@fluvia/money": "workspace:*",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

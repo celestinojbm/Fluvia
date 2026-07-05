@@ -48,6 +48,7 @@ export class ProviderTimeoutError extends Error {
  *   tok_approve               -> aprobado sincrono
  *   tok_decline               -> rechazado card_declined
  *   tok_decline_insufficient  -> rechazado insufficient_funds
+ *   tok_pse                   -> pending (asincrono; resuelve via webhook)
  *   tok_timeout               -> ProviderTimeoutError (indeterminado)
  *   cualquier otro            -> rechazado invalid_payment_method
  */
@@ -67,6 +68,10 @@ export class MockPaymentProvider implements PaymentProvider {
           providerRef,
           failureCode: 'insufficient_funds',
         });
+      case 'tok_pse':
+        // Metodo asincrono tipo PSE (Colombia): el proveedor acepta y el
+        // resultado llega despues por webhook firmado (F3-03b).
+        return Promise.resolve({ outcome: 'pending', providerRef });
       case 'tok_timeout':
         return Promise.reject(new ProviderTimeoutError(this.name));
       default:

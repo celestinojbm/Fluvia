@@ -44,6 +44,9 @@ importers:
       '@fluvia/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@fluvia/inbox':
+        specifier: workspace:*
+        version: link:../../packages/inbox
       '@fluvia/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
@@ -84,6 +87,9 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fluvia/inbox':
+        specifier: workspace:*
+        version: link:../../packages/inbox
       '@fluvia/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
@@ -93,6 +99,9 @@ importers:
       '@fluvia/outbox':
         specifier: workspace:*
         version: link:../../packages/outbox
+      '@fluvia/payments-core':
+        specifier: workspace:*
+        version: link:../../packages/payments-core
       pino:
         specifier: ^9.5.0
         version: 9.14.0
@@ -396,12 +405,18 @@ importers:
       '@fluvia/events':
         specifier: workspace:*
         version: link:../events
+      '@fluvia/inbox':
+        specifier: workspace:*
+        version: link:../inbox
       '@fluvia/ledger':
         specifier: workspace:*
         version: link:../ledger
       '@fluvia/money':
         specifier: workspace:*
         version: link:../money
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

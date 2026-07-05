@@ -7,6 +7,7 @@ import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
+import { InboxIngestService } from '@fluvia/inbox';
 import {
   MockPaymentProvider,
   PaymentConfirmationService,
@@ -17,6 +18,7 @@ import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
+import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -134,6 +136,11 @@ export function buildApp({
         new PostingService(ledgerService, appPool),
         new MockPaymentProvider()
       ),
+    });
+    // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
+    registerProviderWebhookRoutes(app, {
+      ingestService: new InboxIngestService(appPool),
+      mockWebhookSecret: config.mockWebhookSecret,
     });
   }
 
