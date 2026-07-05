@@ -20,10 +20,18 @@ export {
   CheckoutSessionNotFoundError,
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
+  PaymentLinkInvalidMerchantError,
+  PaymentLinkNotFoundError,
   PaymentsCoreError,
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
 } from './errors.js';
+export {
+  PaymentLinkService,
+  type CreatePaymentLinkInput,
+  type LinkSessionResult,
+  type PaymentLinkDto,
+} from './payment-links.js';
 export {
   CheckoutSessionService,
   hashClientSecret,

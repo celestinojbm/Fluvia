@@ -39,6 +39,19 @@ export class CheckoutSessionInvalidCustomerError extends PaymentsCoreError {
   }
 }
 
+export class PaymentLinkNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Payment link not found');
+  }
+}
+
+/** F3-06: el link referencia un merchant inexistente o de otro tenant. */
+export class PaymentLinkInvalidMerchantError extends PaymentsCoreError {
+  constructor() {
+    super('The referenced merchant does not exist');
+  }
+}
+
 /** F3-08: Σ refunds activos+aplicados jamás supera lo capturado (V4 Nivel A). */
 export class RefundAmountExceedsRemainingError extends PaymentsCoreError {
   constructor(

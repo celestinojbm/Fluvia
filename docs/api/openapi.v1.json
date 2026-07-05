@@ -713,6 +713,74 @@
           }
         }
       }
+    },
+    "/v1/payment_links": {
+      "post": {
+        "summary": "Crear un payment link (scope payments:write; idempotente). Plantilla reutilizable 'págame': cada apertura genera un payment_intent + checkout_session frescos. Devuelve la URL pública {base}/l/{id}. La apertura (POST :id/sessions) es pública, sin API key.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["merchant_id", "amount", "currency"],
+                "properties": {
+                  "merchant_id": { "type": "string", "format": "uuid" },
+                  "amount": { "type": "integer", "minimum": 1 },
+                  "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                  "description": { "type": "string", "maxLength": 500 },
+                  "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Payment link creado (o replay exacto)" },
+          "400": { "description": "validation_error (merchant inexistente, etc.)" },
+          "422": { "description": "idempotency_key_reuse" }
+        }
+      },
+      "get": {
+        "summary": "Listar payment links (scope read), más reciente primero",
+        "responses": { "200": { "description": "Lista" } }
+      }
+    },
+    "/v1/payment_links/{id}": {
+      "get": {
+        "summary": "Recuperar un payment link por id (scope read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Payment link" },
+          "404": { "description": "not_found" }
+        }
+      }
+    },
+    "/v1/payment_links/{id}/disable": {
+      "post": {
+        "summary": "Deshabilitar un payment link (scope payments:write); deja de resolver a nuevas sesiones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Payment link deshabilitado" },
+          "404": { "description": "not_found" }
+        }
+      }
     }
   }
 }

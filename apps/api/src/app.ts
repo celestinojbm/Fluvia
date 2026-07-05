@@ -14,6 +14,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  PaymentLinkService,
   RefundService,
   ResilientProvider,
 } from '@fluvia/payments-core';
@@ -25,6 +26,7 @@ import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
+import { registerPaymentLinkRoutes } from './routes/payment-links.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { createSecurity } from './security.js';
@@ -164,12 +166,20 @@ export function buildApp({
     });
     // F3-05b/c: checkout sessions (recurso + flujo alojado: /status y /confirm
     // por client_secret, sin API key).
-    registerCheckoutSessionRoutes(app, {
+    const checkoutSessionService = new CheckoutSessionService(appPool, {
+      checkoutBaseUrl: config.checkoutBaseUrl,
+      confirmation: confirmationService,
+    });
+    registerCheckoutSessionRoutes(app, { security, idempotencyService, checkoutSessionService });
+    // F3-06: payment links (plantilla "págame"; abrir el link genera una sesión
+    // — reutiliza el recurso de checkout).
+    registerPaymentLinkRoutes(app, {
       security,
       idempotencyService,
-      checkoutSessionService: new CheckoutSessionService(appPool, {
+      paymentLinkService: new PaymentLinkService(appPool, {
         checkoutBaseUrl: config.checkoutBaseUrl,
-        confirmation: confirmationService,
+        intents: paymentIntentService,
+        checkout: checkoutSessionService,
       }),
     });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
