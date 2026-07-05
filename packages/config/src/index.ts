@@ -41,6 +41,8 @@ const EnvSchema = z.object({
   PURGE_INTERVAL_MS: z.coerce.number().int().min(1000).max(86_400_000).default(3_600_000),
   INBOX_ENABLED: z.enum(['true', 'false']).default('true'),
   INBOX_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  ATTEMPTS_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  ATTEMPTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   MOCK_WEBHOOK_SECRET: z.string().min(16).optional(),
 });
 
@@ -94,6 +96,11 @@ export interface AppConfig {
   };
   /** Procesador del inbox de webhooks entrantes (F3-03b). */
   inbox: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Watchdog de attempts: barrido de submitting + salud de indeterminados (F3-04). */
+  attemptsWatchdog: {
     enabled: boolean;
     intervalMs: number;
   };
@@ -162,6 +169,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     inbox: {
       enabled: e.INBOX_ENABLED === 'true',
       intervalMs: e.INBOX_INTERVAL_MS,
+    },
+    attemptsWatchdog: {
+      enabled: e.ATTEMPTS_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.ATTEMPTS_WATCHDOG_INTERVAL_MS,
     },
     mockWebhookSecret: required(
       'MOCK_WEBHOOK_SECRET',

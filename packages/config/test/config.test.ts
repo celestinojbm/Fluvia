@@ -155,6 +155,12 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ MOCK_WEBHOOK_SECRET: 'short' })).toThrow(ConfigError);
   });
 
+  it('parses attempts-watchdog toggles with safe defaults (F3-04)', () => {
+    expect(loadConfig({}).attemptsWatchdog).toEqual({ enabled: true, intervalMs: 60_000 });
+    expect(loadConfig({ ATTEMPTS_WATCHDOG_ENABLED: 'false' }).attemptsWatchdog.enabled).toBe(false);
+    expect(() => loadConfig({ ATTEMPTS_WATCHDOG_INTERVAL_MS: '10' })).toThrow(ConfigError);
+  });
+
   it('parses purge-job toggles with safe defaults (F1-09)', () => {
     expect(loadConfig({}).purge).toEqual({ enabled: true, intervalMs: 3_600_000 });
     expect(loadConfig({ PURGE_ENABLED: 'false' }).purge.enabled).toBe(false);

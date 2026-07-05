@@ -12,6 +12,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  ResilientProvider,
 } from '@fluvia/payments-core';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
@@ -130,11 +131,12 @@ export function buildApp({
       paymentIntentService,
       // Proveedor del sandbox: MockPaymentProvider (tokenizacion simulada).
       // Los adapters reales llegan en Fase 5 tras la matriz de jurisdiccion.
+      // F3-04: timeout real + circuit breaker alrededor de CUALQUIER adapter.
       confirmationService: new PaymentConfirmationService(
         appPool,
         paymentIntentService,
         new PostingService(ledgerService, appPool),
-        new MockPaymentProvider()
+        new ResilientProvider(new MockPaymentProvider())
       ),
     });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).

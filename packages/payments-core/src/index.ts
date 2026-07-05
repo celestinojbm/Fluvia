@@ -33,6 +33,11 @@ export {
 } from './provider.js';
 export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';
 export {
+  CircuitOpenError,
+  ResilientProvider,
+  type ResilientProviderOptions,
+} from './resilience.js';
+export {
   MOCK_PROVIDER_NAME,
   MockWebhookEventSchema,
   createMockInboxRegistration,

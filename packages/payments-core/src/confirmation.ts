@@ -4,6 +4,7 @@ import { Money } from '@fluvia/money';
 import { InvalidStateTransitionError, PaymentIntentNotFoundError } from './errors.js';
 import type { IntentStatus } from './fsm.js';
 import type { PaymentProvider } from './provider.js';
+import { CircuitOpenError } from './resilience.js';
 import type { PaymentIntentDto, PaymentIntentService, TxClient } from './service.js';
 
 /**
@@ -110,7 +111,19 @@ export class PaymentConfirmationService {
         currency: row.currency,
         paymentMethodToken,
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        // Circuito abierto (F3-04): la peticion JAMAS se envio, el desenlace
+        // es CONOCIDO — fallo limpio sin ambiguedad ni asiento.
+        await this.recordDeclined(
+          tenantId,
+          attemptId,
+          row.intent_id,
+          'circuit_open',
+          'provider_unavailable'
+        );
+        return;
+      }
       // Resultado DESCONOCIDO: indeterminate. Resolucion SOLO por fuente
       // verificada (V4 §23) — jamas se marca failed "porque probablemente".
       await withTenantTransaction(this.appPool, tenantId, (c) =>

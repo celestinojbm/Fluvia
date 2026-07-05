@@ -21,7 +21,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `packages/idempotency` | Capa de idempotencia API: claim en la misma transacción que el efecto, hash canónico, replay exacto, crash-safe (Gate Idempotencia) |
 | `packages/config` | Configuración tipada de la aplicación |
 | `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
-| `apps/worker` | Proceso worker: heartbeat + outbox relay + procesador del inbox (handler del MockProvider) + vigilancia de drift + purga auditada + `/health`+`/metrics` (puerto 9464) |
+| `apps/worker` | Proceso worker: heartbeat + outbox relay + procesador del inbox + watchdog de attempts (barrido/salud de indeterminados) + vigilancia de drift + purga auditada + `/health`+`/metrics` (9464) |
 | `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
 | `packages/seeds` | Seeds deterministas de demo — `pnpm seed`, solo local/test, reproducible e idempotente (F1-10) |
 | `packages/payments-core` | FSMs declarativas de pagos (intent/attempt/refund) + `PaymentIntentService`; transiciones hechas cumplir EN el motor con meta-test doc↔TS↔DDL (F3-01) |

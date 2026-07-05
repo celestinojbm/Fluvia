@@ -47,6 +47,9 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_technical_purge_rows_total` | counter | `class` (F1-09) |
 | `fluvia_inbox_cycles_total` | counter | — (F3-03b) |
 | `fluvia_inbox_events_total` | counter | `result` = `processed` \| `ignored` \| `retried` \| `dead` |
+| `fluvia_payment_attempts_swept_total` | counter | — (F3-04) |
+| `fluvia_payment_attempts_indeterminate` | gauge | — |
+| `fluvia_payment_attempts_indeterminate_aged` | gauge | — (0 = sano) |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -63,6 +66,7 @@ identificador desde el cliente hasta la fila de auditoría.
 | Chequeos de drift detenidos | `increase(fluvia_ledger_projection_drift_checks_total[10m]) == 0` | ALTA | El watcher no corre: revisar worker |
 | Eventos dead en outbox | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0` | ALTA | Revisar DLQ; replay SOLO auditado |
 | Eventos dead en inbox | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0` | ALTA | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado |
+| Indeterminados envejecidos | `fluvia_payment_attempts_indeterminate_aged > 0` | ALTA | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción |
 | Worker sin latido | `increase(fluvia_worker_heartbeats_total[5m]) == 0` | ALTA | Proceso caído o colgado |
 | Tasa de 5xx | `rate(fluvia_http_requests_total{status=~"5.."}[5m]) > 0` | ALTA | 5xx debe ser ~0; cualquier valor sostenido es bug |
 | Latencia p99 | `histogram_quantile(0.99, rate(fluvia_http_request_duration_seconds_bucket[5m])) > 1` | MEDIA | Contra baseline SLO de `system-overview.md` §5 |

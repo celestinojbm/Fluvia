@@ -10,8 +10,10 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  ResilientProvider,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
+import { AttemptsWatchdog } from './attempts-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -67,6 +69,18 @@ const inboxEventsTotal = registry.counter(
   'Eventos del inbox por resultado de intento',
   ['result']
 );
+const attemptsSweptTotal = registry.counter(
+  'fluvia_payment_attempts_swept_total',
+  'Attempts barridos de submitting a indeterminate (lease vencido)'
+);
+const attemptsIndeterminate = registry.gauge(
+  'fluvia_payment_attempts_indeterminate',
+  'Attempts en indeterminate ahora mismo'
+);
+const attemptsIndeterminateAged = registry.gauge(
+  'fluvia_payment_attempts_indeterminate_aged',
+  'Attempts indeterminate envejecidos (>30 min) — 0 = sano'
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -110,7 +124,7 @@ const confirmation = new PaymentConfirmationService(
   appPool,
   paymentIntents,
   new PostingService(new LedgerService(appPool), appPool),
-  new MockPaymentProvider()
+  new ResilientProvider(new MockPaymentProvider())
 );
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
@@ -123,6 +137,15 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
   },
 });
 inboxProcessor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation));
+// F3-04: barrido submitting->indeterminate + salud de indeterminados. La
+// politica vive en sweep_payment_attempts() (0018); el job la invoca.
+const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    if (health.sweptToIndeterminate > 0) attemptsSweptTotal.inc({}, health.sweptToIndeterminate);
+    attemptsIndeterminate.set({}, health.indeterminateTotal);
+    attemptsIndeterminateAged.set({}, health.indeterminateAged);
+  },
+});
 
 const metricsServer = createMetricsServer({
   registry,
@@ -135,6 +158,7 @@ async function shutdown(signal: string): Promise<void> {
   driftWatcher.stop();
   purgeJob.stop();
   inboxProcessor.stop();
+  attemptsWatchdog.stop();
   metricsServer.close();
   await worker.stop();
   await Promise.all([workerPool.end(), relayPool.end(), inboxPool.end(), appPool.end()]);
@@ -178,6 +202,12 @@ worker
       );
     } else {
       logger.info({}, 'inbox processor disabled by config (INBOX_ENABLED=false)');
+    }
+    if (config.attemptsWatchdog.enabled) {
+      attemptsWatchdog.start(config.attemptsWatchdog.intervalMs);
+      logger.info({ intervalMs: config.attemptsWatchdog.intervalMs }, 'attempts watchdog started');
+    } else {
+      logger.info({}, 'attempts watchdog disabled by config (ATTEMPTS_WATCHDOG_ENABLED=false)');
     }
     metricsServer.listen(config.workerMetricsPort, '0.0.0.0', () => {
       logger.info({ port: config.workerMetricsPort }, 'worker metrics server listening');
