@@ -44,6 +44,9 @@ importers:
       '@fluvia/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@fluvia/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@fluvia/money':
         specifier: workspace:*
         version: link:../../packages/money
@@ -393,6 +396,9 @@ importers:
       '@fluvia/events':
         specifier: workspace:*
         version: link:../events
+      '@fluvia/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       '@fluvia/money':
         specifier: workspace:*
         version: link:../money

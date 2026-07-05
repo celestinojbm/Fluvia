@@ -7,7 +7,11 @@ import {
 } from '@fluvia/idempotency';
 import { MerchantNotFoundError } from '@fluvia/identity';
 import { Money } from '@fluvia/money';
-import { PaymentIntentService, type PaymentIntentDto } from '@fluvia/payments-core';
+import {
+  PaymentConfirmationService,
+  PaymentIntentService,
+  type PaymentIntentDto,
+} from '@fluvia/payments-core';
 import type { Security } from '../security.js';
 
 /**
@@ -48,6 +52,7 @@ export interface PaymentIntentRoutesOptions {
   security: Security;
   idempotencyService: IdempotencyService;
   paymentIntentService: PaymentIntentService;
+  confirmationService: PaymentConfirmationService;
 }
 
 function publicIntent(intent: PaymentIntentDto) {
@@ -72,7 +77,12 @@ function idempotencyKeyOf(req: FastifyRequest): string {
 
 export function registerPaymentIntentRoutes(
   app: FastifyInstance,
-  { security, idempotencyService, paymentIntentService }: PaymentIntentRoutesOptions
+  {
+    security,
+    idempotencyService,
+    paymentIntentService,
+    confirmationService,
+  }: PaymentIntentRoutesOptions
 ): void {
   app.post(
     '/v1/payment_intents',
@@ -107,6 +117,55 @@ export function registerPaymentIntentRoutes(
           return { status: 201, body: publicIntent(intent) };
         },
       });
+      reply.header('idempotency-replayed', String(result.replayed));
+      return reply.code(result.status).send(result.body);
+    }
+  );
+
+  // Confirmar es ASINCRONO por contrato: la respuesta es el intent en
+  // `processing` (fase 1, idempotente); el attempt se ejecuta a continuacion
+  // y el estado final se lee via GET (o webhooks, F3-07). El replay devuelve
+  // exactamente la misma respuesta y NO re-ejecuta nada.
+  app.post(
+    '/v1/payment_intents/:id/confirm',
+    { preHandler: security.apiKey(['payments:write']) },
+    async (req, reply) => {
+      const key = idempotencyKeyOf(req);
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      const body = z
+        .object({ payment_method_token: z.string().min(1).max(100) })
+        .strict()
+        .parse(req.body);
+      const tenantId = req.apiKey!.tenantId;
+
+      const result = await idempotencyService.execute({
+        tenantId,
+        endpoint: 'POST /v1/payment_intents/:id/confirm',
+        key,
+        requestHash: computeRequestHash({ id, ...body }),
+        handler: async (client) => {
+          const begun = await confirmationService.beginIn(client, tenantId, id);
+          return {
+            status: 200,
+            body: { ...publicIntent(begun.intent), attempt_id: begun.attemptId },
+          };
+        },
+      });
+
+      if (!result.replayed) {
+        const attemptId = (result.body as { attempt_id: string }).attempt_id;
+        // Fase 2 fuera de toda tx (Nivel A). Si fallara de forma inesperada,
+        // el attempt queda en submitting (barrido a indeterminate = F3-04) y
+        // la respuesta contractual no cambia.
+        await confirmationService
+          .execute(tenantId, attemptId, body.payment_method_token)
+          .catch((err: unknown) => {
+            req.log.error(
+              { err: String(err), attemptId },
+              'attempt execution failed; attempt remains submitting'
+            );
+          });
+      }
       reply.header('idempotency-replayed', String(result.replayed));
       return reply.code(result.status).send(result.body);
     }

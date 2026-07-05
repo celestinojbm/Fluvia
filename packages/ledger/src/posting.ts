@@ -9,7 +9,7 @@ import {
 } from './chart-of-accounts.js';
 import { FeesExceedAmountError, InvalidEntriesError, UnknownAccountCodeError } from './errors.js';
 import type { LedgerService } from './service.js';
-import type { LedgerEntryInput, PostedTransaction } from './types.js';
+import type { LedgerEntryInput, PostTransactionInput, PostedTransaction } from './types.js';
 
 export interface PostingContext {
   tenantId: string;
@@ -26,6 +26,8 @@ export interface CapturePaymentInput extends PostingContext {
   providerFee?: Money;
   /** Fee de Fluvia cobrado al comercio. */
   platformFee?: Money;
+  /** Composicion atomica (F3-03): corre DENTRO de la tx del posting. */
+  onPosted?: PostTransactionInput['onPosted'];
 }
 
 export interface SimpleAmountInput extends PostingContext {
@@ -153,6 +155,7 @@ export class PostingService {
       reason: 'payment',
       source: { type: input.sourceType, id: input.sourceId },
       entries,
+      onPosted: input.onPosted,
     });
   }
 

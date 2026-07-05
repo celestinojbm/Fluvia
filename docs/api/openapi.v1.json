@@ -18,18 +18,36 @@
         "name": "Idempotency-Key",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
       }
     },
     "schemas": {
       "PaymentIntent": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "object": { "const": "payment_intent" },
-          "merchant_id": { "type": "string", "format": "uuid" },
-          "amount": { "type": "integer", "description": "Unidades MENORES de la moneda" },
-          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "object": {
+            "const": "payment_intent"
+          },
+          "merchant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Unidades MENORES de la moneda"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
           "status": {
             "enum": [
               "created",
@@ -46,11 +64,22 @@
               "refunded"
             ]
           },
-          "capture_method": { "enum": ["automatic", "manual"] },
-          "amount_captured": { "type": "integer" },
-          "amount_refunded": { "type": "integer" },
-          "failure_code": { "type": ["string", "null"] },
-          "created_at": { "type": "string", "format": "date-time" }
+          "capture_method": {
+            "enum": ["automatic", "manual"]
+          },
+          "amount_captured": {
+            "type": "integer"
+          },
+          "amount_refunded": {
+            "type": "integer"
+          },
+          "failure_code": {
+            "type": ["string", "null"]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Error": {
@@ -59,11 +88,19 @@
           "error": {
             "type": "object",
             "properties": {
-              "type": { "type": "string" },
-              "code": { "type": "string" },
-              "message": { "type": "string" },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
               "details": {},
-              "request_id": { "type": "string" }
+              "request_id": {
+                "type": "string"
+              }
             },
             "required": ["type", "code", "message", "request_id"]
           }
@@ -72,12 +109,20 @@
       }
     }
   },
-  "security": [{ "apiKey": [] }],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
   "paths": {
     "/v1/payment_intents": {
       "post": {
         "summary": "Crear payment intent (scope payments:write; idempotente)",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -87,15 +132,32 @@
                 "additionalProperties": false,
                 "required": ["merchant_id", "amount", "currency"],
                 "properties": {
-                  "merchant_id": { "type": "string", "format": "uuid" },
-                  "amount": { "type": "integer", "minimum": 1 },
-                  "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
-                  "description": { "type": "string", "maxLength": 500 },
-                  "capture_method": { "enum": ["automatic", "manual"] },
+                  "merchant_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "capture_method": {
+                    "enum": ["automatic", "manual"]
+                  },
                   "metadata": {
                     "type": "object",
                     "maxProperties": 20,
-                    "additionalProperties": { "type": "string", "maxLength": 500 }
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
                   }
                 }
               }
@@ -103,11 +165,21 @@
           }
         },
         "responses": {
-          "201": { "description": "Intent creado (o replay exacto)" },
-          "400": { "description": "validation_error | idempotency_key_required" },
-          "404": { "description": "not_found (merchant ajeno o inexistente)" },
-          "409": { "description": "processing_in_flight" },
-          "422": { "description": "idempotency_key_reuse" }
+          "201": {
+            "description": "Intent creado (o replay exacto)"
+          },
+          "400": {
+            "description": "validation_error | idempotency_key_required"
+          },
+          "404": {
+            "description": "not_found (merchant ajeno o inexistente)"
+          },
+          "409": {
+            "description": "processing_in_flight"
+          },
+          "422": {
+            "description": "idempotency_key_reuse"
+          }
         }
       },
       "get": {
@@ -116,10 +188,19 @@
           {
             "name": "limit",
             "in": "query",
-            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
           }
         ],
-        "responses": { "200": { "description": "Lista, más reciente primero" } }
+        "responses": {
+          "200": {
+            "description": "Lista, más reciente primero"
+          }
+        }
       }
     },
     "/v1/payment_intents/{id}": {
@@ -130,12 +211,19 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "El intent" },
-          "404": { "description": "not_found (ajeno e inexistente indistinguibles)" }
+          "200": {
+            "description": "El intent"
+          },
+          "404": {
+            "description": "not_found (ajeno e inexistente indistinguibles)"
+          }
         }
       }
     },
@@ -143,19 +231,80 @@
       "post": {
         "summary": "Cancelar un payment intent (scope payments:write; idempotente). La FSM decide: sólo estados con transición legal a canceled.",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "Intent cancelado (o replay exacto)" },
-          "404": { "description": "not_found" },
+          "200": {
+            "description": "Intent cancelado (o replay exacto)"
+          },
+          "404": {
+            "description": "not_found"
+          },
           "409": {
             "description": "invalid_state_transition (estado terminal u otro sin transición legal)"
+          }
+        }
+      }
+    },
+    "/v1/payment_intents/{id}/confirm": {
+      "post": {
+        "summary": "Confirmar un payment intent (scope payments:write; idempotente). ASINCRONO por contrato: responde el intent en processing con attempt_id; el estado final se lee via GET. tokens del sandbox: tok_approve, tok_decline, tok_decline_insufficient, tok_timeout (indeterminado).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["payment_method_token"],
+                "properties": {
+                  "payment_method_token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Intent en processing + attempt_id (o replay exacto)"
+          },
+          "404": {
+            "description": "not_found"
+          },
+          "409": {
+            "description": "invalid_state_transition (ya processing, terminal, etc.)"
+          },
+          "422": {
+            "description": "idempotency_key_reuse"
           }
         }
       }

@@ -22,4 +22,13 @@ export {
   type CreateIntentInput,
   type PaymentIntentDto,
   type TransitionOptions,
+  type TxClient,
 } from './service.js';
+export {
+  MockPaymentProvider,
+  ProviderTimeoutError,
+  type PaymentProvider,
+  type ProviderOutcome,
+  type SubmitPaymentInput,
+} from './provider.js';
+export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';

@@ -22,6 +22,7 @@
     "@fluvia/db": "workspace:*",
     "@fluvia/idempotency": "workspace:*",
     "@fluvia/identity": "workspace:*",
+    "@fluvia/ledger": "workspace:*",
     "@fluvia/money": "workspace:*",
     "@fluvia/observability": "workspace:*",
     "@fluvia/payments-core": "workspace:*",

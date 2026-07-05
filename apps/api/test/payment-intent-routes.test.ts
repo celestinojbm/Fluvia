@@ -288,6 +288,114 @@ describe('GET + cancel + aislamiento', () => {
     expect(again.json().error.code).toBe('invalid_state_transition');
   });
 
+  it('confirm approves end-to-end: async contract, then GET shows succeeded + captured', async () => {
+    const id = await createIntent();
+    const key = `pi-confirm-${randomUUID()}`;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': key },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // Contrato asincrono: la respuesta es el estado de la fase 1.
+    expect(body.status).toBe('processing');
+    expect(body.attempt_id).toBeTruthy();
+
+    const after = await app.inject({
+      method: 'GET',
+      url: `/v1/payment_intents/${id}`,
+      headers: auth(keyARead),
+    });
+    expect(after.json().status).toBe('succeeded');
+    expect(after.json().amount_captured).toBe(150_000);
+
+    // Replay: MISMA respuesta (processing) y NINGUN attempt nuevo.
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': key },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect(replay.json()).toEqual(body);
+    const attempts = await adminPool.query(
+      `SELECT count(*)::int AS n FROM payment_attempts WHERE intent_id = $1`,
+      [id]
+    );
+    expect((attempts.rows[0] as { n: number }).n).toBe(1);
+  });
+
+  it('confirm with a declining token: GET shows failed with the stable failure_code', async () => {
+    const id = await createIntent();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': `pi-dec-${randomUUID()}` },
+      payload: { payment_method_token: 'tok_decline' },
+    });
+    expect(res.statusCode).toBe(200);
+    const after = await app.inject({
+      method: 'GET',
+      url: `/v1/payment_intents/${id}`,
+      headers: auth(keyARead),
+    });
+    expect(after.json().status).toBe('failed');
+    expect(after.json().failure_code).toBe('card_declined');
+  });
+
+  it('confirm with tok_timeout: intent stays processing, attempt is indeterminate (V4 §23)', async () => {
+    const id = await createIntent();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': `pi-tmo-${randomUUID()}` },
+      payload: { payment_method_token: 'tok_timeout' },
+    });
+    expect(res.statusCode).toBe(200);
+    const after = await app.inject({
+      method: 'GET',
+      url: `/v1/payment_intents/${id}`,
+      headers: auth(keyARead),
+    });
+    expect(after.json().status).toBe('processing');
+    const att = await adminPool.query<{ status: string }>(
+      `SELECT status FROM payment_attempts WHERE intent_id = $1`,
+      [id]
+    );
+    expect(att.rows[0]!.status).toBe('indeterminate');
+  });
+
+  it('confirm demands Idempotency-Key and rejects terminal/in-flight states via the FSM', async () => {
+    const id = await createIntent();
+    const noKey = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: auth(keyA),
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(noKey.statusCode).toBe(400);
+    expect(noKey.json().error.code).toBe('idempotency_key_required');
+
+    // Confirmado y sucedido: un confirm nuevo (key nueva) es 409 por FSM.
+    await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': `pi-ok-${randomUUID()}` },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    const again = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${id}/confirm`,
+      headers: { ...auth(keyA), 'idempotency-key': `pi-again-${randomUUID()}` },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe('invalid_state_transition');
+  });
+
   it('cross-tenant cancel is a 404, not a 403 (no existence oracle)', async () => {
     const id = await createIntent();
     const res = await app.inject({

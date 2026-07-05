@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0
 
-> **Estado de implementación (2026-07-05, F3-01/F3-02): PARCIAL.** Construido hoy: plano contable del ciclo (F2-03/F2-04), `payment_intents` REAL con FSM en el motor + `payment_attempts` (0017, F3-01) y los primeros endpoints idempotentes del plano de integración: `POST/GET /v1/payment_intents`, `GET /v1/payment_intents/:id`, `POST .../cancel` (F3-02, contrato en `docs/api/openapi.v1.json`). NO construido: **confirm** (llega con F3-03 — confirmar sin proveedor sería un pago irresoluble), MockProvider/attempts en ejecución, checkout, webhooks salientes, customers (diferido a F3-05, su primer consumidor).
+> **Estado de implementación (2026-07-05, F3-01/F3-02): PARCIAL.** Construido hoy: plano contable del ciclo (F2-03/F2-04), `payment_intents` REAL con FSM en el motor + `payment_attempts` (0017, F3-01) y los primeros endpoints idempotentes del plano de integración: `POST/GET /v1/payment_intents`, `GET /v1/payment_intents/:id`, `POST .../cancel` (F3-02, contrato en `docs/api/openapi.v1.json`). Construido también (F3-03 parte síncrona): **confirm** idempotente con contrato asíncrono (responde `processing`; el estado final se lee vía GET), MockPaymentProvider (tokens de prueba), attempts en ejecución con captura contable ATÓMICA (asiento+attempt+intent+`amount_captured` en una transacción vía `onPosted`; fees 0 hasta PEND-002) y timeout→`indeterminate` (V4 §23: sin resolución por asunción). NO construido: outcome asíncrono `pending`/handler de inbox (F3-03b), barrido submitting→indeterminate (F3-04), checkout, webhooks salientes, customers (F3-05).
 
 ## 1. Principio
 

@@ -7,7 +7,12 @@ import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
-import { PaymentIntentService } from '@fluvia/payments-core';
+import {
+  MockPaymentProvider,
+  PaymentConfirmationService,
+  PaymentIntentService,
+} from '@fluvia/payments-core';
+import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
@@ -115,10 +120,20 @@ export function buildApp({
     registerAccountRoutes(app, { security, identityService });
     // F3-02: plano de integracion (API key). Servicios internos construidos
     // aqui: solo dependen del pool app (RLS) — nada de config adicional.
+    const paymentIntentService = new PaymentIntentService(appPool);
+    const ledgerService = new LedgerService(appPool);
     registerPaymentIntentRoutes(app, {
       security,
       idempotencyService: new IdempotencyService(appPool),
-      paymentIntentService: new PaymentIntentService(appPool),
+      paymentIntentService,
+      // Proveedor del sandbox: MockPaymentProvider (tokenizacion simulada).
+      // Los adapters reales llegan en Fase 5 tras la matriz de jurisdiccion.
+      confirmationService: new PaymentConfirmationService(
+        appPool,
+        paymentIntentService,
+        new PostingService(ledgerService, appPool),
+        new MockPaymentProvider()
+      ),
     });
   }
 

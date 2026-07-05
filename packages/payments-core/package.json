@@ -17,6 +17,7 @@
   "dependencies": {
     "@fluvia/db": "workspace:*",
     "@fluvia/events": "workspace:*",
+    "@fluvia/ledger": "workspace:*",
     "@fluvia/money": "workspace:*"
   },
   "devDependencies": {
