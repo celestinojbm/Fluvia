@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { withTenantTransaction, type Pool } from '@fluvia/db';
 import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
@@ -87,8 +87,29 @@ export interface ApiKeyDto {
   revokedAt: string | null;
 }
 
+/** Hash LEGADO (key_hash_version=1). Solo se usa para autenticar filas viejas. */
 export function hashApiKeySecret(secret: string): string {
   return createHash('sha256').update(secret).digest('hex');
+}
+
+/** Pepper SOLO desarrollo local (regimen R-12); fuera de local viene por entorno. */
+export const DEV_API_KEY_HMAC_SECRET_HEX =
+  'ffeeddccbbaa00112233445566778899ffeeddccbbaa00112233445566778899'; // gitleaks:allow
+
+export function parseApiKeyHmacSecret(hex: string): Buffer {
+  if (!/^[0-9a-f]{64}$/iu.test(hex)) {
+    throw new Error('API_KEY_HMAC_SECRET must be 64 hex characters (32 bytes)');
+  }
+  return Buffer.from(hex, 'hex');
+}
+
+/**
+ * Hash v2 (AUD-P2-015): HMAC-SHA256 con pepper de servidor. Un dump de la
+ * tabla ya no basta para validar claves candidatas offline — falta el pepper,
+ * que jamas se persiste en la base.
+ */
+export function hmacApiKeySecret(pepperHex: string, secret: string): string {
+  return createHmac('sha256', parseApiKeyHmacSecret(pepperHex)).update(secret).digest('hex');
 }
 
 const PREFIX_DISPLAY_LENGTH = 20;
@@ -104,8 +125,21 @@ interface ApiKeyRow {
   revoked_at: Date | null;
 }
 
+export interface ApiKeyServiceOptions {
+  /** Pepper HMAC (64 hex, AUD-P2-015). Default SOLO local; en cloud viene de config. */
+  hmacSecretHex?: string;
+}
+
 export class ApiKeyService {
-  constructor(private readonly appPool: Pool) {}
+  private readonly hmacSecretHex: string;
+
+  constructor(
+    private readonly appPool: Pool,
+    options: ApiKeyServiceOptions = {}
+  ) {
+    this.hmacSecretHex = options.hmacSecretHex ?? DEV_API_KEY_HMAC_SECRET_HEX;
+    parseApiKeyHmacSecret(this.hmacSecretHex); // falla rapido si es invalido
+  }
 
   async create(
     tenantId: string,
@@ -121,12 +155,12 @@ export class ApiKeyService {
 
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<{ id: string }>(
-        `INSERT INTO api_keys (tenant_id, key_hash, key_prefix, label, scopes, environment, created_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO api_keys (tenant_id, key_hash, key_hash_version, key_prefix, label, scopes, environment, created_by_user_id)
+         VALUES ($1, $2, 2, $3, $4, $5, $6, $7)
          RETURNING id`,
         [
           tenantId,
-          hashApiKeySecret(secret),
+          hmacApiKeySecret(this.hmacSecretHex, secret),
           keyPrefix,
           input.label,
           input.scopes,

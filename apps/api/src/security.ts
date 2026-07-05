@@ -3,8 +3,10 @@ import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
 import { InvalidSessionError, StepUpRequiredError } from '@fluvia/auth';
 import {
+  DEV_API_KEY_HMAC_SECRET_HEX,
   hasPermission,
   hashApiKeySecret,
+  hmacApiKeySecret,
   IdentityService,
   InsufficientPermissionError,
   InsufficientScopeError,
@@ -45,6 +47,8 @@ export interface SecurityDeps {
   authService: AuthService;
   identityService: IdentityService;
   appPool: Pool;
+  /** Pepper HMAC de API keys (AUD-P2-015). Default SOLO local. */
+  apiKeyHmacSecretHex?: string;
 }
 
 /**
@@ -102,12 +106,18 @@ export function createSecurity(deps: SecurityDeps) {
       return async (req: FastifyRequest): Promise<void> => {
         const token = bearer(req);
         if (!token || !token.startsWith('fluvia_sk_')) throw new InvalidApiKeyError();
+        // AUD-P2-015: se computan AMBOS hashes; la funcion definer autentica
+        // v2 (HMAC) o v1 (sha256 legado) y promueve v1->v2 en el mismo paso.
+        const pepper = deps.apiKeyHmacSecretHex ?? DEV_API_KEY_HMAC_SECRET_HEX;
         const res = await deps.appPool.query<{
           tenant_id: string;
           api_key_id: string;
           scopes: string[];
           environment: string;
-        }>('SELECT * FROM authenticate_api_key($1)', [hashApiKeySecret(token)]);
+        }>('SELECT * FROM authenticate_api_key($1, $2)', [
+          hmacApiKeySecret(pepper, token),
+          hashApiKeySecret(token),
+        ]);
         const row = res.rows[0];
         if (!row) throw new InvalidApiKeyError();
         for (const scope of requiredScopes) {

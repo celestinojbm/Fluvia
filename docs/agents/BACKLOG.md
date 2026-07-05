@@ -51,7 +51,7 @@ Reconciliación completa: `docs/audits/audit-integration-plan-v1.md` · estado v
 | ID | Título | Deps | Riesgo | Talla | Estado |
 |----|--------|------|--------|-------|--------|
 | AUD-1 | Lote de remediación inmediata: 0008 (FK compuesta + endpoint en idempotency_keys + REVOKE worker) · guard `nonNegativeAccounts` · huella idempotente completa · bloqueo live keys · anti-mezcla dbUrls · README/estados docs/reservas | — | Alto | M | **Completado 2026-07-04** (cierra AUD-P1-001/008/009/010, P2-001/003/013/014, P3-001/002; mitiga P1-007 y P2-004) |
-| AUD-P2-015 | API keys: `key_hash_version` + HMAC server-side | F1-04c | Medio | M | Pendiente — bloqueante para sandbox compartido (PEND-006) |
+| AUD-P2-015 | API keys: `key_hash_version` + HMAC server-side | F1-04c | Medio | M | **Completado 2026-07-05** (migración 0016: HMAC-SHA256 con pepper `API_KEY_HMAC_SECRET` anti-mezcla; claves nuevas nacen v2; upgrade perezoso v1→v2 en autenticación probado; el prerequisito técnico de PEND-006 queda listo) |
 
 Los demás hallazgos abiertos NO son ítems nuevos: viven dentro de F1-04b, F1-08, F1-09, F2-05, F2-06, F2-09, F2-11, F2-12, F3-01, F3-11, F4 (marcados arriba) — sin duplicación.
 

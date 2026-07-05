@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { dbUrlsFromEnv } from './config.js';
 import { migrate } from './migrate.js';
@@ -29,6 +29,14 @@ export interface TestContext {
 
 export function hashApiKey(plaintext: string): string {
   return createHash('sha256').update(plaintext).digest('hex');
+}
+
+/** Pepper HMAC de desarrollo (espejo de @fluvia/identity para evitar el ciclo). */
+export const DEV_API_KEY_HMAC_PEPPER_HEX =
+  'ffeeddccbbaa00112233445566778899ffeeddccbbaa00112233445566778899'; // gitleaks:allow
+
+export function hmacApiKey(plaintext: string, pepperHex = DEV_API_KEY_HMAC_PEPPER_HEX): string {
+  return createHmac('sha256', Buffer.from(pepperHex, 'hex')).update(plaintext).digest('hex');
 }
 
 export async function createTestContext(): Promise<TestContext> {

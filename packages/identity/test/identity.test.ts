@@ -227,12 +227,12 @@ describe('authenticate_api_key tras el rename a organizations', () => {
   it('still resolves tenants from key hashes', async () => {
     const org = await ctx.createTenant();
     const key = await ctx.createApiKey(org);
-    const { hashApiKey } = await import('@fluvia/db/testing');
+    const { hashApiKey, hmacApiKey } = await import('@fluvia/db/testing');
     const client = await ctx.app.connect();
     try {
       const res = await client.query<{ tenant_id: string }>(
-        'SELECT tenant_id FROM authenticate_api_key($1)',
-        [hashApiKey(key)]
+        'SELECT tenant_id FROM authenticate_api_key($1, $2)',
+        [hmacApiKey(key), hashApiKey(key)]
       );
       expect(res.rows[0]?.tenant_id).toBe(org);
     } finally {

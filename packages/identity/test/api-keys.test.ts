@@ -4,7 +4,9 @@ import {
   ApiKeyNotFoundError,
   ApiKeyService,
   LiveKeysDisabledError,
+  DEV_API_KEY_HMAC_SECRET_HEX,
   hashApiKeySecret,
+  hmacApiKeySecret,
 } from '../src/index.js';
 
 let ctx: TestContext;
@@ -29,11 +31,18 @@ describe('ApiKeyService (F1-04c)', () => {
     expect(created.secret).toMatch(/^fluvia_sk_test_[0-9a-f]{48}$/);
     expect(created.keyPrefix).toBe(created.secret.slice(0, 20));
 
-    const stored = await ctx.admin.query<{ key_hash: string; key_prefix: string }>(
-      'SELECT key_hash, key_prefix FROM api_keys WHERE id = $1',
-      [created.id]
+    const stored = await ctx.admin.query<{
+      key_hash: string;
+      key_prefix: string;
+      key_hash_version: number;
+    }>('SELECT key_hash, key_prefix, key_hash_version FROM api_keys WHERE id = $1', [created.id]);
+    expect(stored.rows[0]!.key_hash_version).toBe(2);
+    // AUD-P2-015: el hash almacenado es HMAC v2 con pepper de servidor — un
+    // dump de la tabla (sin pepper) ya no permite validar claves offline.
+    expect(stored.rows[0]!.key_hash).toBe(
+      hmacApiKeySecret(DEV_API_KEY_HMAC_SECRET_HEX, created.secret)
     );
-    expect(stored.rows[0]!.key_hash).toBe(hashApiKeySecret(created.secret));
+    expect(stored.rows[0]!.key_hash).not.toBe(hashApiKeySecret(created.secret));
     expect(stored.rows[0]!.key_hash).not.toContain(created.secret);
     expect(stored.rows[0]!.key_prefix.length).toBeLessThan(created.secret.length);
   });
@@ -87,12 +96,14 @@ describe('ApiKeyService (F1-04c)', () => {
 
   it('revoke disables authentication for the key', async () => {
     const created = await service.create(orgA, { label: 'to-revoke', scopes: ['read'] });
-    const before = await ctx.app.query('SELECT * FROM authenticate_api_key($1)', [
+    const before = await ctx.app.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      hmacApiKeySecret(DEV_API_KEY_HMAC_SECRET_HEX, created.secret),
       hashApiKeySecret(created.secret),
     ]);
     expect(before.rowCount).toBe(1);
     await service.revoke(orgA, created.id);
-    const after = await ctx.app.query('SELECT * FROM authenticate_api_key($1)', [
+    const after = await ctx.app.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      hmacApiKeySecret(DEV_API_KEY_HMAC_SECRET_HEX, created.secret),
       hashApiKeySecret(created.secret),
     ]);
     expect(after.rowCount).toBe(0);
@@ -107,7 +118,10 @@ describe('ApiKeyService (F1-04c)', () => {
       tenant_id: string;
       scopes: string[];
       environment: string;
-    }>('SELECT * FROM authenticate_api_key($1)', [hashApiKeySecret(created.secret)]);
+    }>('SELECT * FROM authenticate_api_key($1, $2)', [
+      hmacApiKeySecret(DEV_API_KEY_HMAC_SECRET_HEX, created.secret),
+      hashApiKeySecret(created.secret),
+    ]);
     expect(res.rows[0]!.tenant_id).toBe(orgA);
     expect(res.rows[0]!.scopes.sort()).toEqual(['read', 'webhooks:manage']);
     expect(res.rows[0]!.environment).toBe('test');
@@ -117,5 +131,41 @@ describe('ApiKeyService (F1-04c)', () => {
       [created.id]
     );
     expect(touched.rows[0]!.last_used_at).not.toBeNull();
+  });
+
+  it('AUD-P2-015: a legacy sha256 key authenticates AND is upgraded to HMAC v2 in the same call', async () => {
+    const created = await service.create(orgA, { label: 'legacy-sim', scopes: ['read'] });
+    // Simula una fila pre-0016: sha256 puro, version 1.
+    await ctx.admin.query(`UPDATE api_keys SET key_hash = $2, key_hash_version = 1 WHERE id = $1`, [
+      created.id,
+      hashApiKeySecret(created.secret),
+    ]);
+
+    const hmac = hmacApiKeySecret(DEV_API_KEY_HMAC_SECRET_HEX, created.secret);
+    const res = await ctx.app.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      hmac,
+      hashApiKeySecret(created.secret),
+    ]);
+    expect(res.rowCount).toBe(1);
+
+    // La fila quedo promovida: hash HMAC + version 2, sin re-emision.
+    const row = await ctx.admin.query<{ key_hash: string; key_hash_version: number }>(
+      'SELECT key_hash, key_hash_version FROM api_keys WHERE id = $1',
+      [created.id]
+    );
+    expect(row.rows[0]!.key_hash_version).toBe(2);
+    expect(row.rows[0]!.key_hash).toBe(hmac);
+
+    // Y autentica por la via v2 (el sha256 legado ya NO matchea ninguna fila).
+    const again = await ctx.app.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      hmac,
+      'not-a-real-legacy-hash',
+    ]);
+    expect(again.rowCount).toBe(1);
+    const legacyOnly = await ctx.app.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      'not-a-real-hmac',
+      hashApiKeySecret(created.secret),
+    ]);
+    expect(legacyOnly.rowCount).toBe(0);
   });
 });

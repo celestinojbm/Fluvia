@@ -62,6 +62,19 @@ describe('loadConfig', () => {
         REDIS_URL: 'redis://r',
       })
     ).toThrow(/MFA_SECRET_KEY/);
+    // AUD-P2-015: el pepper HMAC de API keys tambien es anti-mezcla.
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        RELAY_DATABASE_URL: 'postgres://w',
+        AUTH_DATABASE_URL: 'postgres://a',
+        REDIS_URL: 'redis://r',
+        MFA_SECRET_KEY: 'a'.repeat(64),
+      })
+    ).toThrow(/API_KEY_HMAC_SECRET/);
   });
 
   it('accepts fully explicit non-local config', () => {
@@ -74,6 +87,7 @@ describe('loadConfig', () => {
       AUTH_DATABASE_URL: 'postgres://d',
       REDIS_URL: 'redis://r',
       MFA_SECRET_KEY: 'a'.repeat(64),
+      API_KEY_HMAC_SECRET: 'b'.repeat(64),
     });
     expect(cfg.env).toBe('production');
     expect(cfg.db.worker).toBe('postgres://c');

@@ -12,7 +12,7 @@ const app = buildApp({
   appPool,
   authService: new AuthService(authPool, { mfaEncryptionKeyHex: config.mfaSecretKey }),
   identityService: new IdentityService(appPool),
-  apiKeyService: new ApiKeyService(appPool),
+  apiKeyService: new ApiKeyService(appPool, { hmacSecretHex: config.apiKeyHmacSecret }),
 });
 
 let shuttingDown = false;

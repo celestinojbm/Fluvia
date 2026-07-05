@@ -95,7 +95,12 @@ export function buildApp({
   }
 
   if (authService && identityService && apiKeyService) {
-    const security = createSecurity({ authService, identityService, appPool });
+    const security = createSecurity({
+      authService,
+      identityService,
+      appPool,
+      apiKeyHmacSecretHex: config.apiKeyHmacSecret,
+    });
     const auditReader = new AuditReader(appPool);
     registerOrganizationRoutes(app, {
       security,
