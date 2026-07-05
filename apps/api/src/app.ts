@@ -8,6 +8,7 @@ import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
+import { WebhookEndpointService } from '@fluvia/webhooks';
 import {
   MockPaymentProvider,
   PaymentConfirmationService,
@@ -20,6 +21,7 @@ import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
+import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -143,6 +145,15 @@ export function buildApp({
     registerProviderWebhookRoutes(app, {
       ingestService: new InboxIngestService(appPool),
       mockWebhookSecret: config.mockWebhookSecret,
+    });
+    // F3-07: gestion de endpoints de webhooks salientes (scope webhooks:manage).
+    registerWebhookEndpointRoutes(app, {
+      security,
+      endpointService: new WebhookEndpointService(appPool, {
+        encKeyHex: config.webhookSecretEncKey,
+        // Redes privadas SOLO local/test (guard por entorno, no configurable).
+        allowPrivateNetworks: config.env === 'local' || config.env === 'test',
+      }),
     });
   }
 

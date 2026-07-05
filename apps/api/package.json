@@ -27,6 +27,7 @@
     "@fluvia/money": "workspace:*",
     "@fluvia/observability": "workspace:*",
     "@fluvia/payments-core": "workspace:*",
+    "@fluvia/webhooks": "workspace:*",
     "fastify": "^5.2.0",
     "zod": "^3.25.0"
   },

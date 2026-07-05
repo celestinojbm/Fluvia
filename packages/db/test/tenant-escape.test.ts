@@ -216,9 +216,9 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
   it('AUD-P1-007: NO runtime role has BYPASSRLS (cross-tenant reads are explicit policies)', async () => {
     const res = await ctx.admin.query<{ rolname: string; rolbypassrls: boolean }>(`
       SELECT rolname, rolbypassrls FROM pg_roles
-      WHERE rolname IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_inbox', 'fluvia_auth')
+      WHERE rolname IN ('fluvia_app', 'fluvia_worker', 'fluvia_relay', 'fluvia_inbox', 'fluvia_auth', 'fluvia_webhook')
     `);
-    expect(res.rowCount).toBe(5);
+    expect(res.rowCount).toBe(6);
     for (const row of res.rows) {
       expect(row.rolbypassrls, `${row.rolname} tiene BYPASSRLS`).toBe(false);
     }

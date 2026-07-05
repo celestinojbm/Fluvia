@@ -60,6 +60,18 @@ describe('loadConfig', () => {
         AUTH_DATABASE_URL: 'postgres://a',
         INBOX_DATABASE_URL: 'postgres://i',
       })
+    ).toThrow(/WEBHOOK_DATABASE_URL/);
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        RELAY_DATABASE_URL: 'postgres://w',
+        AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
+        WEBHOOK_DATABASE_URL: 'postgres://h',
+      })
     ).toThrow(/REDIS_URL/);
     // F1-04b: la clave de cifrado MFA tambien es anti-mezcla.
     expect(() =>
@@ -71,6 +83,7 @@ describe('loadConfig', () => {
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
         INBOX_DATABASE_URL: 'postgres://i',
+        WEBHOOK_DATABASE_URL: 'postgres://h',
         REDIS_URL: 'redis://r',
       })
     ).toThrow(/MFA_SECRET_KEY/);
@@ -84,6 +97,7 @@ describe('loadConfig', () => {
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
         INBOX_DATABASE_URL: 'postgres://i',
+        WEBHOOK_DATABASE_URL: 'postgres://h',
         REDIS_URL: 'redis://r',
         MFA_SECRET_KEY: 'a'.repeat(64),
       })
@@ -98,11 +112,29 @@ describe('loadConfig', () => {
         RELAY_DATABASE_URL: 'postgres://w',
         AUTH_DATABASE_URL: 'postgres://a',
         INBOX_DATABASE_URL: 'postgres://i',
+        WEBHOOK_DATABASE_URL: 'postgres://h',
         REDIS_URL: 'redis://r',
         MFA_SECRET_KEY: 'a'.repeat(64),
         API_KEY_HMAC_SECRET: 'b'.repeat(64),
       })
     ).toThrow(/MOCK_WEBHOOK_SECRET/);
+    // F3-07: la clave de cifrado de secretos de endpoints tambien.
+    expect(() =>
+      loadConfig({
+        NODE_ENV: 'sandbox',
+        ADMIN_DATABASE_URL: 'postgres://x',
+        APP_DATABASE_URL: 'postgres://y',
+        WORKER_DATABASE_URL: 'postgres://z',
+        RELAY_DATABASE_URL: 'postgres://w',
+        AUTH_DATABASE_URL: 'postgres://a',
+        INBOX_DATABASE_URL: 'postgres://i',
+        WEBHOOK_DATABASE_URL: 'postgres://h',
+        REDIS_URL: 'redis://r',
+        MFA_SECRET_KEY: 'a'.repeat(64),
+        API_KEY_HMAC_SECRET: 'b'.repeat(64),
+        MOCK_WEBHOOK_SECRET: 'whsec_explicit_secret_value',
+      })
+    ).toThrow(/WEBHOOK_SECRET_ENC_KEY/);
   });
 
   it('accepts fully explicit non-local config', () => {
@@ -117,7 +149,9 @@ describe('loadConfig', () => {
       MFA_SECRET_KEY: 'a'.repeat(64),
       API_KEY_HMAC_SECRET: 'b'.repeat(64),
       INBOX_DATABASE_URL: 'postgres://i',
+      WEBHOOK_DATABASE_URL: 'postgres://h',
       MOCK_WEBHOOK_SECRET: 'whsec_explicit_secret_value',
+      WEBHOOK_SECRET_ENC_KEY: 'c'.repeat(64),
     });
     expect(cfg.env).toBe('production');
     expect(cfg.db.inbox).toBe('postgres://i');

@@ -267,6 +267,10 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   IdempotencyKeyReuseError: 'idempotency_key_reuse',
   // pagos F3-01/F3-02
   PaymentIntentNotFoundError: 'not_found',
+  // webhooks salientes F3-07
+  WebhookEndpointNotFoundError: 'not_found',
+  InvalidWebhookTopicError: 'validation_error',
+  UnsafeWebhookUrlError: 'validation_error',
   InvalidStateTransitionError: 'invalid_state_transition',
   UnknownCurrencyError: 'validation_error',
   InvalidAmountError: 'validation_error',

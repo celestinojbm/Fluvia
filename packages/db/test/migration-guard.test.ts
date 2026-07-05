@@ -103,8 +103,8 @@ describe('guard de aprovisionamiento de roles (AUD-P2-008)', () => {
         []
       ).length;
     }
-    // 5 roles de runtime: app, worker, auth, relay, inbox — todos con guard.
-    expect(creations).toBe(5);
-    expect(guarded).toBe(5);
+    // 6 roles de runtime: app, worker, auth, relay, inbox, webhook — todos con guard.
+    expect(creations).toBe(6);
+    expect(guarded).toBe(6);
   });
 });

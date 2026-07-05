@@ -12,6 +12,8 @@
  *  - inbox  -> fluvia_inbox: rol del procesador del inbox, privilegio minimo
  *              (SELECT + UPDATE por columna en provider_events + INSERT DLQ).
  *  - auth   -> fluvia_auth: unico rol con acceso a credenciales/sesiones.
+ *  - webhook-> fluvia_webhook: rol del deliverer de webhooks salientes
+ *              (cola webhook_events + attempts, F3-07).
  */
 export interface DbUrls {
   admin: string;
@@ -20,6 +22,7 @@ export interface DbUrls {
   relay: string;
   inbox: string;
   auth: string;
+  webhook: string;
 }
 
 const LOCAL_ENVS = new Set(['development', 'dev', 'test', 'local', '']);
@@ -72,6 +75,11 @@ export function dbUrlsFromEnv(env: NodeJS.ProcessEnv = process.env): DbUrls {
       'AUTH_DATABASE_URL',
       env.AUTH_DATABASE_URL,
       'postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia'
+    ),
+    webhook: pick(
+      'WEBHOOK_DATABASE_URL',
+      env.WEBHOOK_DATABASE_URL,
+      'postgres://fluvia_webhook:fluvia_webhook_dev_password@127.0.0.1:5432/fluvia'
     ),
   };
 

@@ -23,6 +23,7 @@ const EnvSchema = z.object({
   RELAY_DATABASE_URL: z.string().min(1).optional(),
   AUTH_DATABASE_URL: z.string().min(1).optional(),
   INBOX_DATABASE_URL: z.string().min(1).optional(),
+  WEBHOOK_DATABASE_URL: z.string().min(1).optional(),
   REDIS_URL: z.string().min(1).optional(),
   MFA_SECRET_KEY: z
     .string()
@@ -44,6 +45,12 @@ const EnvSchema = z.object({
   ATTEMPTS_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   ATTEMPTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   MOCK_WEBHOOK_SECRET: z.string().min(16).optional(),
+  WEBHOOK_SECRET_ENC_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
+    .optional(),
+  WEBHOOK_DELIVERY_ENABLED: z.enum(['true', 'false']).default('true'),
+  WEBHOOK_DELIVERY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -57,6 +64,8 @@ const LOCAL_DEFAULTS = {
   relay: 'postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia',
   auth: 'postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia',
   inbox: 'postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia',
+  webhook: 'postgres://fluvia_webhook:fluvia_webhook_dev_password@127.0.0.1:5432/fluvia',
+  webhookSecretEncKey: 'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899', // gitleaks:allow
   // Secreto de firma del MockProvider, SOLO local/test (regimen R-12).
   mockWebhookSecret: 'whsec_mock_dev_secret_00112233', // gitleaks:allow
   redis: 'redis://127.0.0.1:6379',
@@ -73,6 +82,7 @@ export interface AppConfig {
     relay: string;
     auth: string;
     inbox: string;
+    webhook: string;
   };
   redisUrl: string;
   /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
@@ -106,6 +116,13 @@ export interface AppConfig {
   };
   /** Secreto HMAC de los webhooks del MockProvider (F3-03b). */
   mockWebhookSecret: string;
+  /** Clave AES-256-GCM (64 hex) para secretos de endpoints de webhook (F3-07). */
+  webhookSecretEncKey: string;
+  /** Deliverer de webhooks salientes (F3-07). */
+  webhookDelivery: {
+    enabled: boolean;
+    intervalMs: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -145,6 +162,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       relay: required('RELAY_DATABASE_URL', e.RELAY_DATABASE_URL, LOCAL_DEFAULTS.relay),
       auth: required('AUTH_DATABASE_URL', e.AUTH_DATABASE_URL, LOCAL_DEFAULTS.auth),
       inbox: required('INBOX_DATABASE_URL', e.INBOX_DATABASE_URL, LOCAL_DEFAULTS.inbox),
+      webhook: required('WEBHOOK_DATABASE_URL', e.WEBHOOK_DATABASE_URL, LOCAL_DEFAULTS.webhook),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
     mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
@@ -179,5 +197,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       e.MOCK_WEBHOOK_SECRET,
       LOCAL_DEFAULTS.mockWebhookSecret
     ),
+    webhookSecretEncKey: required(
+      'WEBHOOK_SECRET_ENC_KEY',
+      e.WEBHOOK_SECRET_ENC_KEY,
+      LOCAL_DEFAULTS.webhookSecretEncKey
+    ),
+    webhookDelivery: {
+      enabled: e.WEBHOOK_DELIVERY_ENABLED === 'true',
+      intervalMs: e.WEBHOOK_DELIVERY_INTERVAL_MS,
+    },
   };
 }

@@ -16,6 +16,7 @@ export interface TestContext {
   relay: Pool;
   inbox: Pool;
   auth: Pool;
+  webhook: Pool;
   createTenant(name?: string): Promise<string>;
   createApiKey(tenantId: string, label?: string): Promise<string>;
   createLedgerAccount(input: {
@@ -48,6 +49,7 @@ export async function createTestContext(): Promise<TestContext> {
   const relay = createPool({ connectionString: urls.relay, max: 4 });
   const inbox = createPool({ connectionString: urls.inbox, max: 4 });
   const auth = createPool({ connectionString: urls.auth, max: 4 });
+  const webhook = createPool({ connectionString: urls.webhook, max: 4 });
 
   return {
     admin,
@@ -56,6 +58,7 @@ export async function createTestContext(): Promise<TestContext> {
     relay,
     inbox,
     auth,
+    webhook,
 
     async createTenant(name = `tenant-${randomUUID()}`) {
       // "tenant" = organization (convencion de columna tenant_id, ver 0003).
@@ -95,6 +98,7 @@ export async function createTestContext(): Promise<TestContext> {
         relay.end(),
         inbox.end(),
         auth.end(),
+        webhook.end(),
       ]);
     },
   };

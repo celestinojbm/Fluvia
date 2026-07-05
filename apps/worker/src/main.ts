@@ -4,7 +4,8 @@ import { createPool } from '@fluvia/db';
 import { InboxProcessor } from '@fluvia/inbox';
 import { LedgerService, PostingService, ProjectionDriftWatcher } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
-import { OutboxRelay, createLogPublisher } from '@fluvia/outbox';
+import { OutboxRelay } from '@fluvia/outbox';
+import { WebhookDeliverer, createWebhookFanoutPublisher } from '@fluvia/webhooks';
 import {
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
@@ -26,6 +27,8 @@ const relayPool = createPool({ connectionString: config.db.relay, max: 4 });
 // claim de eventos usa el rol minimo fluvia_inbox (ADR-0011).
 const inboxPool = createPool({ connectionString: config.db.inbox, max: 4 });
 const appPool = createPool({ connectionString: config.db.app, max: 4 });
+// F3-07: rol minimo del deliverer de webhooks salientes (0019).
+const webhookPool = createPool({ connectionString: config.db.webhook, max: 4 });
 
 // F1-07: metricas del plano worker (agregados anonimos, servidas en
 // WORKER_METRICS_PORT). Las alertas baseline viven en observability.md.
@@ -81,15 +84,20 @@ const attemptsIndeterminateAged = registry.gauge(
   'fluvia_payment_attempts_indeterminate_aged',
   'Attempts indeterminate envejecidos (>30 min) — 0 = sano'
 );
+const webhookDeliveriesTotal = registry.counter(
+  'fluvia_webhook_deliveries_total',
+  'Entregas de webhooks salientes por resultado',
+  ['result']
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
   logger,
   onHeartbeat: () => heartbeatsTotal.inc(),
 });
-// F2-11: relay del outbox. Publisher actual = log estructurado (sandbox);
-// la entrega efectiva a consumidores llega con F2-12 (inbox) y F3-07 (webhooks).
-const relay = new OutboxRelay(relayPool, createLogPublisher(logger), {
+// F2-11+F3-07: el relay del outbox hace FAN-OUT hacia la cola de webhooks
+// (unico origen legitimo de un webhook saliente, webhook-delivery.md §1).
+const relay = new OutboxRelay(relayPool, createWebhookFanoutPublisher(relayPool, logger), {
   logger,
   onStats: (stats) => {
     relayCyclesTotal.inc();
@@ -146,6 +154,19 @@ const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {
     attemptsIndeterminateAged.set({}, health.indeterminateAged);
   },
 });
+// F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
+// pinning por intento, calendario de reintentos del contrato.
+const webhookDeliverer = new WebhookDeliverer(webhookPool, {
+  encKeyHex: config.webhookSecretEncKey,
+  // Redes privadas SOLO en local/test: guard duro por entorno, no por env var.
+  ssrf: { allowPrivateNetworks: config.env === 'local' || config.env === 'test' },
+  logger,
+  onStats: (stats) => {
+    if (stats.delivered > 0) webhookDeliveriesTotal.inc({ result: 'delivered' }, stats.delivered);
+    if (stats.retried > 0) webhookDeliveriesTotal.inc({ result: 'retried' }, stats.retried);
+    if (stats.dead > 0) webhookDeliveriesTotal.inc({ result: 'dead' }, stats.dead);
+  },
+});
 
 const metricsServer = createMetricsServer({
   registry,
@@ -159,9 +180,16 @@ async function shutdown(signal: string): Promise<void> {
   purgeJob.stop();
   inboxProcessor.stop();
   attemptsWatchdog.stop();
+  webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
-  await Promise.all([workerPool.end(), relayPool.end(), inboxPool.end(), appPool.end()]);
+  await Promise.all([
+    workerPool.end(),
+    relayPool.end(),
+    inboxPool.end(),
+    appPool.end(),
+    webhookPool.end(),
+  ]);
   process.exit(0);
 }
 
@@ -208,6 +236,12 @@ worker
       logger.info({ intervalMs: config.attemptsWatchdog.intervalMs }, 'attempts watchdog started');
     } else {
       logger.info({}, 'attempts watchdog disabled by config (ATTEMPTS_WATCHDOG_ENABLED=false)');
+    }
+    if (config.webhookDelivery.enabled) {
+      webhookDeliverer.start(config.webhookDelivery.intervalMs);
+      logger.info({ intervalMs: config.webhookDelivery.intervalMs }, 'webhook deliverer started');
+    } else {
+      logger.info({}, 'webhook deliverer disabled by config (WEBHOOK_DELIVERY_ENABLED=false)');
     }
     metricsServer.listen(config.workerMetricsPort, '0.0.0.0', () => {
       logger.info({ port: config.workerMetricsPort }, 'worker metrics server listening');

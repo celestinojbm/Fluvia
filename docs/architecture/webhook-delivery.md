@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0 · ADR-0009 (internos primero; Svix como opción futura)
 
-> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO — nada construido.** No existen las tablas `webhook_endpoints`/`webhook_events`/`webhook_attempts` ni ningún worker de entrega. Este documento es contrato de diseño para F3; no describe capacidad actual.
+> **Estado de implementación (F3-07, 2026-07-05): IMPLEMENTADO.** Migración `0019` (tablas `webhook_endpoints`/`webhook_events`/`webhook_attempts` + rol `fluvia_webhook` de privilegio mínimo), paquete `@fluvia/webhooks` (firma §2, calendario de reintentos §3, SSRF guard con pinning §4, catálogo §5 con meta-test doc↔código), fan-out desde el relay del outbox y deliverer claim-lease en el worker, gestión por API (`/v1/webhook_endpoints`, scope `webhooks:manage`). Desviaciones registradas en backlog: reenvío manual auditado y auto-disable con notificación quedan para F3-09/F6.
 
 ## 1. Modelo
 

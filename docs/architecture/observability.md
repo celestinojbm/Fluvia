@@ -50,6 +50,7 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_payment_attempts_swept_total` | counter | — (F3-04) |
 | `fluvia_payment_attempts_indeterminate` | gauge | — |
 | `fluvia_payment_attempts_indeterminate_aged` | gauge | — (0 = sano) |
+| `fluvia_webhook_deliveries_total` | counter | `result` = `delivered` \| `retried` \| `dead` (F3-07) |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -67,6 +68,7 @@ identificador desde el cliente hasta la fila de auditoría.
 | Eventos dead en outbox | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0` | ALTA | Revisar DLQ; replay SOLO auditado |
 | Eventos dead en inbox | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0` | ALTA | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado |
 | Indeterminados envejecidos | `fluvia_payment_attempts_indeterminate_aged > 0` | ALTA | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción |
+| Webhooks salientes dead | `increase(fluvia_webhook_deliveries_total{result="dead"}[15m]) > 0` | MEDIA | Endpoint del comercio agotó el calendario de reintentos: revisar `webhook_attempts` (IP/status/error por intento); reenvío manual auditado llega en F3-09 |
 | Worker sin latido | `increase(fluvia_worker_heartbeats_total[5m]) == 0` | ALTA | Proceso caído o colgado |
 | Tasa de 5xx | `rate(fluvia_http_requests_total{status=~"5.."}[5m]) > 0` | ALTA | 5xx debe ser ~0; cualquier valor sostenido es bug |
 | Latencia p99 | `histogram_quantile(0.99, rate(fluvia_http_request_duration_seconds_bucket[5m])) > 1` | MEDIA | Contra baseline SLO de `system-overview.md` §5 |

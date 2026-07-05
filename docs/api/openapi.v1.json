@@ -308,6 +308,104 @@
           }
         }
       }
+    },
+    "/v1/webhook_endpoints": {
+      "post": {
+        "summary": "Crear endpoint de webhook (scope webhooks:manage). El secreto whsec_ se muestra UNA sola vez. URL: https obligatorio fuera de local; guard SSRF completo en cada entrega.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Topics del catálogo (webhook-delivery.md §5); vacío = todos"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Endpoint creado (incluye secret una única vez)"
+          },
+          "400": {
+            "description": "validation_error (URL insegura o topic desconocido)"
+          }
+        }
+      },
+      "get": {
+        "summary": "Listar endpoints (scope webhooks:manage); jamás incluye secretos",
+        "responses": {
+          "200": {
+            "description": "Lista"
+          }
+        }
+      }
+    },
+    "/v1/webhook_endpoints/{id}/rotate": {
+      "post": {
+        "summary": "Rotar el secreto (scope webhooks:manage). El anterior sigue firmando durante la ventana de gracia (24 h): cada entrega lleva v1=nuevo,v1=viejo.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nuevo secret (una única vez)"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
+    "/v1/webhook_endpoints/{id}/disable": {
+      "post": {
+        "summary": "Deshabilitar endpoint (scope webhooks:manage); su cola pendiente muere sin intentos de red",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Endpoint deshabilitado"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
     }
   }
 }

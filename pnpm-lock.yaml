@@ -59,6 +59,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/webhooks
       fastify:
         specifier: ^5.2.0
         version: 5.9.0
@@ -102,6 +105,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/webhooks
       pino:
         specifier: ^9.5.0
         version: 9.14.0
@@ -455,6 +461,28 @@ importers:
       tsx:
         specifier: ^4.19.0
         version: 4.23.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(tsx@4.23.0)
+
+  packages/webhooks:
+    dependencies:
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      '@fluvia/outbox':
+        specifier: workspace:*
+        version: link:../outbox
+    devDependencies:
+      '@fluvia/events':
+        specifier: workspace:*
+        version: link:../events
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

@@ -23,6 +23,7 @@
     "@fluvia/observability": "workspace:*",
     "@fluvia/outbox": "workspace:*",
     "@fluvia/payments-core": "workspace:*",
+    "@fluvia/webhooks": "workspace:*",
     "pino": "^9.5.0"
   },
   "devDependencies": {
