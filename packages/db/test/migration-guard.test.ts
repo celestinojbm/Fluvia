@@ -36,6 +36,10 @@ beforeAll(async () => {
     connectionString: urls.admin.replace(/\/[^/]+$/, `/${GUARD_DB}`),
     max: 2,
   });
+  // El teardown hace DROP DATABASE ... WITH (FORCE): si algun socket del pool
+  // efimero sigue drenando su cierre, el servidor lo termina primero (FATAL
+  // 57P01) y pg lo emite como 'error' asincrono. Esperado e inofensivo aqui.
+  guardPool.on('error', () => undefined);
 
   migrationsDir = mkdtempSync(join(tmpdir(), 'fluvia-guard-'));
   // La MISMA definición del guard que 0002 (extraída del archivo real para
