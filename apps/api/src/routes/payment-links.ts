@@ -35,7 +35,7 @@ export interface PaymentLinkRoutesOptions {
   paymentLinkService: PaymentLinkService;
 }
 
-function publicLink(l: PaymentLinkDto) {
+export function publicLink(l: PaymentLinkDto) {
   return {
     id: l.id,
     object: 'payment_link',

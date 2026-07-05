@@ -60,7 +60,7 @@ function hostedView(v: HostedCheckoutView) {
   };
 }
 
-function publicSession(s: CheckoutSessionDto) {
+export function publicSession(s: CheckoutSessionDto) {
   return {
     id: s.id,
     object: 'checkout_session',

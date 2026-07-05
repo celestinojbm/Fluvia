@@ -24,6 +24,10 @@ export const PERMISSIONS = [
   'keys:read',
   'keys:manage',
   'audit:read',
+  // F3-09b: lectura del plano de operación (dashboard) — intents, refunds,
+  // checkout sessions, payment links y la cola de webhooks. Dato de tenant de
+  // solo lectura, así que lo tiene todo rol (todos ya tienen org:read).
+  'payments:read',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -32,11 +36,25 @@ const ALL: readonly Permission[] = PERMISSIONS;
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   owner: ALL,
   admin: ALL,
-  developer: ['org:read', 'members:read', 'merchants:read', 'keys:read', 'keys:manage'],
-  finance: ['org:read', 'members:read', 'merchants:read', 'keys:read', 'audit:read'],
-  support: ['org:read', 'members:read', 'merchants:read'],
-  analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read'],
-  read_only: ['org:read', 'members:read', 'merchants:read'],
+  developer: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'keys:read',
+    'keys:manage',
+    'payments:read',
+  ],
+  finance: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'keys:read',
+    'audit:read',
+    'payments:read',
+  ],
+  support: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
+  analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read', 'payments:read'],
+  read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

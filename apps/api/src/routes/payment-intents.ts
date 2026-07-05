@@ -55,7 +55,7 @@ export interface PaymentIntentRoutesOptions {
   confirmationService: PaymentConfirmationService;
 }
 
-function publicIntent(intent: PaymentIntentDto) {
+export function publicIntent(intent: PaymentIntentDto) {
   return {
     id: intent.id,
     object: 'payment_intent',

@@ -30,6 +30,7 @@ import { registerPaymentLinkRoutes } from './routes/payment-links.js';
 import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { registerWebhookEventRoutes } from './routes/webhook-events.js';
+import { registerDashboardRoutes } from './routes/dashboard.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -155,11 +156,13 @@ export function buildApp({
       confirmationService,
     });
     // F3-08: refunds end-to-end (asiento compensatorio via la via normativa).
-    registerRefundRoutes(app, {
-      security,
-      idempotencyService,
-      refundService: new RefundService(appPool, paymentIntentService, postingService, provider),
-    });
+    const refundService = new RefundService(
+      appPool,
+      paymentIntentService,
+      postingService,
+      provider
+    );
+    registerRefundRoutes(app, { security, idempotencyService, refundService });
     // F3-05a: customers (plano de integracion; primer consumidor = checkout).
     registerCustomerRoutes(app, {
       security,
@@ -174,15 +177,12 @@ export function buildApp({
     registerCheckoutSessionRoutes(app, { security, idempotencyService, checkoutSessionService });
     // F3-06: payment links (plantilla "págame"; abrir el link genera una sesión
     // — reutiliza el recurso de checkout).
-    registerPaymentLinkRoutes(app, {
-      security,
-      idempotencyService,
-      paymentLinkService: new PaymentLinkService(appPool, {
-        checkoutBaseUrl: config.checkoutBaseUrl,
-        intents: paymentIntentService,
-        checkout: checkoutSessionService,
-      }),
+    const paymentLinkService = new PaymentLinkService(appPool, {
+      checkoutBaseUrl: config.checkoutBaseUrl,
+      intents: paymentIntentService,
+      checkout: checkoutSessionService,
     });
+    registerPaymentLinkRoutes(app, { security, idempotencyService, paymentLinkService });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
     registerProviderWebhookRoutes(app, {
       ingestService: new InboxIngestService(appPool),
@@ -199,9 +199,17 @@ export function buildApp({
     });
     // F3-09a: visibilidad de la cola de webhooks + reenvío manual auditado de
     // eventos `dead` (plano de operación; primera acción del futuro dashboard).
-    registerWebhookEventRoutes(app, {
+    const webhookEventService = new WebhookEventService(appPool);
+    registerWebhookEventRoutes(app, { security, webhookEventService });
+    // F3-09b-i: plano de LECTURA del dashboard (operador humano por sesión +
+    // membresía, permiso payments:read). Reutiliza los servicios de arriba.
+    registerDashboardRoutes(app, {
       security,
-      webhookEventService: new WebhookEventService(appPool),
+      paymentIntentService,
+      refundService,
+      checkoutSessionService,
+      paymentLinkService,
+      webhookEventService,
     });
   }
 

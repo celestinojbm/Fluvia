@@ -42,7 +42,7 @@ export interface RefundRoutesOptions {
   refundService: RefundService;
 }
 
-function publicRefund(refund: RefundDto) {
+export function publicRefund(refund: RefundDto) {
   return {
     id: refund.id,
     object: 'refund',

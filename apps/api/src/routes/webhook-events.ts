@@ -41,7 +41,7 @@ function apiKeyAuditContext(req: FastifyRequest): AuditContext {
   };
 }
 
-function publicEvent(e: WebhookEventDto) {
+export function publicEvent(e: WebhookEventDto) {
   return {
     id: e.id,
     object: 'webhook_event',
@@ -57,7 +57,7 @@ function publicEvent(e: WebhookEventDto) {
   };
 }
 
-function publicAttempt(a: WebhookAttemptDto) {
+export function publicAttempt(a: WebhookAttemptDto) {
   return {
     object: 'webhook_attempt',
     attempt_number: a.attemptNumber,

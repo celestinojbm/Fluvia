@@ -17,17 +17,20 @@ Implementado: registro con verificación de email (token un solo uso, hash en BD
 
 ## Matriz de permisos (v1 — F1-04c, fuente de verdad: `packages/identity/src/rbac.ts`)
 
-| Permiso \ Rol | owner | admin | developer | finance | support | analyst | read_only |
-|---------------|:-----:|:-----:|:---------:|:-------:|:-------:|:-------:|:---------:|
-| org:read | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| members:read | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| merchants:read | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| merchants:write | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| keys:read | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| keys:manage | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| audit:read | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Permiso \ Rol   | owner | admin | developer | finance | support | analyst | read_only |
+| --------------- | :---: | :---: | :-------: | :-----: | :-----: | :-----: | :-------: |
+| org:read        |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| members:read    |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| merchants:read  |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| merchants:write |  ✅   |  ✅   |    ❌     |   ❌    |   ❌    |   ❌    |    ❌     |
+| keys:read       |  ✅   |  ✅   |    ✅     |   ✅    |   ❌    |   ❌    |    ❌     |
+| keys:manage     |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
+| audit:read      |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |
+| payments:read   |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
 
 El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda a celda; un cambio en código sin actualizar la matriz esperada rompe CI. La matriz crecerá con cada dominio nuevo (pagos, refunds, webhooks) en el mismo PR que exponga los endpoints.
+
+**`payments:read` (F3-09b)**: lectura del plano de OPERACIÓN (dashboard del comercio) — payment intents, refunds, checkout sessions, payment links y la cola de webhooks, bajo `/v1/organizations/:orgId/*` (sesión + membresía, RLS por tenant). Es dato de tenant de solo lectura, así que lo tiene TODO rol (todos ya tienen `org:read`). El plano de operador es de solo lectura: la única acción de escritura de operación (reenvío de webhooks `dead`, F3-09a) vive en el plano de API key con scope `webhooks:manage`.
 
 **Scopes de API keys (integración)**: `read`, `payments:write`, `customers:write`, `webhooks:manage`. Deliberadamente **no existe** scope de gestión de API keys: una key robada no puede crear más keys ni escalar — la gestión es exclusiva del plano de sesión con rol (`keys:manage`).
 

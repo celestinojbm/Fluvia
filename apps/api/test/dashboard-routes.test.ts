@@ -1,0 +1,201 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { loadConfig } from '@fluvia/config';
+import { createPool, type Pool } from '@fluvia/db';
+import { AuthService } from '@fluvia/auth';
+import { ApiKeyService, IdentityService } from '@fluvia/identity';
+import { buildApp } from '../src/app.js';
+
+/**
+ * F3-09b-i — plano de LECTURA del dashboard: el operador HUMANO autentica por
+ * sesión y su organización (= tenant) sale de su membresía (`payments:read`).
+ * Los datos se crean por el plano de API key (creación real) y se leen por el
+ * plano de sesión — prueba ambos planos y el aislamiento por membresía/tenant.
+ */
+
+let app: FastifyInstance;
+let appPool: Pool;
+let authPool: Pool;
+let adminPool: Pool;
+let apiKeyService: ApiKeyService;
+
+let orgA: string;
+let orgB: string;
+let merchantA: string;
+let keyA: string;
+let intentId: string;
+
+const PASSWORD = 'dashboard password 77';
+const uniqueEmail = () => `dash-${randomUUID().slice(0, 12)}@example.com`;
+
+async function sessionUser(role?: string, orgId?: string) {
+  const email = uniqueEmail();
+  const reg = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/register',
+    payload: { email, password: PASSWORD },
+  });
+  const { user_id, verification_token } = reg.json();
+  await app.inject({
+    method: 'POST',
+    url: '/v1/auth/verify-email',
+    payload: { token: verification_token },
+  });
+  if (role && orgId) {
+    await adminPool.query(
+      'INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)',
+      [orgId, user_id, role]
+    );
+  }
+  const login = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/login',
+    payload: { email, password: PASSWORD },
+  });
+  return { headers: { authorization: `Bearer ${login.json().session_token as string}` } };
+}
+
+async function createOrg(name: string): Promise<string> {
+  const res = await adminPool.query<{ id: string }>(
+    'INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id',
+    [name, `org-${randomUUID()}`]
+  );
+  return res.rows[0]!.id;
+}
+async function createMerchant(orgId: string): Promise<string> {
+  const res = await adminPool.query<{ id: string }>(
+    'INSERT INTO merchants (tenant_id, name) VALUES ($1, $2) RETURNING id',
+    [orgId, `dash-shop-${randomUUID().slice(0, 8)}`]
+  );
+  return res.rows[0]!.id;
+}
+const apiAuth = (key: string) => ({ authorization: `Bearer ${key}` });
+
+beforeAll(async () => {
+  const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error' });
+  appPool = createPool({ connectionString: config.db.app, max: 6 });
+  authPool = createPool({ connectionString: config.db.auth, max: 4 });
+  adminPool = createPool({ connectionString: config.db.admin, max: 2 });
+  apiKeyService = new ApiKeyService(appPool);
+  app = buildApp({
+    config,
+    appPool,
+    authService: new AuthService(authPool),
+    identityService: new IdentityService(appPool),
+    apiKeyService,
+    authRateLimits: {
+      loginPerEmail: { max: 10_000, windowMs: 60_000 },
+      loginPerIp: { max: 10_000, windowMs: 60_000 },
+      registerPerIp: { max: 10_000, windowMs: 60_000 },
+      mfaPerIp: { max: 10_000, windowMs: 60_000 },
+    },
+  });
+  await app.ready();
+
+  orgA = await createOrg('Dash Org A');
+  orgB = await createOrg('Dash Org B');
+  merchantA = await createMerchant(orgA);
+  keyA = (await apiKeyService.create(orgA, { label: 'dash-a', scopes: ['payments:write', 'read'] }))
+    .secret;
+
+  // Datos reales por el plano de API key.
+  const intent = await app.inject({
+    method: 'POST',
+    url: '/v1/payment_intents',
+    headers: { ...apiAuth(keyA), 'idempotency-key': `pi-${randomUUID()}` },
+    payload: { merchant_id: merchantA, amount: 90_000, currency: 'COP' },
+  });
+  intentId = intent.json().id;
+  await app.inject({
+    method: 'POST',
+    url: '/v1/payment_links',
+    headers: { ...apiAuth(keyA), 'idempotency-key': `pl-${randomUUID()}` },
+    payload: { merchant_id: merchantA, amount: 25_000, currency: 'COP' },
+  });
+}, 40_000);
+
+afterAll(async () => {
+  await app.close();
+  await Promise.all([appPool.end(), authPool.end(), adminPool.end()]);
+});
+
+describe('lectura por sesión + membresía', () => {
+  it('a member lists and details payment intents created via the API-key plane', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_intents?limit=100`,
+      headers: owner.headers,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().object).toBe('list');
+    expect((list.json().data as Array<{ id: string }>).some((i) => i.id === intentId)).toBe(true);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_intents/${intentId}`,
+      headers: owner.headers,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().object).toBe('payment_intent');
+    expect(detail.json().amount).toBe(90_000);
+  });
+
+  it('exposes the full operational read plane (all resources wired + guarded)', async () => {
+    const owner = await sessionUser('read_only', orgA);
+    for (const resource of [
+      'payment_intents',
+      'refunds',
+      'checkout_sessions',
+      'payment_links',
+      'webhook_events',
+    ]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/organizations/${orgA}/${resource}`,
+        headers: owner.headers,
+      });
+      expect(res.statusCode, resource).toBe(200);
+      expect(res.json().object, resource).toBe('list');
+    }
+    // El payment link creado es visible por el plano de operador.
+    const links = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: owner.headers,
+    });
+    expect((links.json().data as unknown[]).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('aislamiento y autenticación', () => {
+  it('a non-member (member of another org) gets 404 for a foreign org', async () => {
+    const outsider = await sessionUser('owner', orgB);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_intents`,
+      headers: outsider.headers,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a request without a session (401)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_intents`,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("does not leak another tenant's intent by id even to a member", async () => {
+    const owner = await sessionUser('owner', orgB);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgB}/payment_intents/${intentId}`,
+      headers: owner.headers,
+    });
+    // orgB member, but the intent belongs to orgA -> not found under RLS.
+    expect(res.statusCode).toBe(404);
+  });
+});
