@@ -76,7 +76,8 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fluvia_auth') THEN
     -- Password SOLO para desarrollo local (igual que 0002); en cloud se
-    -- aprovisiona por infraestructura.
+    -- aprovisiona por infraestructura (guard AUD-P2-008).
+    PERFORM fluvia_assert_dev_role_creation('fluvia_auth');
     CREATE ROLE fluvia_auth LOGIN PASSWORD 'fluvia_auth_dev_password';
   END IF;
 END;

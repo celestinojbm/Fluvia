@@ -43,6 +43,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] Credenciales `live` imposibles de emitir por código (`LiveKeysDisabledError`) hasta pasar gates + decisión humana PEND-004 (AUD-P2-003)
 - [x] Anti-mezcla de entornos: arranque falla fuera de local/test sin URLs de BD explícitas (`dbUrlsFromEnv` + `@fluvia/config`, AUD-P2-014)
 - [x] **MFA TOTP + step-up + rate limiting** (F1-04b, AUD-P1-006): TOTP RFC 6238 con anti-replay, secreto cifrado en reposo, backup codes de un solo uso, step-up en `keys:manage`, rate limiting por email/IP en auth — todo probado sobre HTTP. Nota Nivel C: el limitador es in-memory mono-instancia; store compartido requerido antes del sandbox compartido (PEND-006)
+- [x] **Purga solo por job auditado** (F1-09): `purge_technical_data()` es la única puerta de DELETE (clases técnicas, predicados fijos, auditoría atómica); clases financieras imborrables incluso con el escape activo (probado); roles dev imposibles de crear fuera de local (guard AUD-P2-008 probado end-to-end)
 - [x] **Observabilidad base operativa** (F1-07): métricas agregadas anónimas (sin ids de tenant — probado), alertas baseline definidas (`observability.md` §4). Pendiente para producción: `/metrics` en red interna de scrape y dashboards (F6)
 - [ ] Sin High/Critical sin aceptación explícita; secret/dependency scanning; threat model actualizado; pruebas SSRF y tenant escape (F1-02, F3, F6)
 

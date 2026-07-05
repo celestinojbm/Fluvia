@@ -19,7 +19,8 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fluvia_relay') THEN
     -- Password SOLO para desarrollo local (mismo regimen R-12 que 0002;
-    -- aprovisionamiento gestionado fuera de local llega con F1-09).
+    -- guard de aprovisionamiento AUD-P2-008).
+    PERFORM fluvia_assert_dev_role_creation('fluvia_relay');
     CREATE ROLE fluvia_relay LOGIN PASSWORD 'fluvia_relay_dev_password';
   END IF;
 END;

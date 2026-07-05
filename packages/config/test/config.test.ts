@@ -103,6 +103,13 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ WORKER_METRICS_PORT: '0' })).toThrow(ConfigError);
   });
 
+  it('parses purge-job toggles with safe defaults (F1-09)', () => {
+    expect(loadConfig({}).purge).toEqual({ enabled: true, intervalMs: 3_600_000 });
+    expect(loadConfig({ PURGE_ENABLED: 'false' }).purge.enabled).toBe(false);
+    expect(loadConfig({ PURGE_INTERVAL_MS: '60000' }).purge.intervalMs).toBe(60_000);
+    expect(() => loadConfig({ PURGE_INTERVAL_MS: '10' })).toThrow(ConfigError);
+  });
+
   it('treats empty string as missing (no silent empty credentials)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', ADMIN_DATABASE_URL: '' })).toThrow(
       ConfigError

@@ -5,6 +5,7 @@ import { ProjectionDriftWatcher } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
 import { OutboxRelay, createLogPublisher } from '@fluvia/outbox';
 import { createMetricsServer } from './metrics-server.js';
+import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
 
 const config = loadConfig();
@@ -36,6 +37,15 @@ const driftAccounts = registry.gauge(
   'fluvia_ledger_projection_drift_accounts',
   'Cuentas con drift detectado en el ultimo chequeo (0 = sano)'
 );
+const purgeRunsTotal = registry.counter(
+  'fluvia_technical_purge_runs_total',
+  'Corridas del job de purga de datos tecnicos'
+);
+const purgeRowsTotal = registry.counter(
+  'fluvia_technical_purge_rows_total',
+  'Filas purgadas por clase tecnica',
+  ['class']
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -62,6 +72,16 @@ const driftWatcher = new ProjectionDriftWatcher(workerPool, logger, {
     driftAccounts.set({}, rows.length);
   },
 });
+// F1-09: purga de datos tecnicos. La politica (clases, retenciones, auditoria
+// atomica) vive en purge_technical_data() (0015); el job solo la invoca.
+const purgeJob = new TechnicalPurgeJob(workerPool, logger, {
+  onResult: (rows) => {
+    purgeRunsTotal.inc();
+    for (const row of rows) {
+      if (row.purged > 0) purgeRowsTotal.inc({ class: row.class }, row.purged);
+    }
+  },
+});
 const metricsServer = createMetricsServer({
   registry,
   healthInfo: () => ({ heartbeats: worker.heartbeats, env: config.env }),
@@ -71,6 +91,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'graceful shutdown started');
   relay.stop();
   driftWatcher.stop();
+  purgeJob.stop();
   metricsServer.close();
   await worker.stop();
   await Promise.all([workerPool.end(), relayPool.end()]);
@@ -99,6 +120,12 @@ worker
       logger.info({ intervalMs: config.driftCheck.intervalMs }, 'projection drift watcher started');
     } else {
       logger.info({}, 'projection drift watcher disabled by config (DRIFT_CHECK_ENABLED=false)');
+    }
+    if (config.purge.enabled) {
+      purgeJob.start(config.purge.intervalMs);
+      logger.info({ intervalMs: config.purge.intervalMs }, 'technical purge job started');
+    } else {
+      logger.info({}, 'technical purge job disabled by config (PURGE_ENABLED=false)');
     }
     metricsServer.listen(config.workerMetricsPort, '0.0.0.0', () => {
       logger.info({ port: config.workerMetricsPort }, 'worker metrics server listening');

@@ -58,7 +58,9 @@ GRANT SELECT (id, provider, provider_event_id) ON provider_events TO fluvia_app;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fluvia_inbox') THEN
-    -- Password SOLO para desarrollo local (regimen R-12, igual que 0002/0009).
+    -- Password SOLO para desarrollo local (regimen R-12, igual que 0002/0009;
+    -- guard de aprovisionamiento AUD-P2-008).
+    PERFORM fluvia_assert_dev_role_creation('fluvia_inbox');
     CREATE ROLE fluvia_inbox LOGIN PASSWORD 'fluvia_inbox_dev_password';
   END IF;
 END;

@@ -43,6 +43,8 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_outbox_relay_events_total` | counter | `result` = `delivered` \| `retried` \| `dead` |
 | `fluvia_ledger_projection_drift_checks_total` | counter | — |
 | `fluvia_ledger_projection_drift_accounts` | gauge | — (0 = sano) |
+| `fluvia_technical_purge_runs_total` | counter | — |
+| `fluvia_technical_purge_rows_total` | counter | `class` (F1-09) |
 
 ## 3. Correlación extremo a extremo (hoy)
 

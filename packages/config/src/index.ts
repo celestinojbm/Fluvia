@@ -32,6 +32,8 @@ const EnvSchema = z.object({
   DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
   DRIFT_CHECK_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
+  PURGE_ENABLED: z.enum(['true', 'false']).default('true'),
+  PURGE_INTERVAL_MS: z.coerce.number().int().min(1000).max(86_400_000).default(3_600_000),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -70,6 +72,11 @@ export interface AppConfig {
   };
   /** Puerto de /health y /metrics del worker (F1-07; default estandar 9464). */
   workerMetricsPort: number;
+  /** Job de purga de datos tecnicos (F1-09; la politica vive en la BD). */
+  purge: {
+    enabled: boolean;
+    intervalMs: number;
+  };
 }
 
 export class ConfigError extends Error {
@@ -120,5 +127,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       intervalMs: e.DRIFT_CHECK_INTERVAL_MS,
     },
     workerMetricsPort: e.WORKER_METRICS_PORT,
+    purge: {
+      enabled: e.PURGE_ENABLED === 'true',
+      intervalMs: e.PURGE_INTERVAL_MS,
+    },
   };
 }

@@ -14,12 +14,34 @@
 -- los roles se aprovisionan por infraestructura con credenciales gestionadas.
 -- ============================================================================
 
+-- Guard AUD-P2-008 (F1-09): crear un rol con password de desarrollo SOLO es
+-- legal en local/test (GUC fluvia.environment, inyectado por el runner de
+-- migraciones). Fuera de ahi, un rol ausente = fallo RUIDOSO que exige
+-- aprovisionamiento previo con credenciales gestionadas; si el rol ya existe,
+-- la migracion continua sin tocar credenciales.
+CREATE OR REPLACE FUNCTION fluvia_assert_dev_role_creation(role_name TEXT)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF COALESCE(NULLIF(current_setting('fluvia.environment', true), ''), 'local')
+     NOT IN ('local', 'test') THEN
+    RAISE EXCEPTION
+      'FLUVIA_CONFIG: role % does not exist and this is a non-local environment — provision it with managed credentials BEFORE migrating (AUD-P2-008); development passwords are forbidden outside local/test',
+      role_name
+      USING ERRCODE = 'raise_exception';
+  END IF;
+END;
+$$;
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fluvia_app') THEN
+    PERFORM fluvia_assert_dev_role_creation('fluvia_app');
     CREATE ROLE fluvia_app LOGIN PASSWORD 'fluvia_app_dev_password';
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fluvia_worker') THEN
+    PERFORM fluvia_assert_dev_role_creation('fluvia_worker');
     CREATE ROLE fluvia_worker LOGIN PASSWORD 'fluvia_worker_dev_password' BYPASSRLS;
   END IF;
 END;

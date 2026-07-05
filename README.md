@@ -21,7 +21,7 @@ Plataforma de infraestructura y orquestación de pagos de misión crítica, en c
 | `packages/idempotency` | Capa de idempotencia API: claim en la misma transacción que el efecto, hash canónico, replay exacto, crash-safe (Gate Idempotencia) |
 | `packages/config` | Configuración tipada de la aplicación |
 | `apps/api` | API Fastify: health/readiness, auth, organizaciones, dos planos de seguridad (sesión+rol vs api-key+scope), taxonomía de errores v1 con contrato golden |
-| `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones + `/health`+`/metrics` (puerto 9464) |
+| `apps/worker` | Proceso worker: heartbeat + outbox relay (publisher de log en sandbox) + vigilancia programada de drift de proyecciones + purga auditada de datos técnicos + `/health`+`/metrics` (puerto 9464) |
 | `packages/observability` | Métricas en proceso (counter/gauge/histogram) con exposición Prometheus, guard de cardinalidad y agregados anónimos (F1-07) |
 | `scripts/` | `verify-ledger-invariants.sql`: auditoría del ledger externa al ORM (CI, cron, post-restore) |
 | `docker-compose.yml` | Infra local: PostgreSQL 16 + Redis 7 |

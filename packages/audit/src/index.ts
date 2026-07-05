@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = [
   'merchant.updated',
   'ledger.transaction_reversed',
   'platform.operation',
+  'platform.technical_purge',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

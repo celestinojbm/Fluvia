@@ -15,7 +15,7 @@ Estado: Activo · Se revisa al cierre de cada fase
 | R-09 | Complejidad del monorepo crece sin dueño humano | Operativo | Media | Medio | Backlog único, ADRs, regla de dependencia justificada en PR | Abierto |
 | R-10 | Dependencia AGPL u otra licencia viral entra al árbol | Legal | Baja | Alto | Revisión de licencia por dependencia nueva (CONTRIBUTING) + scanning CI (F1-02) | Mitigado por proceso |
 | R-11 | SSRF vía webhooks salientes | Seguridad | Media | Alto | Guard obligatorio pre-primer-delivery (F3-07, bloqueante) | Abierto |
-| R-12 | Passwords dev de roles BD reutilizados fuera de local | Seguridad | Baja | Alto | Solo docker local; aprovisionamiento gestionado desde sandbox (F1-02); documentado; guard de entorno en F1-09 (AUD-P2-008) | Aceptado temporalmente |
+| R-12 | Passwords dev de roles BD reutilizados fuera de local | Seguridad | Baja | Alto | Guard de entorno EN CÓDIGO desde F1-09 (AUD-P2-008): fuera de local/test la migración aborta si el rol no llega aprovisionado con credenciales gestionadas; passwords dev imposibles de crear fuera de local por la vía de migraciones | Mitigado (2026-07-05) |
 | R-13 | Licencias de referencias no verificadas en vivo (proxy de sesión) | Legal | Baja | Medio | F0-VER antes de adoptar cualquier código de referencia | Abierto |
 | R-14 | Sobregiro contable en operaciones two-legged (release/refund > saldo) | Financiero | — | Crítico | Guard `nonNegativeAccounts` bajo locks + golden tests (AUD-P1-010, lote AUD-1) | **Cerrado 2026-07-04** |
 | R-15 | Entrada cross-tenant/cross-moneda en `ledger_entries` si el servicio se puentea | Financiero | — | Crítico | FK compuesta a nivel de motor + tests SQL crudo (AUD-P1-001, migración 0008) | **Cerrado 2026-07-04** |
