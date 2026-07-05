@@ -22,7 +22,9 @@
     "@fluvia/db": "workspace:*",
     "@fluvia/idempotency": "workspace:*",
     "@fluvia/identity": "workspace:*",
+    "@fluvia/money": "workspace:*",
     "@fluvia/observability": "workspace:*",
+    "@fluvia/payments-core": "workspace:*",
     "fastify": "^5.2.0",
     "zod": "^3.25.0"
   },

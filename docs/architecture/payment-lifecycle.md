@@ -2,7 +2,7 @@
 
 Estado: Activo · Fase: 0
 
-> **Estado de implementación (AUD-P3-002, 2026-07-04): DISEÑO (parcial).** Construido hoy: el plano contable del ciclo (F2-03/F2-04 — captura, liberación de liquidación y refunds como asientos tipados sobre el Chart of Accounts, con guardas de saldo). NO construido: API de pagos, FSMs, adapters de proveedor, checkout. `payment_intents` existe solo como tabla mínima placeholder (0001), sin máquina de estados ni endpoints.
+> **Estado de implementación (2026-07-05, F3-01/F3-02): PARCIAL.** Construido hoy: plano contable del ciclo (F2-03/F2-04), `payment_intents` REAL con FSM en el motor + `payment_attempts` (0017, F3-01) y los primeros endpoints idempotentes del plano de integración: `POST/GET /v1/payment_intents`, `GET /v1/payment_intents/:id`, `POST .../cancel` (F3-02, contrato en `docs/api/openapi.v1.json`). NO construido: **confirm** (llega con F3-03 — confirmar sin proveedor sería un pago irresoluble), MockProvider/attempts en ejecución, checkout, webhooks salientes, customers (diferido a F3-05, su primer consumidor).
 
 ## 1. Principio
 

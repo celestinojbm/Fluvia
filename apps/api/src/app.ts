@@ -6,9 +6,12 @@ import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
 import type { ApiKeyService, IdentityService } from '@fluvia/identity';
+import { IdempotencyService } from '@fluvia/idempotency';
+import { PaymentIntentService } from '@fluvia/payments-core';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
+import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -110,6 +113,13 @@ export function buildApp({
       auditReader,
     });
     registerAccountRoutes(app, { security, identityService });
+    // F3-02: plano de integracion (API key). Servicios internos construidos
+    // aqui: solo dependen del pool app (RLS) — nada de config adicional.
+    registerPaymentIntentRoutes(app, {
+      security,
+      idempotencyService: new IdempotencyService(appPool),
+      paymentIntentService: new PaymentIntentService(appPool),
+    });
   }
 
   app.setNotFoundHandler((req, reply) => {

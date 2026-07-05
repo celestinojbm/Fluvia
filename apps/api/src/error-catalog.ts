@@ -189,6 +189,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'A request with this idempotency key is still being processed; retry shortly',
   },
+  invalid_state_transition: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The resource is not in a state that allows this operation',
+  },
   idempotency_key_reuse: {
     status: 422,
     type: 'unprocessable_error',
@@ -260,6 +265,11 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   IdempotencyKeyRequiredError: 'idempotency_key_required',
   ProcessingInFlightError: 'processing_in_flight',
   IdempotencyKeyReuseError: 'idempotency_key_reuse',
+  // pagos F3-01/F3-02
+  PaymentIntentNotFoundError: 'not_found',
+  InvalidStateTransitionError: 'invalid_state_transition',
+  UnknownCurrencyError: 'validation_error',
+  InvalidAmountError: 'validation_error',
   // MFA + step-up + rate limiting (F1-04b)
   InvalidMfaCodeError: 'invalid_mfa_code',
   InvalidMfaChallengeError: 'invalid_mfa_challenge',

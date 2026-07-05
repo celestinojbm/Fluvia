@@ -44,9 +44,15 @@ importers:
       '@fluvia/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@fluvia/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@fluvia/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@fluvia/payments-core':
+        specifier: workspace:*
+        version: link:../../packages/payments-core
       fastify:
         specifier: ^5.2.0
         version: 5.9.0

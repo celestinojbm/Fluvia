@@ -142,6 +142,11 @@
       "type": "conflict_error",
       "message": "A request with this idempotency key is still being processed; retry shortly"
     },
+    "invalid_state_transition": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "The resource is not in a state that allows this operation"
+    },
     "idempotency_key_reuse": {
       "status": 422,
       "type": "unprocessable_error",
@@ -200,6 +205,10 @@
     "IdempotencyKeyRequiredError": "idempotency_key_required",
     "ProcessingInFlightError": "processing_in_flight",
     "IdempotencyKeyReuseError": "idempotency_key_reuse",
+    "PaymentIntentNotFoundError": "not_found",
+    "InvalidStateTransitionError": "invalid_state_transition",
+    "UnknownCurrencyError": "validation_error",
+    "InvalidAmountError": "validation_error",
     "InvalidMfaCodeError": "invalid_mfa_code",
     "InvalidMfaChallengeError": "invalid_mfa_challenge",
     "MfaAlreadyEnabledError": "mfa_already_enabled",

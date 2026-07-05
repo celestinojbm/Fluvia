@@ -1,0 +1,164 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fluvia API",
+    "version": "1.0.0-sandbox",
+    "description": "Contrato PARCIAL y versionado del plano de integración (F3-02): payment intents. Se amplía por incremento; un test de contrato verifica que cada (path, method) declarado existe en el servidor y exige autenticación. Errores: SIEMPRE el sobre {error:{type,code,message,details?,request_id}} del catálogo v1 (api-errors.md). Mutaciones: header Idempotency-Key OBLIGATORIO (contrato idempotency.md: replay exacto con el mismo par key+payload; 422 idempotency_key_reuse si el payload difiere; 409 processing_in_flight si sigue en vuelo)."
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API key fluvia_sk_test_* (scopes: read, payments:write)"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1, "maxLength": 255 }
+      }
+    },
+    "schemas": {
+      "PaymentIntent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "object": { "const": "payment_intent" },
+          "merchant_id": { "type": "string", "format": "uuid" },
+          "amount": { "type": "integer", "description": "Unidades MENORES de la moneda" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "status": {
+            "enum": [
+              "created",
+              "requires_payment_method",
+              "requires_confirmation",
+              "requires_action",
+              "processing",
+              "authorized",
+              "partially_captured",
+              "succeeded",
+              "failed",
+              "canceled",
+              "partially_refunded",
+              "refunded"
+            ]
+          },
+          "capture_method": { "enum": ["automatic", "manual"] },
+          "amount_captured": { "type": "integer" },
+          "amount_refunded": { "type": "integer" },
+          "failure_code": { "type": ["string", "null"] },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": {},
+              "request_id": { "type": "string" }
+            },
+            "required": ["type", "code", "message", "request_id"]
+          }
+        },
+        "required": ["error"]
+      }
+    }
+  },
+  "security": [{ "apiKey": [] }],
+  "paths": {
+    "/v1/payment_intents": {
+      "post": {
+        "summary": "Crear payment intent (scope payments:write; idempotente)",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["merchant_id", "amount", "currency"],
+                "properties": {
+                  "merchant_id": { "type": "string", "format": "uuid" },
+                  "amount": { "type": "integer", "minimum": 1 },
+                  "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                  "description": { "type": "string", "maxLength": 500 },
+                  "capture_method": { "enum": ["automatic", "manual"] },
+                  "metadata": {
+                    "type": "object",
+                    "maxProperties": 20,
+                    "additionalProperties": { "type": "string", "maxLength": 500 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Intent creado (o replay exacto)" },
+          "400": { "description": "validation_error | idempotency_key_required" },
+          "404": { "description": "not_found (merchant ajeno o inexistente)" },
+          "409": { "description": "processing_in_flight" },
+          "422": { "description": "idempotency_key_reuse" }
+        }
+      },
+      "get": {
+        "summary": "Listar payment intents del tenant (scope read)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          }
+        ],
+        "responses": { "200": { "description": "Lista, más reciente primero" } }
+      }
+    },
+    "/v1/payment_intents/{id}": {
+      "get": {
+        "summary": "Recuperar un payment intent (scope read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "El intent" },
+          "404": { "description": "not_found (ajeno e inexistente indistinguibles)" }
+        }
+      }
+    },
+    "/v1/payment_intents/{id}/cancel": {
+      "post": {
+        "summary": "Cancelar un payment intent (scope payments:write; idempotente). La FSM decide: sólo estados con transición legal a canceled.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Intent cancelado (o replay exacto)" },
+          "404": { "description": "not_found" },
+          "409": {
+            "description": "invalid_state_transition (estado terminal u otro sin transición legal)"
+          }
+        }
+      }
+    }
+  }
+}

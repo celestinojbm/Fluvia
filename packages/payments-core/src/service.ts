@@ -1,4 +1,9 @@
 import { withTenantTransaction, type Pool } from '@fluvia/db';
+
+/** Minimo comun de un client transaccional (PoolClient de pg o compatible). */
+export interface TxClient {
+  query: Pool['query'];
+}
 import { buildEnvelope } from '@fluvia/events';
 import type { Money } from '@fluvia/money';
 import { INTENT_TRANSITIONS, canTransition, type IntentStatus } from './fsm.js';
@@ -91,7 +96,15 @@ export class PaymentIntentService {
   ) {}
 
   async create(input: CreateIntentInput): Promise<PaymentIntentDto> {
-    return withTenantTransaction(this.appPool, input.tenantId, async (c) => {
+    return withTenantTransaction(this.appPool, input.tenantId, (c) => this.createIn(c, input));
+  }
+
+  /**
+   * Variante para componer con otras capas (idempotencia F2-09): corre DENTRO
+   * de una transaccion ajena ya scoped al tenant (SET LOCAL app.tenant_id).
+   */
+  async createIn(c: TxClient, input: CreateIntentInput): Promise<PaymentIntentDto> {
+    {
       const res = await c.query<IntentRow>(
         `INSERT INTO payment_intents
            (tenant_id, merchant_id, amount, currency, description, capture_method, metadata, status)
@@ -110,7 +123,7 @@ export class PaymentIntentService {
       const dto = toDto(res.rows[0]!);
       await this.emit(c, dto, 'created');
       return dto;
-    });
+    }
   }
 
   async get(tenantId: string, intentId: string): Promise<PaymentIntentDto> {
@@ -134,7 +147,19 @@ export class PaymentIntentService {
     to: IntentStatus,
     opts: TransitionOptions = {}
   ): Promise<PaymentIntentDto> {
-    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+    return withTenantTransaction(this.appPool, tenantId, (c) =>
+      this.transitionIn(c, intentId, to, opts)
+    );
+  }
+
+  /** Variante client-bound (misma regla que createIn). */
+  async transitionIn(
+    c: TxClient,
+    intentId: string,
+    to: IntentStatus,
+    opts: TransitionOptions = {}
+  ): Promise<PaymentIntentDto> {
+    {
       const cur = await c.query<IntentRow>(
         `SELECT ${INTENT_COLUMNS} FROM payment_intents WHERE id = $1 FOR UPDATE`,
         [intentId]
@@ -160,14 +185,22 @@ export class PaymentIntentService {
       const dto = toDto(res.rows[0]!);
       await this.emit(c, dto, to);
       return dto;
+    }
+  }
+
+  /** Listado por tenant, mas reciente primero (paginacion simple por limit). */
+  async list(tenantId: string, limit = 20): Promise<PaymentIntentDto[]> {
+    const capped = Math.min(Math.max(Math.floor(limit), 1), 100);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<IntentRow>(
+        `SELECT ${INTENT_COLUMNS} FROM payment_intents ORDER BY created_at DESC, id LIMIT $1`,
+        [capped]
+      );
+      return res.rows.map(toDto);
     });
   }
 
-  private async emit(
-    c: { query: Pool['query'] },
-    intent: PaymentIntentDto,
-    status: string
-  ): Promise<void> {
+  private async emit(c: TxClient, intent: PaymentIntentDto, status: string): Promise<void> {
     const envelope = buildEnvelope({
       producer: 'fluvia.payments',
       resource: { type: 'payment_intent', id: intent.id },
