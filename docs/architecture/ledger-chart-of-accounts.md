@@ -39,7 +39,7 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 **`refund.request` R:** `debit merchant.available R` / `credit refund.liability R`; **`refund.settle` R:** `debit refund.liability R` / `credit provider.clearing R`; **`refund.cancel` R** (el proveedor RECHAZÓ el refund tras reservar, F3-08): `debit refund.liability R` / `credit merchant.available R` — la reserva vuelve íntegra al comercio, sin tocar `provider.clearing` (el dinero jamás se movió del proveedor).
 
-**Discrepancia de conciliación aceptada:** siempre vía `recon.differences` con caso y aprobación; nunca edición de asientos.
+**Discrepancia de conciliación aceptada (F4-03b, `postReconAdjustment`):** siempre vía `recon.differences` con caso y aprobación four-eyes; nunca edición de asientos. Reconocer: `debit recon.differences X` / `credit suspense X`; revertir: al revés. Ambas platform/transitorias; NO toca saldos de comercios (el true-up de payout/settlement es F4-05). `source_type='case_adjustment'`, idempotente por caso.
 
 ## Catálogo cerrado y aprovisionamiento
 

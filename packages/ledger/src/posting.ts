@@ -36,6 +36,22 @@ export interface SimpleAmountInput extends PostingContext {
   onPosted?: PostTransactionInput['onPosted'];
 }
 
+export interface ReconAdjustmentInput {
+  tenantId: string;
+  amount: Money;
+  idempotencyKey: string;
+  sourceType: string;
+  sourceId: string;
+  reason: string;
+  /**
+   * `true`  => debit recon.differences / credit suspense (RECONOCE la diferencia).
+   * `false` => credit recon.differences / debit suspense (la REVIERTE).
+   */
+  debitDifferences: boolean;
+  /** Composicion atomica (F4-03b): corre DENTRO de la tx del posting. */
+  onPosted?: PostTransactionInput['onPosted'];
+}
+
 /**
  * Reglas de posting del MVP (F2-04) — catalogo cerrado sobre el Chart of
  * Accounts. Fuera de estas operaciones tipadas no existe forma de combinar
@@ -104,6 +120,84 @@ export class PostingService {
         chart[code] = id;
       }
       return chart;
+    });
+  }
+
+  /**
+   * Aprovisiona (idempotente) SOLO cuentas platform-scope (name = code) para un
+   * tenant+moneda, sin necesidad de merchant. Devuelve el mapa code -> id.
+   */
+  private async ensurePlatformAccounts(
+    tenantId: string,
+    currency: string,
+    codes: AccountCode[]
+  ): Promise<Record<string, string>> {
+    for (const code of codes) {
+      if (CHART_OF_ACCOUNTS[code].scope !== 'platform') {
+        throw new InvalidEntriesError(`${code} is not a platform-scope account`);
+      }
+    }
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const names = codes.map((code) => code); // platform: name = code
+      const sides = codes.map((code) => CHART_OF_ACCOUNTS[code].normalSide);
+      await c.query(
+        `INSERT INTO ledger_accounts (tenant_id, name, currency, normal_side)
+         SELECT $1, n, $2, s FROM unnest($3::text[], $4::text[]) AS t(n, s)
+         ON CONFLICT (tenant_id, name, currency) DO NOTHING`,
+        [tenantId, currency, names, sides]
+      );
+      await c.query(
+        `INSERT INTO balance_projections (account_id, tenant_id)
+         SELECT id, tenant_id FROM ledger_accounts
+         WHERE tenant_id = $1 AND currency = $2 AND name = ANY($3::text[])
+         ON CONFLICT (account_id) DO NOTHING`,
+        [tenantId, currency, names]
+      );
+      const res = await c.query<{ id: string; name: string }>(
+        `SELECT id, name FROM ledger_accounts
+         WHERE tenant_id = $1 AND currency = $2 AND name = ANY($3::text[]) AND deleted_at IS NULL`,
+        [tenantId, currency, names]
+      );
+      const byName = new Map(res.rows.map((r) => [r.name, r.id]));
+      const out: Record<string, string> = {};
+      for (const code of codes) {
+        const id = byName.get(code);
+        if (!id) throw new UnknownAccountCodeError(code);
+        out[code] = id;
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Asiento compensatorio de conciliación (F4-03b): reconoce/revierte una
+   * diferencia entre `recon.differences` y `suspense` (ambas platform,
+   * transitorias), enlazado por `source` al ajuste/caso. NO toca saldos de
+   * comercios (el true-up de payout/settlement es F4-05, contable, bloqueado).
+   */
+  async postReconAdjustment(input: ReconAdjustmentInput): Promise<PostedTransaction> {
+    if (!input.amount.isPositive()) {
+      throw new InvalidEntriesError('Amount must be strictly positive');
+    }
+    const ids = await this.ensurePlatformAccounts(input.tenantId, input.amount.currency, [
+      'recon.differences',
+      'suspense',
+    ]);
+    const differencesId = ids['recon.differences']!;
+    const suspenseId = ids['suspense']!;
+    const [debitId, creditId] = input.debitDifferences
+      ? [differencesId, suspenseId]
+      : [suspenseId, differencesId];
+    return this.ledger.postTransaction({
+      tenantId: input.tenantId,
+      idempotencyKey: input.idempotencyKey,
+      reason: 'reconciliation',
+      source: { type: input.sourceType, id: input.sourceId },
+      entries: [
+        { accountId: debitId, direction: 'debit', amount: input.amount },
+        { accountId: creditId, direction: 'credit', amount: input.amount },
+      ],
+      onPosted: input.onPosted,
     });
   }
 

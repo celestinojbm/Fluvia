@@ -32,6 +32,9 @@ export const AUDIT_ACTIONS = [
   'webhook_event.resent',
   'operational_case.acknowledged',
   'operational_case.resolved',
+  'operational_case.adjustment_proposed',
+  'operational_case.adjustment_applied',
+  'operational_case.adjustment_rejected',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

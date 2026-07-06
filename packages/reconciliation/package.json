@@ -15,7 +15,9 @@
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",
-    "@fluvia/db": "workspace:*"
+    "@fluvia/db": "workspace:*",
+    "@fluvia/ledger": "workspace:*",
+    "@fluvia/money": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

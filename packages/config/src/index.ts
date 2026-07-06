@@ -62,6 +62,9 @@ const EnvSchema = z.object({
     .min(1000)
     .max(3_600_000)
     .default(60_000),
+  // F4-03b: umbral (unidades menores) desde el cual un ajuste de caso exige
+  // four-eyes (segundo aprobador distinto). Default 0 = SIEMPRE (Nivel A seguro).
+  FOUR_EYES_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(0),
   // CORS (F3-11a, AUD-P2-016): lista de orígenes permitidos separada por comas.
   // Vacío = NINGÚN cross-origin (default seguro; checkout/dashboard llaman al API
   // server-side, no desde el navegador). `*` permite cualquier origen. No secreto.
@@ -150,6 +153,8 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Umbral (unidades menores) desde el cual un ajuste de caso exige four-eyes (F4-03b). */
+  fourEyesThresholdMinor: number;
   /** Orígenes CORS permitidos (F3-11a). Vacío = ningún cross-origin; `['*']` = todos. */
   corsAllowedOrigins: string[];
 }
@@ -244,6 +249,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.RECONCILIATION_WATCHDOG_ENABLED === 'true',
       intervalMs: e.RECONCILIATION_WATCHDOG_INTERVAL_MS,
     },
+    fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
     corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter((o) => o.length > 0),

@@ -1,6 +1,7 @@
 import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 
 export * from './cases.js';
+export * from './adjustments.js';
 
 /**
  * Motor de conciliación (F4-01a). Casa lo que Fluvia cree liquidado (intentos

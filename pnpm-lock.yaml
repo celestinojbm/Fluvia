@@ -555,6 +555,12 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db
+      '@fluvia/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@fluvia/money':
+        specifier: workspace:*
+        version: link:../money
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
