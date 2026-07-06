@@ -9,6 +9,7 @@ import { InboxProcessor, signWebhookPayload } from '@fluvia/inbox';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { Money } from '@fluvia/money';
 import {
+  DisputeService,
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
   PaymentConfirmationService,
@@ -110,8 +111,12 @@ beforeAll(async () => {
     ZERO_FEE_SCHEDULE
   );
   const payouts = new PayoutService(appPool, posting, provider);
+  const disputes = new DisputeService(appPool, posting);
   processor = new InboxProcessor(inboxPool, {});
-  processor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation, payouts));
+  processor.register(
+    MOCK_PROVIDER_NAME,
+    createMockInboxRegistration(confirmation, payouts, disputes)
+  );
 
   // Banco con timeout para FABRICAR payouts `indeterminate` (fondos en tránsito).
   const timeoutBank: PaymentProvider = {
@@ -437,5 +442,151 @@ describe('webhook del banco resuelve payouts (F4-07c-ii)', () => {
 
     await processor.runOnce();
     expect(await payoutStatus(payoutId)).toBe('paid');
+  });
+});
+
+/** Comercio nuevo con disponible + clearing fundados (captura + release, sin
+ * settle a caja: una disputa perdida forfeita a provider.clearing). */
+async function seededMerchant(amount: number): Promise<string> {
+  const merchant = (
+    await adminPool.query<{ id: string }>(
+      `INSERT INTO merchants (tenant_id, name) VALUES ($1, $2) RETURNING id`,
+      [org, `wh-dp-${randomUUID().slice(0, 8)}`]
+    )
+  ).rows[0]!.id;
+  const src = randomUUID();
+  const m = cop(amount);
+  await posting.capturePayment({
+    tenantId: org,
+    merchantId: merchant,
+    idempotencyKey: `dcap:${src}`,
+    sourceType: 'payment_attempt',
+    sourceId: src,
+    amount: m,
+  });
+  await posting.releaseSettlement({
+    tenantId: org,
+    merchantId: merchant,
+    idempotencyKey: `drel:${src}`,
+    sourceType: 'settlement',
+    sourceId: src,
+    amount: m,
+  });
+  return merchant;
+}
+
+async function ingestSigned(payload: Record<string, unknown>): Promise<void> {
+  const body = JSON.stringify(payload);
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/providers/mock/webhook',
+    headers: sign(body),
+    payload: body,
+  });
+  expect(res.statusCode).toBe(200);
+}
+
+async function disputeByRef(ref: string): Promise<{ id: string; status: string } | undefined> {
+  const res = await adminPool.query<{ id: string; status: string }>(
+    `SELECT id, status FROM disputes WHERE provider = 'mock' AND provider_ref = $1`,
+    [ref]
+  );
+  return res.rows[0];
+}
+
+describe('webhook del banco abre y resuelve disputas (F4-08c)', () => {
+  it('signed dispute.opened -> processor holds funds; dispute.won returns them', async () => {
+    const merchant = await seededMerchant(100_000);
+    const ref = `dp_${randomUUID().slice(0, 8)}`;
+    await ingestSigned({
+      event_id: `evt-${randomUUID()}`,
+      type: 'dispute.opened',
+      tenant_id: org,
+      merchant_id: merchant,
+      amount: 30_000,
+      currency: 'COP',
+      provider_ref: ref,
+      reason: 'fraudulent',
+    });
+    // Ingesta durable, procesamiento asincrono: aun sin disputa.
+    expect(await disputeByRef(ref)).toBeUndefined();
+
+    await processor.runOnce();
+    const opened = await disputeByRef(ref);
+    expect(opened!.status).toBe('open');
+    // Apartado: disponible bajo, reserva de disputa subio.
+    expect(await bal(`merchant.available:${merchant}`)).toBe(70_000n);
+    expect(await bal(`dispute.reserve:${merchant}`)).toBe(30_000n);
+
+    await ingestSigned({
+      event_id: `evt-${randomUUID()}`,
+      type: 'dispute.won',
+      tenant_id: org,
+      dispute_id: opened!.id,
+      provider_ref: ref,
+    });
+    await processor.runOnce();
+    expect((await disputeByRef(ref))!.status).toBe('won');
+    // Ganada: lo apartado vuelve integro.
+    expect(await bal(`merchant.available:${merchant}`)).toBe(100_000n);
+    expect(await bal(`dispute.reserve:${merchant}`)).toBe(0n);
+  });
+
+  it('signed dispute.lost forfeits the held funds (money leaves via the provider)', async () => {
+    const merchant = await seededMerchant(100_000);
+    const ref = `dp_${randomUUID().slice(0, 8)}`;
+    await ingestSigned({
+      event_id: `evt-${randomUUID()}`,
+      type: 'dispute.opened',
+      tenant_id: org,
+      merchant_id: merchant,
+      amount: 40_000,
+      currency: 'COP',
+      provider_ref: ref,
+    });
+    await processor.runOnce();
+    const opened = await disputeByRef(ref);
+
+    await ingestSigned({
+      event_id: `evt-${randomUUID()}`,
+      type: 'dispute.lost',
+      tenant_id: org,
+      dispute_id: opened!.id,
+      provider_ref: ref,
+    });
+    await processor.runOnce();
+    expect((await disputeByRef(ref))!.status).toBe('lost');
+    // Perdida: el disponible NO se recupera (el dinero se fue); reserva a 0.
+    expect(await bal(`merchant.available:${merchant}`)).toBe(60_000n);
+    expect(await bal(`dispute.reserve:${merchant}`)).toBe(0n);
+  });
+
+  it('dispute.opened is idempotent by provider_ref: two events, one dispute, one hold', async () => {
+    const merchant = await seededMerchant(100_000);
+    const ref = `dp_${randomUUID().slice(0, 8)}`;
+    const openBody = (eventId: string) => ({
+      event_id: eventId,
+      type: 'dispute.opened',
+      tenant_id: org,
+      merchant_id: merchant,
+      amount: 30_000,
+      currency: 'COP',
+      provider_ref: ref,
+    });
+    // Dos eventos DISTINTOS (distinto event_id) para el MISMO provider_ref — el
+    // banco reenviando, o el crash-retry del inbox: jamas doble-abre.
+    await ingestSigned(openBody(`evt-${randomUUID()}`));
+    await ingestSigned(openBody(`evt-${randomUUID()}`));
+    await processor.runOnce();
+    await processor.runOnce();
+
+    const rows = await adminPool.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM disputes WHERE provider = 'mock' AND provider_ref = $1`,
+      [ref]
+    );
+    expect(Number(rows.rows[0]!.n)).toBe(1);
+    // Un solo hold: el disponible bajo 30k, no 60k.
+    expect(await bal(`merchant.available:${merchant}`)).toBe(70_000n);
+    expect(await bal(`dispute.reserve:${merchant}`)).toBe(30_000n);
   });
 });

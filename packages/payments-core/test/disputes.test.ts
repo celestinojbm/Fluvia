@@ -220,4 +220,31 @@ describe('DisputeService — ciclo money-clawed-back (F4-08a)', () => {
     // get de una disputa inexistente.
     await expect(disputes.get(org, randomUUID())).rejects.toBeInstanceOf(DisputeNotFoundError);
   });
+
+  it('openFromProvider es idempotente por provider_ref (jamás doble-abre — F4-08c)', async () => {
+    const { org, m } = await scenario();
+    await seedAvailable(org, m, 100_000);
+    const ref = `dp_${randomUUID().slice(0, 8)}`;
+    const first = await disputes.openFromProvider(org, {
+      merchantId: m,
+      amount: 30_000n,
+      currency: 'COP',
+      providerRef: ref,
+    });
+    expect(first.created).toBe(true);
+    expect(await reserve(org, m)).toBe(30_000n);
+
+    // Reproceso del mismo provider_ref (crash-retry del inbox): no doble-abre.
+    const second = await disputes.openFromProvider(org, {
+      merchantId: m,
+      amount: 30_000n,
+      currency: 'COP',
+      providerRef: ref,
+    });
+    expect(second.created).toBe(false);
+    expect(second.dispute.id).toBe(first.dispute.id);
+    // Un solo hold: la reserva sigue en 30k, no 60k.
+    expect(await reserve(org, m)).toBe(30_000n);
+    expect(await available(org, m)).toBe(70_000n);
+  });
 });

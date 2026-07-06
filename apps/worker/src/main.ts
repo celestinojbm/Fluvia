@@ -7,6 +7,7 @@ import { MetricsRegistry } from '@fluvia/observability';
 import { OutboxRelay } from '@fluvia/outbox';
 import { WebhookDeliverer, createWebhookFanoutPublisher } from '@fluvia/webhooks';
 import {
+  DisputeService,
   FlatBpsFeeSchedule,
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
@@ -187,6 +188,10 @@ const confirmation = new PaymentConfirmationService(
 // fuente verificada, jamas por asuncion — V4 §23) y el redriver re-conduce los
 // `requested` atascados (`execute`, seguro: el banco jamas fue contactado).
 const payouts = new PayoutService(appPool, inboxPosting, inboxProvider);
+// F4-08c: el mismo webhook firmado del banco ABRE disputas (dispute.opened,
+// idempotente por provider_ref) y las RESUELVE (dispute.won/lost) por fuente
+// verificada — jamas por asuncion (V4 §23).
+const disputes = new DisputeService(appPool, inboxPosting);
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
   onStats: (stats) => {
@@ -197,7 +202,10 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
     if (stats.dead > 0) inboxEventsTotal.inc({ result: 'dead' }, stats.dead);
   },
 });
-inboxProcessor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation, payouts));
+inboxProcessor.register(
+  MOCK_PROVIDER_NAME,
+  createMockInboxRegistration(confirmation, payouts, disputes)
+);
 // F3-04: barrido submitting->indeterminate + salud de indeterminados. La
 // politica vive en sweep_payment_attempts() (0018); el job la invoca.
 const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {

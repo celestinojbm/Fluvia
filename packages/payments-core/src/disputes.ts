@@ -167,6 +167,48 @@ export class DisputeService {
   }
 
   /**
+   * Apertura IDEMPOTENTE por el banco (webhook, F4-08c). Clave natural: la
+   * referencia del banco `provider_ref`. El inbox es at-least-once (el marcado
+   * del evento no es atómico con el efecto), así que un `dispute.opened`
+   * reprocesado tras un crash JAMÁS debe doble-abrir (doble-hold de fondos — V4
+   * Nivel A). Camino rápido: si ya existe una disputa con ese `provider_ref`, se
+   * devuelve; si no, se abre. La carrera (dos aperturas del mismo ref) la corta
+   * el índice único `disputes_provider_ref_uniq` (0037) y se reconcilia aquí.
+   */
+  async openFromProvider(
+    tenantId: string,
+    input: OpenDisputeInput & { providerRef: string }
+  ): Promise<{ dispute: DisputeDto; created: boolean }> {
+    const provider = input.provider ?? 'mock';
+    const existing = await this.findByProviderRef(tenantId, provider, input.providerRef);
+    if (existing) return { dispute: existing, created: false };
+    try {
+      const dispute = await this.open(tenantId, { ...input, provider });
+      return { dispute, created: true };
+    } catch (err) {
+      // Carrera: otra apertura del mismo provider_ref ganó (unique index) o el
+      // crash-retry del inbox re-ejecutó. Si ya existe, es idempotente.
+      const raced = await this.findByProviderRef(tenantId, provider, input.providerRef);
+      if (raced) return { dispute: raced, created: false };
+      throw err;
+    }
+  }
+
+  private async findByProviderRef(
+    tenantId: string,
+    provider: string,
+    providerRef: string
+  ): Promise<DisputeDto | null> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<DisputeRow>(
+        `SELECT ${DISPUTE_COLUMNS} FROM disputes WHERE provider = $1 AND provider_ref = $2 LIMIT 1`,
+        [provider, providerRef]
+      );
+      return res.rows[0] ? toDto(res.rows[0]) : null;
+    });
+  }
+
+  /**
    * El comercio respondió con evidencia: `open` -> `under_review` (sin mover
    * dinero). Idempotente: si ya está `under_review` devuelve el estado actual sin
    * re-emitir; sobre una disputa terminal (won/lost) es un error de transición.
