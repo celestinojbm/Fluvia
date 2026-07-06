@@ -85,8 +85,46 @@ export function buildApp({
     bodyLimit: 1024 * 1024,
   });
 
+  // F3-11a (AUD-P2-016): CORS de allowlist explícita. Por defecto NINGÚN
+  // cross-origin (checkout/dashboard llaman al API server-side, no desde el
+  // navegador); un allowlist configurable habilita clientes de navegador (p.ej.
+  // el SDK). El preflight se responde aquí (no hay rutas OPTIONS declaradas).
+  const corsOrigins = config.corsAllowedOrigins;
+  const corsAllows = (origin: string): boolean =>
+    corsOrigins.includes('*') || corsOrigins.includes(origin);
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (origin && corsAllows(origin)) {
+      reply.header('access-control-allow-origin', origin);
+      reply.header('vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS' && req.headers['access-control-request-method']) {
+      // Preflight: el navegador decide por la presencia de ACAO. Solo añadimos
+      // los headers de método/cabeceras cuando el origen está permitido.
+      if (origin && corsAllows(origin)) {
+        reply.header('access-control-allow-methods', 'GET, POST, OPTIONS');
+        reply.header(
+          'access-control-allow-headers',
+          'authorization, content-type, idempotency-key, x-checkout-client-secret, x-request-id'
+        );
+        reply.header('access-control-max-age', '600');
+      }
+      return reply.code(204).send();
+    }
+  });
+
+  // F3-11a: cabeceras de seguridad en TODA respuesta. El API devuelve JSON, así
+  // que la CSP se bloquea al máximo; HSTS solo fuera de local/test (http local).
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('referrer-policy', 'no-referrer');
+    reply.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'");
+    reply.header('cross-origin-resource-policy', 'same-origin');
+    if (config.env !== 'local' && config.env !== 'test') {
+      reply.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    }
   });
 
   // F1-07: contadores/histogramas HTTP + GET /metrics (agregados anonimos).

@@ -38,3 +38,9 @@ El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda 
 **Scopes de API keys (integración)**: `read`, `payments:write`, `customers:write`, `webhooks:manage`. Deliberadamente **no existe** scope de gestión de API keys: una key robada no puede crear más keys ni escalar — la gestión es exclusiva del plano de sesión con rol (`keys:manage`).
 
 Las pruebas de autorización (BOLA, escalada horizontal/vertical, planes no intercambiables) acompañan cada endpoint desde su primer PR (ver `apps/api/test/org-routes.test.ts`).
+
+## Hardening de transporte del API (F3-11a, AUD-P2-016)
+
+**CORS**: allowlist explícita vía `CORS_ALLOWED_ORIGINS` (lista por comas). Default **vacío = ningún cross-origin** — el default seguro, porque los apps `checkout`/`dashboard` llaman al API server-side (route handlers / server components), no desde el navegador. Un origen permitido recibe `Access-Control-Allow-Origin: <origin>` + `Vary: Origin`; el preflight OPTIONS se responde con `Access-Control-Allow-Methods/Headers/Max-Age` SOLO para orígenes permitidos. Un origen ajeno no recibe ACAO y el navegador bloquea la respuesta.
+
+**Cabeceras de seguridad** en TODA respuesta: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (el API devuelve JSON, se bloquea al máximo), `Cross-Origin-Resource-Policy: same-origin`, y `Strict-Transport-Security` (HSTS) SOLO fuera de local/test. Cubierto por `apps/api/test/security-headers.test.ts`.

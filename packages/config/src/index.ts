@@ -55,6 +55,10 @@ const EnvSchema = z.object({
   CHECKOUT_BASE_URL: z.string().url().default('https://checkout.fluvia.local'),
   CHECKOUT_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   CHECKOUT_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  // CORS (F3-11a, AUD-P2-016): lista de orígenes permitidos separada por comas.
+  // Vacío = NINGÚN cross-origin (default seguro; checkout/dashboard llaman al API
+  // server-side, no desde el navegador). `*` permite cualquier origen. No secreto.
+  CORS_ALLOWED_ORIGINS: z.string().default(''),
 });
 
 /** Defaults SOLO para local/test (coinciden con docker-compose). */
@@ -134,6 +138,8 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Orígenes CORS permitidos (F3-11a). Vacío = ningún cross-origin; `['*']` = todos. */
+  corsAllowedOrigins: string[];
 }
 
 export class ConfigError extends Error {
@@ -222,5 +228,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.CHECKOUT_WATCHDOG_ENABLED === 'true',
       intervalMs: e.CHECKOUT_WATCHDOG_INTERVAL_MS,
     },
+    corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
+      .map((o) => o.trim())
+      .filter((o) => o.length > 0),
   };
 }
