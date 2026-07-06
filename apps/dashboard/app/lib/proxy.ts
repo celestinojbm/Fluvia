@@ -39,3 +39,8 @@ export function casePath(orgId: string, id: string, action: string): string {
 export function adjustmentPath(orgId: string, id: string, action: string): string {
   return `/v1/organizations/${encodeURIComponent(orgId)}/case_adjustments/${encodeURIComponent(id)}/${action}`;
 }
+
+/** Ruta de una disputa por sesión (F4-08e). */
+export function disputePath(orgId: string, id: string, action: string): string {
+  return `/v1/organizations/${encodeURIComponent(orgId)}/disputes/${encodeURIComponent(id)}/${action}`;
+}

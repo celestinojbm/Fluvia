@@ -14,7 +14,7 @@
 
 ## Resolución (el operador responde; el banco resuelve)
 
-- **Responder con evidencia (la acción del operador/comercio)**: `POST /v1/disputes/:id/evidence` (scope `payments:write`) → `open → under_review`. Marca que se respondió; es idempotente (re-enviar sobre `under_review` no falla). Esto NO decide el desenlace — solo registra la respuesta antes del plazo.
+- **Responder con evidencia (la acción del operador/comercio)**: desde el panel **Disputas → detalle → «Responder con evidencia»** (F4-08e; requiere `reconciliation:manage` — owner/admin/finance) o, por integración, `POST /v1/disputes/:id/evidence` (scope `payments:write`). Ambas caras llevan `open → under_review`. Marca que se respondió; es idempotente (re-responder sobre `under_review` no falla — la UI muestra «Evidencia enviada» en vez del botón). Esto NO decide el desenlace — solo registra la respuesta antes del plazo.
 - **El desenlace (won/lost) llega SOLO por fuente verificada**: el **webhook firmado del banco** al inbox → `DisputeService.resolve(tenantId, { disputeId, outcome })`. `won` devuelve lo apartado íntegro al comercio (`dispute.reserve → merchant.available`); `lost` lo forfeita al proveedor (`dispute.reserve → provider.clearing`). Es idempotente y no reabre disputas terminales (`ignored_out_of_order`).
 - Si el evento del banco **quedó en el inbox como `dead`** (veneno/agotado), recupéralo por [`outbox-inbox-stuck.md`](./outbox-inbox-stuck.md) (replay auditado) — no cierres la disputa por fuera.
 

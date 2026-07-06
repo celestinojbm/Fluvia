@@ -5,6 +5,9 @@ import { loadConfig } from '@fluvia/config';
 import { createPool, type Pool } from '@fluvia/db';
 import { AuthService } from '@fluvia/auth';
 import { ApiKeyService, IdentityService } from '@fluvia/identity';
+import { LedgerService, PostingService } from '@fluvia/ledger';
+import { Money } from '@fluvia/money';
+import { DisputeService } from '@fluvia/payments-core';
 import { buildApp } from '../src/app.js';
 
 /**
@@ -19,6 +22,8 @@ let appPool: Pool;
 let authPool: Pool;
 let adminPool: Pool;
 let apiKeyService: ApiKeyService;
+let posting: PostingService;
+let disputeService: DisputeService;
 
 let orgA: string;
 let orgB: string;
@@ -88,12 +93,45 @@ async function seedDeadWebhook(
 }
 const apiAuth = (key: string) => ({ authorization: `Bearer ${key}` });
 
+/** El banco abre una disputa (vía el motor): funda el disponible y aparta el
+ *  monto, dejándola `open` para ejercer la acción de respuesta por sesión. */
+async function seedOpenDispute(org: string, merchant: string, amount: number): Promise<string> {
+  const src = randomUUID();
+  const m = Money.of(amount * 2, 'COP');
+  await posting.capturePayment({
+    tenantId: org,
+    merchantId: merchant,
+    idempotencyKey: `cap:${src}`,
+    sourceType: 'payment_attempt',
+    sourceId: src,
+    amount: m,
+  });
+  await posting.releaseSettlement({
+    tenantId: org,
+    merchantId: merchant,
+    idempotencyKey: `settle:${src}`,
+    sourceType: 'settlement',
+    sourceId: src,
+    amount: m,
+  });
+  const d = await disputeService.open(org, {
+    merchantId: merchant,
+    amount: BigInt(amount),
+    currency: 'COP',
+    reason: 'fraudulent',
+    providerRef: `dp_${randomUUID().slice(0, 8)}`,
+  });
+  return d.id;
+}
+
 beforeAll(async () => {
   const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error' });
   appPool = createPool({ connectionString: config.db.app, max: 6 });
   authPool = createPool({ connectionString: config.db.auth, max: 4 });
   adminPool = createPool({ connectionString: config.db.admin, max: 2 });
   apiKeyService = new ApiKeyService(appPool);
+  posting = new PostingService(new LedgerService(appPool), appPool);
+  disputeService = new DisputeService(appPool, posting);
   app = buildApp({
     config,
     appPool,
@@ -261,6 +299,56 @@ describe('reenvío de webhooks dead por sesión (webhooks:manage)', () => {
       headers: outsider.headers,
     });
     expect(foreign.statusCode).toBe(404);
+  });
+});
+
+describe('responder a disputa con evidencia por sesión (F4-08e, reconciliation:manage)', () => {
+  it('finance responds with evidence (open -> under_review), idempotently', async () => {
+    const merchant = await createMerchant(orgA);
+    const id = await seedOpenDispute(orgA, merchant, 30_000);
+    const finance = await sessionUser('finance', orgA);
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/disputes/${id}/evidence`,
+      headers: finance.headers,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().object).toBe('dispute');
+    expect(first.json().status).toBe('under_review');
+
+    // Re-responder es idempotente: mismo estado terminal-de-respuesta, sin error.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/disputes/${id}/evidence`,
+      headers: finance.headers,
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().status).toBe('under_review');
+  });
+
+  it('a read_only role lacks reconciliation:manage (403)', async () => {
+    const merchant = await createMerchant(orgA);
+    const id = await seedOpenDispute(orgA, merchant, 20_000);
+    const ro = await sessionUser('read_only', orgA);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/disputes/${id}/evidence`,
+      headers: ro.headers,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('404s for a non-member acting on a foreign org', async () => {
+    const merchant = await createMerchant(orgA);
+    const id = await seedOpenDispute(orgA, merchant, 15_000);
+    const outsider = await sessionUser('finance', orgB);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/disputes/${id}/evidence`,
+      headers: outsider.headers,
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
 

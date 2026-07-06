@@ -193,6 +193,16 @@ export function registerDashboardRoutes(
     const { id } = IdParams.parse(req.params);
     return publicDispute(await disputeService.get(tenant(req), id));
   });
+  // Acción de OPERACIÓN por sesión (F4-08e): RESPONDER a la disputa con evidencia
+  // (`open -> under_review`). Espeja el endpoint de API key (`payments:write`);
+  // aquí exige `reconciliation:manage` (owner/admin/finance — los mismos roles que
+  // gobiernan el dinero). Idempotente: re-responder sobre `under_review` devuelve
+  // el estado actual; sobre una disputa terminal es `invalid_state_transition`. El
+  // DESENLACE (won/lost) jamás se alcanza aquí: llega SOLO por el webhook del banco.
+  app.post('/v1/organizations/:orgId/disputes/:id/evidence', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicDispute(await disputeService.submitEvidence(tenant(req), id));
+  });
 
   // --- checkout sessions ---
   app.get('/v1/organizations/:orgId/checkout_sessions', guard, async (req) => {

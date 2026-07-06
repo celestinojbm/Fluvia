@@ -69,6 +69,10 @@ interface Messages {
   disputeReason: string;
   disputeProviderRef: string;
   disputeHeldHint: string;
+  disputeRespond: string;
+  disputeResponding: string;
+  disputeEvidenceHint: string;
+  disputeEvidenceSubmitted: string;
   backToDashboard: string;
   sandboxNotice: string;
   // casos operativos + ajustes (F4-03c-ii)
@@ -213,6 +217,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     disputeProviderRef: 'Ref. del banco',
     disputeHeldHint:
       'Fondos apartados de la reserva del comercio mientras el banco resuelve la disputa.',
+    disputeRespond: 'Responder con evidencia',
+    disputeResponding: 'Respondiendo…',
+    disputeEvidenceHint:
+      'Marca que el comercio respondió con evidencia (open → en revisión). No decide el desenlace: won/lost llega solo por el banco antes de que venza el plazo.',
+    disputeEvidenceSubmitted: 'Evidencia enviada — en revisión por el banco.',
     backToDashboard: '← Volver al panel',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
     cases: 'Casos',
@@ -353,6 +362,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     disputeProviderRef: 'Bank ref',
     disputeHeldHint:
       "Funds set aside from the merchant's reserve while the bank resolves the dispute.",
+    disputeRespond: 'Respond with evidence',
+    disputeResponding: 'Responding…',
+    disputeEvidenceHint:
+      'Marks that the merchant responded with evidence (open → under review). It does not decide the outcome: won/lost comes only from the bank before the deadline.',
+    disputeEvidenceSubmitted: 'Evidence submitted — under review by the bank.',
     backToDashboard: '← Back to dashboard',
     sandboxNotice: 'Test environment — no real money moves.',
     cases: 'Cases',

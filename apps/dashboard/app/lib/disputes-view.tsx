@@ -1,12 +1,16 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Dispute } from './api';
+import { RespondWithEvidence } from './dispute-actions';
 
 /**
- * Vistas de disputas/chargebacks (F4-08d) — presentación pura (server
- * components, renderizables en jsdom). Solo lectura: el operador monitorea las
- * disputas que el banco abre y resuelve. Mientras no son terminales
- * (`open`/`under_review`) los fondos disputados están APARTADOS de la reserva
- * del comercio. Tablas accesibles con `th scope`/`caption`.
+ * Vistas de disputas/chargebacks (F4-08d) — la lista y el marco del detalle son
+ * presentación pura (server components, renderizables en jsdom). El operador
+ * monitorea las disputas que el banco abre y resuelve; mientras no son terminales
+ * (`open`/`under_review`) los fondos disputados están APARTADOS de la reserva del
+ * comercio. La única ACCIÓN (F4-08e) es RESPONDER con evidencia (isla cliente,
+ * solo visible a roles con `reconciliation:manage` mientras la disputa vive) — el
+ * desenlace won/lost llega SOLO por el webhook del banco. Tablas accesibles con
+ * `th scope`/`caption`.
  */
 
 function shortId(v: string): string {
@@ -95,13 +99,18 @@ export function DisputesDetail({
   orgId,
   locale,
   signOutHref,
+  canManage = false,
 }: {
   dispute: Dispute;
   orgId: string;
   locale: Locale;
   signOutHref: string;
+  /** El operador puede RESPONDER con evidencia (`reconciliation:manage`). Hint de
+   *  UX; la API es la fuente de verdad. Default false (plano de solo lectura). */
+  canManage?: boolean;
 }) {
   const t = MESSAGES[locale];
+  const held = isHeld(dispute.status);
   const rows: Array<{ label: string; value: string }> = [
     { label: t.colDispute, value: dispute.id },
     { label: t.colMerchant, value: dispute.merchant_id },
@@ -126,7 +135,7 @@ export function DisputesDetail({
         </a>
       </header>
 
-      {isHeld(dispute.status) && <p className="notice">{t.disputeHeldHint}</p>}
+      {held && <p className="notice">{t.disputeHeldHint}</p>}
 
       <section className="card">
         <div className="table-wrap">
@@ -145,6 +154,17 @@ export function DisputesDetail({
           </table>
         </div>
       </section>
+
+      {held && canManage && (
+        <section className="card" aria-label={t.disputeRespond}>
+          <RespondWithEvidence
+            orgId={orgId}
+            disputeId={dispute.id}
+            status={dispute.status}
+            locale={locale}
+          />
+        </section>
+      )}
       <p className="notice">{t.sandboxNotice}</p>
     </main>
   );

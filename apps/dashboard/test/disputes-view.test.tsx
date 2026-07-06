@@ -62,9 +62,30 @@ describe('DisputesDetail', () => {
     expect(screen.getByText('product_not_received')).toBeInTheDocument();
   });
 
-  it('has no structural accessibility violations (axe)', async () => {
-    const { container } = render(
+  it('offers the respond action only when the dispute is held AND the operator can manage', () => {
+    const label = 'Responder con evidencia';
+    // Solo lectura (canManage default false): sin acción aunque esté viva.
+    const { rerender } = render(
       <DisputesDetail dispute={OPEN} orgId="o1" locale="es" signOutHref="/logout" />
+    );
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+
+    // canManage + viva (open) => se ofrece responder.
+    rerender(
+      <DisputesDetail dispute={OPEN} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+
+    // canManage pero terminal (won) => sin acción (el desenlace ya llegó del banco).
+    rerender(
+      <DisputesDetail dispute={WON} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+  });
+
+  it('has no structural accessibility violations, including the action island (axe)', async () => {
+    const { container } = render(
+      <DisputesDetail dispute={OPEN} orgId="o1" locale="es" signOutHref="/logout" canManage />
     );
     const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations.map((v) => v.id)).toEqual([]);
