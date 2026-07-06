@@ -3,7 +3,11 @@ import { withTenantTransaction, type Pool } from '@fluvia/db';
 import { buildEnvelope } from '@fluvia/events';
 import { InsufficientBalanceError, accountName, type PostingService } from '@fluvia/ledger';
 import { Money } from '@fluvia/money';
-import { DisputeNotFoundError, InsufficientDisputeBalanceError } from './errors.js';
+import {
+  DisputeNotFoundError,
+  InsufficientDisputeBalanceError,
+  InvalidStateTransitionError,
+} from './errors.js';
 import type { TxClient } from './service.js';
 
 /**
@@ -162,11 +166,26 @@ export class DisputeService {
     return this.get(tenantId, disputeId);
   }
 
-  /** El comercio respondió con evidencia: `open` -> `under_review` (sin mover dinero). */
+  /**
+   * El comercio respondió con evidencia: `open` -> `under_review` (sin mover
+   * dinero). Idempotente: si ya está `under_review` devuelve el estado actual sin
+   * re-emitir; sobre una disputa terminal (won/lost) es un error de transición.
+   * `FOR UPDATE` serializa envíos concurrentes (el segundo ve `under_review`).
+   */
   async submitEvidence(tenantId: string, disputeId: string): Promise<DisputeDto> {
-    return withTenantTransaction(this.appPool, tenantId, (c) =>
-      this.transition(c, disputeId, 'under_review', {})
-    );
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const cur = await c.query<DisputeRow>(
+        `SELECT ${DISPUTE_COLUMNS} FROM disputes WHERE id = $1 FOR UPDATE`,
+        [disputeId]
+      );
+      const row = cur.rows[0];
+      if (!row) throw new DisputeNotFoundError();
+      if (row.status === 'under_review') return toDto(row);
+      if (row.status !== 'open') {
+        throw new InvalidStateTransitionError(row.status, 'under_review');
+      }
+      return this.transition(c, disputeId, 'under_review', {});
+    });
   }
 
   /**

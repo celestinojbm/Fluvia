@@ -226,6 +226,7 @@
     "RefundAmountExceedsRemainingError": "refund_amount_exceeds_remaining",
     "PayoutNotFoundError": "not_found",
     "InsufficientPayoutBalanceError": "payout_amount_exceeds_balance",
+    "DisputeNotFoundError": "not_found",
     "CheckoutSessionNotFoundError": "not_found",
     "CheckoutSessionInvalidCustomerError": "validation_error",
     "PaymentLinkNotFoundError": "not_found",

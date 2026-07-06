@@ -16,6 +16,7 @@ import {
 } from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
+  DisputeService,
   FlatBpsFeeSchedule,
   MockPaymentProvider,
   PaymentConfirmationService,
@@ -32,6 +33,7 @@ import { registerAccountRoutes, registerOrganizationRoutes } from './routes/orga
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
 import { registerPayoutRoutes } from './routes/payouts.js';
+import { registerDisputeRoutes } from './routes/disputes.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerPaymentLinkRoutes } from './routes/payment-links.js';
@@ -216,6 +218,11 @@ export function buildApp({
     // circuito/timeout que el resto (provider resiliente); sandbox, sin exponer.
     const payoutService = new PayoutService(appPool, postingService, provider);
     registerPayoutRoutes(app, { security, idempotencyService, payoutService });
+    // F4-08b: disputas como recurso (money clawed back) sobre el motor de F4-08a.
+    // Plano de LECTURA + envio de evidencia; la apertura/resolucion llegan por el
+    // webhook del banco (F4-08c). Sandbox, sin exponer.
+    const disputeService = new DisputeService(appPool, postingService);
+    registerDisputeRoutes(app, { security, disputeService });
     // F3-05a: customers (plano de integracion; primer consumidor = checkout).
     registerCustomerRoutes(app, {
       security,

@@ -289,6 +289,8 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // payouts F4-07
   PayoutNotFoundError: 'not_found',
   InsufficientPayoutBalanceError: 'payout_amount_exceeds_balance',
+  // disputas F4-08
+  DisputeNotFoundError: 'not_found',
   // checkout sessions F3-05b
   CheckoutSessionNotFoundError: 'not_found',
   CheckoutSessionInvalidCustomerError: 'validation_error',
