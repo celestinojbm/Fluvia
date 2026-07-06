@@ -55,6 +55,10 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_settlement_reports_reconciled_total`  | counter | — (F4-02; reportes con periodo cerrado conciliados)        |
 | `fluvia_reconciliation_entries_total`         | counter | `status` = `matched` \| `amount_mismatch` \| `missing_in_ledger` \| `missing_at_provider` (F4-02) |
 | `fluvia_reconciliation_discrepancies_last`    | gauge   | — (0 = cuadrado; discrepancias del último barrido)         |
+| `fluvia_payouts_swept_total`                  | counter | — (F4-07c; in_transit atascado barrido a indeterminate)    |
+| `fluvia_payouts_indeterminate`                | gauge   | — (fondos retenidos en tránsito)                           |
+| `fluvia_payouts_indeterminate_aged`           | gauge   | — (0 = sano; >30 min esperando resolución verificada)      |
+| `fluvia_payouts_requested_stuck`              | gauge   | — (0 = sano; requested cuyo execute nunca corrió, >5 min)  |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -74,6 +78,8 @@ identificador desde el cliente hasta la fila de auditoría.
 | Eventos dead en outbox      | `increase(fluvia_outbox_relay_events_total{result="dead"}[5m]) > 0`                   | ALTA      | Revisar DLQ; replay SOLO auditado                                                                                                                         |
 | Eventos dead en inbox       | `increase(fluvia_inbox_events_total{result="dead"}[5m]) > 0`                          | ALTA      | Webhook de proveedor envenenado: revisar DLQ; replay SOLO auditado                                                                                        |
 | Indeterminados envejecidos  | `fluvia_payment_attempts_indeterminate_aged > 0`                                      | ALTA      | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción                                        |
+| Payouts indeterminados envejecidos | `fluvia_payouts_indeterminate_aged > 0`                                        | ALTA      | Payout con fondos retenidos en tránsito, desenlace del banco desconocido >30 min: consultar al banco o conciliar (V4 §23) → `resolveFromProvider` — JAMÁS por asunción (F4-07c) |
+| Payouts requested atascados | `fluvia_payouts_requested_stuck > 0`                                                  | MEDIA     | Payout cuyo `execute` nunca corrió (fire-and-forget murió): sin dinero en riesgo (el banco jamás fue contactado); re-drivable con seguridad (F4-07c)      |
 | Webhooks salientes dead     | `increase(fluvia_webhook_deliveries_total{result="dead"}[15m]) > 0`                   | MEDIA     | Endpoint del comercio agotó el calendario de reintentos: revisar `webhook_attempts` (IP/status/error por intento); reenvío manual auditado llega en F3-09 |
 | Discrepancias de conciliación | `fluvia_reconciliation_discrepancies_last > 0` o `increase(fluvia_reconciliation_entries_total{status=~"amount_mismatch\|missing_in_ledger\|missing_at_provider"}[1h]) > 0` | ALTA | Dinero real sin cuadrar contra el reporte del proveedor: investigar por `reconciliation_entries` (F4-02) — JAMÁS corrección silenciosa (V4 §30) |
 | Worker sin latido           | `increase(fluvia_worker_heartbeats_total[5m]) == 0`                                   | ALTA      | Proceso caído o colgado                                                                                                                                   |

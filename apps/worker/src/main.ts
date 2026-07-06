@@ -18,6 +18,7 @@ import {
 import { AttemptsWatchdog } from './attempts-watchdog.js';
 import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
 import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watchdog.js';
+import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -110,6 +111,22 @@ const reconciliationDiscrepancies = registry.gauge(
   'fluvia_reconciliation_discrepancies_last',
   'Discrepancias detectadas en el último barrido de conciliación (0 = cuadrado)'
 );
+const payoutsSweptTotal = registry.counter(
+  'fluvia_payouts_swept_total',
+  'Payouts barridos de in_transit a indeterminate (lease vencido)'
+);
+const payoutsIndeterminate = registry.gauge(
+  'fluvia_payouts_indeterminate',
+  'Payouts en indeterminate ahora mismo (fondos retenidos en tránsito)'
+);
+const payoutsIndeterminateAged = registry.gauge(
+  'fluvia_payouts_indeterminate_aged',
+  'Payouts indeterminate envejecidos (>30 min) — 0 = sano'
+);
+const payoutsRequestedStuck = registry.gauge(
+  'fluvia_payouts_requested_stuck',
+  'Payouts en requested cuyo execute nunca corrió (>5 min) — 0 = sano'
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -199,6 +216,18 @@ const reconciliationWatchdog = new ReconciliationWatchdog(workerPool, logger, {
     reconciliationDiscrepancies.set({}, discrepancyCount(r));
   },
 });
+// F4-07c: robustez del plano de payouts. La politica vive en sweep_payouts()
+// (0034); el job la invoca, expone metricas y ALERTA ante indeterminados
+// envejecidos + requested atascados. Un payout barrido queda indeterminate
+// (fondos retenidos), jamas failed por asuncion (V4 §23).
+const payoutsWatchdog = new PayoutsWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    if (health.sweptToIndeterminate > 0) payoutsSweptTotal.inc({}, health.sweptToIndeterminate);
+    payoutsIndeterminate.set({}, health.indeterminateTotal);
+    payoutsIndeterminateAged.set({}, health.indeterminateAged);
+    payoutsRequestedStuck.set({}, health.requestedStuck);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -227,6 +256,7 @@ async function shutdown(signal: string): Promise<void> {
   attemptsWatchdog.stop();
   checkoutWatchdog.stop();
   reconciliationWatchdog.stop();
+  payoutsWatchdog.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -301,6 +331,12 @@ worker
         {},
         'reconciliation watchdog disabled by config (RECONCILIATION_WATCHDOG_ENABLED=false)'
       );
+    }
+    if (config.payoutsWatchdog.enabled) {
+      payoutsWatchdog.start(config.payoutsWatchdog.intervalMs);
+      logger.info({ intervalMs: config.payoutsWatchdog.intervalMs }, 'payouts watchdog started');
+    } else {
+      logger.info({}, 'payouts watchdog disabled by config (PAYOUTS_WATCHDOG_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);
