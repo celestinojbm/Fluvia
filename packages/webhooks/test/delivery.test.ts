@@ -121,6 +121,24 @@ describe('fan-out (rol relay, ventanas 0019)', () => {
     );
     expect(internal.rowCount).toBe(0);
   });
+
+  it('graduates payout.* and dispute.* to deliverable topics (F4-09)', async () => {
+    // Suscribirse a los topics de dinero PRUEBA que el catalogo los acepta
+    // (createEndpoint valida cada topic; un topic desconocido -> error).
+    const money = await service.create(org, {
+      url: `${baseUrl}/money`,
+      events: ['payout.paid', 'dispute.won'],
+    });
+    // Antes de F4-09 estos eventos del outbox no generaban fan-out alguno.
+    await fanout(org, 'payout.paid');
+    await fanout(org, 'dispute.won');
+
+    const rows = await ctx.admin.query<{ topic: string }>(
+      `SELECT topic FROM webhook_events WHERE endpoint_id = $1 ORDER BY topic`,
+      [money.id]
+    );
+    expect(rows.rows.map((r) => r.topic)).toEqual(['dispute.won', 'payout.paid']);
+  });
 });
 
 describe('entrega (rol webhook)', () => {

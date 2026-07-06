@@ -17,6 +17,16 @@ export const WEBHOOK_TOPICS = [
   'refund.canceled',
   'checkout_session.completed',
   'checkout_session.expired',
+  // Payouts (F4-07 / F4-09): money out. `indeterminate` es interno (silente).
+  'payout.requested',
+  'payout.in_transit',
+  'payout.paid',
+  'payout.failed',
+  // Disputas / chargebacks (F4-08 / F4-09): money clawed back.
+  'dispute.open',
+  'dispute.under_review',
+  'dispute.won',
+  'dispute.lost',
   'merchant.updated',
 ] as const;
 

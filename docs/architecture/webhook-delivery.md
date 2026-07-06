@@ -35,9 +35,11 @@ Backoff exponencial con jitter, calendario configurable (Nivel C; baseline: 0s, 
 `payment_intent.created|processing|requires_action|succeeded|failed|canceled`,
 `refund.created|processing|succeeded|failed|canceled`,
 `checkout_session.completed|expired`,
+`payout.requested|in_transit|paid|failed`,
+`dispute.open|under_review|won|lost`,
 `merchant.updated`.
 
-Reservados post-MVP: `charge.*`, `dispute.*`, `settlement.*`, `payout.*`. El catálogo vive en código (`packages/webhooks/src/events.ts`) y este documento se genera/verifica contra él (F3).
+Reservados post-MVP: `charge.*`, `settlement.*`. `payout.*` (F4-07) y `dispute.*` (F4-08) se graduaron de reservados a activos con **F4-09**: los motores los emiten al outbox y el fan-out (§1) los entrega a los endpoints suscritos (el estado payout indeterminate queda interno/silente, no se emite). El catálogo vive en código (`packages/webhooks/src/events.ts`) y este documento se genera/verifica contra él (F3).
 
 ## 6. Por qué no Svix todavía
 
