@@ -22,6 +22,7 @@ import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
 import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watchdog.js';
 import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { PayoutsRedriver } from './payouts-redriver.js';
+import { DisputesWatchdog } from './disputes-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -134,6 +135,14 @@ const payoutsRedrivenTotal = registry.counter(
   'fluvia_payouts_redriven_total',
   'Payouts `requested` atascados re-conducidos por el redriver, por resultado',
   ['result']
+);
+const disputesHeld = registry.gauge(
+  'fluvia_disputes_held',
+  'Disputas vivas (open/under_review) ahora mismo — fondos apartados en dispute.reserve'
+);
+const disputesAged = registry.gauge(
+  'fluvia_disputes_aged',
+  'Disputas vivas envejecidas (>7 días) — 0 = sano; riesgo de pérdida por no responder'
 );
 
 const worker = new WorkerProcess({
@@ -259,6 +268,16 @@ const payoutsRedriver = new PayoutsRedriver(workerPool, payouts, logger, {
     if (r.failed > 0) payoutsRedrivenTotal.inc({ result: 'failed' }, r.failed);
   },
 });
+// F4-10: salud del plano de disputas. La politica vive en sweep_disputes()
+// (0038); el job la invoca, expone los gauges y ALERTA ante disputas
+// envejecidas. NO transiciona nada (la resolucion es solo por fuente verificada,
+// V4 §23) — solo surfacea el dinero apartado a riesgo.
+const disputesWatchdog = new DisputesWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    disputesHeld.set({}, health.heldTotal);
+    disputesAged.set({}, health.heldAged);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -289,6 +308,7 @@ async function shutdown(signal: string): Promise<void> {
   reconciliationWatchdog.stop();
   payoutsWatchdog.stop();
   payoutsRedriver.stop();
+  disputesWatchdog.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -375,6 +395,12 @@ worker
       logger.info({ intervalMs: config.payoutsRedriver.intervalMs }, 'payouts redriver started');
     } else {
       logger.info({}, 'payouts redriver disabled by config (PAYOUTS_REDRIVER_ENABLED=false)');
+    }
+    if (config.disputesWatchdog.enabled) {
+      disputesWatchdog.start(config.disputesWatchdog.intervalMs);
+      logger.info({ intervalMs: config.disputesWatchdog.intervalMs }, 'disputes watchdog started');
+    } else {
+      logger.info({}, 'disputes watchdog disabled by config (DISPUTES_WATCHDOG_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);

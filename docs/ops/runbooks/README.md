@@ -27,6 +27,7 @@ Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya co
 | Chequeos de drift detenidos / Worker sin latido | `fluvia_ledger_projection_drift_checks_total`, `fluvia_worker_heartbeats_total` | ALTA | [`worker-down.md`](./worker-down.md) |
 | Eventos `dead` en outbox / inbox | `fluvia_outbox_relay_events_total{result="dead"}`, `fluvia_inbox_events_total{result="dead"}` | ALTA | [`outbox-inbox-stuck.md`](./outbox-inbox-stuck.md) |
 | Indeterminados envejecidos | `fluvia_payment_attempts_indeterminate_aged > 0` | ALTA | [`indeterminate-payment.md`](./indeterminate-payment.md) |
+| Disputas envejecidas | `fluvia_disputes_aged > 0` | ALTA | [`aged-disputes.md`](./aged-disputes.md) |
 | Discrepancias de conciliación | `fluvia_reconciliation_discrepancies_last > 0` | ALTA | [`reconciliation-discrepancy.md`](./reconciliation-discrepancy.md) |
 | Webhooks salientes `dead` | `fluvia_webhook_deliveries_total{result="dead"}` | MEDIA | [`webhook-dead-letter.md`](./webhook-dead-letter.md) |
 | (investigación transversal) | `audit_log` / panel «Eventos» | — | [`audit-investigation.md`](./audit-investigation.md) |
@@ -42,6 +43,7 @@ Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya co
 | `ledger-drift` | pendiente | property test `packages/ledger/test/drift.test.ts` ejerce rebuild bajo concurrencia |
 | `outbox-inbox-stuck` | pendiente | suites de `@fluvia/outbox`/`@fluvia/inbox` ejercen `dead` + replay auditado |
 | `indeterminate-payment` | pendiente | suites de `payments-core` ejercen los desenlaces + captura idempotente |
+| `aged-disputes` | pendiente | suites de `payments-core`/`worker` ejercen abrir→retener→resolver + salud del `DisputesWatchdog` (F4-10) |
 | `worker-down` | pendiente | — |
 | `audit-investigation` | ✅ ejercido de facto | el drill de conciliación verifica el rastro de auditoría (paso 8) |
 

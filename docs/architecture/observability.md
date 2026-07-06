@@ -60,6 +60,8 @@ de texto Prometheus 0.0.4). Reglas duras:
 | `fluvia_payouts_indeterminate_aged`           | gauge   | — (0 = sano; >30 min esperando resolución verificada)      |
 | `fluvia_payouts_requested_stuck`              | gauge   | — (0 = sano; requested cuyo execute nunca corrió, >5 min)  |
 | `fluvia_payouts_redriven_total`               | counter | `result` = `redriven` \| `failed` (F4-07e; requested atascado re-conducido) |
+| `fluvia_disputes_held`                        | gauge   | — (F4-10; disputas vivas open/under_review, fondos apartados en dispute.reserve) |
+| `fluvia_disputes_aged`                        | gauge   | — (0 = sano; disputa viva >7 días, riesgo de pérdida por no responder)      |
 
 ## 3. Correlación extremo a extremo (hoy)
 
@@ -81,6 +83,7 @@ identificador desde el cliente hasta la fila de auditoría.
 | Indeterminados envejecidos  | `fluvia_payment_attempts_indeterminate_aged > 0`                                      | ALTA      | Dinero en desenlace desconocido >30 min: consultar al proveedor o conciliar (V4 §23) — JAMÁS resolver por asunción                                        |
 | Payouts indeterminados envejecidos | `fluvia_payouts_indeterminate_aged > 0`                                        | ALTA      | Payout con fondos retenidos en tránsito, desenlace del banco desconocido >30 min: consultar al banco o conciliar (V4 §23) → `resolveFromProvider` — JAMÁS por asunción (F4-07c) |
 | Payouts requested atascados | `fluvia_payouts_requested_stuck > 0` sostenido varios ciclos                          | MEDIA     | El redriver (F4-07e) re-conduce estos payouts automáticamente (seguro: el banco jamás fue contactado); un gauge que NO baja pese a `increase(fluvia_payouts_redriven_total[5m])` implica un fallo repetido del re-drive (revisar `fluvia_payouts_redriven_total{result="failed"}` y el disponible del comercio) |
+| Disputas envejecidas        | `fluvia_disputes_aged > 0`                                                            | ALTA      | Disputa viva >7 días con fondos apartados en `dispute.reserve`: asegurar que la evidencia se envió (`POST /v1/disputes/:id/evidence`) y perseguir la resolución del banco antes de que venza el plazo — una disputa sin respuesta se PIERDE por defecto. El desenlace es SOLO por fuente verificada (V4 §23); el watchdog jamás la resuelve (runbook `aged-disputes.md`, F4-10) |
 | Webhooks salientes dead     | `increase(fluvia_webhook_deliveries_total{result="dead"}[15m]) > 0`                   | MEDIA     | Endpoint del comercio agotó el calendario de reintentos: revisar `webhook_attempts` (IP/status/error por intento); reenvío manual auditado llega en F3-09 |
 | Discrepancias de conciliación | `fluvia_reconciliation_discrepancies_last > 0` o `increase(fluvia_reconciliation_entries_total{status=~"amount_mismatch\|missing_in_ledger\|missing_at_provider"}[1h]) > 0` | ALTA | Dinero real sin cuadrar contra el reporte del proveedor: investigar por `reconciliation_entries` (F4-02) — JAMÁS corrección silenciosa (V4 §30) |
 | Worker sin latido           | `increase(fluvia_worker_heartbeats_total[5m]) == 0`                                   | ALTA      | Proceso caído o colgado                                                                                                                                   |
