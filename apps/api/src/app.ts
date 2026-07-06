@@ -9,6 +9,7 @@ import { CustomerService, type ApiKeyService, type IdentityService } from '@fluv
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService, WebhookEventService } from '@fluvia/webhooks';
+import { ReconciliationService } from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
   MockPaymentProvider,
@@ -31,6 +32,7 @@ import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
+import { registerSettlementRoutes } from './routes/settlements.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -239,6 +241,12 @@ export function buildApp({
     // eventos `dead` (plano de operación; primera acción del futuro dashboard).
     const webhookEventService = new WebhookEventService(appPool);
     registerWebhookEventRoutes(app, { security, webhookEventService });
+    // F4-01b: gestión de conciliación (plano de integración). Carga el reporte
+    // de liquidación del proveedor y dispara la conciliación.
+    registerSettlementRoutes(app, {
+      security,
+      reconciliationService: new ReconciliationService(appPool),
+    });
     // F3-09b-i: plano de LECTURA del dashboard (operador humano por sesión +
     // membresía, permiso payments:read). Reutiliza los servicios de arriba.
     registerDashboardRoutes(app, {

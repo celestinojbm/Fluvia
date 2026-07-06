@@ -289,6 +289,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // webhooks: cola + reenvío F3-09a
   WebhookEventNotFoundError: 'not_found',
   WebhookEventNotDeadError: 'invalid_state_transition',
+  // conciliación F4-01b
+  SettlementReportNotFoundError: 'not_found',
+  ReportAlreadyReconciledError: 'invalid_state_transition',
   InvalidStateTransitionError: 'invalid_state_transition',
   UnknownCurrencyError: 'validation_error',
   InvalidAmountError: 'validation_error',

@@ -59,6 +59,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/reconciliation':
+        specifier: workspace:*
+        version: link:../../packages/reconciliation
       '@fluvia/webhooks':
         specifier: workspace:*
         version: link:../../packages/webhooks

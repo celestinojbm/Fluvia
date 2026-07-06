@@ -204,6 +204,34 @@ export class ReconciliationService {
     });
   }
 
+  async listReports(tenantId: string, limit = 20): Promise<SettlementReportDto[]> {
+    const capped = Math.min(Math.max(Math.floor(limit), 1), 100);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<ReportRow>(
+        `SELECT id, provider, currency, period_start, period_end, status, created_at, reconciled_at
+         FROM settlement_reports ORDER BY created_at DESC, id LIMIT $1`,
+        [capped]
+      );
+      return res.rows.map(toReportDto);
+    });
+  }
+
+  /** Resumen de conciliación de un reporte (recuento por clase de discrepancia). */
+  async getSummary(tenantId: string, reportId: string): Promise<ReconciliationSummary> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const exists = await c.query(`SELECT 1 FROM settlement_reports WHERE id = $1`, [reportId]);
+      if ((exists.rowCount ?? 0) === 0) throw new SettlementReportNotFoundError();
+      const res = await c.query<{ status: ReconciliationStatus; n: string }>(
+        `SELECT status, count(*)::text AS n FROM reconciliation_entries
+         WHERE report_id = $1 GROUP BY status`,
+        [reportId]
+      );
+      const summary = emptySummary();
+      for (const row of res.rows) summary[row.status] = Number(row.n);
+      return summary;
+    });
+  }
+
   async getReport(tenantId: string, reportId: string): Promise<SettlementReportDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<ReportRow>(
