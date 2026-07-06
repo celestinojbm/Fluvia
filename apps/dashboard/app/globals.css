@@ -329,6 +329,38 @@ code {
   color: #ffffff; /* 6.4:1 invertido */
 }
 
+/* comercios (F4-04a) */
+.badge-frozen {
+  background: #fbeaea;
+  color: var(--bad);
+}
+.search {
+  margin: 0 0 1.25rem;
+}
+.search label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.search-row input[type='search'] {
+  flex: 1 1 16rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.search-row .btn {
+  margin-top: 0;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;

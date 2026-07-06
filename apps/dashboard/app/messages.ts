@@ -108,6 +108,20 @@ interface Messages {
   documentalNote: string;
   liveAdjustmentNote: string;
   requiredField: string;
+  // panel admin: comercios (F4-04a)
+  merchants: string;
+  merchantsTitle: string;
+  merchantsEmpty: string;
+  merchantsNoMatch: string;
+  searchLabel: string;
+  searchPlaceholder: string;
+  searchAction: string;
+  searchClear: string;
+  colName: string;
+  colCountry: string;
+  colCurrency: string;
+  merchantActive: string;
+  merchantFrozen: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -209,6 +223,19 @@ export const MESSAGES: Record<Locale, Messages> = {
     documentalNote: 'Resolver es documental — no mueve dinero. El ajuste monetario usa four-eyes.',
     liveAdjustmentNote: 'Ya existe un ajuste vivo para este caso.',
     requiredField: 'Requerido.',
+    merchants: 'Comercios',
+    merchantsTitle: 'Comercios',
+    merchantsEmpty: 'No hay comercios en esta organización.',
+    merchantsNoMatch: 'Ningún comercio coincide con la búsqueda.',
+    searchLabel: 'Buscar comercios',
+    searchPlaceholder: 'Nombre, ID, país o moneda',
+    searchAction: 'Buscar',
+    searchClear: 'Limpiar',
+    colName: 'Nombre',
+    colCountry: 'País',
+    colCurrency: 'Moneda',
+    merchantActive: 'Activo',
+    merchantFrozen: 'Congelado',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -309,6 +336,19 @@ export const MESSAGES: Record<Locale, Messages> = {
       'Resolving is documentary — it does not move money. Monetary adjustment uses four-eyes.',
     liveAdjustmentNote: 'This case already has an active adjustment.',
     requiredField: 'Required.',
+    merchants: 'Merchants',
+    merchantsTitle: 'Merchants',
+    merchantsEmpty: 'No merchants in this organization.',
+    merchantsNoMatch: 'No merchant matches the search.',
+    searchLabel: 'Search merchants',
+    searchPlaceholder: 'Name, ID, country or currency',
+    searchAction: 'Search',
+    searchClear: 'Clear',
+    colName: 'Name',
+    colCountry: 'Country',
+    colCurrency: 'Currency',
+    merchantActive: 'Active',
+    merchantFrozen: 'Frozen',
   },
 };
 

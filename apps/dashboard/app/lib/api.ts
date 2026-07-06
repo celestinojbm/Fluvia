@@ -262,3 +262,34 @@ export async function fetchDashboardData(
   ]);
   return { intents, refunds, sessions, links, webhookEvents };
 }
+
+// --- panel admin: comercios (F4-04a) ---
+export interface Merchant {
+  id: string;
+  name: string;
+  country: string;
+  defaultCurrency: string;
+  status: 'active' | 'frozen';
+  createdAt: string;
+}
+
+export async function fetchMerchants(opts: ClientOptions & { orgId: string }): Promise<Merchant[]> {
+  const body = await apiGet<{ merchants?: Merchant[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/merchants`
+  );
+  return body?.merchants ?? [];
+}
+
+/**
+ * «Buscar comercios»: filtro puro sobre la lista ya traída (la lista por org es
+ * pequeña). Casa por nombre, id, país o moneda, sin distinguir mayúsculas.
+ * Cadena vacía ⇒ todo. Testeable sin red ni navegador.
+ */
+export function filterMerchants(merchants: Merchant[], query: string | undefined): Merchant[] {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return merchants;
+  return merchants.filter((m) =>
+    [m.name, m.id, m.country, m.defaultCurrency].some((f) => f.toLowerCase().includes(q))
+  );
+}

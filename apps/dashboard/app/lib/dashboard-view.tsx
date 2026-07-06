@@ -102,6 +102,7 @@ export function DashboardView({
           <p className="org">{orgName}</p>
         </div>
         <nav className="dash-nav">
+          <a href={`/o/${orgId}/merchants`}>{t.merchants}</a>
           <a href={`/o/${orgId}/cases`}>{t.cases}</a>
           <a href={`/o/${orgId}/reconciliation`}>{t.reconciliation}</a>
           <a className="signout" href={signOutHref}>

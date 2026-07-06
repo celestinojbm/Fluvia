@@ -3,12 +3,15 @@ import {
   canManageReconciliation,
   canResendRole,
   fetchDashboardData,
+  fetchMerchants,
   fetchOperationalCase,
   fetchOperationalCases,
   fetchOrganizations,
+  filterMerchants,
   liveAdjustment,
   login,
   type CaseAdjustment,
+  type Merchant,
 } from '../app/lib/api';
 
 /**
@@ -159,6 +162,55 @@ function fakeFetch(status: number, body: unknown): typeof fetch {
     Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) })
   ) as unknown as typeof fetch;
 }
+
+function merchant(over: Partial<Merchant> = {}): Merchant {
+  return {
+    id: 'mer_abc',
+    name: 'Acme',
+    country: 'CO',
+    defaultCurrency: 'COP',
+    status: 'active',
+    createdAt: '2026-07-06T00:00:00Z',
+    ...over,
+  };
+}
+
+describe('fetchMerchants', () => {
+  it('returns the merchants list and degrades to [] on error', async () => {
+    const ok = await fetchMerchants({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(200, { merchants: [merchant()] }),
+    });
+    expect(ok).toHaveLength(1);
+    const bad = await fetchMerchants({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual([]);
+  });
+});
+
+describe('filterMerchants', () => {
+  const list = [
+    merchant({ id: 'mer_1', name: 'Tienda Norte', country: 'CO', defaultCurrency: 'COP' }),
+    merchant({ id: 'mer_2', name: 'Shop South', country: 'US', defaultCurrency: 'USD' }),
+  ];
+  it('returns everything for an empty/blank query', () => {
+    expect(filterMerchants(list, undefined)).toHaveLength(2);
+    expect(filterMerchants(list, '   ')).toHaveLength(2);
+  });
+  it('matches case-insensitively on name, id, country and currency', () => {
+    expect(filterMerchants(list, 'norte').map((m) => m.id)).toEqual(['mer_1']);
+    expect(filterMerchants(list, 'MER_2').map((m) => m.id)).toEqual(['mer_2']);
+    expect(filterMerchants(list, 'us').map((m) => m.id)).toEqual(['mer_2']);
+    expect(filterMerchants(list, 'cop').map((m) => m.id)).toEqual(['mer_1']);
+    expect(filterMerchants(list, 'nomatch')).toEqual([]);
+  });
+});
 
 describe('fetchOrganizations', () => {
   it('returns the memberships list', async () => {
