@@ -37,6 +37,13 @@ export interface RefundPaymentInput {
   chargeProviderRef: string | null;
 }
 
+export interface SubmitPayoutInput {
+  payoutId: string;
+  /** Unidades menores, como string decimal. */
+  amount: string;
+  currency: string;
+}
+
 export interface PaymentProvider {
   readonly name: string;
   submitPayment(input: SubmitPaymentInput): Promise<ProviderOutcome>;
@@ -47,6 +54,14 @@ export interface PaymentProvider {
    * Opcional: un adapter sin refunds hace fallar la config del RefundService.
    */
   refundPayment?(input: RefundPaymentInput): Promise<ProviderOutcome>;
+  /**
+   * Payout al banco del comercio (F4-07). Mismas reglas que submitPayment:
+   * SIEMPRE fuera de tx; un throw = desenlace DESCONOCIDO (el payout queda
+   * `indeterminate` con los fondos retenidos en tránsito hasta fuente
+   * verificada). Opcional: un adapter sin payouts hace fallar la config del
+   * PayoutService.
+   */
+  submitPayout?(input: SubmitPayoutInput): Promise<ProviderOutcome>;
 }
 
 export class ProviderTimeoutError extends Error {
@@ -106,6 +121,16 @@ export class MockPaymentProvider implements PaymentProvider {
    */
   refundPayment(input: RefundPaymentInput): Promise<ProviderOutcome> {
     const providerRef = `mockr_${createHash('sha256').update(input.refundId).digest('hex').slice(0, 24)}`;
+    return Promise.resolve({ outcome: 'approved', providerRef });
+  }
+
+  /**
+   * Payouts del sandbox: siempre aprobados (el banco confirma; las ramas
+   * declined/timeout/pending se prueban con adapters inyectados, como refunds).
+   * Deterministico: mismo payout -> misma referencia.
+   */
+  submitPayout(input: SubmitPayoutInput): Promise<ProviderOutcome> {
+    const providerRef = `mockp_${createHash('sha256').update(input.payoutId).digest('hex').slice(0, 24)}`;
     return Promise.resolve({ outcome: 'approved', providerRef });
   }
 }

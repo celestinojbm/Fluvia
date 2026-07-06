@@ -5,6 +5,8 @@ export {
   CHECKOUT_SESSION_TRANSITIONS,
   INTENT_STATUSES,
   INTENT_TRANSITIONS,
+  PAYOUT_STATUSES,
+  PAYOUT_TRANSITIONS,
   REFUND_STATUSES,
   REFUND_TRANSITIONS,
   canTransition,
@@ -13,15 +15,18 @@ export {
   type AttemptStatus,
   type CheckoutSessionStatus,
   type IntentStatus,
+  type PayoutStatus,
   type RefundStatus,
 } from './fsm.js';
 export {
   CheckoutSessionInvalidCustomerError,
   CheckoutSessionNotFoundError,
+  InsufficientPayoutBalanceError,
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
   PaymentLinkInvalidMerchantError,
   PaymentLinkNotFoundError,
+  PayoutNotFoundError,
   PaymentsCoreError,
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
@@ -54,10 +59,12 @@ export {
   type ProviderOutcome,
   type RefundPaymentInput,
   type SubmitPaymentInput,
+  type SubmitPayoutInput,
 } from './provider.js';
 export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';
 export { FlatBpsFeeSchedule, ZERO_FEE_SCHEDULE, type FeeSchedule } from './pricing.js';
 export { RefundService, type CreateRefundInput, type RefundDto } from './refunds.js';
+export { PayoutService, type CreatePayoutInput, type PayoutDto } from './payouts.js';
 export {
   CircuitOpenError,
   ResilientProvider,

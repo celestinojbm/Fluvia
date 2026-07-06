@@ -11,6 +11,8 @@ import {
   CHECKOUT_SESSION_TRANSITIONS,
   INTENT_STATUSES,
   INTENT_TRANSITIONS,
+  PAYOUT_STATUSES,
+  PAYOUT_TRANSITIONS,
   REFUND_STATUSES,
   REFUND_TRANSITIONS,
   transitionPairs,
@@ -55,6 +57,7 @@ let intentId: string;
 let attemptId: string;
 let refundId: string;
 let checkoutId: string;
+let payoutId: string;
 
 beforeAll(async () => {
   ctx = await createTestContext();
@@ -88,6 +91,12 @@ beforeAll(async () => {
     [org, intentId]
   );
   checkoutId = cs.rows[0]!.id;
+  const po = await ctx.admin.query<{ id: string }>(
+    `INSERT INTO payouts (tenant_id, merchant_id, amount, currency, provider)
+     VALUES ($1, $2, 100000, 'COP', 'mock') RETURNING id`,
+    [org, merchantId]
+  );
+  payoutId = po.rows[0]!.id;
 }, 30_000);
 
 afterAll(async () => {
@@ -109,6 +118,10 @@ describe('doc (mermaid) == mapa TS', () => {
 
   it('checkout session FSM matches §5 exactly (F3-05b)', () => {
     expect(transitionPairs(CHECKOUT_SESSION_TRANSITIONS)).toEqual(docPairs('5. Checkout Session'));
+  });
+
+  it('payout FSM matches §6 exactly (F4-07)', () => {
+    expect(transitionPairs(PAYOUT_TRANSITIONS)).toEqual(docPairs('6. Payout'));
   });
 });
 
@@ -153,6 +166,16 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
     );
   });
 
+  it('payout_transitions equals the TS map (F4-07)', async () => {
+    const res = await ctx.admin.query<{ from_status: string; to_status: string }>(
+      `SELECT from_status, to_status FROM payout_transitions
+       ORDER BY from_status, to_status`
+    );
+    expect(res.rows.map((r) => [r.from_status, r.to_status])).toEqual(
+      transitionPairs(PAYOUT_TRANSITIONS)
+    );
+  });
+
   it('the transition tables are immutable even for the superuser', async () => {
     await expect(
       ctx.admin.query(`DELETE FROM payment_intent_transitions WHERE from_status = 'created'`)
@@ -167,6 +190,9 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
     await expect(
       ctx.admin.query(`DELETE FROM checkout_session_transitions WHERE from_status = 'open'`)
+    ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
+    await expect(
+      ctx.admin.query(`DELETE FROM payout_transitions WHERE from_status = 'requested'`)
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   });
 });
@@ -230,5 +256,9 @@ describe('el MOTOR hace cumplir la matriz completa (superusuario incluido)', () 
       CHECKOUT_SESSION_STATUSES,
       CHECKOUT_SESSION_TRANSITIONS
     );
+  }, 60_000);
+
+  it('payouts: all 25 pairs behave exactly as the map dictates (F4-07)', async () => {
+    await assertEngineMatrix('payouts', payoutId, PAYOUT_STATUSES, PAYOUT_TRANSITIONS);
   }, 60_000);
 });

@@ -2,6 +2,7 @@ import {
   ATTEMPT_TRANSITIONS,
   CHECKOUT_SESSION_TRANSITIONS,
   INTENT_TRANSITIONS,
+  PAYOUT_TRANSITIONS,
   REFUND_TRANSITIONS,
   transitionPairs,
 } from '../src/fsm.js';
@@ -35,3 +36,7 @@ console.log(seed('refund_transitions', REFUND_TRANSITIONS));
 console.log();
 // eslint-disable-next-line no-console
 console.log(seed('checkout_session_transitions', CHECKOUT_SESSION_TRANSITIONS));
+// eslint-disable-next-line no-console
+console.log();
+// eslint-disable-next-line no-console
+console.log(seed('payout_transitions', PAYOUT_TRANSITIONS));

@@ -95,6 +95,36 @@ export const REFUND_TRANSITIONS: Record<RefundStatus, readonly RefundStatus[]> =
   canceled: [],
 };
 
+export const PAYOUT_STATUSES = [
+  'requested',
+  'in_transit',
+  'paid',
+  'failed',
+  'indeterminate',
+] as const;
+export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
+
+/**
+ * Payout (F4-07 — recurso gestionado sobre las primitivas contables de F4-05b).
+ * `requested` nace la solicitud; al EMITIR el disponible del comercio pasa a
+ * `in_transit` (`emitPayout`: available -> payout.in_transit, guard AUD-P1-010).
+ * `requested -> failed` cubre la carrera donde el disponible se drenó entre la
+ * validación y el emit (nunca se contactó al banco: desenlace CONOCIDO). Desde
+ * `in_transit`: `paid` (`settlePayout`: in_transit -> platform.cash, el banco
+ * confirma), `failed` (`failPayout`: in_transit -> available, el banco rebota,
+ * los fondos vuelven íntegros) o `indeterminate` (V4 §23: desenlace DESCONOCIDO
+ * tras llamar al banco — throw/timeout o aceptación asíncrona; los fondos quedan
+ * RETENIDOS en tránsito y SOLO una fuente verificada lo cierra). Terminales:
+ * `paid`, `failed`.
+ */
+export const PAYOUT_TRANSITIONS: Record<PayoutStatus, readonly PayoutStatus[]> = {
+  requested: ['in_transit', 'failed'],
+  in_transit: ['paid', 'failed', 'indeterminate'],
+  indeterminate: ['paid', 'failed'],
+  paid: [],
+  failed: [],
+};
+
 export const CHECKOUT_SESSION_STATUSES = ['open', 'completed', 'expired'] as const;
 export type CheckoutSessionStatus = (typeof CHECKOUT_SESSION_STATUSES)[number];
 

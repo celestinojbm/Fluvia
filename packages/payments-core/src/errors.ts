@@ -63,3 +63,25 @@ export class RefundAmountExceedsRemainingError extends PaymentsCoreError {
     );
   }
 }
+
+export class PayoutNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Payout not found');
+  }
+}
+
+/**
+ * F4-07: un payout jamás puede emitir más que el disponible del comercio (menos
+ * los payouts ya en vuelo). Pre-chequeo en fase 1; el guard AUD-P1-010 del motor
+ * es la protección atómica final. V4 Nivel A (conservador: jamás sobre-paga).
+ */
+export class InsufficientPayoutBalanceError extends PaymentsCoreError {
+  constructor(
+    readonly requested: string,
+    readonly available: string
+  ) {
+    super(
+      `Payout amount ${requested} exceeds the merchant's available balance ${available} (available minus in-flight payouts)`
+    );
+  }
+}

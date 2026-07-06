@@ -96,9 +96,23 @@ stateDiagram-v2
 
 `completed` cuando el payment intent asociado tiene éxito; `expired` por TTL (Nivel C, default 24 h). Un comprador que cancela se redirige a `cancel_url` pero la sesión sigue `open` hasta expirar (puede reintentar) — no hay estado `canceled` explícito. Protección de doble submit: la confirmación es idempotente por sesión. Terminales: `completed`, `expired`. FSM hecha cumplir EN el motor (migración 0022); el disparo de completed/expired y sus eventos `checkout_session.*` llegan con el flujo alojado (F3-05c).
 
-## 6. Settlement / Payout (abstracciones en Fase 4)
+## 6. Payout (F4-07 — recurso gestionado, money out)
 
-Settlement: `open → closing → settled`. Payout: `created → processing → succeeded | failed`, con `payout.in_transit` contable. Payouts reales bloqueados hasta gates aplicables (Nivel A).
+Estados: `requested`, `in_transit`, `paid`, `failed`, `indeterminate`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> requested
+    requested --> in_transit : emitPayout (available → in_transit)
+    requested --> failed : sin disponible (nunca se envió al banco)
+    in_transit --> paid : settlePayout (in_transit → platform.cash)
+    in_transit --> failed : failPayout (rebote; fondos de vuelta)
+    in_transit --> indeterminate : desenlace desconocido (throw/timeout/pending)
+    indeterminate --> paid : resolución verificada
+    indeterminate --> failed : resolución verificada
+```
+
+Sobre las primitivas contables de F4-05b (`emitPayout`/`settlePayout`/`failPayout`, `payout.in_transit` credit-normal). `requested → failed` cubre la carrera donde el disponible se drenó entre la validación y el emit — desenlace CONOCIDO, el banco jamás fue contactado. `indeterminate` (V4 §23, igual que attempts/refunds): tras llamar al banco el desenlace es DESCONOCIDO (throw/timeout o aceptación asíncrona `pending`); los fondos quedan RETENIDOS en tránsito y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (jamás por asunción). Terminales: `paid`, `failed`. FSM hecha cumplir EN el motor (migración 0033). Payouts públicos/reales siguen bloqueados hasta los gates aplicables (Nivel A); F4-07a es el motor en sandbox. Settlement (el lado de conciliación: `open → closing → settled`) es un concepto interno del reporte de liquidación, no una FSM materializada.
 
 ## 7. Implementación normativa
 
