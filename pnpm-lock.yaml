@@ -219,6 +219,9 @@ importers:
       '@fluvia/money':
         specifier: workspace:*
         version: link:../../packages/money
+      '@fluvia/reconciliation':
+        specifier: workspace:*
+        version: link:../../packages/reconciliation
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.0

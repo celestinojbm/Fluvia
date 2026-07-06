@@ -25,11 +25,11 @@ Cada discrepancia crea un `reconciliation_item` → `operational_case` con sever
 ## 4. Cadencia
 
 - Continua: invariantes internas y drift de proyecciones (alerta < 5 min).
-- Programada: batch contra reportes del proveedor (diaria en sandbox).
+- Programada: batch contra reportes del proveedor (diaria en sandbox). **F4-02**: el `ReconciliationWatchdog` del worker invoca `sweep_settlement_reports()` (0028, SECURITY DEFINER, EXECUTE solo para `fluvia_worker`) en un intervalo y concilia automáticamente los reportes cuyo periodo YA CERRÓ (`open` + `period_end <= now()`) — la conciliación pasa de "a demanda" (F4-01b) a "continua". Idempotente con la conciliación manual (ambas bajo el guard `status='open'`), lease vía `FOR UPDATE SKIP LOCKED`, clasificación idéntica al motor per-tenant; toda discrepancia levanta alerta (`observability.md` §4).
 - Bajo demanda: por operación desde el panel admin (investigación).
 
 Un recálculo nocturno **no** es la única defensa (V4 §30): las invariantes internas corren continuamente.
 
 ## 5. Gate Conciliación (§51)
 
-Prueba obligatoria: archivo simulado con discrepancias conocidas → produce exactamente los casos esperados, ninguna corrección silenciosa, evidencia de resolución trazable. Implementación y evidencia en Fase 4 (F4-01/F4-02 del backlog).
+Prueba obligatoria: archivo simulado con discrepancias conocidas → produce exactamente los casos esperados, ninguna corrección silenciosa, evidencia de resolución trazable. Implementación y evidencia en Fase 4 (F4-01/F4-02 del backlog). F4-01 (motor + API + vista) y F4-02 (barrido continuo del worker) ya producen las 4 clases de discrepancia contra PG real; los `operational_case`/four-eyes de resolución quedan para F4-03.

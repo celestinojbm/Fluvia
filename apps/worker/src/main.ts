@@ -16,6 +16,7 @@ import {
 } from '@fluvia/payments-core';
 import { AttemptsWatchdog } from './attempts-watchdog.js';
 import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
+import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -95,6 +96,19 @@ const checkoutSweptTotal = registry.counter(
   'Sesiones de checkout barridas por el watchdog (entrega garantizada)',
   ['result']
 );
+const reportsReconciledTotal = registry.counter(
+  'fluvia_settlement_reports_reconciled_total',
+  'Reportes de liquidación conciliados por el watchdog (periodo cerrado)'
+);
+const reconciliationEntriesTotal = registry.counter(
+  'fluvia_reconciliation_entries_total',
+  'Entries de conciliación producidos por el watchdog, por resultado',
+  ['status']
+);
+const reconciliationDiscrepancies = registry.gauge(
+  'fluvia_reconciliation_discrepancies_last',
+  'Discrepancias detectadas en el último barrido de conciliación (0 = cuadrado)'
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -168,6 +182,21 @@ const checkoutWatchdog = new CheckoutSessionWatchdog(workerPool, logger, {
     if (r.expired > 0) checkoutSweptTotal.inc({ result: 'expired' }, r.expired);
   },
 });
+// F4-02: conciliación continua. La politica vive en sweep_settlement_reports()
+// (0028); el job la invoca, expone metricas y ALERTA ante discrepancias.
+const reconciliationWatchdog = new ReconciliationWatchdog(workerPool, logger, {
+  onResult: (r) => {
+    if (r.reportsReconciled > 0) reportsReconciledTotal.inc({}, r.reportsReconciled);
+    if (r.matched > 0) reconciliationEntriesTotal.inc({ status: 'matched' }, r.matched);
+    if (r.amountMismatch > 0)
+      reconciliationEntriesTotal.inc({ status: 'amount_mismatch' }, r.amountMismatch);
+    if (r.missingInLedger > 0)
+      reconciliationEntriesTotal.inc({ status: 'missing_in_ledger' }, r.missingInLedger);
+    if (r.missingAtProvider > 0)
+      reconciliationEntriesTotal.inc({ status: 'missing_at_provider' }, r.missingAtProvider);
+    reconciliationDiscrepancies.set({}, discrepancyCount(r));
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -195,6 +224,7 @@ async function shutdown(signal: string): Promise<void> {
   inboxProcessor.stop();
   attemptsWatchdog.stop();
   checkoutWatchdog.stop();
+  reconciliationWatchdog.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -257,6 +287,18 @@ worker
       logger.info({ intervalMs: config.checkoutWatchdog.intervalMs }, 'checkout watchdog started');
     } else {
       logger.info({}, 'checkout watchdog disabled by config (CHECKOUT_WATCHDOG_ENABLED=false)');
+    }
+    if (config.reconciliationWatchdog.enabled) {
+      reconciliationWatchdog.start(config.reconciliationWatchdog.intervalMs);
+      logger.info(
+        { intervalMs: config.reconciliationWatchdog.intervalMs },
+        'reconciliation watchdog started'
+      );
+    } else {
+      logger.info(
+        {},
+        'reconciliation watchdog disabled by config (RECONCILIATION_WATCHDOG_ENABLED=false)'
+      );
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);

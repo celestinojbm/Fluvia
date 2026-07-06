@@ -29,6 +29,7 @@
   "devDependencies": {
     "@fluvia/events": "workspace:*",
     "@fluvia/money": "workspace:*",
+    "@fluvia/reconciliation": "workspace:*",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
