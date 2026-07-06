@@ -28,6 +28,18 @@ export function canResendRole(role: string | undefined): boolean {
   return role !== undefined && RESEND_ROLES.has(role);
 }
 
+/**
+ * Roles que pueden GOBERNAR la conciliación (permiso RBAC `reconciliation:manage`;
+ * espeja `ROLE_PERMISSIONS` en @fluvia/identity: owner/admin/finance). Como
+ * `canResendRole`, es solo una PISTA de UX — el API es la fuente de verdad y
+ * rechaza (403 `insufficient_permissions`) a quien no lo tenga. Autorizar dinero
+ * es un acto humano: una API key jamás alcanza este plano.
+ */
+const RECONCILIATION_MANAGE_ROLES = new Set(['owner', 'admin', 'finance']);
+export function canManageReconciliation(role: string | undefined): boolean {
+  return role !== undefined && RECONCILIATION_MANAGE_ROLES.has(role);
+}
+
 export type LoginResult =
   | { ok: true; sessionToken: string }
   | { ok: false; mfaRequired: true }
@@ -151,6 +163,83 @@ export async function fetchReconciliationEntries(
     `/v1/organizations/${encodeURIComponent(opts.orgId)}/settlement_reports/${encodeURIComponent(opts.reportId)}/entries${q}`
   );
   return body?.data ?? [];
+}
+
+// --- casos operativos + ajustes con four-eyes (F4-03c-ii) ---
+export type CaseStatus = 'open' | 'acknowledged' | 'resolved';
+export type CaseSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type AdjustmentDirection = 'debit_differences' | 'credit_differences';
+export type AdjustmentStatus = 'proposed' | 'applied' | 'rejected';
+
+export interface OperationalCase {
+  id: string;
+  case_type: string;
+  severity: CaseSeverity;
+  status: CaseStatus;
+  reconciliation_entry_id: string;
+  report_id: string | null;
+  provider: string | null;
+  provider_ref: string | null;
+  discrepancy_status: string | null;
+  ledger_amount: number | null;
+  provider_amount: number | null;
+  assignee_user_id: string | null;
+  resolution: string | null;
+  resolved_by_user_id: string | null;
+  version: number;
+  created_at: string;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface CaseAdjustment {
+  id: string;
+  case_id: string;
+  amount: number;
+  currency: string;
+  direction: AdjustmentDirection;
+  reason: string;
+  status: AdjustmentStatus;
+  requires_second_approval: boolean;
+  proposed_by_user_id: string;
+  approved_by_user_id: string | null;
+  rejected_by_user_id: string | null;
+  rejection_reason: string | null;
+  ledger_transaction_id: string | null;
+  version: number;
+  created_at: string;
+  decided_at: string | null;
+}
+
+/** El detalle de un caso trae sus ajustes embebidos (como la ruta de sesión). */
+export type OperationalCaseDetail = OperationalCase & { adjustments: CaseAdjustment[] };
+
+export async function fetchOperationalCases(
+  opts: ClientOptions & { orgId: string; status?: CaseStatus; severity?: CaseSeverity }
+): Promise<OperationalCase[]> {
+  const params = new URLSearchParams({ limit: '200' });
+  if (opts.status) params.set('status', opts.status);
+  if (opts.severity) params.set('severity', opts.severity);
+  const body = await apiGet<{ data?: OperationalCase[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/operational_cases?${params.toString()}`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchOperationalCase(
+  opts: ClientOptions & { orgId: string; caseId: string }
+): Promise<OperationalCaseDetail | null> {
+  return apiGet<OperationalCaseDetail>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/operational_cases/${encodeURIComponent(opts.caseId)}`
+  );
+}
+
+/** ¿Hay un ajuste VIVO (proposed/applied)? Bloquea proponer otro (índice único
+ * parcial en la BD `WHERE status<>'rejected'`); la UI oculta el formulario. */
+export function liveAdjustment(adjustments: CaseAdjustment[]): CaseAdjustment | undefined {
+  return adjustments.find((a) => a.status !== 'rejected');
 }
 
 /**

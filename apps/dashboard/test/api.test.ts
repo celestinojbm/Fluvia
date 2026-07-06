@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { canResendRole, fetchDashboardData, fetchOrganizations, login } from '../app/lib/api';
+import {
+  canManageReconciliation,
+  canResendRole,
+  fetchDashboardData,
+  fetchOperationalCase,
+  fetchOperationalCases,
+  fetchOrganizations,
+  liveAdjustment,
+  login,
+  type CaseAdjustment,
+} from '../app/lib/api';
 
 /**
  * F3-09b — lógica pura del cliente de la API (server-side), probada en CI sin
@@ -62,6 +72,93 @@ describe('canResendRole', () => {
     }
   });
 });
+
+describe('canManageReconciliation', () => {
+  it('allows money-governing roles (owner/admin/finance) and rejects the rest', () => {
+    // Espeja ROLE_PERMISSIONS de @fluvia/identity: reconciliation:manage.
+    for (const r of ['owner', 'admin', 'finance']) expect(canManageReconciliation(r)).toBe(true);
+    for (const r of ['developer', 'read_only', 'support', undefined]) {
+      expect(canManageReconciliation(r)).toBe(false);
+    }
+  });
+});
+
+function adj(status: CaseAdjustment['status']): CaseAdjustment {
+  return {
+    id: `adj_${status}`,
+    case_id: 'c1',
+    amount: 9_000,
+    currency: 'COP',
+    direction: 'debit_differences',
+    reason: 'r',
+    status,
+    requires_second_approval: true,
+    proposed_by_user_id: 'u1',
+    approved_by_user_id: null,
+    rejected_by_user_id: null,
+    rejection_reason: null,
+    ledger_transaction_id: null,
+    version: 1,
+    created_at: '2026-07-06T00:00:00Z',
+    decided_at: null,
+  };
+}
+
+describe('liveAdjustment', () => {
+  it('finds a proposed/applied adjustment but ignores rejected ones', () => {
+    expect(liveAdjustment([adj('rejected')])).toBeUndefined();
+    expect(liveAdjustment([adj('rejected'), adj('proposed')])?.status).toBe('proposed');
+    expect(liveAdjustment([adj('applied')])?.status).toBe('applied');
+    expect(liveAdjustment([])).toBeUndefined();
+  });
+});
+
+describe('operational cases fetchers', () => {
+  it('fetchOperationalCases passes status/severity filters and degrades to []', async () => {
+    const spy = fakeFetch(200, { data: [{ id: 'case_1' }] });
+    const ok = await fetchOperationalCases({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      status: 'open',
+      fetchImpl: spy,
+    });
+    expect(ok).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('status=open'), expect.anything());
+    const bad = await fetchOperationalCases({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual([]);
+  });
+
+  it('fetchOperationalCase returns the detail and null on error', async () => {
+    const ok = await fetchOperationalCase({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      caseId: 'case_1',
+      fetchImpl: fakeFetch(200, { id: 'case_1', adjustments: [] }),
+    });
+    expect(ok?.id).toBe('case_1');
+    const missing = await fetchOperationalCase({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      caseId: 'nope',
+      fetchImpl: fakeFetch(404, {}),
+    });
+    expect(missing).toBeNull();
+  });
+});
+
+function fakeFetch(status: number, body: unknown): typeof fetch {
+  return vi.fn(() =>
+    Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) })
+  ) as unknown as typeof fetch;
+}
 
 describe('fetchOrganizations', () => {
   it('returns the memberships list', async () => {
