@@ -1,0 +1,12 @@
+# El build instala dependencias dentro de la imagen: nunca copiar node_modules
+# (arquitectura/host equivocados) ni artefactos generados.
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+**/.env
+**/.env.*
+**/coverage

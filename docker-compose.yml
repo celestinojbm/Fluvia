@@ -2,6 +2,25 @@
 # Postgres es la fuente de verdad (ledger, outbox, idempotencia).
 # Redis queda reservado para cache/rate-limiting; NUNCA para eventos criticos
 # (ver docs/Architecture/Concurrency_Model.md — patron Transactional Outbox).
+#
+# `docker compose up` levanta SOLO la infra (para correr los apps en el host).
+# `docker compose --profile app up --build` levanta el stack completo:
+# migraciones -> API + worker, cableados a los roles de minimo privilegio.
+# El profile `app` es de DESARROLLO: usa las contrasenas de rol de local
+# (F3-11b); en cloud, cada servicio recibe credenciales gestionadas por entorno.
+
+# Env de BD compartida por migrate/api/worker (host = servicio `postgres`).
+x-db-env: &db-env
+  NODE_ENV: local
+  ADMIN_DATABASE_URL: postgres://postgres:postgres@postgres:5432/fluvia
+  APP_DATABASE_URL: postgres://fluvia_app:fluvia_app_dev_password@postgres:5432/fluvia
+  WORKER_DATABASE_URL: postgres://fluvia_worker:fluvia_worker_dev_password@postgres:5432/fluvia
+  RELAY_DATABASE_URL: postgres://fluvia_relay:fluvia_relay_dev_password@postgres:5432/fluvia
+  AUTH_DATABASE_URL: postgres://fluvia_auth:fluvia_auth_dev_password@postgres:5432/fluvia
+  INBOX_DATABASE_URL: postgres://fluvia_inbox:fluvia_inbox_dev_password@postgres:5432/fluvia
+  WEBHOOK_DATABASE_URL: postgres://fluvia_webhook:fluvia_webhook_dev_password@postgres:5432/fluvia
+  REDIS_URL: redis://redis:6379
+
 services:
   postgres:
     image: postgres:16
@@ -23,6 +42,55 @@ services:
     image: redis:7
     ports:
       - '6379:6379'
+
+  # Migraciones idempotentes: crea roles (minimo privilegio) + esquema. Corre
+  # una vez y termina; api/worker esperan a que complete con exito.
+  migrate:
+    profiles: ['app']
+    build:
+      context: .
+    image: fluvia-backend
+    environment:
+      <<: *db-env
+    command: ['pnpm', '--filter', '@fluvia/db', 'migrate']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    profiles: ['app']
+    build:
+      context: .
+    image: fluvia-backend
+    environment:
+      <<: *db-env
+      PORT: '3000'
+      LOG_LEVEL: info
+    command: ['pnpm', '--filter', '@fluvia/api', 'start']
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    profiles: ['app']
+    build:
+      context: .
+    image: fluvia-backend
+    environment:
+      <<: *db-env
+      WORKER_METRICS_PORT: '9464'
+      LOG_LEVEL: info
+    command: ['pnpm', '--filter', '@fluvia/worker', 'start']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
