@@ -9,7 +9,7 @@ import { CustomerService, type ApiKeyService, type IdentityService } from '@fluv
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService, WebhookEventService } from '@fluvia/webhooks';
-import { ReconciliationService } from '@fluvia/reconciliation';
+import { OperationalCaseService, ReconciliationService } from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
   MockPaymentProvider,
@@ -33,6 +33,7 @@ import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
+import { registerCaseRoutes } from './routes/cases.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
@@ -245,6 +246,11 @@ export function buildApp({
     // de liquidación del proveedor y dispara la conciliación.
     const reconciliationService = new ReconciliationService(appPool);
     registerSettlementRoutes(app, { security, reconciliationService });
+    // F4-03a: casos operativos — cada discrepancia se materializa como un caso
+    // (trigger 0029); aquí se listan y se gobierna su ciclo (documental, sin
+    // mover dinero — el ajuste con four-eyes es F4-03b).
+    const operationalCaseService = new OperationalCaseService(appPool);
+    registerCaseRoutes(app, { security, operationalCaseService });
     // F3-09b-i: plano de LECTURA del dashboard (operador humano por sesión +
     // membresía, permiso payments:read). Reutiliza los servicios de arriba.
     registerDashboardRoutes(app, {

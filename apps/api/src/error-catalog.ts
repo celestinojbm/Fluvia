@@ -292,6 +292,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // conciliación F4-01b
   SettlementReportNotFoundError: 'not_found',
   ReportAlreadyReconciledError: 'invalid_state_transition',
+  // casos operativos F4-03a
+  OperationalCaseNotFoundError: 'not_found',
+  InvalidCaseTransitionError: 'invalid_state_transition',
   InvalidStateTransitionError: 'invalid_state_transition',
   UnknownCurrencyError: 'validation_error',
   InvalidAmountError: 'validation_error',

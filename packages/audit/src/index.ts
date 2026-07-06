@@ -30,6 +30,8 @@ export const AUDIT_ACTIONS = [
   'platform.technical_purge',
   'payment_attempt.swept_indeterminate',
   'webhook_event.resent',
+  'operational_case.acknowledged',
+  'operational_case.resolved',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

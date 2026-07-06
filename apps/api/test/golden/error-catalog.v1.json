@@ -225,6 +225,8 @@
     "WebhookEventNotDeadError": "invalid_state_transition",
     "SettlementReportNotFoundError": "not_found",
     "ReportAlreadyReconciledError": "invalid_state_transition",
+    "OperationalCaseNotFoundError": "not_found",
+    "InvalidCaseTransitionError": "invalid_state_transition",
     "InvalidStateTransitionError": "invalid_state_transition",
     "UnknownCurrencyError": "validation_error",
     "InvalidAmountError": "validation_error",

@@ -22,6 +22,8 @@ Tres planos que deben contar la misma historia:
 
 Cada discrepancia crea un `reconciliation_item` → `operational_case` con severidad, dueño, evidencia (payloads/asientos vinculados), estado y resolución. **Prohibida la corrección silenciosa**: todo ajuste pasa por asiento en `recon.differences` con caso, razón, actor y aprobación (four-eyes para montos sobre umbral, Nivel C).
 
+**F4-03a** implementa la materialización: un trigger `AFTER INSERT` sobre `reconciliation_entries` (0029) crea un `operational_case` por cada entry `!= matched`, para AMBAS vías de conciliación (motor per-tenant F4-01a y barrido F4-02) sin duplicar lógica y de forma atómica. Severidad por clase: `missing_in_ledger` → **critical** (el proveedor liquidó dinero que Fluvia no ve), `amount_mismatch`/`missing_at_provider` → **high**. Ciclo de vida `open → acknowledged → resolved` con `OperationalCaseService` (RLS por tenant, auditoría `operational_case.*` por transición). **Resolver es DOCUMENTAL — NO mueve dinero**: registra la disposición del operador. El ajuste monetario (asiento compensatorio) con **four-eyes** sobre umbral es un incremento aparte (**F4-03b**): ni la IA ni la automatización autorizan dinero real por sí solas.
+
 ## 4. Cadencia
 
 - Continua: invariantes internas y drift de proyecciones (alerta < 5 min).
