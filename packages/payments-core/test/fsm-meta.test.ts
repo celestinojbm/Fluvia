@@ -167,13 +167,18 @@ describe('mapa TS == tablas DDL (seed generado)', () => {
   });
 
   it('payout_transitions equals the TS map (F4-07)', async () => {
+    // Ordenar en JS con el MISMO comparador que transitionPairs (localeCompare):
+    // el `ORDER BY` de Postgres y localeCompare de Node discrepan en
+    // 'in_transit' vs 'indeterminate' según el collation de la BD (el guion bajo
+    // ordena antes de las letras en C.UTF-8 pero después en glibc/en_US). El test
+    // compara CONJUNTOS de transiciones, no el orden del collation de turno.
     const res = await ctx.admin.query<{ from_status: string; to_status: string }>(
-      `SELECT from_status, to_status FROM payout_transitions
-       ORDER BY from_status, to_status`
+      `SELECT from_status, to_status FROM payout_transitions`
     );
-    expect(res.rows.map((r) => [r.from_status, r.to_status])).toEqual(
-      transitionPairs(PAYOUT_TRANSITIONS)
-    );
+    const rows = res.rows
+      .map((r): [string, string] => [r.from_status, r.to_status])
+      .sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+    expect(rows).toEqual(transitionPairs(PAYOUT_TRANSITIONS));
   });
 
   it('the transition tables are immutable even for the superuser', async () => {
