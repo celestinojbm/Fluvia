@@ -162,6 +162,11 @@
       "type": "unprocessable_error",
       "message": "The refund amount exceeds the remaining refundable amount for this payment"
     },
+    "payout_amount_exceeds_balance": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The payout amount exceeds the merchant's available balance"
+    },
     "mfa_already_enabled": {
       "status": 409,
       "type": "conflict_error",
@@ -219,6 +224,8 @@
     "PaymentIntentNotFoundError": "not_found",
     "RefundNotFoundError": "not_found",
     "RefundAmountExceedsRemainingError": "refund_amount_exceeds_remaining",
+    "PayoutNotFoundError": "not_found",
+    "InsufficientPayoutBalanceError": "payout_amount_exceeds_balance",
     "CheckoutSessionNotFoundError": "not_found",
     "CheckoutSessionInvalidCustomerError": "validation_error",
     "PaymentLinkNotFoundError": "not_found",

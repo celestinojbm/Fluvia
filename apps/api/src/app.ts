@@ -21,6 +21,7 @@ import {
   PaymentConfirmationService,
   PaymentIntentService,
   PaymentLinkService,
+  PayoutService,
   RefundService,
   ResilientProvider,
 } from '@fluvia/payments-core';
@@ -30,6 +31,7 @@ import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
+import { registerPayoutRoutes } from './routes/payouts.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerPaymentLinkRoutes } from './routes/payment-links.js';
@@ -210,6 +212,10 @@ export function buildApp({
       provider
     );
     registerRefundRoutes(app, { security, idempotencyService, refundService });
+    // F4-07b: payouts como recurso (money out) sobre el motor de F4-07a. Mismo
+    // circuito/timeout que el resto (provider resiliente); sandbox, sin exponer.
+    const payoutService = new PayoutService(appPool, postingService, provider);
+    registerPayoutRoutes(app, { security, idempotencyService, payoutService });
     // F3-05a: customers (plano de integracion; primer consumidor = checkout).
     registerCustomerRoutes(app, {
       security,

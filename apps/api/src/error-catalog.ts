@@ -209,6 +209,11 @@ export const ERROR_CATALOG = {
     type: 'unprocessable_error',
     message: 'The refund amount exceeds the remaining refundable amount for this payment',
   },
+  payout_amount_exceeds_balance: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: "The payout amount exceeds the merchant's available balance",
+  },
   mfa_already_enabled: {
     status: 409,
     type: 'conflict_error',
@@ -281,6 +286,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // refunds F3-08
   RefundNotFoundError: 'not_found',
   RefundAmountExceedsRemainingError: 'refund_amount_exceeds_remaining',
+  // payouts F4-07
+  PayoutNotFoundError: 'not_found',
+  InsufficientPayoutBalanceError: 'payout_amount_exceeds_balance',
   // checkout sessions F3-05b
   CheckoutSessionNotFoundError: 'not_found',
   CheckoutSessionInvalidCustomerError: 'validation_error',
