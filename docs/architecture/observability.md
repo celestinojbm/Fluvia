@@ -65,6 +65,8 @@ identificador desde el cliente hasta la fila de auditoría.
 
 ## 4. Alertas baseline (reglas para el scraper que exista)
 
+> Cada alerta de esta tabla tiene su **runbook** (diagnóstico → resolución → verificación) en [`docs/ops/runbooks/`](../ops/runbooks/README.md) (F4-06a). La columna «Acción» es el resumen; el runbook es el procedimiento.
+
 | Alerta                      | Expresión (PromQL orientativo)                                                        | Severidad | Acción                                                                                                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Drift contable              | `fluvia_ledger_projection_drift_accounts > 0`                                         | CRÍTICA   | Incidente: investigar ANTES de cualquier rebuild (V4 §30; la reparación es siempre explícita)                                                             |

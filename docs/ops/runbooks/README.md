@@ -1,0 +1,36 @@
+# Runbooks operativos
+
+Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya construido**. Cada runbook está anclado a métricas, endpoints y flujos reales del código (sin procedimientos genéricos ni capacidades simuladas — V4 Nivel A).
+
+> **Regla de oro (V4 §30 + `incident-response.md`)**: el dinero se corrige SOLO por los caminos sancionados — compensaciones/ajustes con caso, replay auditado de outbox/inbox, rebuild explícito de proyecciones. **Nunca SQL manual sobre datos financieros; nunca corrección silenciosa.** El ledger y el `audit_log` son append-only precisamente para esto. Si un ajuste toca dinero real sobre umbral, exige **four-eyes** y queda auditado.
+
+## Cómo usar estos runbooks
+
+1. Parte de la **alerta** (`observability.md` §4) o del **síntoma** reportado.
+2. Localiza el runbook por la tabla de abajo.
+3. Sigue **Diagnóstico → Resolución → Verificación**. No saltes el diagnóstico: varias alertas exigen investigar **antes** de reparar (drift, discrepancias).
+4. Toda acción de operación queda en el `audit_log`; consúltalo en el panel (**Eventos**, `audit-investigation.md`).
+
+## Severidad (espeja `incident-response.md`)
+
+| Sev | Definición | Runbooks |
+| --- | --- | --- |
+| **SEV-1** | Integridad financiera o aislamiento comprometidos | `ledger-drift`, discrepancia no explicada, asiento desbalanceado |
+| **SEV-2** | Degradación grave sin corrupción | `outbox-inbox-stuck`, `indeterminate-payment`, `worker-down` |
+| **SEV-3** | Degradación parcial | `webhook-dead-letter`, latencia/DLQ con causa conocida |
+
+## Índice: alerta → runbook
+
+| Alerta (`observability.md` §4) | Métrica | Sev | Runbook |
+| --- | --- | --- | --- |
+| Drift contable | `fluvia_ledger_projection_drift_accounts > 0` | CRÍTICA | [`ledger-drift.md`](./ledger-drift.md) |
+| Chequeos de drift detenidos / Worker sin latido | `fluvia_ledger_projection_drift_checks_total`, `fluvia_worker_heartbeats_total` | ALTA | [`worker-down.md`](./worker-down.md) |
+| Eventos `dead` en outbox / inbox | `fluvia_outbox_relay_events_total{result="dead"}`, `fluvia_inbox_events_total{result="dead"}` | ALTA | [`outbox-inbox-stuck.md`](./outbox-inbox-stuck.md) |
+| Indeterminados envejecidos | `fluvia_payment_attempts_indeterminate_aged > 0` | ALTA | [`indeterminate-payment.md`](./indeterminate-payment.md) |
+| Discrepancias de conciliación | `fluvia_reconciliation_discrepancies_last > 0` | ALTA | [`reconciliation-discrepancy.md`](./reconciliation-discrepancy.md) |
+| Webhooks salientes `dead` | `fluvia_webhook_deliveries_total{result="dead"}` | MEDIA | [`webhook-dead-letter.md`](./webhook-dead-letter.md) |
+| (investigación transversal) | `audit_log` / panel «Eventos» | — | [`audit-investigation.md`](./audit-investigation.md) |
+
+## Estado de drill (F4-06b)
+
+«Runbooks probados en drill» es el criterio de salida de la Fase 4 (`phase-plan.md`). El estado de ejecución en drill de cada runbook se registra en cada archivo (sección **Drill**) y en `docs/audits/audit-closure-register-v1.md` con su evidencia. F4-06a entrega los procedimientos; F4-06b ejecuta y evidencia los drills.

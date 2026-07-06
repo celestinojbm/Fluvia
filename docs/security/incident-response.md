@@ -2,6 +2,8 @@
 
 Estado: Versión inicial · Fase: 0 · Se convierte en runbook operativo con on-call en F4/F6
 
+> **Runbooks operativos por alerta**: [`docs/ops/runbooks/`](../ops/runbooks/README.md) (F4-06a) — procedimientos paso a paso (diagnóstico → resolución → verificación) para discrepancias de conciliación, drift contable, eventos `dead` de outbox/inbox, pagos indeterminados, webhooks `dead`, worker caído e investigación por auditoría. Este documento fija la clasificación de severidad y el procedimiento general; los runbooks lo concretan por síntoma.
+
 ## Clasificación
 
 | Sev | Definición | Ejemplos |
