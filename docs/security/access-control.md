@@ -28,12 +28,15 @@ Implementado: registro con verificación de email (token un solo uso, hash en BD
 | audit:read      |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |
 | payments:read   |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
 | webhooks:manage |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
+| reconciliation:manage | ✅ | ✅ |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
 
 El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda a celda; un cambio en código sin actualizar la matriz esperada rompe CI. La matriz crecerá con cada dominio nuevo (pagos, refunds, webhooks) en el mismo PR que exponga los endpoints.
 
 **`payments:read` (F3-09b)**: lectura del plano de OPERACIÓN (dashboard del comercio) — payment intents, refunds, checkout sessions, payment links y la cola de webhooks, bajo `/v1/organizations/:orgId/*` (sesión + membresía, RLS por tenant). Es dato de tenant de solo lectura, así que lo tiene TODO rol (todos ya tienen `org:read`).
 
 **`webhooks:manage` (F3-09b-iii)**: acción de OPERACIÓN sobre webhooks (reenvío de eventos `dead`) por SESIÓN, bajo `POST /v1/organizations/:orgId/webhook_events/:id/resend`. Espeja el scope de API key homónimo (son enums distintos — permiso RBAC vs scope de API key — que representan la misma capacidad en planos de auth distintos). Solo lo tienen los roles que gestionan la integración (owner/admin/developer); el resto del plano de operador es de solo lectura.
+
+**`reconciliation:manage` (F4-03c)**: operación de conciliación por SESIÓN — trabajar casos (`operational_cases`: acknowledge/resolve) y **AUTORIZAR ajustes monetarios** con **four-eyes** (`case_adjustments`: proponer/aprobar/rechazar), bajo `/v1/organizations/:orgId/operational_cases/*` y `/case_adjustments/*`. Solo roles que gobiernan el dinero/conciliación (owner/admin/finance). **El four-eyes (aprobador ≠ proponente sobre umbral) NO se modela como permiso** — se exige por IDENTIDAD de usuario en el servicio y por CHECK en la BD (0030): dos personas distintas *con este permiso* deben intervenir. Autorizar dinero exige actor humano (una API key jamás alcanza este plano).
 
 **Scopes de API keys (integración)**: `read`, `payments:write`, `customers:write`, `webhooks:manage`. Deliberadamente **no existe** scope de gestión de API keys: una key robada no puede crear más keys ni escalar — la gestión es exclusiva del plano de sesión con rol (`keys:manage`).
 

@@ -32,6 +32,11 @@ export const PERMISSIONS = [
   // por SESIÓN. Espeja el scope de API key homónimo en el plano de sesión; solo
   // roles que gestionan la integración (owner/admin/developer).
   'webhooks:manage',
+  // F4-03c: operación de conciliación por SESIÓN — trabajar casos (ack/resolve)
+  // y AUTORIZAR ajustes monetarios (proponer/aprobar/rechazar). El four-eyes
+  // (aprobador != proponente) se exige por identidad, no por permiso. Solo roles
+  // que gobiernan el dinero/conciliación (owner/admin/finance).
+  'reconciliation:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -56,6 +61,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'keys:read',
     'audit:read',
     'payments:read',
+    'reconciliation:manage',
   ],
   support: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
   analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read', 'payments:read'],

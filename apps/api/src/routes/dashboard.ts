@@ -8,7 +8,16 @@ import type {
   RefundService,
 } from '@fluvia/payments-core';
 import { WEBHOOK_EVENT_STATUSES, type WebhookEventService } from '@fluvia/webhooks';
-import { RECONCILIATION_STATUSES, type ReconciliationService } from '@fluvia/reconciliation';
+import {
+  ADJUSTMENT_DIRECTIONS,
+  CASE_SEVERITIES,
+  CASE_STATUSES,
+  RECONCILIATION_STATUSES,
+  type CaseAdjustmentDto,
+  type CaseAdjustmentService,
+  type OperationalCaseService,
+  type ReconciliationService,
+} from '@fluvia/reconciliation';
 import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
 import { publicRefund } from './refunds.js';
@@ -16,6 +25,7 @@ import { publicSession } from './checkout-sessions.js';
 import { publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
 import { publicEntry, publicReport } from './settlements.js';
+import { publicCase } from './cases.js';
 
 /**
  * F3-09b-i — plano de LECTURA del dashboard de operación. A diferencia del plano
@@ -45,6 +55,24 @@ const EntriesQuery = z
     limit: z.coerce.number().int().min(1).max(500).default(100),
   })
   .passthrough();
+const CasesQuery = z
+  .object({
+    status: z.enum(CASE_STATUSES as unknown as [string, ...string[]]).optional(),
+    severity: z.enum(CASE_SEVERITIES as unknown as [string, ...string[]]).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .passthrough();
+const AcknowledgeBody = z.object({ assignee_user_id: z.string().uuid().optional() }).strict();
+const ResolveBody = z.object({ resolution: z.string().trim().min(1).max(2000) }).strict();
+const ProposeBody = z
+  .object({
+    amount: z.number().int().positive(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    direction: z.enum(ADJUSTMENT_DIRECTIONS as unknown as [string, ...string[]]),
+    reason: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+const RejectBody = z.object({ reason: z.string().trim().min(1).max(2000) }).strict();
 
 export interface DashboardRoutesOptions {
   security: Security;
@@ -54,6 +82,30 @@ export interface DashboardRoutesOptions {
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
   reconciliationService: ReconciliationService;
+  operationalCaseService: OperationalCaseService;
+  caseAdjustmentService: CaseAdjustmentService;
+}
+
+export function publicAdjustment(a: CaseAdjustmentDto) {
+  return {
+    id: a.id,
+    object: 'case_adjustment',
+    case_id: a.caseId,
+    amount: Number(a.amount),
+    currency: a.currency,
+    direction: a.direction,
+    reason: a.reason,
+    status: a.status,
+    requires_second_approval: a.requiresSecondApproval,
+    proposed_by_user_id: a.proposedByUserId,
+    approved_by_user_id: a.approvedByUserId,
+    rejected_by_user_id: a.rejectedByUserId,
+    rejection_reason: a.rejectionReason,
+    ledger_transaction_id: a.ledgerTransactionId,
+    version: a.version,
+    created_at: a.createdAt,
+    decided_at: a.decidedAt,
+  };
 }
 
 export function registerDashboardRoutes(
@@ -66,9 +118,14 @@ export function registerDashboardRoutes(
     paymentLinkService,
     webhookEventService,
     reconciliationService,
+    operationalCaseService,
+    caseAdjustmentService,
   }: DashboardRoutesOptions
 ): void {
   const guard = { preHandler: [security.session, security.org('payments:read')] };
+  // F4-03c: operación de conciliación por sesión (trabajar casos + AUTORIZAR
+  // ajustes con four-eyes). El aprobador != proponente se exige por identidad.
+  const manage = { preHandler: [security.session, security.org('reconciliation:manage')] };
   const tenant = (req: { org?: { organizationId: string } }) => req.org!.organizationId;
   const userAuditContext = (req: FastifyRequest): AuditContext => ({
     actorType: 'user',
@@ -185,4 +242,99 @@ export function registerDashboardRoutes(
       return reply.code(201).send(publicEvent(created));
     }
   );
+
+  // ── Casos operativos por sesión (F4-03c) ───────────────────────────────────
+  app.get('/v1/organizations/:orgId/operational_cases', guard, async (req) => {
+    OrgParam.parse(req.params);
+    const q = CasesQuery.parse(req.query ?? {});
+    const list = await operationalCaseService.list(tenant(req), {
+      status: q.status as never,
+      severity: q.severity as never,
+      limit: q.limit,
+    });
+    return { object: 'list', data: list.map(publicCase) };
+  });
+
+  app.get('/v1/organizations/:orgId/operational_cases/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const [kase, adjustmentsList] = await Promise.all([
+      operationalCaseService.get(tenant(req), id),
+      caseAdjustmentService.listForCase(tenant(req), id),
+    ]);
+    return { ...publicCase(kase), adjustments: adjustmentsList.map(publicAdjustment) };
+  });
+
+  app.post('/v1/organizations/:orgId/operational_cases/:id/acknowledge', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const body = AcknowledgeBody.parse(req.body ?? {});
+    const updated = await operationalCaseService.acknowledge(
+      tenant(req),
+      id,
+      userAuditContext(req),
+      {
+        assigneeUserId: body.assignee_user_id,
+      }
+    );
+    return publicCase(updated);
+  });
+
+  app.post('/v1/organizations/:orgId/operational_cases/:id/resolve', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { resolution } = ResolveBody.parse(req.body);
+    const updated = await operationalCaseService.resolve(
+      tenant(req),
+      id,
+      resolution,
+      userAuditContext(req)
+    );
+    return publicCase(updated);
+  });
+
+  // ── Ajustes monetarios con four-eyes por sesión (F4-03c) ───────────────────
+  app.get('/v1/organizations/:orgId/operational_cases/:id/adjustments', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const list = await caseAdjustmentService.listForCase(tenant(req), id);
+    return { object: 'list', data: list.map(publicAdjustment) };
+  });
+
+  // Proponer un ajuste (acto humano; el proponente es req.identity.userId).
+  app.post(
+    '/v1/organizations/:orgId/operational_cases/:id/adjustments',
+    manage,
+    async (req, reply) => {
+      const { id } = IdParams.parse(req.params);
+      const body = ProposeBody.parse(req.body);
+      const created = await caseAdjustmentService.propose(
+        tenant(req),
+        id,
+        {
+          amount: BigInt(body.amount),
+          currency: body.currency,
+          direction: body.direction as never,
+          reason: body.reason,
+        },
+        userAuditContext(req)
+      );
+      return reply.code(201).send(publicAdjustment(created));
+    }
+  );
+
+  // Aprobar: FOUR-EYES — el servicio exige aprobador != proponente sobre umbral.
+  app.post('/v1/organizations/:orgId/case_adjustments/:id/approve', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const applied = await caseAdjustmentService.approve(tenant(req), id, userAuditContext(req));
+    return publicAdjustment(applied);
+  });
+
+  app.post('/v1/organizations/:orgId/case_adjustments/:id/reject', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { reason } = RejectBody.parse(req.body);
+    const rejected = await caseAdjustmentService.reject(
+      tenant(req),
+      id,
+      reason,
+      userAuditContext(req)
+    );
+    return publicAdjustment(rejected);
+  });
 }

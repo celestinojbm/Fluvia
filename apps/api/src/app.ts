@@ -9,7 +9,11 @@ import { CustomerService, type ApiKeyService, type IdentityService } from '@fluv
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService, WebhookEventService } from '@fluvia/webhooks';
-import { OperationalCaseService, ReconciliationService } from '@fluvia/reconciliation';
+import {
+  CaseAdjustmentService,
+  OperationalCaseService,
+  ReconciliationService,
+} from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
   MockPaymentProvider,
@@ -251,8 +255,13 @@ export function buildApp({
     // mover dinero — el ajuste con four-eyes es F4-03b).
     const operationalCaseService = new OperationalCaseService(appPool);
     registerCaseRoutes(app, { security, operationalCaseService });
-    // F3-09b-i: plano de LECTURA del dashboard (operador humano por sesión +
-    // membresía, permiso payments:read). Reutiliza los servicios de arriba.
+    // F4-03b/c: ajuste monetario con four-eyes. El motor postea el asiento
+    // compensatorio (recon.differences↔suspense) y resuelve el caso al aprobar.
+    const caseAdjustmentService = new CaseAdjustmentService(appPool, postingService, {
+      fourEyesThresholdMinor: BigInt(config.fourEyesThresholdMinor),
+    });
+    // F3-09b-i / F4-03c: plano del dashboard por sesión + membresía (lectura
+    // payments:read; operación de conciliación reconciliation:manage).
     registerDashboardRoutes(app, {
       security,
       paymentIntentService,
@@ -261,6 +270,8 @@ export function buildApp({
       paymentLinkService,
       webhookEventService,
       reconciliationService,
+      operationalCaseService,
+      caseAdjustmentService,
     });
   }
 

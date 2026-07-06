@@ -194,6 +194,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'The resource is not in a state that allows this operation',
   },
+  four_eyes_required: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This action requires approval by a second, distinct authorized user',
+  },
   idempotency_key_reuse: {
     status: 422,
     type: 'unprocessable_error',
@@ -295,6 +300,11 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // casos operativos F4-03a
   OperationalCaseNotFoundError: 'not_found',
   InvalidCaseTransitionError: 'invalid_state_transition',
+  // ajustes con four-eyes F4-03b/F4-03c
+  CaseAdjustmentNotFoundError: 'not_found',
+  InvalidAdjustmentTransitionError: 'invalid_state_transition',
+  CaseAdjustmentExistsError: 'invalid_state_transition',
+  SelfApprovalError: 'four_eyes_required',
   InvalidStateTransitionError: 'invalid_state_transition',
   UnknownCurrencyError: 'validation_error',
   InvalidAmountError: 'validation_error',

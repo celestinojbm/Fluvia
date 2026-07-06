@@ -23,6 +23,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': true,
     'payments:read': true,
     'webhooks:manage': true,
+    'reconciliation:manage': true,
   },
   admin: {
     'org:read': true,
@@ -34,6 +35,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': true,
     'payments:read': true,
     'webhooks:manage': true,
+    'reconciliation:manage': true,
   },
   developer: {
     'org:read': true,
@@ -45,6 +47,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': false,
     'payments:read': true,
     'webhooks:manage': true,
+    'reconciliation:manage': false,
   },
   finance: {
     'org:read': true,
@@ -56,6 +59,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': true,
     'payments:read': true,
     'webhooks:manage': false,
+    'reconciliation:manage': true,
   },
   support: {
     'org:read': true,
@@ -67,6 +71,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': false,
     'payments:read': true,
     'webhooks:manage': false,
+    'reconciliation:manage': false,
   },
   analyst: {
     'org:read': true,
@@ -78,6 +83,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': true,
     'payments:read': true,
     'webhooks:manage': false,
+    'reconciliation:manage': false,
   },
   read_only: {
     'org:read': true,
@@ -89,6 +95,7 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'audit:read': false,
     'payments:read': true,
     'webhooks:manage': false,
+    'reconciliation:manage': false,
   },
 };
 
