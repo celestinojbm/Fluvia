@@ -64,6 +64,8 @@ const EnvSchema = z.object({
     .default(60_000),
   PAYOUTS_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   PAYOUTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  PAYOUTS_REDRIVER_ENABLED: z.enum(['true', 'false']).default('true'),
+  PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   // F4-03b: umbral (unidades menores) desde el cual un ajuste de caso exige
   // four-eyes (segundo aprobador distinto). Default 0 = SIEMPRE (Nivel A seguro).
   FOUR_EYES_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(0),
@@ -159,6 +161,11 @@ export interface AppConfig {
   };
   /** Watchdog de payouts: barrido de in_transit atascado + salud (F4-07c). */
   payoutsWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Re-drive de payouts `requested` atascados: execute nunca corrio (F4-07e). */
+  payoutsRedriver: {
     enabled: boolean;
     intervalMs: number;
   };
@@ -263,6 +270,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     payoutsWatchdog: {
       enabled: e.PAYOUTS_WATCHDOG_ENABLED === 'true',
       intervalMs: e.PAYOUTS_WATCHDOG_INTERVAL_MS,
+    },
+    payoutsRedriver: {
+      enabled: e.PAYOUTS_REDRIVER_ENABLED === 'true',
+      intervalMs: e.PAYOUTS_REDRIVER_INTERVAL_MS,
     },
     fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
     platformFeeBps: e.PLATFORM_FEE_BPS,

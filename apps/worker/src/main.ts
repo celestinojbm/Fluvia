@@ -20,6 +20,7 @@ import { AttemptsWatchdog } from './attempts-watchdog.js';
 import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
 import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watchdog.js';
 import { PayoutsWatchdog } from './payouts-watchdog.js';
+import { PayoutsRedriver } from './payouts-redriver.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -128,6 +129,11 @@ const payoutsRequestedStuck = registry.gauge(
   'fluvia_payouts_requested_stuck',
   'Payouts en requested cuyo execute nunca corrió (>5 min) — 0 = sano'
 );
+const payoutsRedrivenTotal = registry.counter(
+  'fluvia_payouts_redriven_total',
+  'Payouts `requested` atascados re-conducidos por el redriver, por resultado',
+  ['result']
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -176,10 +182,11 @@ const confirmation = new PaymentConfirmationService(
   inboxProvider,
   new FlatBpsFeeSchedule(config.platformFeeBps)
 );
-// F4-07c-ii: el mismo webhook firmado del banco resuelve payouts
-// `in_transit`/`indeterminate` (p. ej. los barridos por F4-07c) por fuente
-// verificada — resolveFromProvider, jamas por asuncion (V4 §23).
-const inboxPayouts = new PayoutService(appPool, inboxPosting, inboxProvider);
+// F4-07c-ii + F4-07e: un solo PayoutService sobre el appPool sirve dos consumos
+// del worker — el webhook firmado del banco lo resuelve (`resolveFromProvider`,
+// fuente verificada, jamas por asuncion — V4 §23) y el redriver re-conduce los
+// `requested` atascados (`execute`, seguro: el banco jamas fue contactado).
+const payouts = new PayoutService(appPool, inboxPosting, inboxProvider);
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
   onStats: (stats) => {
@@ -190,10 +197,7 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
     if (stats.dead > 0) inboxEventsTotal.inc({ result: 'dead' }, stats.dead);
   },
 });
-inboxProcessor.register(
-  MOCK_PROVIDER_NAME,
-  createMockInboxRegistration(confirmation, inboxPayouts)
-);
+inboxProcessor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation, payouts));
 // F3-04: barrido submitting->indeterminate + salud de indeterminados. La
 // politica vive en sweep_payment_attempts() (0018); el job la invoca.
 const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {
@@ -238,6 +242,15 @@ const payoutsWatchdog = new PayoutsWatchdog(workerPool, logger, {
     payoutsRequestedStuck.set({}, health.requestedStuck);
   },
 });
+// F4-07e: re-drive de los `requested` atascados que F4-07c surfacea. La
+// serializacion (lease + SKIP LOCKED) vive en claim_stuck_payouts() (0035); el
+// job reclama y llama execute — seguro, el banco jamas fue contactado.
+const payoutsRedriver = new PayoutsRedriver(workerPool, payouts, logger, {
+  onResult: (r) => {
+    if (r.redriven > 0) payoutsRedrivenTotal.inc({ result: 'redriven' }, r.redriven);
+    if (r.failed > 0) payoutsRedrivenTotal.inc({ result: 'failed' }, r.failed);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -267,6 +280,7 @@ async function shutdown(signal: string): Promise<void> {
   checkoutWatchdog.stop();
   reconciliationWatchdog.stop();
   payoutsWatchdog.stop();
+  payoutsRedriver.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -347,6 +361,12 @@ worker
       logger.info({ intervalMs: config.payoutsWatchdog.intervalMs }, 'payouts watchdog started');
     } else {
       logger.info({}, 'payouts watchdog disabled by config (PAYOUTS_WATCHDOG_ENABLED=false)');
+    }
+    if (config.payoutsRedriver.enabled) {
+      payoutsRedriver.start(config.payoutsRedriver.intervalMs);
+      logger.info({ intervalMs: config.payoutsRedriver.intervalMs }, 'payouts redriver started');
+    } else {
+      logger.info({}, 'payouts redriver disabled by config (PAYOUTS_REDRIVER_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);
