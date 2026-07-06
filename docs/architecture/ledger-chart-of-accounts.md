@@ -16,7 +16,8 @@ Convención: `normal_side` indica el lado que incrementa el saldo. Toda cuenta e
 | `provider.fees` | Processing fees | Gasto | debit | Fee del proveedor/adquirente |
 | `refund.liability` | Refund liability | Pasivo | credit | Refunds creados aún no confirmados por el proveedor |
 | `dispute.reserve` | Dispute reserve | Pasivo | credit | Retenciones por disputas abiertas |
-| `payout.in_transit` | Payouts in transit | Activo | debit | Payouts emitidos no confirmados |
+| `platform.cash` | Platform cash | Activo | debit | Caja/banco operativo de Fluvia; de aquí salen los payouts (F4-05b) |
+| `payout.in_transit` | Payouts in transit | Pasivo | credit | Obligación de payout en vuelo, aún no confirmada por el banco (F4-05b) |
 | `suspense` | Suspense account | Transitoria | debit | Movimientos no clasificables aún; saldo objetivo = 0; alerta si envejece |
 | `recon.differences` | Reconciliation differences | Transitoria | debit | Ajustes reconocidos por conciliación, siempre con caso asociado |
 
@@ -43,15 +44,23 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 **Discrepancia de conciliación aceptada (F4-03b, `postReconAdjustment`):** siempre vía `recon.differences` con caso y aprobación four-eyes; nunca edición de asientos. Reconocer: `debit recon.differences X` / `credit suspense X`; revertir: al revés. Ambas platform/transitorias; NO toca saldos de comercios (el true-up de payout/settlement es F4-05). `source_type='case_adjustment'`, idempotente por caso.
 
+**Flujo de fondos hacia afuera (F4-05b, `reason='payout'`/`'settlement'`; no depende de pricing).** El dinero capturado se convierte en CAJA de Fluvia y sale al comercio como payout: `merchant.available →(emit)→ payout.in_transit →(settle)→ platform.cash`.
+- **`provider.settle` X** (`receiveProviderSettlement`): el proveedor liquida a la caja de Fluvia lo que tenía en clearing. `debit platform.cash X` / `credit provider.clearing X` (lado de CAJA de la liquidación; el lado de pasivo del comercio es `settlement.release`).
+- **`payout.emit` X** (`emitPayout`): `debit merchant.available X` / `credit payout.in_transit X`. Reduce el disponible del comercio a "en tránsito" ⇒ los fondos en vuelo no se pueden re-pagar ni refundar (**no double-spend**, guard sobre `merchant.available`).
+- **`payout.settle` X** (`settlePayout`): `debit payout.in_transit X` / `credit platform.cash X`. El banco confirma; el dinero sale de la caja (guard sobre `platform.cash`: no confirmar más caja de la que hay).
+- **`payout.fail` X** (`failPayout`): `debit payout.in_transit X` / `credit merchant.available X`. El payout rebotó; la obligación vuelve íntegra al comercio (reverso de emit).
+
+**Guard de no-negatividad generalizado (F4-05b):** `twoLegged` protege TODA cuenta que decrece con el asiento (pasivo debitado o activo/transitoria acreditada), calculado desde el `normal_side` del chart. Esto cubre correctamente los pares donde el riesgo está en la cuenta ACREDITADA (`provider.settle` acredita `provider.clearing`; `payout.settle` acredita `platform.cash`; `refund.settle` acredita `provider.clearing`).
+
 ## Catálogo cerrado y aprovisionamiento
 
-`PostingService.ensureChart(tenant, merchant, moneda)` aprovisiona idempotentemente las 13 cuentas (8 platform-scope por tenant+moneda con nombre = code; 5 merchant-scope con nombre = `code:merchantId`). Solo existen las operaciones tipadas del catálogo: una combinación de cuentas fuera de él es **irrepresentable** (`UnknownAccountCodeError` para codes desconocidos). Las compensaciones usan la transacción espejo con `reverses_tx_id` (servicio de reversal: F2-07).
+`PostingService.ensureChart(tenant, merchant, moneda)` aprovisiona idempotentemente las 14 cuentas (9 platform-scope por tenant+moneda con nombre = code; 5 merchant-scope con nombre = `code:merchantId`). Solo existen las operaciones tipadas del catálogo: una combinación de cuentas fuera de él es **irrepresentable** (`UnknownAccountCodeError` para codes desconocidos). Las compensaciones usan la transacción espejo con `reverses_tx_id` (servicio de reversal: F2-07).
 
-Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo exactamente = 13 cuentas con semántica contable verificada (activo/gasto = debit-normal, pasivo/ingreso = credit-normal), la captura golden de arriba asiento por asiento y balance por balance, fees que consumen todo el monto rechazados, monedas mixtas rechazadas, ciclo completo captura→liquidación→refund con balances exactos y cero drift, **reserves hold/release** (reclasificación que conserva la obligación total + guards de no-negatividad), e idempotencia end-to-end de las operaciones.
+Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo exactamente = 14 cuentas con semántica contable verificada (activo/gasto = debit-normal, pasivo/ingreso = credit-normal), la captura golden de arriba asiento por asiento y balance por balance, fees que consumen todo el monto rechazados, monedas mixtas rechazadas, ciclo completo captura→liquidación→refund con balances exactos y cero drift, **reserves hold/release** (reclasificación que conserva la obligación total), **payout completo** (captura→proveedor liquida a caja→disponible→emit→settle con balances exactos + fallo que devuelve al comercio + los tres guards de no-negatividad), e idempotencia end-to-end de las operaciones.
 
 ## Estado de las abstracciones contables de Fase 4 (F4-05)
 
 - **Settlement** — construido (`releaseSettlement`, F2-04): mueve el pasivo del comercio de `pending` a `available`.
 - **Reserves** — construido (`holdReserve`/`releaseReserve`, **F4-05a**): reclasifica entre `available` y `reserve`. Sin dependencia de pricing.
-- **Payout** — **pendiente de diseño**: mover `merchant.available` fuera del sistema no es expresable con el chart actual (falta una cuenta de **caja/banco** de Fluvia; `payout.in_transit` es solo el estado "emitido no confirmado"). Requiere decisión contable (cuenta nueva + convención), no pricing. No se construye a ciegas.
+- **Payout** — construido (`emitPayout`/`settlePayout`/`failPayout` + `receiveProviderSettlement`, **F4-05b**): añade `platform.cash` (caja de Fluvia) y corrige `payout.in_transit` a pasivo (obligación en vuelo, tratamiento estándar; la cuenta era placeholder sin usar). Flujo `available → in_transit → cash` con no-double-spend, no-cash-underflow. Sin dependencia de pricing.
 - **Fees** — **bloqueado por PEND-002 (pricing)**: `platform.fees`/`provider.fees` existen y la captura ya postea el margen `Ff−Fp`, pero el **motor de fees** (cuánto cobra Fluvia) depende del modelo comercial (decisión humana). Hoy los fees se pasan como entrada (0 por defecto).

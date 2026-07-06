@@ -78,6 +78,12 @@ export interface ReconAdjustmentInput {
  *   reserve.release X:     debit merchant.reserve X   / credit merchant.available X (F4-05a)
  *                          (reclasificacion entre pasivos del comercio: la
  *                          obligacion total no cambia; no depende de pricing)
+ *
+ *   Flujo de fondos hacia afuera (F4-05b, no depende de pricing):
+ *   provider.settle X:     debit platform.cash X      / credit provider.clearing X   (el proveedor liquida a caja)
+ *   payout.emit X:         debit merchant.available X / credit payout.in_transit X   (a "en transito")
+ *   payout.settle X:       debit payout.in_transit X  / credit platform.cash X       (el banco confirma; sale caja)
+ *   payout.fail X:         debit payout.in_transit X  / credit merchant.available X  (rebotado: vuelve al comercio)
  */
 export class PostingService {
   constructor(
@@ -300,9 +306,42 @@ export class PostingService {
     return this.twoLegged(input, 'reserve', 'merchant.reserve', 'merchant.available');
   }
 
+  /**
+   * F4-05b — el proveedor LIQUIDA a la caja/banco de Fluvia los fondos que tenia
+   * en clearing (el lado de CAJA de la liquidacion; el lado de pasivo del
+   * comercio es releaseSettlement). Convierte "el proveedor tiene nuestro dinero"
+   * en "tenemos caja". Guard: no liquidar mas de lo que el proveedor tiene en
+   * clearing.
+   */
+  async receiveProviderSettlement(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'settlement', 'platform.cash', 'provider.clearing');
+  }
+
+  /**
+   * F4-05b — EMITE un payout: el disponible del comercio pasa a "en transito"
+   * (obligacion en vuelo). Guard AUD-P1-010: no emitir mas de lo disponible ⇒
+   * los fondos en vuelo no se pueden re-pagar ni refundar (no double-spend).
+   */
+  async emitPayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'merchant.available', 'payout.in_transit');
+  }
+
+  /** F4-05b — el banco CONFIRMA el payout: la obligacion en transito se descarga
+   * contra la caja (el dinero sale de verdad). Guard: no pagar mas caja de la que
+   * hay. */
+  async settlePayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'payout.in_transit', 'platform.cash');
+  }
+
+  /** F4-05b — el payout FALLO (rebotado por el banco): la obligacion en transito
+   * vuelve integra al disponible del comercio (reverso de emitPayout). */
+  async failPayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'payout.in_transit', 'merchant.available');
+  }
+
   private async twoLegged(
     input: SimpleAmountInput,
-    reason: 'settlement' | 'refund' | 'reserve',
+    reason: 'settlement' | 'refund' | 'reserve' | 'payout',
     debitCode: AccountCode,
     creditCode: AccountCode
   ): Promise<PostedTransaction> {
@@ -310,6 +349,15 @@ export class PostingService {
       throw new InvalidEntriesError('Amount must be strictly positive');
     }
     const chart = await this.ensureChart(input.tenantId, input.merchantId, input.amount.currency);
+    // AUD-P1-010: ninguna cuenta que DECRECE con este asiento puede quedar en
+    // negativo (no se mueve hacia afuera mas de lo que hay). Una cuenta decrece
+    // si se debita su lado credit-normal (pasivo/ingreso) o se acredita su lado
+    // debit-normal (activo/gasto/transitoria). Se calcula desde el chart para que
+    // valga con cualquier par de cuentas (p. ej. provider.settle acredita un
+    // activo, payout.settle acredita la caja). Verificado bajo lock en el motor.
+    const guarded: string[] = [];
+    if (CHART_OF_ACCOUNTS[debitCode].normalSide === 'credit') guarded.push(chart[debitCode]);
+    if (CHART_OF_ACCOUNTS[creditCode].normalSide === 'debit') guarded.push(chart[creditCode]);
     return this.ledger.postTransaction({
       tenantId: input.tenantId,
       idempotencyKey: input.idempotencyKey,
@@ -319,9 +367,7 @@ export class PostingService {
         { accountId: chart[debitCode], direction: 'debit', amount: input.amount },
         { accountId: chart[creditCode], direction: 'credit', amount: input.amount },
       ],
-      // AUD-P1-010: la cuenta debitada no puede quedar en negativo (no se
-      // libera/refunda mas de lo que hay). Verificado bajo lock en el motor.
-      nonNegativeAccounts: [chart[debitCode]],
+      nonNegativeAccounts: guarded,
       onPosted: input.onPosted,
     });
   }
