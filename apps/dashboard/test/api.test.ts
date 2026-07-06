@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   canManageReconciliation,
+  canReadAudit,
   canResendRole,
+  fetchAuditEvents,
   fetchDashboardData,
   fetchMerchants,
   fetchOperationalCase,
@@ -209,6 +211,42 @@ describe('filterMerchants', () => {
     expect(filterMerchants(list, 'us').map((m) => m.id)).toEqual(['mer_2']);
     expect(filterMerchants(list, 'cop').map((m) => m.id)).toEqual(['mer_1']);
     expect(filterMerchants(list, 'nomatch')).toEqual([]);
+  });
+});
+
+describe('canReadAudit', () => {
+  it('allows audit-reading roles (owner/admin/finance/analyst) and rejects the rest', () => {
+    for (const r of ['owner', 'admin', 'finance', 'analyst']) expect(canReadAudit(r)).toBe(true);
+    for (const r of ['developer', 'support', 'read_only', undefined]) {
+      expect(canReadAudit(r)).toBe(false);
+    }
+  });
+});
+
+describe('fetchAuditEvents', () => {
+  it('returns events with the cursor and passes ?before, degrading on error', async () => {
+    const spy = fakeFetch(200, {
+      audit_events: [{ id: '42', action: 'x' }],
+      next_before: '42',
+    });
+    const ok = await fetchAuditEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      before: '99',
+      fetchImpl: spy,
+    });
+    expect(ok.events).toHaveLength(1);
+    expect(ok.nextBefore).toBe('42');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('before=99'), expect.anything());
+
+    const bad = await fetchAuditEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual({ events: [], nextBefore: null });
   });
 });
 

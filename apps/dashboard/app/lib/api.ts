@@ -293,3 +293,47 @@ export function filterMerchants(merchants: Merchant[], query: string | undefined
     [m.name, m.id, m.country, m.defaultCurrency].some((f) => f.toLowerCase().includes(q))
   );
 }
+
+// --- panel admin: eventos de auditoría (F4-04b) ---
+/**
+ * Roles que pueden LEER la auditoría (permiso RBAC `audit:read`; espeja
+ * `ROLE_PERMISSIONS`: owner/admin/finance/analyst). Solo es un hint de UX para
+ * ocultar el enlace a quien no puede — el API es la fuente de verdad (403).
+ */
+const AUDIT_READ_ROLES = new Set(['owner', 'admin', 'finance', 'analyst']);
+export function canReadAudit(role: string | undefined): boolean {
+  return role !== undefined && AUDIT_READ_ROLES.has(role);
+}
+
+export interface AuditEvent {
+  id: string;
+  actor_type: string;
+  actor_id: string | null;
+  auth_method: string;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  result: string;
+  risk_level: string;
+  reason: string | null;
+  request_id: string | null;
+  created_at: string;
+}
+
+export interface AuditEventsPage {
+  events: AuditEvent[];
+  /** Cursor (id del último evento) para la página anterior/más antigua. */
+  nextBefore: string | null;
+}
+
+export async function fetchAuditEvents(
+  opts: ClientOptions & { orgId: string; before?: string }
+): Promise<AuditEventsPage> {
+  const params = new URLSearchParams({ limit: '50' });
+  if (opts.before) params.set('before', opts.before);
+  const body = await apiGet<{ audit_events?: AuditEvent[]; next_before?: string | null }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/audit-events?${params.toString()}`
+  );
+  return { events: body?.audit_events ?? [], nextBefore: body?.next_before ?? null };
+}

@@ -361,6 +361,31 @@ code {
   margin-top: 0;
 }
 
+/* eventos de auditoría (F4-04b) */
+.result-success {
+  background: #e7f4ec;
+  color: var(--ok);
+}
+.result-failure {
+  background: #fbeaea;
+  color: var(--bad);
+}
+.risk-low {
+  background: #eef2f6;
+  color: var(--muted);
+}
+.risk-medium {
+  background: #fdf3e4;
+  color: var(--warn);
+}
+.risk-high {
+  background: #fbeaea;
+  color: var(--bad);
+}
+.pager {
+  margin: 1rem 0 0;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;

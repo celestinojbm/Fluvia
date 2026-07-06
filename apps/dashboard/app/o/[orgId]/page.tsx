@@ -1,6 +1,12 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { apiBase, canResendRole, fetchDashboardData, fetchOrganizations } from '../../lib/api';
+import {
+  apiBase,
+  canReadAudit,
+  canResendRole,
+  fetchDashboardData,
+  fetchOrganizations,
+} from '../../lib/api';
 import { DashboardView } from '../../lib/dashboard-view';
 import { normalizeLocale } from '../../messages';
 
@@ -41,6 +47,7 @@ export default async function OrgDashboardPage({
       orgName={orgName}
       signOutHref="/logout"
       canResend={canResendRole(org?.role)}
+      canReadAudit={canReadAudit(org?.role)}
     />
   );
 }

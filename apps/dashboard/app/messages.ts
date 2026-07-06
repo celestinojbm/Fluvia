@@ -122,6 +122,18 @@ interface Messages {
   colCurrency: string;
   merchantActive: string;
   merchantFrozen: string;
+  // panel admin: eventos de auditoría (F4-04b)
+  events: string;
+  eventsTitle: string;
+  eventsEmpty: string;
+  colWhen: string;
+  colActor: string;
+  colResource: string;
+  colResult: string;
+  colRisk: string;
+  resultSuccess: string;
+  resultFailure: string;
+  olderEvents: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -236,6 +248,17 @@ export const MESSAGES: Record<Locale, Messages> = {
     colCurrency: 'Moneda',
     merchantActive: 'Activo',
     merchantFrozen: 'Congelado',
+    events: 'Eventos',
+    eventsTitle: 'Eventos de auditoría',
+    eventsEmpty: 'Sin eventos de auditoría.',
+    colWhen: 'Fecha y hora',
+    colActor: 'Actor',
+    colResource: 'Recurso',
+    colResult: 'Resultado',
+    colRisk: 'Riesgo',
+    resultSuccess: 'Éxito',
+    resultFailure: 'Fallo',
+    olderEvents: 'Ver más antiguos →',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -349,6 +372,17 @@ export const MESSAGES: Record<Locale, Messages> = {
     colCurrency: 'Currency',
     merchantActive: 'Active',
     merchantFrozen: 'Frozen',
+    events: 'Events',
+    eventsTitle: 'Audit events',
+    eventsEmpty: 'No audit events.',
+    colWhen: 'Timestamp',
+    colActor: 'Actor',
+    colResource: 'Resource',
+    colResult: 'Result',
+    colRisk: 'Risk',
+    resultSuccess: 'Success',
+    resultFailure: 'Failure',
+    olderEvents: 'Older →',
   },
 };
 
