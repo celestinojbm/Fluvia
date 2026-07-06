@@ -165,6 +165,35 @@ export async function fetchReconciliationEntries(
   return body?.data ?? [];
 }
 
+// --- payouts (F4-07d: money out, lectura por sesión) ---
+export interface Payout {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reason: string | null;
+  failure_code: string | null;
+  created_at: string;
+}
+
+export async function fetchPayouts(opts: ClientOptions & { orgId: string }): Promise<Payout[]> {
+  const body = await apiGet<{ data?: Payout[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payouts?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchPayout(
+  opts: ClientOptions & { orgId: string; payoutId: string }
+): Promise<Payout | null> {
+  return apiGet<Payout>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payouts/${encodeURIComponent(opts.payoutId)}`
+  );
+}
+
 // --- casos operativos + ajustes con four-eyes (F4-03c-ii) ---
 export type CaseStatus = 'open' | 'acknowledged' | 'resolved';
 export type CaseSeverity = 'low' | 'medium' | 'high' | 'critical';

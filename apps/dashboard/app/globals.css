@@ -191,7 +191,8 @@ code {
 .badge-succeeded,
 .badge-completed,
 .badge-delivered,
-.badge-active {
+.badge-active,
+.badge-paid {
   background: #e7f4ec;
   color: var(--ok);
 }
@@ -205,7 +206,10 @@ code {
 }
 .badge-pending,
 .badge-processing,
-.badge-open {
+.badge-open,
+.badge-requested,
+.badge-in_transit,
+.badge-indeterminate {
   background: #fdf3e4;
   color: var(--warn);
 }

@@ -5,6 +5,7 @@ import type {
   CheckoutSessionService,
   PaymentIntentService,
   PaymentLinkService,
+  PayoutService,
   RefundService,
 } from '@fluvia/payments-core';
 import { WEBHOOK_EVENT_STATUSES, type WebhookEventService } from '@fluvia/webhooks';
@@ -21,6 +22,7 @@ import {
 import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
 import { publicRefund } from './refunds.js';
+import { publicPayout } from './payouts.js';
 import { publicSession } from './checkout-sessions.js';
 import { publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
@@ -45,6 +47,7 @@ const LimitQuery = z
   .object({ limit: z.coerce.number().int().min(1).max(100).default(25) })
   .passthrough();
 const RefundsQuery = LimitQuery.extend({ payment_intent_id: z.string().uuid().optional() });
+const PayoutsQuery = LimitQuery.extend({ merchant_id: z.string().uuid().optional() });
 const WebhookEventsQuery = LimitQuery.extend({
   endpoint_id: z.string().uuid().optional(),
   status: z.enum(WEBHOOK_EVENT_STATUSES as unknown as [string, ...string[]]).optional(),
@@ -78,6 +81,7 @@ export interface DashboardRoutesOptions {
   security: Security;
   paymentIntentService: PaymentIntentService;
   refundService: RefundService;
+  payoutService: PayoutService;
   checkoutSessionService: CheckoutSessionService;
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
@@ -114,6 +118,7 @@ export function registerDashboardRoutes(
     security,
     paymentIntentService,
     refundService,
+    payoutService,
     checkoutSessionService,
     paymentLinkService,
     webhookEventService,
@@ -158,6 +163,18 @@ export function registerDashboardRoutes(
   app.get('/v1/organizations/:orgId/refunds/:id', guard, async (req) => {
     const { id } = IdParams.parse(req.params);
     return publicRefund(await refundService.get(tenant(req), id));
+  });
+
+  // --- payouts (F4-07d: lectura por sesión del recurso money-out) ---
+  app.get('/v1/organizations/:orgId/payouts', guard, async (req) => {
+    const q = PayoutsQuery.parse(req.query ?? {});
+    OrgParam.parse(req.params);
+    const payouts = await payoutService.list(tenant(req), q.merchant_id, q.limit);
+    return { object: 'list', data: payouts.map(publicPayout) };
+  });
+  app.get('/v1/organizations/:orgId/payouts/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicPayout(await payoutService.get(tenant(req), id));
   });
 
   // --- checkout sessions ---

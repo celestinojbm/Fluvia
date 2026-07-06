@@ -163,6 +163,7 @@ describe('lectura por sesión + membresía', () => {
     for (const resource of [
       'payment_intents',
       'refunds',
+      'payouts',
       'checkout_sessions',
       'payment_links',
       'webhook_events',

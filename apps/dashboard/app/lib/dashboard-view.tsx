@@ -108,6 +108,7 @@ export function DashboardView({
           <a href={`/o/${orgId}/merchants`}>{t.merchants}</a>
           <a href={`/o/${orgId}/cases`}>{t.cases}</a>
           <a href={`/o/${orgId}/reconciliation`}>{t.reconciliation}</a>
+          <a href={`/o/${orgId}/payouts`}>{t.payouts}</a>
           {canReadAudit && <a href={`/o/${orgId}/events`}>{t.events}</a>}
           <a className="signout" href={signOutHref}>
             {t.signOut}

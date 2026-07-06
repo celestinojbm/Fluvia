@@ -54,6 +54,14 @@ interface Messages {
   colRef: string;
   colLedger: string;
   colProviderAmount: string;
+  payouts: string;
+  payoutsTitle: string;
+  payoutsEmpty: string;
+  colPayout: string;
+  colMerchant: string;
+  payoutReason: string;
+  payoutFailureCode: string;
+  payoutIndeterminateHint: string;
   backToDashboard: string;
   sandboxNotice: string;
   // casos operativos + ajustes (F4-03c-ii)
@@ -181,6 +189,15 @@ export const MESSAGES: Record<Locale, Messages> = {
     colRef: 'Referencia',
     colLedger: 'Monto ledger',
     colProviderAmount: 'Monto proveedor',
+    payouts: 'Payouts',
+    payoutsTitle: 'Payouts (salidas de dinero)',
+    payoutsEmpty: 'Sin payouts.',
+    colPayout: 'Payout',
+    colMerchant: 'Comercio',
+    payoutReason: 'Motivo',
+    payoutFailureCode: 'Código de fallo',
+    payoutIndeterminateHint:
+      'Desenlace del banco desconocido: fondos retenidos en tránsito, a la espera de resolución verificada.',
     backToDashboard: '← Volver al panel',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
     cases: 'Casos',
@@ -304,6 +321,15 @@ export const MESSAGES: Record<Locale, Messages> = {
     colRef: 'Reference',
     colLedger: 'Ledger amount',
     colProviderAmount: 'Provider amount',
+    payouts: 'Payouts',
+    payoutsTitle: 'Payouts (money out)',
+    payoutsEmpty: 'No payouts.',
+    colPayout: 'Payout',
+    colMerchant: 'Merchant',
+    payoutReason: 'Reason',
+    payoutFailureCode: 'Failure code',
+    payoutIndeterminateHint:
+      'Bank outcome unknown: funds held in transit, awaiting verified resolution.',
     backToDashboard: '← Back to dashboard',
     sandboxNotice: 'Test environment — no real money moves.',
     cases: 'Cases',

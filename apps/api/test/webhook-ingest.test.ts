@@ -7,23 +7,29 @@ import { AuthService } from '@fluvia/auth';
 import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { InboxProcessor, signWebhookPayload } from '@fluvia/inbox';
 import { LedgerService, PostingService } from '@fluvia/ledger';
+import { Money } from '@fluvia/money';
 import {
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
   PayoutService,
+  ProviderTimeoutError,
   ZERO_FEE_SCHEDULE,
   createMockInboxRegistration,
+  type PaymentProvider,
 } from '@fluvia/payments-core';
 import { buildApp } from '../src/app.js';
 
 /**
- * F3-03b — la cadena asincrona COMPLETA sobre HTTP real:
+ * F3-03b + F4-07c-ii — la cadena asincrona COMPLETA sobre HTTP real:
  * confirm(tok_pse) -> webhook FIRMADO del proveedor -> ingesta durable ->
- * InboxProcessor (primer handler real) -> attempt/intent resueltos con
- * captura contable. Exactamente el cableado de produccion (el processor del
- * worker usa este mismo registro).
+ * InboxProcessor (primer handler real) -> attempt/intent resueltos con captura
+ * contable. El MISMO endpoint firmado + processor resuelve también payouts
+ * `indeterminate` (payout.paid/failed -> resolveFromProvider). UN SOLO processor
+ * (como en producción): dos processors 'mock' concurrentes competirían por los
+ * mismos eventos (el claim no filtra por provider), por eso ambos flujos viven
+ * en este archivo y comparten el registro.
  */
 
 let app: FastifyInstance;
@@ -32,11 +38,15 @@ let authPool: Pool;
 let adminPool: Pool;
 let inboxPool: Pool;
 let processor: InboxProcessor;
+let posting: PostingService;
+let timeoutPayouts: PayoutService;
 let secret: string;
 
 let org: string;
 let merchantId: string;
 let apiKey: string;
+
+const cop = (n: number) => Money.of(n, 'COP');
 
 function sign(rawBody: string) {
   const ts = Date.now();
@@ -90,7 +100,7 @@ beforeAll(async () => {
 
   // MISMO cableado que apps/worker/src/main.ts.
   const intents = new PaymentIntentService(appPool);
-  const posting = new PostingService(new LedgerService(appPool), appPool);
+  posting = new PostingService(new LedgerService(appPool), appPool);
   const provider = new MockPaymentProvider();
   const confirmation = new PaymentConfirmationService(
     appPool,
@@ -102,6 +112,14 @@ beforeAll(async () => {
   const payouts = new PayoutService(appPool, posting, provider);
   processor = new InboxProcessor(inboxPool, {});
   processor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation, payouts));
+
+  // Banco con timeout para FABRICAR payouts `indeterminate` (fondos en tránsito).
+  const timeoutBank: PaymentProvider = {
+    name: 'mock',
+    submitPayment: () => Promise.reject(new Error('n/a')),
+    submitPayout: () => Promise.reject(new ProviderTimeoutError('mock')),
+  };
+  timeoutPayouts = new PayoutService(appPool, posting, timeoutBank);
 
   org = (
     await adminPool.query<{ id: string }>(
@@ -273,5 +291,151 @@ describe('cadena asincrona completa (F3-03b)', () => {
       [JSON.parse(late).event_id]
     );
     expect(row.rows[0]!.result).toContain('ignored_out_of_order');
+  });
+});
+
+/** Deja `amount` en merchant.available Y en platform.cash (money-in completo). */
+async function seedAvailable(amount: number): Promise<void> {
+  const src = randomUUID();
+  const m = cop(amount);
+  await posting.capturePayment({
+    tenantId: org,
+    merchantId,
+    idempotencyKey: `cap:${src}`,
+    sourceType: 'payment_attempt',
+    sourceId: src,
+    amount: m,
+  });
+  await posting.receiveProviderSettlement({
+    tenantId: org,
+    merchantId,
+    idempotencyKey: `prov:${src}`,
+    sourceType: 'settlement',
+    sourceId: src,
+    amount: m,
+  });
+  await posting.releaseSettlement({
+    tenantId: org,
+    merchantId,
+    idempotencyKey: `settle:${src}`,
+    sourceType: 'settlement',
+    sourceId: src,
+    amount: m,
+  });
+}
+
+/** Crea un payout y lo lleva a `indeterminate` (banco con timeout). */
+async function indeterminatePayout(amount: number): Promise<string> {
+  await seedAvailable(amount);
+  const po = await timeoutPayouts.create(org, {
+    merchantId,
+    amount: BigInt(amount),
+    currency: 'COP',
+  });
+  await timeoutPayouts.execute(org, po.id);
+  return po.id;
+}
+
+async function bal(name: string): Promise<bigint> {
+  const res = await adminPool.query<{ available: string }>(
+    `SELECT COALESCE(bp.available, 0)::text AS available
+     FROM ledger_accounts la JOIN balance_projections bp ON bp.account_id = la.id
+     WHERE la.tenant_id = $1 AND la.name = $2 AND la.currency = 'COP'`,
+    [org, name]
+  );
+  return BigInt(res.rows[0]?.available ?? '0');
+}
+
+async function payoutStatus(id: string): Promise<string> {
+  return (
+    await adminPool.query<{ status: string }>(`SELECT status FROM payouts WHERE id = $1`, [id])
+  ).rows[0]!.status;
+}
+
+describe('webhook del banco resuelve payouts (F4-07c-ii)', () => {
+  it('signed payout.paid -> durable ingest -> processor settles the indeterminate payout', async () => {
+    const payoutId = await indeterminatePayout(100_000);
+    expect(await payoutStatus(payoutId)).toBe('indeterminate');
+    expect(await bal('payout.in_transit')).toBe(100_000n);
+
+    const body = JSON.stringify({
+      event_id: `evt-${randomUUID()}`,
+      type: 'payout.paid',
+      tenant_id: org,
+      payout_id: payoutId,
+      provider_ref: 'bank_confirmed_ref',
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/providers/mock/webhook',
+      headers: sign(body),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ received: true, duplicate: false });
+
+    // Aun NO aplicado: la ingesta es durable, el procesamiento asincrono.
+    expect(await payoutStatus(payoutId)).toBe('indeterminate');
+
+    const stats = await processor.runOnce();
+    expect(stats.processed).toBeGreaterThanOrEqual(1);
+
+    expect(await payoutStatus(payoutId)).toBe('paid');
+    // settlePayout descargo el transito contra la caja: neto 0.
+    expect(await bal('payout.in_transit')).toBe(0n);
+    expect(await bal('platform.cash')).toBe(0n);
+  });
+
+  it('signed payout.failed -> the funds return in full to the merchant', async () => {
+    const before = await bal(`merchant.available:${merchantId}`);
+    const payoutId = await indeterminatePayout(80_000);
+    const body = JSON.stringify({
+      event_id: `evt-${randomUUID()}`,
+      type: 'payout.failed',
+      tenant_id: org,
+      payout_id: payoutId,
+      failure_code: 'bank_rejected',
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/providers/mock/webhook',
+      headers: sign(body),
+      payload: body,
+    });
+    await processor.runOnce();
+
+    expect(await payoutStatus(payoutId)).toBe('failed');
+    // seed(+80k) -> emit(-80k) -> failPayout(+80k): los fondos sembrados vuelven
+    // íntegros al comercio (el payout falló), así que el disponible sube 80k.
+    expect(await bal(`merchant.available:${merchantId}`)).toBe(before + 80_000n);
+    expect(await bal('payout.in_transit')).toBe(0n);
+  });
+
+  it('a redelivery of the same event_id is a duplicate: durable once, applied once', async () => {
+    const payoutId = await indeterminatePayout(20_000);
+    const body = JSON.stringify({
+      event_id: `evt-${randomUUID()}`,
+      type: 'payout.paid',
+      tenant_id: org,
+      payout_id: payoutId,
+      provider_ref: 'bank_ref_dup',
+    });
+    const first = await app.inject({
+      method: 'POST',
+      url: '/v1/providers/mock/webhook',
+      headers: sign(body),
+      payload: body,
+    });
+    expect(first.json().duplicate).toBe(false);
+    const second = await app.inject({
+      method: 'POST',
+      url: '/v1/providers/mock/webhook',
+      headers: sign(body),
+      payload: body,
+    });
+    expect(second.json().duplicate).toBe(true);
+
+    await processor.runOnce();
+    expect(await payoutStatus(payoutId)).toBe('paid');
   });
 });

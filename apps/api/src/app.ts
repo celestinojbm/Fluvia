@@ -274,6 +274,7 @@ export function buildApp({
       security,
       paymentIntentService,
       refundService,
+      payoutService,
       checkoutSessionService,
       paymentLinkService,
       webhookEventService,
