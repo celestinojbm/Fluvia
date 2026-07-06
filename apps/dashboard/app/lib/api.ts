@@ -98,6 +98,61 @@ export interface DashboardData {
 
 type ListBody = { data?: Record<string, unknown>[] };
 
+// --- conciliación (F4-01c) ---
+export type ReconciliationStatus =
+  'matched' | 'amount_mismatch' | 'missing_in_ledger' | 'missing_at_provider';
+export type ReconciliationSummary = Record<ReconciliationStatus, number>;
+
+export interface SettlementReport {
+  id: string;
+  provider: string;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  status: string;
+  created_at: string;
+  reconciled_at: string | null;
+  summary?: ReconciliationSummary;
+}
+
+export interface ReconciliationEntry {
+  provider_ref: string;
+  status: ReconciliationStatus;
+  ledger_amount: number | null;
+  provider_amount: number | null;
+  payment_intent_id: string | null;
+}
+
+export async function fetchSettlementReports(
+  opts: ClientOptions & { orgId: string }
+): Promise<SettlementReport[]> {
+  const body = await apiGet<{ data?: SettlementReport[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/settlement_reports?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchSettlementReport(
+  opts: ClientOptions & { orgId: string; reportId: string }
+): Promise<SettlementReport | null> {
+  return apiGet<SettlementReport>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/settlement_reports/${encodeURIComponent(opts.reportId)}`
+  );
+}
+
+export async function fetchReconciliationEntries(
+  opts: ClientOptions & { orgId: string; reportId: string; status?: ReconciliationStatus }
+): Promise<ReconciliationEntry[]> {
+  const q = opts.status ? `?status=${encodeURIComponent(opts.status)}` : '';
+  const body = await apiGet<{ data?: ReconciliationEntry[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/settlement_reports/${encodeURIComponent(opts.reportId)}/entries${q}`
+  );
+  return body?.data ?? [];
+}
+
 /**
  * Trae las 5 vistas del plano de lectura de operación en paralelo. El fallo de
  * un recurso (p.ej. permiso o red) degrada a lista vacía sin tumbar el panel.

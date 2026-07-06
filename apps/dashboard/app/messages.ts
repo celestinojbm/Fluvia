@@ -41,6 +41,20 @@ interface Messages {
   resending: string;
   resendError: string;
   resent: string;
+  reconciliation: string;
+  reconTitle: string;
+  reconEmpty: string;
+  colProvider: string;
+  colPeriod: string;
+  colReport: string;
+  reconMatched: string;
+  reconAmountMismatch: string;
+  reconMissingLedger: string;
+  reconMissingProvider: string;
+  colRef: string;
+  colLedger: string;
+  colProviderAmount: string;
+  backToDashboard: string;
   sandboxNotice: string;
 }
 
@@ -76,6 +90,20 @@ export const MESSAGES: Record<Locale, Messages> = {
     resending: 'Reenviando…',
     resendError: 'No se pudo reenviar.',
     resent: 'Reenviado ✓',
+    reconciliation: 'Conciliación',
+    reconTitle: 'Reportes de liquidación',
+    reconEmpty: 'Sin reportes de liquidación.',
+    colProvider: 'Proveedor',
+    colPeriod: 'Periodo',
+    colReport: 'Reporte',
+    reconMatched: 'Conciliados',
+    reconAmountMismatch: 'Monto no coincide',
+    reconMissingLedger: 'Falta en el ledger',
+    reconMissingProvider: 'Falta en el proveedor',
+    colRef: 'Referencia',
+    colLedger: 'Monto ledger',
+    colProviderAmount: 'Monto proveedor',
+    backToDashboard: '← Volver al panel',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
   },
   en: {
@@ -109,6 +137,20 @@ export const MESSAGES: Record<Locale, Messages> = {
     resending: 'Resending…',
     resendError: 'Could not resend.',
     resent: 'Resent ✓',
+    reconciliation: 'Reconciliation',
+    reconTitle: 'Settlement reports',
+    reconEmpty: 'No settlement reports.',
+    colProvider: 'Provider',
+    colPeriod: 'Period',
+    colReport: 'Report',
+    reconMatched: 'Matched',
+    reconAmountMismatch: 'Amount mismatch',
+    reconMissingLedger: 'Missing in ledger',
+    reconMissingProvider: 'Missing at provider',
+    colRef: 'Reference',
+    colLedger: 'Ledger amount',
+    colProviderAmount: 'Provider amount',
+    backToDashboard: '← Back to dashboard',
     sandboxNotice: 'Test environment — no real money moves.',
   },
 };

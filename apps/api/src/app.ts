@@ -243,10 +243,8 @@ export function buildApp({
     registerWebhookEventRoutes(app, { security, webhookEventService });
     // F4-01b: gestión de conciliación (plano de integración). Carga el reporte
     // de liquidación del proveedor y dispara la conciliación.
-    registerSettlementRoutes(app, {
-      security,
-      reconciliationService: new ReconciliationService(appPool),
-    });
+    const reconciliationService = new ReconciliationService(appPool);
+    registerSettlementRoutes(app, { security, reconciliationService });
     // F3-09b-i: plano de LECTURA del dashboard (operador humano por sesión +
     // membresía, permiso payments:read). Reutiliza los servicios de arriba.
     registerDashboardRoutes(app, {
@@ -256,6 +254,7 @@ export function buildApp({
       checkoutSessionService,
       paymentLinkService,
       webhookEventService,
+      reconciliationService,
     });
   }
 

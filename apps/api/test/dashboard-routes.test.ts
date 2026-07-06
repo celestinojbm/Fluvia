@@ -261,3 +261,106 @@ describe('reenvío de webhooks dead por sesión (webhooks:manage)', () => {
     expect(foreign.statusCode).toBe(404);
   });
 });
+
+describe('conciliación por sesión (F4-01c)', () => {
+  it('lists reports, shows the summary and drills into discrepancies', async () => {
+    // Lado ledger: un intento succeeded en periodo.
+    const inPeriod = new Date('2026-06-15T12:00:00Z');
+    const intent = (
+      await adminPool.query<{ id: string }>(
+        `INSERT INTO payment_intents
+           (tenant_id, merchant_id, amount, currency, status, capture_method, amount_captured, succeeded_at)
+         VALUES ($1, $2, 40000, 'COP', 'succeeded', 'automatic', 40000, $3) RETURNING id`,
+        [orgA, merchantA, inPeriod]
+      )
+    ).rows[0]!.id;
+    await adminPool.query(
+      `INSERT INTO payment_attempts
+         (tenant_id, intent_id, attempt_number, provider, provider_ref, status, amount, currency, resolved_at)
+       VALUES ($1, $2, 1, 'mock', 'dref_match', 'succeeded', 40000, 'COP', $3)`,
+      [orgA, intent, inPeriod]
+    );
+    // Reporte + líneas + reconcile por el plano de API key.
+    const reportId = (
+      await app.inject({
+        method: 'POST',
+        url: '/v1/settlement_reports',
+        headers: apiAuth(keyA),
+        payload: {
+          provider: 'mock',
+          currency: 'COP',
+          period_start: '2026-06-01T00:00:00Z',
+          period_end: '2026-07-01T00:00:00Z',
+        },
+      })
+    ).json().id;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/settlement_reports/${reportId}/lines`,
+      headers: apiAuth(keyA),
+      payload: {
+        lines: [
+          { provider_ref: 'dref_match', amount: 40000, settled_at: inPeriod.toISOString() },
+          { provider_ref: 'dref_phantom', amount: 9000, settled_at: inPeriod.toISOString() },
+        ],
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/v1/settlement_reports/${reportId}/reconcile`,
+      headers: apiAuth(keyA),
+    });
+
+    // Lectura por sesión (operador).
+    const owner = await sessionUser('owner', orgA);
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/settlement_reports?limit=100`,
+      headers: owner.headers,
+    });
+    expect(list.statusCode).toBe(200);
+    expect((list.json().data as Array<{ id: string }>).some((r) => r.id === reportId)).toBe(true);
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/settlement_reports/${reportId}`,
+      headers: owner.headers,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().status).toBe('reconciled');
+    expect(detail.json().summary.matched).toBe(1);
+    expect(detail.json().summary.missing_in_ledger).toBe(1);
+
+    const missing = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/settlement_reports/${reportId}/entries?status=missing_in_ledger`,
+      headers: owner.headers,
+    });
+    expect((missing.json().data as Array<{ provider_ref: string }>)[0]!.provider_ref).toBe(
+      'dref_phantom'
+    );
+  });
+
+  it('a non-member cannot read the reconciliation of a foreign org (404)', async () => {
+    const reportId = (
+      await app.inject({
+        method: 'POST',
+        url: '/v1/settlement_reports',
+        headers: apiAuth(keyA),
+        payload: {
+          provider: 'mock',
+          currency: 'COP',
+          period_start: '2026-06-01T00:00:00Z',
+          period_end: '2026-07-01T00:00:00Z',
+        },
+      })
+    ).json().id;
+    const outsider = await sessionUser('owner', orgB);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/settlement_reports/${reportId}`,
+      headers: outsider.headers,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});

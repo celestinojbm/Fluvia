@@ -8,12 +8,14 @@ import type {
   RefundService,
 } from '@fluvia/payments-core';
 import { WEBHOOK_EVENT_STATUSES, type WebhookEventService } from '@fluvia/webhooks';
+import { RECONCILIATION_STATUSES, type ReconciliationService } from '@fluvia/reconciliation';
 import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
 import { publicRefund } from './refunds.js';
 import { publicSession } from './checkout-sessions.js';
 import { publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
+import { publicEntry, publicReport } from './settlements.js';
 
 /**
  * F3-09b-i — plano de LECTURA del dashboard de operación. A diferencia del plano
@@ -37,6 +39,12 @@ const WebhookEventsQuery = LimitQuery.extend({
   endpoint_id: z.string().uuid().optional(),
   status: z.enum(WEBHOOK_EVENT_STATUSES as unknown as [string, ...string[]]).optional(),
 });
+const EntriesQuery = z
+  .object({
+    status: z.enum(RECONCILIATION_STATUSES as unknown as [string, ...string[]]).optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+  })
+  .passthrough();
 
 export interface DashboardRoutesOptions {
   security: Security;
@@ -45,6 +53,7 @@ export interface DashboardRoutesOptions {
   checkoutSessionService: CheckoutSessionService;
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
+  reconciliationService: ReconciliationService;
 }
 
 export function registerDashboardRoutes(
@@ -56,6 +65,7 @@ export function registerDashboardRoutes(
     checkoutSessionService,
     paymentLinkService,
     webhookEventService,
+    reconciliationService,
   }: DashboardRoutesOptions
 ): void {
   const guard = { preHandler: [security.session, security.org('payments:read')] };
@@ -136,6 +146,31 @@ export function registerDashboardRoutes(
       payload: detail.payload,
       attempts_history: detail.attemptsHistory.map(publicAttempt),
     };
+  });
+
+  // --- conciliación (F4-01c): reportes de liquidación + discrepancias ---
+  app.get('/v1/organizations/:orgId/settlement_reports', guard, async (req) => {
+    const { limit } = LimitQuery.parse(req.query ?? {});
+    OrgParam.parse(req.params);
+    const reports = await reconciliationService.listReports(tenant(req), limit);
+    return { object: 'list', data: reports.map(publicReport) };
+  });
+  app.get('/v1/organizations/:orgId/settlement_reports/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const [report, summary] = await Promise.all([
+      reconciliationService.getReport(tenant(req), id),
+      reconciliationService.getSummary(tenant(req), id),
+    ]);
+    return { ...publicReport(report), summary };
+  });
+  app.get('/v1/organizations/:orgId/settlement_reports/:id/entries', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const q = EntriesQuery.parse(req.query ?? {});
+    const entries = await reconciliationService.listEntries(tenant(req), id, {
+      status: q.status as never,
+      limit: q.limit,
+    });
+    return { object: 'list', data: entries.map(publicEntry) };
   });
 
   // Acción de OPERACIÓN por sesión: reenviar un evento `dead` (espeja F3-09a del

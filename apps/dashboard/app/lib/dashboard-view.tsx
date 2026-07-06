@@ -101,9 +101,12 @@ export function DashboardView({
           <h1 id="dash-title">{t.dashboardTitle}</h1>
           <p className="org">{orgName}</p>
         </div>
-        <a className="signout" href={signOutHref}>
-          {t.signOut}
-        </a>
+        <nav className="dash-nav">
+          <a href={`/o/${orgId}/reconciliation`}>{t.reconciliation}</a>
+          <a className="signout" href={signOutHref}>
+            {t.signOut}
+          </a>
+        </nav>
       </header>
 
       <Section

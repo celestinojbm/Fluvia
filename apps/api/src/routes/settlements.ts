@@ -57,7 +57,7 @@ export interface SettlementRoutesOptions {
   reconciliationService: ReconciliationService;
 }
 
-function publicReport(r: SettlementReportDto) {
+export function publicReport(r: SettlementReportDto) {
   return {
     id: r.id,
     object: 'settlement_report',
@@ -71,7 +71,7 @@ function publicReport(r: SettlementReportDto) {
   };
 }
 
-function publicEntry(e: ReconciliationEntryDto) {
+export function publicEntry(e: ReconciliationEntryDto) {
   return {
     object: 'reconciliation_entry',
     provider_ref: e.providerRef,
