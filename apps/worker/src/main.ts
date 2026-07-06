@@ -7,6 +7,7 @@ import { MetricsRegistry } from '@fluvia/observability';
 import { OutboxRelay } from '@fluvia/outbox';
 import { WebhookDeliverer, createWebhookFanoutPublisher } from '@fluvia/webhooks';
 import {
+  FlatBpsFeeSchedule,
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
   PaymentConfirmationService,
@@ -152,7 +153,8 @@ const confirmation = new PaymentConfirmationService(
   appPool,
   paymentIntents,
   new PostingService(new LedgerService(appPool), appPool),
-  new ResilientProvider(new MockPaymentProvider())
+  new ResilientProvider(new MockPaymentProvider()),
+  new FlatBpsFeeSchedule(config.platformFeeBps)
 );
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,

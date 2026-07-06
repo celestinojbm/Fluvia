@@ -5,10 +5,12 @@ import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { Money } from '@fluvia/money';
 import {
+  FlatBpsFeeSchedule,
   InvalidStateTransitionError,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  ZERO_FEE_SCHEDULE,
 } from '../src/index.js';
 
 /**
@@ -32,7 +34,8 @@ beforeAll(async () => {
     ctx.app,
     intents,
     posting,
-    new MockPaymentProvider()
+    new MockPaymentProvider(),
+    ZERO_FEE_SCHEDULE
   );
   org = await ctx.createTenant(`Confirm ${randomUUID().slice(0, 8)}`);
   const m = await ctx.admin.query<{ id: string }>(
@@ -98,7 +101,8 @@ describe('PaymentConfirmationService (F3-03)', () => {
     expect(after.status).toBe('succeeded');
     expect(after.amountCaptured).toBe(String(amount));
 
-    // merchant.pending crecio EXACTAMENTE el monto (fees 0 hasta PEND-002).
+    // merchant.pending crecio EXACTAMENTE el monto (este servicio usa
+    // ZERO_FEE_SCHEDULE; el fee al 2% se prueba abajo con FlatBpsFeeSchedule).
     const balance = await new LedgerService(ctx.app).getBalance(org, chart['merchant.pending']);
     expect(BigInt(balance.available) - BigInt(before.available)).toBe(BigInt(amount));
 
@@ -109,6 +113,38 @@ describe('PaymentConfirmationService (F3-03)', () => {
       [org, attemptId]
     );
     expect(tx.rowCount).toBe(1);
+  });
+
+  // F4-05c (PEND-002): con el motor de fees al 2%, la captura reparte el monto
+  // bruto entre el ingreso de Fluvia (platform.fees) y el pasivo con el comercio
+  // (merchant.pending): Ff = 2%, comercio = 98%.
+  it('con FlatBpsFeeSchedule(200) la captura credita platform.fees=2% y merchant.pending=98%', async () => {
+    const feeSvc = new PaymentConfirmationService(
+      ctx.app,
+      intents,
+      posting,
+      new MockPaymentProvider(),
+      new FlatBpsFeeSchedule(200)
+    );
+    const amount = 100_000;
+    const intent = await intents.create({ tenantId: org, merchantId, amount: cop(amount) });
+    const { attemptId } = await begin(intent.id);
+
+    const chart = await posting.ensureChart(org, merchantId, 'COP');
+    const ledger = new LedgerService(ctx.app);
+    const bal = async (code: 'merchant.pending' | 'platform.fees') =>
+      BigInt((await ledger.getBalance(org, chart[code])).available);
+    const pendingBefore = await bal('merchant.pending');
+    const feesBefore = await bal('platform.fees');
+
+    await feeSvc.execute(org, attemptId, 'tok_approve');
+
+    const feeDelta = (await bal('platform.fees')) - feesBefore;
+    const pendingDelta = (await bal('merchant.pending')) - pendingBefore;
+    expect(feeDelta).toBe(2_000n); // 2% de 100000 = ingreso de Fluvia
+    expect(pendingDelta).toBe(98_000n); // 98% para el comercio
+    // El bruto cuadra: comercio + fee == monto capturado (sin perder unidades).
+    expect(pendingDelta + feeDelta).toBe(BigInt(amount));
   });
 
   it('execute is crash-safe: re-running after resolution is a no-op (no double capture)', async () => {

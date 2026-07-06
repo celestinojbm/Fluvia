@@ -23,7 +23,7 @@ Convención: `normal_side` indica el lado que incrementa el saldo. Toda cuenta e
 
 ## Reglas de posting del MVP — IMPLEMENTADAS (F2-04; fuente de verdad: `packages/ledger/src/posting.ts`)
 
-**Modelo contable sandbox v1 (bruto)** — desviación registrada respecto al borrador de Fase 0: la captura es **una sola transacción atómica** (no dos) porque la atomicidad domina a la trazabilidad-por-partes, y el modelo es "plataforma absorbe el fee del proveedor" (margen de Fluvia = Ff − Fp). El pricing definitivo depende de PEND-002 y del flujo de fondos de Fase 4.
+**Modelo contable sandbox v1 (bruto)** — desviación registrada respecto al borrador de Fase 0: la captura es **una sola transacción atómica** (no dos) porque la atomicidad domina a la trazabilidad-por-partes, y el modelo es "plataforma absorbe el fee del proveedor" (margen de Fluvia = Ff − Fp). El pricing quedó fijado en **2% por transacción** (PEND-002 resuelto, decisión #25, «por el momento»); Ff lo calcula el motor de fees en la captura (F4-05c, ver abajo).
 
 **`payment.capture` (bruto M, fee proveedor Fp, fee plataforma Ff) — golden: M=100000, Fp=2900, Ff=5000 COP:**
 
@@ -63,4 +63,4 @@ Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo e
 - **Settlement** — construido (`releaseSettlement`, F2-04): mueve el pasivo del comercio de `pending` a `available`.
 - **Reserves** — construido (`holdReserve`/`releaseReserve`, **F4-05a**): reclasifica entre `available` y `reserve`. Sin dependencia de pricing.
 - **Payout** — construido (`emitPayout`/`settlePayout`/`failPayout` + `receiveProviderSettlement`, **F4-05b**): añade `platform.cash` (caja de Fluvia) y corrige `payout.in_transit` a pasivo (obligación en vuelo, tratamiento estándar; la cuenta era placeholder sin usar). Flujo `available → in_transit → cash` con no-double-spend, no-cash-underflow. Sin dependencia de pricing.
-- **Fees** — **bloqueado por PEND-002 (pricing)**: `platform.fees`/`provider.fees` existen y la captura ya postea el margen `Ff−Fp`, pero el **motor de fees** (cuánto cobra Fluvia) depende del modelo comercial (decisión humana). Hoy los fees se pasan como entrada (0 por defecto).
+- **Fees** — construido (`FlatBpsFeeSchedule`, **F4-05c**; PEND-002 resuelto en 2%, decisión #25): el **motor de fees** calcula Ff en la captura como `platformFee(monto)` = 2% (200 bps, configurable por `PLATFORM_FEE_BPS`), con redondeo por mayor residuo (invariante `0 ≤ Ff ≤ monto`, `Money.allocate([bps, 10000−bps])`). La captura ya posteaba el margen `Ff−Fp`; ahora `PaymentConfirmationService` recibe un `FeeSchedule` (5.º parámetro, requerido — fail-fast, sin fee-cero silencioso en producción) y devenga `platform.fees` en cada captura. Los tests usan `ZERO_FEE_SCHEDULE`. Es «por el momento»: reemplazar el schedule (p. ej. por tiers o fee del proveedor variable) no toca el modelo contable.

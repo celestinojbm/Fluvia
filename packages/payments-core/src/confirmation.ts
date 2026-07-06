@@ -5,6 +5,7 @@ import { InvalidStateTransitionError, PaymentIntentNotFoundError } from './error
 import type { IntentStatus } from './fsm.js';
 import type { PaymentProvider } from './provider.js';
 import { CircuitOpenError } from './resilience.js';
+import type { FeeSchedule } from './pricing.js';
 import type { PaymentIntentDto, PaymentIntentService, TxClient } from './service.js';
 
 /**
@@ -26,8 +27,11 @@ import type { PaymentIntentDto, PaymentIntentService, TxClient } from './service
  *                  conciliacion (F3-03b/F4). Crash entre fases => attempt en
  *                  submitting; el barrido a indeterminate llega con F3-04.
  *
- * Fees en 0 en sandbox: el pricing es decision humana abierta (PEND-002);
- * inventar fees seria simular un modelo comercial inexistente.
+ * Fee de plataforma: el servicio recibe un FeeSchedule inyectado (5.o param,
+ * requerido) y devenga Ff = fees.platformFee(monto) en cada captura. Produccion
+ * usa FlatBpsFeeSchedule(PLATFORM_FEE_BPS) (2% por PEND-002/decision #25); los
+ * tests usan ZERO_FEE_SCHEDULE. Sin default silencioso: omitirlo es un error de
+ * compilacion, no un fee-cero accidental (perdida de ingresos en produccion).
  */
 
 const CONFIRM_PATHS: Partial<Record<IntentStatus, IntentStatus[]>> = {
@@ -47,7 +51,10 @@ export class PaymentConfirmationService {
     private readonly appPool: Pool,
     private readonly intents: PaymentIntentService,
     private readonly posting: PostingService,
-    private readonly provider: PaymentProvider
+    private readonly provider: PaymentProvider,
+    /** Motor de fees (F4-05c): calcula el fee de plataforma en la captura.
+     * Requerido para no arriesgar un fee=0 silencioso en producción. */
+    private readonly fees: FeeSchedule
   ) {}
 
   /** Fase 1 — client-bound: compone con la capa de idempotencia (F2-09). */
@@ -235,6 +242,7 @@ export class PaymentConfirmationService {
     row: { intent_id: string; amount: string; currency: string; merchant_id: string },
     providerRef: string
   ): Promise<void> {
+    const amount = Money.of(row.amount, row.currency);
     await this.posting.capturePayment({
       tenantId,
       merchantId: row.merchant_id,
@@ -242,7 +250,11 @@ export class PaymentConfirmationService {
       idempotencyKey: `attempt:${attemptId}:capture`,
       sourceType: 'payment_attempt',
       sourceId: attemptId,
-      amount: Money.of(row.amount, row.currency),
+      amount,
+      // F4-05c: el fee de plataforma (Ff) se calcula por el motor de fees (2% por
+      // PEND-002). Fp (fee del proveedor) es 0 en sandbox; el margen de Fluvia es
+      // Ff. La captura credita platform.fees = Ff y merchant.pending = M − Ff.
+      platformFee: this.fees.platformFee(amount),
       onPosted: async (client) => {
         await client.query(
           `UPDATE payment_attempts

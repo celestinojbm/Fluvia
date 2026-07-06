@@ -30,16 +30,16 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 | 22 | **Reversiones: únicas e irreversibles** (F2-07): una tx se revierte a lo sumo una vez (índice único de motor decide carreras); prohibido revertir una reversión — correcciones posteriores son transacciones forward nuevas; razón humana obligatoria con auditoría atómica | B | `ledger-design.md` §4 |
 | 24 | **F3-01 adelantado a la re-auditoría** (propietario, 2026-07-05): los 5 bloqueantes P1 que motivaron la congelación están cerrados, y F3-01 es plano interno (schema+FSM+servicio, CERO endpoints). La solicitud de re-auditoría se pospone por decisión del propietario. La exposición pública de pagos (F3-02+ en sandbox abierto) sigue condicionada a re-auditoría y PEND-006 | Gobernanza | `f3-01-payment-intents.md` |
 | 23 | **Modelo MFA: TOTP RFC 6238 + códigos de respaldo, sin SMS** (ex PEND-005; el propietario eligió la opción b con esta propuesta sobre la mesa, 2026-07-04). Secreto cifrado en reposo (AES-256-GCM, `MFA_SECRET_KEY`); anti-replay por step; fallos MFA → mismo lockout; step-up de 15 min para `keys:manage`. Reversible antes de exponer usuarios reales | B | F1-04b; migración 0014 |
+| 25 | **Pricing sandbox v1: fee de plataforma 2% por transacción** (ex PEND-002; el propietario decidió «2% por el momento», 2026-07-06). 200 bps configurable por `PLATFORM_FEE_BPS`; motor `FlatBpsFeeSchedule` (redondeo por mayor residuo, invariante 0 ≤ Ff ≤ monto); la captura ya devengaba el margen `Ff−Fp`, esto fija cuánto cobra Fluvia. Reversible — es «por el momento», no el modelo comercial definitivo | Producto | F4-05c; `pricing.ts` |
 
 ## Decisiones PENDIENTES que requieren humano
 
 | ID | Decisión | Bloquea | Contexto |
 |----|----------|---------|----------|
-| **PEND-002** | Modelo comercial (pricing) | Diseño fino del motor de fees (Fase 4) | Opciones en PRD §8 |
 | **PEND-004** | Política definitiva de credenciales `live` (¿qué gates exactos + quién autoriza la primera emisión?) | Nada hoy (creación bloqueada por código, decisión #19) | AUD-P2-003; `production-gates.md` |
 | **PEND-006** | Condiciones para abrir sandbox compartido a terceros | Exposición pública del sandbox | Requiere F1-04b + AUD-P2-015 |
 
-Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-003~~ → aprobado (decisión #16). ~~PEND-005~~ → TOTP + backup codes (decisión #23).
+Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-002~~ → fee 2% por transacción (decisión #25). ~~PEND-003~~ → aprobado (decisión #16). ~~PEND-005~~ → TOTP + backup codes (decisión #23).
 
 ## Supuestos adoptados (más seguros y reversibles, §2)
 

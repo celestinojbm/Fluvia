@@ -56,6 +56,7 @@ export {
   type SubmitPaymentInput,
 } from './provider.js';
 export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';
+export { FlatBpsFeeSchedule, ZERO_FEE_SCHEDULE, type FeeSchedule } from './pricing.js';
 export { RefundService, type CreateRefundInput, type RefundDto } from './refunds.js';
 export {
   CircuitOpenError,

@@ -12,6 +12,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  ZERO_FEE_SCHEDULE,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
 import { buildApp } from '../src/app.js';
@@ -92,7 +93,8 @@ beforeAll(async () => {
     appPool,
     intents,
     new PostingService(new LedgerService(appPool), appPool),
-    new MockPaymentProvider()
+    new MockPaymentProvider(),
+    ZERO_FEE_SCHEDULE
   );
   processor = new InboxProcessor(inboxPool, {});
   processor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation));

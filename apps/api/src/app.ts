@@ -16,6 +16,7 @@ import {
 } from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
+  FlatBpsFeeSchedule,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
@@ -192,7 +193,8 @@ export function buildApp({
       appPool,
       paymentIntentService,
       postingService,
-      provider
+      provider,
+      new FlatBpsFeeSchedule(config.platformFeeBps)
     );
     registerPaymentIntentRoutes(app, {
       security,
