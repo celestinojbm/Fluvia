@@ -47,6 +47,17 @@ Según la causa raíz:
 - `missing_in_ledger` **persistente** o de monto alto = **SEV-1** (el proveedor movió dinero que el sistema no registró): activar `incident-response.md`, preservar evidencia, NO conciliar por asunción.
 - Si el asiento del ajuste provoca **drift contable** (`fluvia_ledger_projection_drift_accounts > 0`), ir a [`ledger-drift.md`](./ledger-drift.md) — es SEV-1.
 
-## Drill (F4-06b)
+## Drill (F4-06b) — ✅ PROBADO
 
-Pendiente de ejecución con evidencia: sembrar un reporte con las 4 clases por el plano de API key → verificar que se materializan los casos → trabajar un `amount_mismatch` con four-eyes (dos usuarios) → confirmar asiento + caso resuelto + audit trail. (El E2E de navegador de F4-01c/F4-03c-ii ya ejerció parte de este flujo localmente.)
+Drill reproducible: **`apps/api/drills/reconciliation-drill.ts`** (`pnpm --filter @fluvia/api run drill:reconciliation`). Levanta la API real en proceso y la conduce **sobre HTTP** con dos operadores `finance` distintos, ejerciendo el runbook de punta a punta:
+
+1. siembra una discrepancia `missing_in_ledger` (línea del proveedor sin intent) por el plano de API key → concilia;
+2. verifica que el trigger materializó un `operational_case` **critical**;
+3. U1 reconoce; 4. U1 propone un ajuste;
+5. **four-eyes**: U1 auto-aprueba → `409 four_eyes_required` (bloqueado);
+6. U2 (distinto) aprueba → asiento + caso resuelto;
+7. verifica caso `resolved` + ajuste `applied` con `ledger_transaction_id`;
+8. verifica el rastro de auditoría (`acknowledged` → `adjustment_proposed` → `adjustment_applied`);
+9. verifica que el asiento del ajuste **balancea** (débitos == créditos).
+
+**Última ejecución: PASS (9/9 pasos)** contra Postgres 16 local + API real sobre HTTP; el four-eyes bloqueó la auto-aprobación (409) y `scripts/verify-ledger-invariants.sql` reportó `FLUVIA_INVARIANTS_OK: all ledger invariants hold`. El CI valida el código del drill (build/lint/format); su ejecución es LOCAL (el CI no levanta el stack), como los E2E de navegador del dashboard.

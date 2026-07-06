@@ -33,4 +33,16 @@ Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya co
 
 ## Estado de drill (F4-06b)
 
-«Runbooks probados en drill» es el criterio de salida de la Fase 4 (`phase-plan.md`). El estado de ejecución en drill de cada runbook se registra en cada archivo (sección **Drill**) y en `docs/audits/audit-closure-register-v1.md` con su evidencia. F4-06a entrega los procedimientos; F4-06b ejecuta y evidencia los drills.
+«Runbooks probados en drill» es el criterio de salida de la Fase 4 (`phase-plan.md`). El estado de ejecución en drill de cada runbook se registra en su sección **Drill** y en `docs/audits/audit-closure-register-v1.md`. F4-06a entregó los procedimientos; F4-06b ejecuta y evidencia los drills.
+
+| Runbook | Drill | Cómo |
+| --- | --- | --- |
+| `reconciliation-discrepancy` | ✅ **PASS (9/9)** | `pnpm --filter @fluvia/api run drill:reconciliation` (`apps/api/drills/reconciliation-drill.ts`) — API real sobre HTTP, four-eyes con dos operadores, invariantes del ledger verdes |
+| `webhook-dead-letter` | pendiente | E2E de F3-09b-iii ya ejerció el reenvío desde el panel (local) |
+| `ledger-drift` | pendiente | property test `packages/ledger/test/drift.test.ts` ejerce rebuild bajo concurrencia |
+| `outbox-inbox-stuck` | pendiente | suites de `@fluvia/outbox`/`@fluvia/inbox` ejercen `dead` + replay auditado |
+| `indeterminate-payment` | pendiente | suites de `payments-core` ejercen los desenlaces + captura idempotente |
+| `worker-down` | pendiente | — |
+| `audit-investigation` | ✅ ejercido de facto | el drill de conciliación verifica el rastro de auditoría (paso 8) |
+
+El drill de conciliación cubre el flujo **crítico** (dinero + four-eyes + ledger) que es el corazón del Gate Conciliación; los demás drills se añaden incrementalmente reusando el mismo patrón (`apps/api/drills/`).

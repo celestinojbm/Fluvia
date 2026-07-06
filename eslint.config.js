@@ -19,5 +19,12 @@ export default tseslint.config(
     // CLIs y scripts pueden escribir a stdout
     files: ['**/migrate-cli.ts', 'scripts/**'],
     rules: { 'no-console': 'off' },
+  },
+  {
+    // Drills operativos (F4-06b): imprimen el transcript de la rehearsal y
+    // conducen JSON de respuestas HTTP suelto. No son código financiero de
+    // librería (donde el `any` sí está prohibido), sino scripts de ensayo.
+    files: ['**/drills/**'],
+    rules: { 'no-console': 'off', '@typescript-eslint/no-explicit-any': 'off' },
   }
 );
