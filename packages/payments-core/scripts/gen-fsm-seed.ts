@@ -1,6 +1,7 @@
 import {
   ATTEMPT_TRANSITIONS,
   CHECKOUT_SESSION_TRANSITIONS,
+  DISPUTE_TRANSITIONS,
   INTENT_TRANSITIONS,
   PAYOUT_TRANSITIONS,
   REFUND_TRANSITIONS,
@@ -40,3 +41,7 @@ console.log(seed('checkout_session_transitions', CHECKOUT_SESSION_TRANSITIONS));
 console.log();
 // eslint-disable-next-line no-console
 console.log(seed('payout_transitions', PAYOUT_TRANSITIONS));
+// eslint-disable-next-line no-console
+console.log();
+// eslint-disable-next-line no-console
+console.log(seed('dispute_transitions', DISPUTE_TRANSITIONS));

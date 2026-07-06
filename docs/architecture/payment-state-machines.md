@@ -79,9 +79,21 @@ stateDiagram-v2
 
 Invariantes: `Σ refunds no-fallidos ≤ monto capturado` (servicio + property test); todo `succeeded` publica asiento compensatorio en la misma unidad de consistencia; idempotencia por `(tenant, refund idempotency key)`. `indeterminate` (V4 §23, igual que attempts): tras llamar al proveedor con desenlace desconocido (throw/timeout) o aceptación asíncrona (`pending`), la reserva contable queda RETENIDA y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (`resolveFromProvider`); jamás por asunción ni re-envío.
 
-## 4. Dispute (modelo presente, programa fuera del MVP)
+## 4. Dispute (F4-08 — recurso gestionado, money clawed back)
 
-`created → needs_response → under_review → won | lost → closed`, con `evidence`, `deadline`, impacto contable vía `dispute.reserve`. Relación N:1 con el pago; no muta el estado del intent — el intent refleja disputas mediante campo derivado/flag, no cambiando su FSM.
+Estados: `open`, `under_review`, `won`, `lost`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> open
+    open --> under_review : evidencia enviada (sin mover dinero)
+    open --> won : resolución verificada (banco)
+    open --> lost : resolución verificada (banco)
+    under_review --> won : resolución verificada
+    under_review --> lost : resolución verificada
+```
+
+La disputa la INICIA el banco (relación N:1 con el pago; no muta la FSM del intent). Al ABRIR se aparta el monto disputado del disponible del comercio a `dispute.reserve` (`openDispute`: `merchant.available → dispute.reserve`, guard AUD-P1-010 — no se puede pagar ni disputar dos veces el mismo dinero; en sandbox v1 exige disponible suficiente, `InsufficientDisputeBalanceError`; el saldo deudor es decisión mayor futura). `under_review` cubre la fase de evidencia (cambio de estado puro). El desenlace llega SIEMPRE de fuente verificada (el banco vía webhook — slice posterior), jamás por asunción (V4 §23): `won` (`winDispute`: `dispute.reserve → merchant.available`, el comercio recupera lo apartado) o `lost` (`loseDispute`: `dispute.reserve → provider.clearing`, el dinero se va de vuelta vía el proveedor, como un refund forzado). No hay `indeterminate` porque la disputa no hace una llamada saliente cuyo resultado se desconozca (nos lo empujan). Terminales: `won`, `lost`. FSM hecha cumplir EN el motor (migración 0036). Disputas públicas/reales bloqueadas hasta los gates aplicables (Nivel A); F4-08a es el motor contable + FSM en sandbox.
 
 ## 5. Checkout Session
 

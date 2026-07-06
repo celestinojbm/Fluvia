@@ -85,3 +85,26 @@ export class InsufficientPayoutBalanceError extends PaymentsCoreError {
     );
   }
 }
+
+export class DisputeNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Dispute not found');
+  }
+}
+
+/**
+ * F4-08: abrir una disputa aparta el monto disputado del disponible del comercio
+ * (available -> dispute.reserve); en el sandbox v1 el guard de no-negatividad
+ * AUD-P1-010 impide apartar más de lo disponible. (En real una disputa puede
+ * dejar al comercio en negativo: modelo de saldo deudor, decisión mayor futura.)
+ */
+export class InsufficientDisputeBalanceError extends PaymentsCoreError {
+  constructor(
+    readonly amount: string,
+    readonly available: string
+  ) {
+    super(
+      `Dispute amount ${amount} exceeds the merchant's available balance ${available} (cannot set aside more than available in sandbox v1)`
+    );
+  }
+}

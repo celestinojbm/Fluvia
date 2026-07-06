@@ -52,6 +52,11 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 **Guard de no-negatividad generalizado (F4-05b):** `twoLegged` protege TODA cuenta que decrece con el asiento (pasivo debitado o activo/transitoria acreditada), calculado desde el `normal_side` del chart. Esto cubre correctamente los pares donde el riesgo está en la cuenta ACREDITADA (`provider.settle` acredita `provider.clearing`; `payout.settle` acredita `platform.cash`; `refund.settle` acredita `provider.clearing`).
 
+**Disputa / chargeback (F4-08, `reason='dispute'`; mismo esqueleto que refunds).** La disputa la INICIA el banco; el dinero disputado se APARTA a `dispute.reserve` (merchant-scope) mientras se resuelve.
+- **`dispute.open` X** (`openDispute`): `debit merchant.available X` / `credit dispute.reserve X`. El banco abre; se aparta del disponible (guard sobre `merchant.available`: no se puede pagar ni disputar dos veces el mismo dinero — no double-spend).
+- **`dispute.win` X** (`winDispute`): `debit dispute.reserve X` / `credit merchant.available X`. El comercio gana; lo apartado vuelve íntegro (reverso de open).
+- **`dispute.lose` X** (`loseDispute`): `debit dispute.reserve X` / `credit provider.clearing X`. El comercio pierde; el dinero se va de vuelta vía el proveedor, como un refund forzado (guard sobre `provider.clearing`, la cuenta ACREDITADA). El desenlace llega SIEMPRE de fuente verificada (V4 §23). En sandbox v1 abrir exige disponible suficiente (`InsufficientDisputeBalanceError`); el saldo deudor es decisión mayor futura.
+
 ## Catálogo cerrado y aprovisionamiento
 
 `PostingService.ensureChart(tenant, merchant, moneda)` aprovisiona idempotentemente las 14 cuentas (9 platform-scope por tenant+moneda con nombre = code; 5 merchant-scope con nombre = `code:merchantId`). Solo existen las operaciones tipadas del catálogo: una combinación de cuentas fuera de él es **irrepresentable** (`UnknownAccountCodeError` para codes desconocidos). Las compensaciones usan la transacción espejo con `reverses_tx_id` (servicio de reversal: F2-07).

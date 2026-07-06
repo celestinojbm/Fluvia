@@ -84,6 +84,11 @@ export interface ReconAdjustmentInput {
  *   payout.emit X:         debit merchant.available X / credit payout.in_transit X   (a "en transito")
  *   payout.settle X:       debit payout.in_transit X  / credit platform.cash X       (el banco confirma; sale caja)
  *   payout.fail X:         debit payout.in_transit X  / credit merchant.available X  (rebotado: vuelve al comercio)
+ *
+ *   Disputa / chargeback (F4-08, mismo esqueleto que refunds; sin double-spend):
+ *   dispute.open X:        debit merchant.available X / credit dispute.reserve X     (el banco abre: se aparta)
+ *   dispute.win X:         debit dispute.reserve X    / credit merchant.available X  (ganada: vuelve integra)
+ *   dispute.lose X:        debit dispute.reserve X    / credit provider.clearing X   (perdida: se va vía proveedor)
  */
 export class PostingService {
   constructor(
@@ -339,9 +344,32 @@ export class PostingService {
     return this.twoLegged(input, 'payout', 'payout.in_transit', 'merchant.available');
   }
 
+  /**
+   * F4-08 — el banco ABRE una disputa: se APARTA el monto disputado del
+   * disponible del comercio a `dispute.reserve`. Guard AUD-P1-010: no se puede
+   * apartar mas de lo disponible ⇒ el dinero disputado no se puede pagar ni
+   * disputar dos veces (no double-spend). Mismo esqueleto que requestRefund.
+   */
+  async openDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'merchant.available', 'dispute.reserve');
+  }
+
+  /** F4-08 — el comercio GANA la disputa: lo apartado vuelve integro al
+   * disponible (reverso de openDispute). Guard: no liberar mas de lo apartado. */
+  async winDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'dispute.reserve', 'merchant.available');
+  }
+
+  /** F4-08 — el comercio PIERDE la disputa: lo apartado se forfeita al proveedor
+   * (el dinero se va de vuelta, como un refund forzado — mismo destino que
+   * settleRefund). Guard: dispute.reserve y provider.clearing no quedan negativos. */
+  async loseDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'dispute.reserve', 'provider.clearing');
+  }
+
   private async twoLegged(
     input: SimpleAmountInput,
-    reason: 'settlement' | 'refund' | 'reserve' | 'payout',
+    reason: 'settlement' | 'refund' | 'reserve' | 'payout' | 'dispute',
     debitCode: AccountCode,
     creditCode: AccountCode
   ): Promise<PostedTransaction> {
