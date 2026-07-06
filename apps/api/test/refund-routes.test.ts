@@ -50,7 +50,14 @@ function auth(key: string) {
 }
 
 beforeAll(async () => {
-  const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error' });
+  // Fee de plataforma 0 en esta suite (F4-05c): F3-08 ejercita el CONTRATO de
+  // refunds sobre el monto BRUTO capturado (idempotencia/estado/aislamiento) y
+  // `seedRefundable` libera el bruto a `available`. Con fee>0 el bruto capturado
+  // (`amount_captured`) y el neto liquidable (`pending − Ff`) divergen, y un refund
+  // acotado por el bruto no cabe en el disponible neto — la interacción refund↔fee
+  // es trabajo futuro, fuera del alcance del motor de fees. El motor tiene su propia
+  // cobertura (`pricing.test.ts` + integración en `confirmation.test.ts`).
+  const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error', PLATFORM_FEE_BPS: '0' });
   appPool = createPool({ connectionString: config.db.app, max: 6 });
   authPool = createPool({ connectionString: config.db.auth, max: 2 });
   adminPool = createPool({ connectionString: config.db.admin, max: 2 });
