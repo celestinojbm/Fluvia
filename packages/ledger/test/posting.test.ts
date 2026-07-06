@@ -348,3 +348,122 @@ describe('GOLDEN: ciclo completo captura -> liquidacion -> refund', () => {
     expect(bal.available).toBe('10000');
   });
 });
+
+describe('GOLDEN: reserves hold/release — F4-05a', () => {
+  it('capture -> settle -> hold(30000) -> release(10000): reclasifica sin cambiar la obligacion total', async () => {
+    const rOrg = await ctx.createTenant('Golden Reserve Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(rOrg, m, 'COP');
+    const base = { tenantId: rOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-r',
+      amount: cop(100_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-r',
+      amount: cop(100_000),
+    });
+    // available = 100000
+    await posting.holdReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'hold-r',
+      amount: cop(30_000),
+    });
+    await posting.releaseReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'rel-r',
+      amount: cop(10_000),
+    });
+
+    const b = await balances(rOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('80000'); // 100000 - 30000 + 10000
+    expect(b['merchant.reserve']).toBe('20000'); // 30000 - 10000
+    // Invariante: la obligacion total con el comercio no cambia (solo se reclasifica).
+    expect(Number(b['merchant.available']) + Number(b['merchant.reserve'])).toBe(100_000);
+    for (const code of ['merchant.available', 'merchant.reserve'] as AccountCode[]) {
+      const check = await ledger.verifyProjection(rOrg, chart[code]);
+      expect(check.matches, `${code}: ${JSON.stringify(check)}`).toBe(true);
+    }
+  });
+
+  // AUD-P1-010: la cuenta debitada de cada operacion no puede quedar negativa.
+  it('cannot hold more than available nor release more than reserved (sin efectos)', async () => {
+    const gOrg = await ctx.createTenant('Golden Reserve Guard Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(gOrg, m, 'COP');
+    const base = { tenantId: gOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-g',
+      amount: cop(50_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-g',
+      amount: cop(50_000),
+    });
+    // available = 50000: reservar 50001 falla sin efectos.
+    await expect(
+      posting.holdReserve({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'hold-over',
+        amount: cop(50_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    await posting.holdReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'hold-g',
+      amount: cop(20_000),
+    });
+    // reserve = 20000: liberar 20001 falla sin efectos.
+    await expect(
+      posting.releaseReserve({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'rel-over',
+        amount: cop(20_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    const b = await balances(gOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('30000'); // 50000 - 20000; los intentos fallidos no tocaron nada
+    expect(b['merchant.reserve']).toBe('20000');
+  });
+
+  it('holdReserve is idempotent (replay does not double-hold)', async () => {
+    const m = randomUUID();
+    const chart = await posting.ensureChart(org, m, 'COP');
+    const base = { tenantId: org, merchantId: m, sourceType: 'test' };
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-i',
+      amount: cop(10_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-i',
+      amount: cop(10_000),
+    });
+    const hold = { ...base, idempotencyKey: key(), sourceId: 'hold-i', amount: cop(4_000) };
+    await posting.holdReserve(hold);
+    const replay = await posting.holdReserve(hold);
+    expect(replay.replayed).toBe(true);
+    const bal = await ledger.getBalance(org, chart['merchant.reserve']);
+    expect(bal.available).toBe('4000'); // no se duplico
+  });
+});

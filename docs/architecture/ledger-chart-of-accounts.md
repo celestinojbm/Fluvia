@@ -37,6 +37,8 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 **`settlement.release` X:** `debit merchant.pending X` / `credit merchant.available X`.
 
+**Reserva (F4-05a, `holdReserve`/`releaseReserve`, `reason='reserve'`):** aparta o libera fondos entre dos pasivos del comercio — **la obligación total con el comercio NO cambia**, solo deja de estar (o vuelve a estar) disponible para payout. Retener X: `debit merchant.available X` / `credit merchant.reserve X`; liberar X: al revés. El guard de no-negatividad (AUD-P1-010) impide reservar más de lo disponible o liberar más de lo reservado. **No depende de PEND-002** (el pricing solo bloquea el motor de fees): el monto es una entrada; la política de cuánto/cuánto tiempo es un parámetro del que llama.
+
 **`refund.request` R:** `debit merchant.available R` / `credit refund.liability R`; **`refund.settle` R:** `debit refund.liability R` / `credit provider.clearing R`; **`refund.cancel` R** (el proveedor RECHAZÓ el refund tras reservar, F3-08): `debit refund.liability R` / `credit merchant.available R` — la reserva vuelve íntegra al comercio, sin tocar `provider.clearing` (el dinero jamás se movió del proveedor).
 
 **Discrepancia de conciliación aceptada (F4-03b, `postReconAdjustment`):** siempre vía `recon.differences` con caso y aprobación four-eyes; nunca edición de asientos. Reconocer: `debit recon.differences X` / `credit suspense X`; revertir: al revés. Ambas platform/transitorias; NO toca saldos de comercios (el true-up de payout/settlement es F4-05). `source_type='case_adjustment'`, idempotente por caso.
@@ -45,4 +47,11 @@ credit platform.fees       Ff        (5000   — ingreso Fluvia)
 
 `PostingService.ensureChart(tenant, merchant, moneda)` aprovisiona idempotentemente las 13 cuentas (8 platform-scope por tenant+moneda con nombre = code; 5 merchant-scope con nombre = `code:merchantId`). Solo existen las operaciones tipadas del catálogo: una combinación de cuentas fuera de él es **irrepresentable** (`UnknownAccountCodeError` para codes desconocidos). Las compensaciones usan la transacción espejo con `reverses_tx_id` (servicio de reversal: F2-07).
 
-Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo exactamente = 13 cuentas con semántica contable verificada (activo/gasto = debit-normal, pasivo/ingreso = credit-normal), la captura golden de arriba asiento por asiento y balance por balance, fees que consumen todo el monto rechazados, monedas mixtas rechazadas, ciclo completo captura→liquidación→refund con balances exactos y cero drift, e idempotencia end-to-end de las operaciones.
+Los **golden tests** (`packages/ledger/test/posting.test.ts`) fijan: catálogo exactamente = 13 cuentas con semántica contable verificada (activo/gasto = debit-normal, pasivo/ingreso = credit-normal), la captura golden de arriba asiento por asiento y balance por balance, fees que consumen todo el monto rechazados, monedas mixtas rechazadas, ciclo completo captura→liquidación→refund con balances exactos y cero drift, **reserves hold/release** (reclasificación que conserva la obligación total + guards de no-negatividad), e idempotencia end-to-end de las operaciones.
+
+## Estado de las abstracciones contables de Fase 4 (F4-05)
+
+- **Settlement** — construido (`releaseSettlement`, F2-04): mueve el pasivo del comercio de `pending` a `available`.
+- **Reserves** — construido (`holdReserve`/`releaseReserve`, **F4-05a**): reclasifica entre `available` y `reserve`. Sin dependencia de pricing.
+- **Payout** — **pendiente de diseño**: mover `merchant.available` fuera del sistema no es expresable con el chart actual (falta una cuenta de **caja/banco** de Fluvia; `payout.in_transit` es solo el estado "emitido no confirmado"). Requiere decisión contable (cuenta nueva + convención), no pricing. No se construye a ciegas.
+- **Fees** — **bloqueado por PEND-002 (pricing)**: `platform.fees`/`provider.fees` existen y la captura ya postea el margen `Ff−Fp`, pero el **motor de fees** (cuánto cobra Fluvia) depende del modelo comercial (decisión humana). Hoy los fees se pasan como entrada (0 por defecto).

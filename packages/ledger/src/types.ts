@@ -12,6 +12,7 @@ export const LEDGER_REASONS = [
   'settlement',
   'reversal',
   'reconciliation',
+  'reserve',
 ] as const;
 export type LedgerReason = (typeof LEDGER_REASONS)[number];
 

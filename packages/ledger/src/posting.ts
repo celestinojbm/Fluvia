@@ -74,6 +74,10 @@ export interface ReconAdjustmentInput {
  *   refund.cancel R:       debit refund.liability R   / credit merchant.available R
  *                          (el proveedor RECHAZO el refund: la reserva vuelve
  *                          integra al comercio — F3-08)
+ *   reserve.hold X:        debit merchant.available X / credit merchant.reserve X   (F4-05a)
+ *   reserve.release X:     debit merchant.reserve X   / credit merchant.available X (F4-05a)
+ *                          (reclasificacion entre pasivos del comercio: la
+ *                          obligacion total no cambia; no depende de pricing)
  */
 export class PostingService {
   constructor(
@@ -278,9 +282,27 @@ export class PostingService {
     return this.twoLegged(input, 'refund', 'refund.liability', 'merchant.available');
   }
 
+  /**
+   * F4-05a — APARTA fondos del disponible del comercio a su reserva
+   * (riesgo/disputas). Reclasificacion entre dos pasivos del comercio: la
+   * obligacion total NO cambia, solo deja de estar disponible para payout. El
+   * guard de no-negatividad impide reservar mas de lo disponible. No depende de
+   * pricing (el monto es una entrada; la politica de cuanto/cuanto tiempo es un
+   * parametro del que llama).
+   */
+  async holdReserve(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'reserve', 'merchant.available', 'merchant.reserve');
+  }
+
+  /** F4-05a — LIBERA fondos de la reserva al disponible del comercio (reverso
+   * de holdReserve). El guard impide liberar mas de lo reservado. */
+  async releaseReserve(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'reserve', 'merchant.reserve', 'merchant.available');
+  }
+
   private async twoLegged(
     input: SimpleAmountInput,
-    reason: 'settlement' | 'refund',
+    reason: 'settlement' | 'refund' | 'reserve',
     debitCode: AccountCode,
     creditCode: AccountCode
   ): Promise<PostedTransaction> {
