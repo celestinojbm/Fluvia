@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AuditContext } from '@fluvia/audit';
 import type {
   CheckoutSessionService,
+  DisputeService,
   PaymentIntentService,
   PaymentLinkService,
   PayoutService,
@@ -23,6 +24,7 @@ import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
 import { publicRefund } from './refunds.js';
 import { publicPayout } from './payouts.js';
+import { publicDispute } from './disputes.js';
 import { publicSession } from './checkout-sessions.js';
 import { publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
@@ -48,6 +50,7 @@ const LimitQuery = z
   .passthrough();
 const RefundsQuery = LimitQuery.extend({ payment_intent_id: z.string().uuid().optional() });
 const PayoutsQuery = LimitQuery.extend({ merchant_id: z.string().uuid().optional() });
+const DisputesQuery = LimitQuery.extend({ merchant_id: z.string().uuid().optional() });
 const WebhookEventsQuery = LimitQuery.extend({
   endpoint_id: z.string().uuid().optional(),
   status: z.enum(WEBHOOK_EVENT_STATUSES as unknown as [string, ...string[]]).optional(),
@@ -82,6 +85,7 @@ export interface DashboardRoutesOptions {
   paymentIntentService: PaymentIntentService;
   refundService: RefundService;
   payoutService: PayoutService;
+  disputeService: DisputeService;
   checkoutSessionService: CheckoutSessionService;
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
@@ -119,6 +123,7 @@ export function registerDashboardRoutes(
     paymentIntentService,
     refundService,
     payoutService,
+    disputeService,
     checkoutSessionService,
     paymentLinkService,
     webhookEventService,
@@ -175,6 +180,18 @@ export function registerDashboardRoutes(
   app.get('/v1/organizations/:orgId/payouts/:id', guard, async (req) => {
     const { id } = IdParams.parse(req.params);
     return publicPayout(await payoutService.get(tenant(req), id));
+  });
+
+  // --- disputas (F4-08d: lectura por sesión del recurso money-clawed-back) ---
+  app.get('/v1/organizations/:orgId/disputes', guard, async (req) => {
+    const q = DisputesQuery.parse(req.query ?? {});
+    OrgParam.parse(req.params);
+    const disputes = await disputeService.list(tenant(req), q.merchant_id, q.limit);
+    return { object: 'list', data: disputes.map(publicDispute) };
+  });
+  app.get('/v1/organizations/:orgId/disputes/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicDispute(await disputeService.get(tenant(req), id));
   });
 
   // --- checkout sessions ---

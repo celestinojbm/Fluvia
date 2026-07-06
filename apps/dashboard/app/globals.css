@@ -192,7 +192,8 @@ code {
 .badge-completed,
 .badge-delivered,
 .badge-active,
-.badge-paid {
+.badge-paid,
+.badge-won {
   background: #e7f4ec;
   color: var(--ok);
 }
@@ -200,7 +201,8 @@ code {
 .badge-dead,
 .badge-canceled,
 .badge-disabled,
-.badge-expired {
+.badge-expired,
+.badge-lost {
   background: #fbeaea;
   color: var(--bad);
 }
@@ -209,7 +211,8 @@ code {
 .badge-open,
 .badge-requested,
 .badge-in_transit,
-.badge-indeterminate {
+.badge-indeterminate,
+.badge-under_review {
   background: #fdf3e4;
   color: var(--warn);
 }

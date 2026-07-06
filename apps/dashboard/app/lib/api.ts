@@ -194,6 +194,35 @@ export async function fetchPayout(
   );
 }
 
+// --- disputas (F4-08d: money clawed back, lectura por sesión) ---
+export interface Dispute {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reason: string | null;
+  provider_ref: string | null;
+  created_at: string;
+}
+
+export async function fetchDisputes(opts: ClientOptions & { orgId: string }): Promise<Dispute[]> {
+  const body = await apiGet<{ data?: Dispute[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/disputes?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchDispute(
+  opts: ClientOptions & { orgId: string; disputeId: string }
+): Promise<Dispute | null> {
+  return apiGet<Dispute>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/disputes/${encodeURIComponent(opts.disputeId)}`
+  );
+}
+
 // --- casos operativos + ajustes con four-eyes (F4-03c-ii) ---
 export type CaseStatus = 'open' | 'acknowledged' | 'resolved';
 export type CaseSeverity = 'low' | 'medium' | 'high' | 'critical';

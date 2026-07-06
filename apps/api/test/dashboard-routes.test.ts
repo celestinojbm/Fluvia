@@ -164,6 +164,7 @@ describe('lectura por sesión + membresía', () => {
       'payment_intents',
       'refunds',
       'payouts',
+      'disputes',
       'checkout_sessions',
       'payment_links',
       'webhook_events',

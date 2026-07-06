@@ -62,6 +62,13 @@ interface Messages {
   payoutReason: string;
   payoutFailureCode: string;
   payoutIndeterminateHint: string;
+  disputes: string;
+  disputesTitle: string;
+  disputesEmpty: string;
+  colDispute: string;
+  disputeReason: string;
+  disputeProviderRef: string;
+  disputeHeldHint: string;
   backToDashboard: string;
   sandboxNotice: string;
   // casos operativos + ajustes (F4-03c-ii)
@@ -198,6 +205,14 @@ export const MESSAGES: Record<Locale, Messages> = {
     payoutFailureCode: 'Código de fallo',
     payoutIndeterminateHint:
       'Desenlace del banco desconocido: fondos retenidos en tránsito, a la espera de resolución verificada.',
+    disputes: 'Disputas',
+    disputesTitle: 'Disputas (contracargos)',
+    disputesEmpty: 'Sin disputas.',
+    colDispute: 'Disputa',
+    disputeReason: 'Motivo',
+    disputeProviderRef: 'Ref. del banco',
+    disputeHeldHint:
+      'Fondos apartados de la reserva del comercio mientras el banco resuelve la disputa.',
     backToDashboard: '← Volver al panel',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
     cases: 'Casos',
@@ -330,6 +345,14 @@ export const MESSAGES: Record<Locale, Messages> = {
     payoutFailureCode: 'Failure code',
     payoutIndeterminateHint:
       'Bank outcome unknown: funds held in transit, awaiting verified resolution.',
+    disputes: 'Disputes',
+    disputesTitle: 'Disputes (chargebacks)',
+    disputesEmpty: 'No disputes.',
+    colDispute: 'Dispute',
+    disputeReason: 'Reason',
+    disputeProviderRef: 'Bank ref',
+    disputeHeldHint:
+      "Funds set aside from the merchant's reserve while the bank resolves the dispute.",
     backToDashboard: '← Back to dashboard',
     sandboxNotice: 'Test environment — no real money moves.',
     cases: 'Cases',
