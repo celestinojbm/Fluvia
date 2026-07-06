@@ -12,6 +12,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  PayoutService,
   ResilientProvider,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
@@ -166,13 +167,19 @@ const purgeJob = new TechnicalPurgeJob(workerPool, logger, {
 // F3-03b: primer handler real del inbox — resuelve attempts asincronos o
 // indeterminados del MockProvider por webhook firmado (fuente verificada).
 const paymentIntents = new PaymentIntentService(appPool);
+const inboxPosting = new PostingService(new LedgerService(appPool), appPool);
+const inboxProvider = new ResilientProvider(new MockPaymentProvider());
 const confirmation = new PaymentConfirmationService(
   appPool,
   paymentIntents,
-  new PostingService(new LedgerService(appPool), appPool),
-  new ResilientProvider(new MockPaymentProvider()),
+  inboxPosting,
+  inboxProvider,
   new FlatBpsFeeSchedule(config.platformFeeBps)
 );
+// F4-07c-ii: el mismo webhook firmado del banco resuelve payouts
+// `in_transit`/`indeterminate` (p. ej. los barridos por F4-07c) por fuente
+// verificada — resolveFromProvider, jamas por asuncion (V4 §23).
+const inboxPayouts = new PayoutService(appPool, inboxPosting, inboxProvider);
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
   onStats: (stats) => {
@@ -183,7 +190,10 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
     if (stats.dead > 0) inboxEventsTotal.inc({ result: 'dead' }, stats.dead);
   },
 });
-inboxProcessor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation));
+inboxProcessor.register(
+  MOCK_PROVIDER_NAME,
+  createMockInboxRegistration(confirmation, inboxPayouts)
+);
 // F3-04: barrido submitting->indeterminate + salud de indeterminados. La
 // politica vive en sweep_payment_attempts() (0018); el job la invoca.
 const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {

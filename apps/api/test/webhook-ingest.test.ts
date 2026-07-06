@@ -12,6 +12,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  PayoutService,
   ZERO_FEE_SCHEDULE,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
@@ -89,15 +90,18 @@ beforeAll(async () => {
 
   // MISMO cableado que apps/worker/src/main.ts.
   const intents = new PaymentIntentService(appPool);
+  const posting = new PostingService(new LedgerService(appPool), appPool);
+  const provider = new MockPaymentProvider();
   const confirmation = new PaymentConfirmationService(
     appPool,
     intents,
-    new PostingService(new LedgerService(appPool), appPool),
-    new MockPaymentProvider(),
+    posting,
+    provider,
     ZERO_FEE_SCHEDULE
   );
+  const payouts = new PayoutService(appPool, posting, provider);
   processor = new InboxProcessor(inboxPool, {});
-  processor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation));
+  processor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation, payouts));
 
   org = (
     await adminPool.query<{ id: string }>(
