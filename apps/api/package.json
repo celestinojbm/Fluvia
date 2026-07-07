@@ -15,7 +15,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "drill:reconciliation": "tsx drills/reconciliation-drill.ts",
-    "drill:disputes": "tsx drills/disputes-drill.ts"
+    "drill:disputes": "tsx drills/disputes-drill.ts",
+    "drill:indeterminate": "tsx drills/indeterminate-payment-drill.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",

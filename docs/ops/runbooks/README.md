@@ -42,9 +42,9 @@ Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya co
 | `webhook-dead-letter` | pendiente | E2E de F3-09b-iii ya ejerció el reenvío desde el panel (local) |
 | `ledger-drift` | pendiente | property test `packages/ledger/test/drift.test.ts` ejerce rebuild bajo concurrencia |
 | `outbox-inbox-stuck` | pendiente | suites de `@fluvia/outbox`/`@fluvia/inbox` ejercen `dead` + replay auditado |
-| `indeterminate-payment` | pendiente | suites de `payments-core` ejercen los desenlaces + captura idempotente |
+| `indeterminate-payment` | ✅ **PASS (6/6)** | `pnpm --filter @fluvia/api run drill:indeterminate` (`apps/api/drills/indeterminate-payment-drill.ts`) — proveedor→worker sobre HTTP real: `tok_timeout`→indeterminate (≠ circuito abierto), envejecer→`sweep_payment_attempts` alerta, watchdog NO resuelve, `resolveFromProvider` succeeded (captura idempotente) / failed (sin asiento) / referencia inexistente→ignored + `FLUVIA_INVARIANTS_OK` |
 | `aged-disputes` | ✅ **PASS (7/7)** | `pnpm --filter @fluvia/api run drill:disputes` (`apps/api/drills/disputes-drill.ts`) — banco→worker→operador sobre HTTP real: abrir idempotente + aparte, envejecer→`sweep_disputes` alerta, watchdog NO transiciona, gate `reconciliation:manage`, responder evidencia por sesión (F4-08e), won restaura / lost forfeita, asientos balanceados + `FLUVIA_INVARIANTS_OK` |
 | `worker-down` | pendiente | — |
 | `audit-investigation` | ✅ ejercido de facto | el drill de conciliación verifica el rastro de auditoría (paso 8) |
 
-El drill de conciliación cubre el flujo **crítico** (dinero + four-eyes + ledger) que es el corazón del Gate Conciliación; el de **disputas** (F4-06b) reusa el mismo patrón (`apps/api/drills/`) y ensaya el ciclo money-clawed-back de punta a punta (banco→worker→operador). Los runbooks restantes se añaden incrementalmente sobre esa base.
+El drill de conciliación cubre el flujo **crítico** (dinero + four-eyes + ledger) que es el corazón del Gate Conciliación; sobre ese mismo patrón (`apps/api/drills/`) ya se ejecutan también el de **disputas** (money-clawed-back: banco→worker→operador) y el de **pagos indeterminados** (money-in-doubt: proveedor→worker, resolución solo por fuente verificada) — F4-06b. Los runbooks restantes (`outbox-inbox-stuck`, `worker-down`, `webhook-dead-letter`) se añaden incrementalmente sobre esa base.

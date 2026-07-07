@@ -36,4 +36,13 @@ Una vez el proveedor confirma el desenlace real:
 
 ## Drill (F4-06b)
 
-Pendiente: forzar un timeout del proveedor (mock) → attempt `indeterminate` → envejecer > umbral → confirmar alerta/log → entregar el webhook de proveedor → `resolveFromProvider` cierra el attempt correctamente. (Las suites de payments-core ya prueban los desenlaces conocido/desconocido y la captura idempotente.)
+✅ **Ejecutado — PASS 6/6** (`pnpm --filter @fluvia/api run drill:indeterminate`, `apps/api/drills/indeterminate-payment-drill.ts`). Ensaya este runbook sobre un stack real (Postgres + la API en proceso, con el ingreso del pago **sobre HTTP**), cruzando los dos planos (proveedor verificado + worker); a diferencia de `aged-disputes`, **no hay acción de operador** — la resolución es solo por fuente verificada, por diseño:
+
+1. Confirmar con `tok_timeout` → el proveedor lanza `ProviderTimeoutError` → el attempt queda **`indeterminate`** (NO `failed`), con `last_error` marcando «outcome unknown» y el intent en `processing`. Esto distingue el timeout (desenlace DESCONOCIDO) de un **circuito abierto** (fallo LIMPIO `provider_unavailable`).
+2. **Envejecer** > 30 min y `sweep_payment_attempts()` marca `indeterminate_aged ≥ 1` (alerta ALTA `fluvia_payment_attempts_indeterminate_aged > 0`).
+3. **NIVEL A**: el watchdog SURFACEA salud pero **NO resuelve** — el attempt sigue `indeterminate` (jamás `succeeded`/`failed` por asunción, V4 §23).
+4. Resolución verificada **`succeeded`** → captura contable ATÓMICA e idempotente (`attempt:<id>:capture`); intent `succeeded` + `amount_captured`; un webhook tardío → `ignored_out_of_order` (sin doble captura).
+5. Un segundo indeterminado resuelto **`failed`** → attempt/intent `failed`, **SIN** asiento.
+6. Una **referencia inexistente** → `ignored`: la resolución jamás cierra nada por fuera.
+
+Cierre con `scripts/verify-ledger-invariants.sql` → `FLUVIA_INVARIANTS_OK` (sin drift). La ingesta HTTP→inbox del webhook firmado del proveedor la cubre `webhook-ingest.test.ts`; el drill representa el webhook por `PaymentConfirmationService.resolveFromProvider` — la misma vía que llama el handler verificado. La EJECUCIÓN es local (el CI no levanta el stack, como el resto de los drills).
