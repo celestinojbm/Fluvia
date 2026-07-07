@@ -1,4 +1,9 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer as createTlsServer, type Server as TlsServer } from 'node:https';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -35,6 +40,15 @@ let respondWith = 200;
 
 beforeAll(async () => {
   ctx = await createTestContext();
+  // Cuarentena de residuos: la BD local acumula webhook_events `pending`
+  // elegibles de corridas anteriores (p.ej. los seeds de webhook-events.test);
+  // el claim del deliverer es global (LIMIT + ORDER BY next_attempt_at), asi
+  // que esos residuos compiten con los eventos de ESTA corrida y hacen flaky
+  // la suite. Se empujan fuera de la ventana (no se borran: append-only).
+  await ctx.admin.query(
+    `UPDATE webhook_events SET next_attempt_at = now() + interval '1 hour'
+     WHERE status = 'pending' AND next_attempt_at <= now()`
+  );
   org = await ctx.createTenant(`WH ${randomUUID().slice(0, 8)}`);
   orgB = await ctx.createTenant(`WH-B ${randomUUID().slice(0, 8)}`);
   service = new WebhookEndpointService(ctx.app, { allowPrivateNetworks: true });
@@ -284,5 +298,209 @@ describe('entrega (rol webhook)', () => {
       [endpoint.id]
     );
     expect(attempt.rows[0]!.error).toMatch(/https required|non-public/);
+  });
+});
+
+describe('failover de conexion entre IPs validadas (V2-N2)', () => {
+  it('a refused first IP fails over to the next validated one WITHIN the same attempt', async () => {
+    received.length = 0;
+    respondWith = 200;
+    const port = (server.address() as AddressInfo).port;
+    // Resolucion inyectada (determinista): la primera IP no tiene listener en
+    // ese puerto (loopback => ECONNREFUSED inmediato); la segunda es el
+    // receptor real. Ambas ya pasaron la denylist — el failover jamas
+    // re-resuelve (eso reabriria la ventana de DNS-rebinding).
+    const failover = new WebhookDeliverer(ctx.webhook, {
+      requestTimeoutMs: 2000,
+      ssrf: {
+        allowPrivateNetworks: true,
+        resolve: async () => ['127.0.0.99', '127.0.0.1'],
+      },
+    });
+    const endpoint = await service.create(org, {
+      url: `http://failover.fluvia.test:${port}/failover`,
+      events: ['payout.in_transit'],
+    });
+    await fanout(org, 'payout.in_transit');
+
+    const stats = await failover.runOnce();
+    expect(stats.delivered).toBeGreaterThanOrEqual(1);
+    expect(received.filter((r) => r.url === '/failover')).toHaveLength(1);
+    const attempt = await ctx.admin.query<{ status_code: number; resolved_ip: string }>(
+      `SELECT a.status_code, a.resolved_ip FROM webhook_attempts a
+       JOIN webhook_events w ON w.id = a.webhook_event_id
+       WHERE w.endpoint_id = $1`,
+      [endpoint.id]
+    );
+    // El attempt registra la IP que REALMENTE contesto, no la primera resuelta.
+    expect(attempt.rows[0]!.status_code).toBe(200);
+    expect(attempt.rows[0]!.resolved_ip).toBe('127.0.0.1');
+  });
+
+  it('an HTTP response (even 5xx) does NOT fail over: the destination already spoke', async () => {
+    // Receptor propio en 0.0.0.0 y DOS IPs DISTINTAS que lo alcanzan: si el
+    // 500 disparara failover, el conteo mostraria DOS requests en un solo
+    // intento (con IPs identicas, un dedupe accidental lo ocultaria).
+    let hits = 0;
+    const wideServer = createServer((_req, res) => {
+      hits += 1;
+      res.writeHead(500).end();
+    });
+    await new Promise<void>((resolve) => wideServer.listen(0, '0.0.0.0', resolve));
+    try {
+      const port = (wideServer.address() as AddressInfo).port;
+      const failover = new WebhookDeliverer(ctx.webhook, {
+        requestTimeoutMs: 2000,
+        ssrf: {
+          allowPrivateNetworks: true,
+          resolve: async () => ['127.0.0.1', '127.0.0.2'],
+        },
+      });
+      const endpoint = await service.create(org, {
+        url: `http://no-failover.fluvia.test:${port}/no-failover`,
+        events: ['refund.processing'],
+      });
+      await fanout(org, 'refund.processing');
+
+      const stats = await failover.runOnce();
+      expect(stats.retried).toBeGreaterThanOrEqual(1);
+      expect(hits).toBe(1);
+      const row = await ctx.admin.query<{ status: string; last_error: string }>(
+        `SELECT status, last_error FROM webhook_events WHERE endpoint_id = $1`,
+        [endpoint.id]
+      );
+      expect(row.rows[0]!.status).toBe('pending'); // reintento por calendario, no por IP
+      expect(row.rows[0]!.last_error).toContain('non-2xx');
+    } finally {
+      await new Promise<void>((resolve) => wideServer.close(() => resolve()));
+    }
+  });
+
+  it('a connected-but-silent destination does NOT fail over (the payload may have arrived)', async () => {
+    // El socket CONECTA y recibe el body, pero el servidor jamas responde:
+    // el timeout NO debe re-enviar el mismo intento firmado a otra IP — eso
+    // seria doble entrega dentro de un intento. Reintento = calendario.
+    let hits = 0;
+    const silentServer = createServer((req) => {
+      req.resume(); // consume el body y calla (jamas responde)
+      hits += 1;
+    });
+    await new Promise<void>((resolve) => silentServer.listen(0, '0.0.0.0', resolve));
+    try {
+      const port = (silentServer.address() as AddressInfo).port;
+      const failover = new WebhookDeliverer(ctx.webhook, {
+        requestTimeoutMs: 500,
+        ssrf: {
+          allowPrivateNetworks: true,
+          resolve: async () => ['127.0.0.1', '127.0.0.2'],
+        },
+      });
+      const endpoint = await service.create(org, {
+        url: `http://silent.fluvia.test:${port}/silent`,
+        events: ['payout.requested'],
+      });
+      await fanout(org, 'payout.requested');
+
+      const stats = await failover.runOnce();
+      expect(stats.retried).toBeGreaterThanOrEqual(1);
+      expect(hits).toBe(1); // UNA sola entrega del payload, no una por IP
+      const row = await ctx.admin.query<{ status: string; last_error: string }>(
+        `SELECT status, last_error FROM webhook_events WHERE endpoint_id = $1`,
+        [endpoint.id]
+      );
+      expect(row.rows[0]!.status).toBe('pending');
+      expect(row.rows[0]!.last_error).toContain('timed out');
+    } finally {
+      await new Promise<void>((resolve) => silentServer.close(() => resolve()));
+    }
+  });
+});
+
+describe('TLS del deliverer: rejectUnauthorized explicito (threat model §5)', () => {
+  let tlsServer: TlsServer;
+  let tlsUrl: string;
+  let tlsHits = 0;
+  let available = false;
+
+  beforeAll(async () => {
+    // Certificado self-signed generado AL VUELO (nada de claves en el repo;
+    // gitleaks quedaria justificadamente furioso). Sin openssl se salta — la
+    // ejecucion definitiva es CI (ubuntu trae openssl), como el restore drill.
+    let key: string;
+    let cert: string;
+    try {
+      const dir = mkdtempSync(join(tmpdir(), 'fluvia-tls-'));
+      execFileSync(
+        'openssl',
+        [
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-nodes',
+          '-keyout',
+          join(dir, 'key.pem'),
+          '-out',
+          join(dir, 'cert.pem'),
+          '-days',
+          '1',
+          '-subj',
+          '/CN=127.0.0.1',
+        ],
+        { stdio: 'ignore' }
+      );
+      key = readFileSync(join(dir, 'key.pem'), 'utf8');
+      cert = readFileSync(join(dir, 'cert.pem'), 'utf8');
+    } catch (err) {
+      // En CI el skip seria una perdida SILENCIOSA de cobertura de seguridad:
+      // alli openssl es obligatorio y cualquier fallo debe romper el build.
+      if (process.env.CI) throw err;
+      return;
+    }
+    available = true;
+    tlsServer = createTlsServer({ key, cert }, (_req, res) => {
+      tlsHits += 1;
+      res.writeHead(200).end();
+    });
+    await new Promise<void>((resolve) => tlsServer.listen(0, '127.0.0.1', resolve));
+    tlsUrl = `https://127.0.0.1:${(tlsServer.address() as AddressInfo).port}`;
+  }, 30_000);
+
+  afterAll(async () => {
+    if (available) await new Promise<void>((resolve) => tlsServer.close(() => resolve()));
+  });
+
+  it('a receiver with an untrusted cert NEVER gets the signed payload', async (ctx2) => {
+    if (!available) return ctx2.skip();
+    const endpoint = await service.create(org, {
+      url: `${tlsUrl}/tls-selfsigned`,
+      events: ['refund.succeeded'],
+    });
+    await fanout(org, 'refund.succeeded');
+
+    // NODE_TLS_REJECT_UNAUTHORIZED=0 es el footgun clasico de "arreglar" TLS
+    // en un worker: el rejectUnauthorized EXPLICITO del deliverer debe ganar.
+    const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    let stats;
+    try {
+      stats = await deliverer.runOnce();
+    } finally {
+      if (prev === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = prev;
+    }
+
+    expect(stats.retried + stats.dead).toBeGreaterThanOrEqual(1);
+    // El handshake fallo ANTES de cualquier byte de aplicacion: el receptor
+    // hostil jamas vio el payload firmado.
+    expect(tlsHits).toBe(0);
+    const attempt = await ctx.admin.query<{ error: string; status_code: number | null }>(
+      `SELECT a.error, a.status_code FROM webhook_attempts a
+       JOIN webhook_events w ON w.id = a.webhook_event_id
+       WHERE w.endpoint_id = $1 ORDER BY a.id DESC LIMIT 1`,
+      [endpoint.id]
+    );
+    expect(attempt.rows[0]!.status_code).toBeNull();
+    expect(attempt.rows[0]!.error).toMatch(/self[- ]signed certificate/i);
   });
 });

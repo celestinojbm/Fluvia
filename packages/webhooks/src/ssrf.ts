@@ -48,8 +48,14 @@ export interface SafeWebhookTarget {
   hostname: string;
   port: number;
   path: string;
-  /** IP validada a la que se conecta (pinning). */
+  /** IP validada primaria a la que se conecta (pinning). */
   ip: string;
+  /**
+   * TODAS las IPs validadas de la resolucion (V2-N2): ante error de CONEXION
+   * el deliverer puede hacer failover a las demas sin re-resolver (cada una ya
+   * paso la denylist; re-resolver aqui reabriria la ventana de rebinding).
+   */
+  ips: readonly string[];
 }
 
 export interface SsrfGuardOptions {
@@ -114,5 +120,6 @@ export async function resolveSafeWebhookTarget(
     port: url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80,
     path: `${url.pathname}${url.search}`,
     ip: ips[0]!,
+    ips,
   };
 }

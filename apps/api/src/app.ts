@@ -38,7 +38,10 @@ import { registerDisputeRoutes } from './routes/disputes.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerPaymentLinkRoutes } from './routes/payment-links.js';
-import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
+import {
+  registerProviderWebhookRoutes,
+  type ProviderWebhookRateLimits,
+} from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
@@ -59,6 +62,8 @@ export interface BuildAppOptions {
   apiKeyService?: ApiKeyService;
   /** Override de limites de tasa de /v1/auth/* (tests usan ventanas cortas). */
   authRateLimits?: AuthRateLimits;
+  /** Override del limite de ingesta de webhooks del proveedor (tests). */
+  providerWebhookRateLimits?: ProviderWebhookRateLimits;
   /** Registro de metricas (F1-07). Por defecto cada app crea el suyo. */
   metricsRegistry?: MetricsRegistry;
   /** TM-03: backend del rate limiter de /v1/auth/*. Default in-memory
@@ -83,6 +88,7 @@ export function buildApp({
   identityService,
   apiKeyService,
   authRateLimits,
+  providerWebhookRateLimits,
   metricsRegistry,
   rateLimiter,
 }: BuildAppOptions): FastifyInstance {
@@ -283,9 +289,13 @@ export function buildApp({
     });
     registerPaymentLinkRoutes(app, { security, idempotencyService, paymentLinkService });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
+    // Rate-limited por IP (threat model §5); mismo backend inyectable que
+    // /v1/auth/* — en despliegues compartidos la ventana vive en Redis (TM-03).
     registerProviderWebhookRoutes(app, {
       ingestService: new InboxIngestService(appPool),
       mockWebhookSecret: config.mockWebhookSecret,
+      rateLimits: providerWebhookRateLimits,
+      limiter: rateLimiter,
     });
     // F3-07: gestion de endpoints de webhooks salientes (scope webhooks:manage).
     registerWebhookEndpointRoutes(app, {

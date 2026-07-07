@@ -250,6 +250,66 @@ describe('cadena asincrona completa (F3-03b)', () => {
     expect(rows.rowCount).toBe(0);
   });
 
+  it('a body over 1 MiB is rejected 413 payload_too_large — even correctly signed, NOTHING persists', async () => {
+    // Threat model §3 (frontera proveedor→Fluvia): el cap de tamano corre
+    // ANTES que la firma y que cualquier INSERT. Firmado VALIDO a proposito:
+    // ni un emisor autenticado puede llenar la base con cuerpos gigantes.
+    const eventId = `evt-big-${randomUUID()}`;
+    const body = JSON.stringify({
+      event_id: eventId,
+      type: 'payment.succeeded',
+      tenant_id: org,
+      pad: 'x'.repeat(1024 * 1024),
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/providers/mock/webhook',
+      headers: sign(body),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error.code).toBe('payload_too_large');
+    const rows = await adminPool.query(
+      `SELECT 1 FROM provider_events WHERE provider = 'mock' AND provider_event_id = $1`,
+      [eventId]
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it('the ingest is rate-limited per IP BEFORE any signature work (threat model §5)', async () => {
+    // App aparte con ventana minuscula: el limite del app compartido de este
+    // archivo es el default holgado y no debe estorbar a los demas tests.
+    const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'error' });
+    const tight = buildApp({
+      config,
+      appPool,
+      authService: new AuthService(authPool),
+      identityService: new IdentityService(appPool),
+      apiKeyService: new ApiKeyService(appPool),
+      providerWebhookRateLimits: { ingestPerIp: { max: 2, windowMs: 60_000 } },
+    });
+    await tight.ready();
+    try {
+      // SIN firma: el flooder tipico no la tiene. Las dos primeras gastan el
+      // presupuesto (401 = la firma se evaluo); la tercera ni llega a HMAC.
+      const shoot = () =>
+        tight.inject({
+          method: 'POST',
+          url: '/v1/providers/mock/webhook',
+          headers: { 'content-type': 'application/json' },
+          payload: JSON.stringify({ event_id: `evt-${randomUUID()}` }),
+        });
+      expect((await shoot()).statusCode).toBe(401);
+      expect((await shoot()).statusCode).toBe(401);
+      const third = await shoot();
+      expect(third.statusCode).toBe(429);
+      expect(third.json().error.code).toBe('rate_limited');
+      expect(Number(third.headers['retry-after'])).toBeGreaterThanOrEqual(1);
+    } finally {
+      await tight.close();
+    }
+  });
+
   it('a late webhook for an already-resolved attempt lands as ignored_out_of_order', async () => {
     const { intentId, attemptId, ref } = await confirmPse();
     const ok = JSON.stringify({
