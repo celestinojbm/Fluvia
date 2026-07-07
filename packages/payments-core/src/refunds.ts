@@ -206,6 +206,12 @@ export class RefundService {
 
   /** Fase 2 — proveedor fuera de tx; cada paso contable es atomico (onPosted). */
   async execute(tenantId: string, refundId: string): Promise<void> {
+    // V2-N3 (re-auditoria v2): esta lectura es BEST-EFFORT e intencionalmente
+    // fuera de la tx de efecto — solo decide SI ejecutar (guard `status IN
+    // ('created','processing')`). La seguridad no depende de ella: las fases
+    // siguientes transicionan con `WHERE id=$1` bajo el trigger FSM, asi que si el
+    // estado cambio entre la lectura y el uso, el UPDATE de estado no aplica (0
+    // filas) y el paso se vuelve no-op — jamas un doble asiento.
     const cur = await withTenantTransaction(this.appPool, tenantId, (c) =>
       c.query<{
         status: string;

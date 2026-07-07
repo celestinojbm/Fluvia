@@ -67,14 +67,18 @@ BEGIN
   -- 6. Toda proyeccion EXISTENTE == recomputo desde asientos (por bucket,
   --    con normal_side). Una cuenta sin fila de proyeccion no es corrupcion
   --    silenciosa (getBalance falla visible; rebuild la materializa).
+  -- V2-R4 (re-auditoria v2): el recomputo se mantiene en `numeric`. `SUM(bigint)`
+  -- ya devuelve numeric (sin overflow), pero un `::bigint` explicito abortaria
+  -- con "bigint out of range" en el borde; en numeric la comparacion contra la
+  -- proyeccion (bigint) sigue siendo exacta y jamas lanza por un cast.
   WITH recomputed AS (
     SELECT e.account_id,
       COALESCE(SUM(CASE WHEN e.bucket = 'available'
         THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
-        ELSE 0 END), 0)::bigint AS available,
+        ELSE 0 END), 0)::numeric AS available,
       COALESCE(SUM(CASE WHEN e.bucket = 'pending'
         THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
-        ELSE 0 END), 0)::bigint AS pending
+        ELSE 0 END), 0)::numeric AS pending
     FROM ledger_entries e
     JOIN ledger_accounts a ON a.id = e.account_id
     GROUP BY e.account_id
