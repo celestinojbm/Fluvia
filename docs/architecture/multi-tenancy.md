@@ -8,14 +8,14 @@ Estado: Activo · Fase: 0 · ADR-0005 · Evidencia: tests de RLS del spike verde
 
 ## 2. Defensa en profundidad (V4 §14.1)
 
-| Capa | Control |
-|------|---------|
-| 1. AuthN | El tenant se deriva SIEMPRE de identidad autenticada (API key hasheada o sesión), jamás de un `organization_id` del payload |
-| 2. AuthZ aplicación | RBAC + scopes de API key por endpoint |
-| 3. RLS Postgres | Políticas `USING`/`WITH CHECK` por `tenant_id`, `ENABLE` + `FORCE` en toda tabla tenant-scoped |
-| 4. Constraints | Uniques compuestos con `tenant_id`; FKs |
-| 5. Pruebas | Suite de tenant-escape en CI (lectura cruzada, escritura cruzada, PK directa, bypass de contexto) |
-| 6. Auditoría | Acceso administrativo cross-tenant registrado con actor y razón |
+| Capa                | Control                                                                                                                     |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1. AuthN            | El tenant se deriva SIEMPRE de identidad autenticada (API key hasheada o sesión), jamás de un `organization_id` del payload |
+| 2. AuthZ aplicación | RBAC + scopes de API key por endpoint                                                                                       |
+| 3. RLS Postgres     | Políticas `USING`/`WITH CHECK` por `tenant_id`, `ENABLE` + `FORCE` en toda tabla tenant-scoped                              |
+| 4. Constraints      | Uniques compuestos con `tenant_id`; FKs                                                                                     |
+| 5. Pruebas          | Suite de tenant-escape en CI (lectura cruzada, escritura cruzada, PK directa, bypass de contexto)                           |
+| 6. Auditoría        | Acceso administrativo cross-tenant registrado con actor y razón                                                             |
 
 ## 3. Patrón de contexto (regla normativa)
 
@@ -33,12 +33,13 @@ COMMIT;
 
 ## 4. Roles de base de datos
 
-| Rol | RLS | Uso |
-|-----|-----|-----|
-| dueño/migraciones | bypass implícito (superuser en local; rol owner en cloud) | migraciones y seeding administrativo |
-| `fluvia_app` | **forzado** | API de negocio; sin DELETE; **sin acceso a sessions/tokens/credenciales** |
-| `fluvia_worker` | `BYPASSRLS` | relay de outbox/entrega de webhooks (procesa todos los tenants); sin DELETE |
-| `fluvia_auth` | política `USING(true)` acotada al rol, solo sobre `users`/`sessions`/`email_verification_tokens` | módulo de autenticación del API (la autenticación es pre-tenant por naturaleza: el aislamiento aquí es por rol, no por fila); sin DELETE |
+| Rol                                                | RLS                                                                                              | Uso                                                                                                                                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| dueño/migraciones                                  | bypass implícito (superuser en local; rol owner en cloud)                                        | migraciones y seeding administrativo                                                                                                                                                                   |
+| `fluvia_app`                                       | **forzado**                                                                                      | API de negocio; sin DELETE; **sin acceso a sessions/tokens/credenciales**                                                                                                                              |
+| `fluvia_worker`                                    | **forzado — sin `BYPASSRLS`** (ADR-0011, migr. 0009)                                             | cascarón del proceso worker; **SIN privilegios de tabla** (cada job usa su pool de rol dedicado abajo)                                                                                                 |
+| `fluvia_relay` / `fluvia_inbox` / `fluvia_webhook` | forzado + **política RLS cross-tenant EXPLÍCITA acotada a UNA tabla** (ADR-0011)                 | relay de `outbox_events` / procesamiento de `provider_events` / entrega de `webhook_events` — la visión cross-tenant es política auditable, jamás un bit de rol oculto; GRANTs por columna; sin DELETE |
+| `fluvia_auth`                                      | política `USING(true)` acotada al rol, solo sobre `users`/`sessions`/`email_verification_tokens` | módulo de autenticación del API (la autenticación es pre-tenant por naturaleza: el aislamiento aquí es por rol, no por fila); sin DELETE                                                               |
 
 Bypass controlado: el panel admin NO usa `BYPASSRLS`; opera con un contexto explícito de tenant + permiso auditado, o mediante funciones `SECURITY DEFINER` acotadas (patrón ya validado con `authenticate_api_key`).
 

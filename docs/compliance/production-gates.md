@@ -51,7 +51,9 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **API keys con HMAC server-side** (AUD-P2-015): pepper fuera de la base, versionado de hash con upgrade perezoso v1→v2 probado — dump-resistance para credenciales de integración
 - [x] **Purga solo por job auditado** (F1-09): `purge_technical_data()` es la única puerta de DELETE (clases técnicas, predicados fijos, auditoría atómica); clases financieras imborrables incluso con el escape activo (probado); roles dev imposibles de crear fuera de local (guard AUD-P2-008 probado end-to-end)
 - [x] **Observabilidad base operativa** (F1-07): métricas agregadas anónimas (sin ids de tenant — probado), alertas baseline definidas (`observability.md` §4). Pendiente para producción: `/metrics` en red interna de scrape y dashboards (F6)
-- [ ] Sin High/Critical sin aceptación explícita; secret/dependency scanning; threat model actualizado; pruebas SSRF y tenant escape (F1-02, F3, F6)
+- [x] **Threat model actualizado** (F6): `docs/security/threat-model.md` reescrito por STRIDE contra el sistema implementado y verificado (89 controles citados a código/migración/test), con el **backlog de riesgo residual F6** (§5). Base: inventario relevado + las dos auditorías independientes integradas (0 P1/0 P2 abiertos)
+- [x] **Secret/dependency scanning + tenant-escape** (F1-02/F1-06): gitleaks + `pnpm audit --audit-level high` + SBOM SPDX en CI; suite de tenant-escape + meta-tests estructurales en `pg_catalog` (tablas y roles futuros). SSRF: guard completo (`ssrf.ts`, deniega TODAS las IPs resueltas)
+- [ ] **Resto (del backlog del threat model §5)**: registro de aceptación de vulnerabilidades High/Critical + escaneo del SBOM (grype) gated; suite de pruebas SSRF (failover V2-N2, TLS self-signed) y de SQL-injection/parametrización; ítems P2 (no-negatividad de motor, step-up sin MFA, rate limiter compartido, PII erasure, guard PCI) antes del sandbox compartido / F5
 
 ### Gate Restore — 🟡
 
