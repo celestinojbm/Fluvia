@@ -69,10 +69,37 @@ export interface BuildAppOptions {
   /** TM-03: backend del rate limiter de /v1/auth/*. Default in-memory
    *  (mono-instancia); despliegues compartidos inyectan el de Redis. */
   rateLimiter?: RateLimiter;
+  /** Solo tests: captura el output del logger para verificar la redacción
+   *  sobre la instancia REAL de pino del app (no una copia de la config). */
+  loggerStream?: { write: (msg: string) => void };
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
 // contract test). Este archivo solo enruta hacia ella.
+
+/**
+ * Redaccion del logger — COMPARTIDA con log-redaction.test.ts: el test prueba
+ * este MISMO objeto (no una copia) Y que buildApp lo cablea (probe por los
+ * paths top-level, que no pasan por serializer). Nota de alcance: el
+ * serializer `req` por defecto de Fastify ya DESCARTA los headers; los paths
+ * `req.*`/`res.*` censuran si un serializer futuro los incluyera, y los
+ * gemelos top-level cubren logs ad-hoc tipo `log.info({ headers })`.
+ */
+export const LOG_REDACT = {
+  paths: [
+    'req.headers.authorization',
+    'req.headers["x-api-key"]',
+    'req.headers.cookie',
+    'req.headers["x-checkout-client-secret"]',
+    'res.headers["set-cookie"]',
+    'headers.authorization',
+    'headers["x-api-key"]',
+    'headers.cookie',
+    'headers["x-checkout-client-secret"]',
+    'headers["set-cookie"]',
+  ],
+  censor: '[REDACTED]',
+};
 
 /**
  * Construye la instancia Fastify del API (F1-01).
@@ -91,14 +118,13 @@ export function buildApp({
   providerWebhookRateLimits,
   metricsRegistry,
   rateLimiter,
+  loggerStream,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
-      redact: {
-        paths: ['req.headers.authorization', 'req.headers["x-api-key"]', 'req.headers.cookie'],
-        censor: '[REDACTED]',
-      },
+      redact: LOG_REDACT,
+      ...(loggerStream ? { stream: loggerStream } : {}),
     },
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];

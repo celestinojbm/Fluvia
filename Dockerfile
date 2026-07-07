@@ -5,7 +5,13 @@
 # en docker-compose. Multi-stage: `build` instala + valida tipos; `runtime` es
 # slim y corre como usuario no-root.
 # ============================================================================
-FROM node:22-slim AS base
+# Base pineada por DIGEST (threat model §5 — cadena de suministro): un tag es
+# mutable (quien controle el registry puede re-apuntarlo); el digest fija la
+# capa base y hace del upgrade un cambio EXPLÍCITO en el diff (Dependabot
+# propone el bump del digest cuando el tag avanza). Residual documentado en
+# el §5: el frontend BuildKit de la línea 1 sigue por tag, como las actions
+# de CI por major tag — mismo vector, pendiente de SHA-pinning.
+FROM node:22-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 # Hornea el pnpm pineado (packageManager) en la capa base para que el runtime
 # (FROM base) NO tenga que descargarlo en el primer uso (sin red en runtime).

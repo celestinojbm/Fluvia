@@ -1,0 +1,17 @@
+# Registro de ACEPTACIÓN de vulnerabilidades (threat model §5 · Gate Seguridad).
+#
+# El paso de CI «Escaneo de vulnerabilidades (grype)» rompe el build ante
+# cualquier hallazgo High/Critical que no esté listado aquí. Cada entrada de
+# `ignore` es una aceptación de riesgo EXPLÍCITA y revisable en code review:
+#
+#   ignore:
+#     - vulnerability: CVE-XXXX-YYYYY
+#       reason: >   # campo NATIVO de grype (IgnoreRule); nuestro proceso lo
+#         hace obligatorio: por qué no aplica / mitigación / fecha de
+#         revisión / quién aceptó (grype lo muestra en los matches ignorados)
+#       package:
+#         name: paquete-afectado   # acotar SIEMPRE al paquete, jamás global
+#
+# Proceso completo: docs/security/vulnerability-acceptance.md. Una entrada sin
+# justificación, alcance y fecha de revisión NO pasa review (§2 gobernanza).
+ignore: []

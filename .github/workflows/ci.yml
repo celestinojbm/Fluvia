@@ -109,6 +109,10 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Version del binario EXPLICITA (la config vive en .gitleaks.toml):
+          # el tag @v2 de la action es mutable; sin esto, la version del
+          # escaner podria cambiar en silencio bajo el mismo tag.
+          GITLEAKS_VERSION: 8.24.3
 
       - uses: pnpm/action-setup@v4
 
@@ -129,3 +133,17 @@ jobs:
           path: .
           format: spdx-json
           artifact-name: fluvia-sbom.spdx.json
+
+      # F6 (threat model §5 — Secretos/cadena): el SBOM se generaba pero nadie
+      # lo LEÍA (capacidad simulada). Grype escanea el mismo árbol y ROMPE el
+      # build ante High/Critical no aceptadas explícitamente en `.grype.yaml`
+      # (el registro de aceptación versionado — proceso en
+      # docs/security/vulnerability-acceptance.md). Complementa `pnpm audit`
+      # (otra base de datos, otro matcher: defensa en profundidad).
+      - name: Escaneo de vulnerabilidades (grype — falla en High/Critical no aceptadas)
+        uses: anchore/scan-action@v6
+        with:
+          path: '.'
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
