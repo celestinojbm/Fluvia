@@ -66,4 +66,13 @@ describe('withTenantTransaction — cotas de tiempo (V2-R1)', () => {
       })
     ).rejects.toMatchObject({ code: '57014' }); // canceling statement due to statement timeout
   });
+
+  it('clamps an out-of-range override to INT_MAX instead of aborting setup', async () => {
+    // Los *_timeout de PG son integer ms: set_config rechaza (22023) cualquier
+    // valor > 2^31-1. Un override enorme (o un error segundos-vs-ms) debe
+    // acotarse, no volver 22023 y tumbar la tx en el set_config del contexto.
+    await expect(
+      show('statement_timeout', { statementTimeoutMs: 3_000_000_000 })
+    ).resolves.toBeTruthy();
+  });
 });

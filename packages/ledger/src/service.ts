@@ -37,11 +37,16 @@ interface LockedAccount {
   normal_side: 'debit' | 'credit';
 }
 
-// serialization (40001) / deadlock (40P01). V2-R7 (re-auditoria v2): 40001 es
-// FORWARD-LOOKING — `withTenantTransaction` corre en READ COMMITTED, donde no
-// se emite; queda listo para cuando alguna operacion opte por SERIALIZABLE. El
-// deadlock (40P01) SI ocurre y se reintenta (posts que tocan cuentas en orden).
-const RETRYABLE_SQLSTATES = new Set(['40001', '40P01']);
+// serialization (40001) / deadlock (40P01) / lock_timeout (55P03). V2-R7
+// (re-auditoria v2): 40001 es FORWARD-LOOKING — `withTenantTransaction` corre en
+// READ COMMITTED, donde no se emite; queda listo para SERIALIZABLE. El deadlock
+// (40P01) SI ocurre y se reintenta (posts que tocan cuentas en orden). 55P03
+// (lock_not_available) lo introduce el `lock_timeout` por-tx de V2-R1: una
+// contencion transitoria en una cuenta caliente aborta a los 15 s en vez de
+// colgar la conexion; reintentarla con backoff (cada intento acotado, total
+// limitado por maxRetries) la resuelve en cuanto se libera el lock — no dejamos
+// caer un asiento legitimo por contencion momentanea, sin reabrir la espera infinita.
+const RETRYABLE_SQLSTATES = new Set(['40001', '40P01', '55P03']);
 
 function isRetryable(err: unknown): boolean {
   return (
@@ -49,6 +54,15 @@ function isRetryable(err: unknown): boolean {
     RETRYABLE_SQLSTATES.has((err as { code?: string })?.code ?? '')
   );
 }
+
+// V2-R1 (verificado en re-review): `verifyProjection`/`rebuildProjection`
+// recomputan un `SUM` sobre TODO el historial de asientos de una cuenta. En una
+// cuenta de plataforma (p. ej. provider.clearing) con millones de filas ese
+// agregado puede superar el `statement_timeout` por defecto (30 s) — y
+// `rebuildProjection` es el UNICO camino de reparacion de drift, justo cuando
+// mas se necesita. Se les da un techo generoso pero ACOTADO (10 min): completan
+// la reparacion/verificacion sin reintroducir la espera infinita que V2-R1 cerro.
+const HEAVY_RECOMPUTE_TX_TIMEOUTS = { statementTimeoutMs: 600_000 } as const;
 
 /**
  * Firma canonica de un conjunto de asientos para comparar replays. Se recomputa
@@ -434,13 +448,16 @@ export class LedgerService {
    * con la proyeccion. Primitiva del audit-replay (drift check formal: F2-05).
    */
   async verifyProjection(tenantId: string, accountId: string): Promise<ProjectionVerification> {
-    return withTenantTransaction(this.appPool, tenantId, async (c) => {
-      // V2-R4: `SUM(bigint)` en PG ya es `numeric` (no hay overflow silencioso) y
-      // `bigint + bigint` que se pase de rango ABORTA (no envuelve). El `::numeric`
-      // explicito evita ademas un cast intermedio a bigint que fallaria en el borde;
-      // la comparacion contra la proyeccion (bigint, como texto) sigue exacta.
-      const recomputed = await c.query<{ available: string; pending: string }>(
-        `SELECT
+    return withTenantTransaction(
+      this.appPool,
+      tenantId,
+      async (c) => {
+        // V2-R4: `SUM(bigint)` en PG ya es `numeric` (no hay overflow silencioso) y
+        // `bigint + bigint` que se pase de rango ABORTA (no envuelve). El `::numeric`
+        // explicito evita ademas un cast intermedio a bigint que fallaria en el borde;
+        // la comparacion contra la proyeccion (bigint, como texto) sigue exacta.
+        const recomputed = await c.query<{ available: string; pending: string }>(
+          `SELECT
            COALESCE(SUM(CASE WHEN e.bucket = 'available'
              THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
              ELSE 0 END), 0)::numeric::text AS available,
@@ -450,22 +467,24 @@ export class LedgerService {
          FROM ledger_entries e
          JOIN ledger_accounts a ON a.id = e.account_id
          WHERE e.account_id = $1`,
-        [accountId]
-      );
-      const projected = await c.query<{ available: string; pending: string }>(
-        `SELECT available::text, pending::text FROM balance_projections WHERE account_id = $1`,
-        [accountId]
-      );
-      if (!projected.rows[0]) throw new AccountNotFoundError([accountId]);
-      const p = projected.rows[0];
-      const r = recomputed.rows[0]!;
-      return {
-        accountId,
-        matches: p.available === r.available && p.pending === r.pending,
-        projected: { available: p.available, pending: p.pending },
-        recomputed: { available: r.available, pending: r.pending },
-      };
-    });
+          [accountId]
+        );
+        const projected = await c.query<{ available: string; pending: string }>(
+          `SELECT available::text, pending::text FROM balance_projections WHERE account_id = $1`,
+          [accountId]
+        );
+        if (!projected.rows[0]) throw new AccountNotFoundError([accountId]);
+        const p = projected.rows[0];
+        const r = recomputed.rows[0]!;
+        return {
+          accountId,
+          matches: p.available === r.available && p.pending === r.pending,
+          projected: { available: p.available, pending: p.pending },
+          recomputed: { available: r.available, pending: r.pending },
+        };
+      },
+      HEAVY_RECOMPUTE_TX_TIMEOUTS
+    );
   }
 
   /**
@@ -571,15 +590,18 @@ export class LedgerService {
    * cualquier posting en vuelo con version leida vieja falle y reintente.
    */
   async rebuildProjection(tenantId: string, accountId: string): Promise<ProjectionRebuild> {
-    return withTenantTransaction(this.appPool, tenantId, async (c) => {
-      const locked = await c.query(
-        `SELECT id FROM ledger_accounts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
-        [accountId]
-      );
-      if ((locked.rowCount ?? 0) === 0) throw new AccountNotFoundError([accountId]);
+    return withTenantTransaction(
+      this.appPool,
+      tenantId,
+      async (c) => {
+        const locked = await c.query(
+          `SELECT id FROM ledger_accounts WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+          [accountId]
+        );
+        if ((locked.rowCount ?? 0) === 0) throw new AccountNotFoundError([accountId]);
 
-      const recomputed = await c.query<{ available: string; pending: string }>(
-        `SELECT
+        const recomputed = await c.query<{ available: string; pending: string }>(
+          `SELECT
            COALESCE(SUM(CASE WHEN e.bucket = 'available'
              THEN CASE WHEN e.direction = a.normal_side THEN e.amount ELSE -e.amount END
              ELSE 0 END), 0)::numeric::text AS available,
@@ -589,37 +611,39 @@ export class LedgerService {
          FROM ledger_entries e
          JOIN ledger_accounts a ON a.id = e.account_id
          WHERE e.account_id = $1`,
-        [accountId]
-      );
-      const r = recomputed.rows[0]!;
+          [accountId]
+        );
+        const r = recomputed.rows[0]!;
 
-      // La fila puede faltar (cuenta creada fuera del servicio): eso tambien
-      // es drift y se repara creandola.
-      await c.query(
-        `INSERT INTO balance_projections (account_id, tenant_id)
+        // La fila puede faltar (cuenta creada fuera del servicio): eso tambien
+        // es drift y se repara creandola.
+        await c.query(
+          `INSERT INTO balance_projections (account_id, tenant_id)
          VALUES ($1, $2) ON CONFLICT (account_id) DO NOTHING`,
-        [accountId, tenantId]
-      );
-      const before = await c.query<{ available: string; pending: string }>(
-        `SELECT available::text, pending::text FROM balance_projections WHERE account_id = $1 FOR UPDATE`,
-        [accountId]
-      );
-      const b = before.rows[0]!;
-      const drifted = b.available !== r.available || b.pending !== r.pending;
+          [accountId, tenantId]
+        );
+        const before = await c.query<{ available: string; pending: string }>(
+          `SELECT available::text, pending::text FROM balance_projections WHERE account_id = $1 FOR UPDATE`,
+          [accountId]
+        );
+        const b = before.rows[0]!;
+        const drifted = b.available !== r.available || b.pending !== r.pending;
 
-      await c.query(
-        `UPDATE balance_projections
+        await c.query(
+          `UPDATE balance_projections
          SET available = $2, pending = $3, version = version + 1, updated_at = now()
          WHERE account_id = $1`,
-        [accountId, r.available, r.pending]
-      );
+          [accountId, r.available, r.pending]
+        );
 
-      return {
-        accountId,
-        drifted,
-        before: { available: b.available, pending: b.pending },
-        after: { available: r.available, pending: r.pending },
-      };
-    });
+        return {
+          accountId,
+          drifted,
+          before: { available: b.available, pending: b.pending },
+          after: { available: r.available, pending: r.pending },
+        };
+      },
+      HEAVY_RECOMPUTE_TX_TIMEOUTS
+    );
   }
 }

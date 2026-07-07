@@ -31,10 +31,18 @@ const DEFAULT_TX_TIMEOUTS: Required<TxTimeouts> = {
   idleInTxTimeoutMs: 60_000,
 };
 
-/** ms → string entero no-negativo para set_config (0 = sin límite; lo evitamos). */
+/**
+ * Techo de los *_timeout de Postgres: son `integer` en ms, así que set_config
+ * RECHAZA (22023) cualquier valor > 2^31-1. Se acota aquí para que un override
+ * fuera de rango (o un error segundos-vs-ms) nunca aborte la tx en el setup.
+ */
+const PG_MAX_TIMEOUT_MS = 2_147_483_647;
+
+/** ms → string entero en (0, INT_MAX] para set_config (0 = sin límite; lo evitamos). */
 function ms(value: number, fallback: number): string {
   const n = Math.trunc(value);
-  return String(Number.isFinite(n) && n > 0 ? n : fallback);
+  if (!Number.isFinite(n) || n <= 0) return String(fallback);
+  return String(Math.min(n, PG_MAX_TIMEOUT_MS));
 }
 
 export function createPool(options: CreatePoolOptions): pg.Pool {

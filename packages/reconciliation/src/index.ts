@@ -18,6 +18,13 @@ export const RECONCILIATION_STATUSES = [
 ] as const;
 export type ReconciliationStatus = (typeof RECONCILIATION_STATUSES)[number];
 
+// V2-R1 (verificado en re-review): `reconcile` casa un reporte de liquidación
+// completo con un solo FULL OUTER JOIN + INSERT; un reporte mensual grande puede
+// superar el `statement_timeout` por defecto (30 s). Se le da un techo generoso
+// pero ACOTADO (10 min) para no abortar una conciliación legítima ni reintroducir
+// la espera infinita que cerró V2-R1.
+const RECONCILE_TX_TIMEOUTS = { statementTimeoutMs: 600_000 } as const;
+
 export class SettlementReportNotFoundError extends Error {
   constructor() {
     super('Settlement report not found');
@@ -157,11 +164,14 @@ export class ReconciliationService {
    * marca el reporte `reconciled`. Todo en UNA transacción.
    */
   async reconcile(tenantId: string, reportId: string): Promise<ReconciliationSummary> {
-    return withTenantTransaction(this.appPool, tenantId, async (c) => {
-      const report = await this.loadOpenReport(c, reportId);
+    return withTenantTransaction(
+      this.appPool,
+      tenantId,
+      async (c) => {
+        const report = await this.loadOpenReport(c, reportId);
 
-      const res = await c.query<{ status: ReconciliationStatus }>(
-        `WITH ledger AS (
+        const res = await c.query<{ status: ReconciliationStatus }>(
+          `WITH ledger AS (
            SELECT provider_ref, amount, intent_id
            FROM payment_attempts
            WHERE tenant_id = $1 AND provider = $2 AND status = 'succeeded'
@@ -185,26 +195,28 @@ export class ReconciliationService {
            g.amount, l.amount, g.intent_id
          FROM lines l FULL OUTER JOIN ledger g ON g.provider_ref = l.provider_ref
          RETURNING status`,
-        [
-          tenantId,
-          report.provider,
-          report.currency,
-          report.period_start,
-          report.period_end,
-          reportId,
-        ]
-      );
+          [
+            tenantId,
+            report.provider,
+            report.currency,
+            report.period_start,
+            report.period_end,
+            reportId,
+          ]
+        );
 
-      await c.query(
-        `UPDATE settlement_reports SET status = 'reconciled', reconciled_at = now()
+        await c.query(
+          `UPDATE settlement_reports SET status = 'reconciled', reconciled_at = now()
          WHERE id = $1 AND status = 'open'`,
-        [reportId]
-      );
+          [reportId]
+        );
 
-      const summary = emptySummary();
-      for (const row of res.rows) summary[row.status] += 1;
-      return summary;
-    });
+        const summary = emptySummary();
+        for (const row of res.rows) summary[row.status] += 1;
+        return summary;
+      },
+      RECONCILE_TX_TIMEOUTS
+    );
   }
 
   async listReports(tenantId: string, limit = 20): Promise<SettlementReportDto[]> {
