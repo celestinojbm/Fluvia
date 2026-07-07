@@ -46,4 +46,10 @@ Solo tras corregir la causa raíz y confirmar que el evento **debe** re-procesar
 
 ## Drill (F4-06b)
 
-Pendiente: envenenar un evento (forzar `dead`) → verificar la alerta/DLQ → corregir causa → `replayDead*Events` con `reason` → confirmar re-proceso + el `platform.operation` auditado. (Las suites de `@fluvia/outbox` e `@fluvia/inbox` ya prueban el camino `dead` y el replay auditado.)
+✅ **Ejecutado — PASS 7/7** (`pnpm --filter @fluvia/api run drill:outbox-inbox`, `apps/api/drills/outbox-inbox-stuck-drill.ts`). Ensaya el replay auditado en las **dos direcciones** contra un stack real (Postgres, roles con privilegio mínimo):
+
+**Outbox**: sembrar un evento de dominio `dead` → `replayDeadOutboxEvents` con `reason` **en blanco** → rechazado (`PlatformReasonRequiredError`: sin corrección silenciosa) → replay con `reason` → `dead→pending` (attempts=0) → una fila `platform.operation` auditada (con `reason` + `replayed_ids`) → el relay retoma el re-encolado → `delivered` → replay de un id ya `delivered` = **no-op** (idempotente, solo actúa sobre `dead`).
+
+**Inbox**: sembrar un `provider_event` `dead` cuyo payload casa con un handler registrado → `replayDeadProviderEvents` exige `reason` → `dead→pending` (limpia `result`/`processed_at`) → `platform.operation` auditado → el processor retoma el re-encolado → `processed` (result=applied) → replay de un id ya `processed` = **no-op**.
+
+Confirma la garantía clave del runbook: **el `dead → pending` entra SOLO por una función auditada sobre el admin pool** (el relay/inbox con privilegio mínimo no pueden). La ingesta HTTP→inbox y el camino que lleva un evento a `dead` los cubren las suites de `@fluvia/outbox`/`@fluvia/inbox`. Ejecución local.

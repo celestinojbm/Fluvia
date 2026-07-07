@@ -51,4 +51,12 @@ Servidor de salud/métricas: `WORKER_METRICS_PORT` (default 9464), `GET /health`
 
 ## Drill (F4-06b)
 
-Pendiente: matar el worker → observar la alerta de heartbeat → reiniciar → confirmar `/health` y el reanudado de los ciclos + el drenado de cualquier backlog.
+✅ **Ejecutado — PASS 5/5** (`pnpm --filter @fluvia/api run drill:worker-down`, `apps/api/drills/worker-down-drill.ts`). Simula la caída (un backlog de outbox + inbox y una proyección corrupta acumulados sin vigilancia) y ensaya la recuperación del runbook contra un stack real:
+
+1. **Reinicio**: `checkReady` (`SELECT 1`) responde — la BD es accesible (el worker puede subir).
+2. El **relay del outbox** retoma su backlog y lo **drena solo** → los eventos pendientes pasan a `delivered`.
+3. El **processor del inbox** retoma su backlog y lo drena solo → `processed`.
+4. El **drift watcher** (`ProjectionDriftWatcher.runOnce`) **DETECTA** el drift que se acumuló durante la caída (gauge en alerta — SEV-1).
+5. La reparación es **EXPLÍCITA** (`rebuildProjection`), jamás automática (V4 §30); tras repararla, el watcher queda limpio.
+
+Cubre la Resolución (reiniciar → los backlogs se drenan solos → verificar el daño acumulado, drift primero) y de paso **ensaya `ledger-drift`** (detección + rebuild explícito). El heartbeat interval-driven y el `/health` los cubren `worker.test.ts` y `metrics-server.test.ts`. Ejecución local.

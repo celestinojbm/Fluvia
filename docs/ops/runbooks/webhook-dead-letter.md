@@ -36,4 +36,12 @@ Una vez el endpoint del comercio esté sano (verificado, no asumido):
 
 ## Drill (F4-06b)
 
-Pendiente: forzar un endpoint que devuelva 5xx → observar el evento llegar a `dead` → sanar el endpoint → **Reenviar** desde el panel → confirmar el `pending` fresco entregado + audit `webhook_event.resent`. (El E2E de F3-09b-iii ya ejerció el clic de reenvío localmente.)
+✅ **Ejecutado — PASS 5/5** (`pnpm --filter @fluvia/api run drill:webhook-dead-letter`, `apps/api/drills/webhook-dead-letter-drill.ts`). Ensaya el reenvío por SESIÓN sobre HTTP real (la acción del operador del panel, F3-09b-iii):
+
+1. **Gate RBAC**: un rol `read_only` (sin `webhooks:manage`) → **403** al reenviar.
+2. El **reenvío** por sesión (admin) → **201** con un evento `pending` **fresco**, enlazado al `dead` por `resent_from_event_id` (no lo resucita — lo CLONA).
+3. El evento `dead` **sigue terminal** (inmutable): el reenvío clona, no reabre.
+4. Rastro de auditoría **`webhook_event.resent`** (actor usuario, sobre el id fresco).
+5. Reenviar un evento **NO-`dead`** (uno `delivered`) → **409** `invalid_state_transition` (solo los `dead` se reenvían).
+
+El E2E de navegador de F3-09b-iii ya ejerció el clic desde el panel; este drill ancla la garantía de estado (clonar-no-resucitar) + el gate RBAC + la auditoría end-to-end sobre HTTP. Ejecución local.

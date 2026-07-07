@@ -38,6 +38,9 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fluvia/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@fluvia/idempotency':
         specifier: workspace:*
         version: link:../../packages/idempotency
@@ -56,6 +59,9 @@ importers:
       '@fluvia/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@fluvia/outbox':
+        specifier: workspace:*
+        version: link:../../packages/outbox
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
