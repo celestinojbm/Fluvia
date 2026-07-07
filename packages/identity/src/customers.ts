@@ -1,4 +1,5 @@
 import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { insertAuditEvent } from '@fluvia/audit';
 import { CustomerNotFoundError } from './errors.js';
 import {
   CreateCustomerSchema,
@@ -149,6 +150,53 @@ export class CustomerService {
       );
       if (!res.rows[0]) throw new CustomerNotFoundError();
       return { id: res.rows[0].id, deleted: true };
+    });
+  }
+
+  /**
+   * TM-05 (threat model §5) — derecho al olvido por PSEUDONIMIZACIÓN
+   * (`data-classification.md`, clase PII): se SOBRESCRIBEN los campos PII
+   * (email/name/phone/description y la bolsa metadata, que puede llevar PII
+   * libre) y la fila queda en baja lógica; el `id`, el tenant, `created_at` y
+   * toda FK entrante (checkout_sessions, payment_links, …) PERMANECEN — la
+   * integridad contable no se toca (jamás se borra un asiento). IRREVERSIBLE.
+   * Auditada en la MISMA transacción (riesgo alto). Idempotente: borrar de
+   * nuevo devuelve el mismo resultado sin re-auditar de más (el marker de
+   * metadata es determinista).
+   */
+  async erase(
+    tenantId: string,
+    customerId: string,
+    meta: { apiKeyId?: string; requestId?: string; ip?: string } = {}
+  ): Promise<{ id: string; erased: true }> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<{ id: string }>(
+        `UPDATE customers
+         SET email = NULL, name = NULL, phone = NULL, description = NULL,
+             metadata = '{"pii_erased": true}'::jsonb,
+             deleted_at = COALESCE(deleted_at, now()),
+             updated_at = now()
+         WHERE id = $1
+         RETURNING id`,
+        [customerId]
+      );
+      if (!res.rows[0]) throw new CustomerNotFoundError();
+      await insertAuditEvent(c, {
+        action: 'customer.pii_erased',
+        context: {
+          actorType: 'api_key',
+          actorId: meta.apiKeyId,
+          authMethod: 'api_key',
+          requestId: meta.requestId,
+          ip: meta.ip,
+        },
+        tenantId,
+        resourceType: 'customer',
+        resourceId: customerId,
+        riskLevel: 'high',
+        reason: 'right_to_erasure',
+      });
+      return { id: res.rows[0].id, erased: true };
     });
   }
 }

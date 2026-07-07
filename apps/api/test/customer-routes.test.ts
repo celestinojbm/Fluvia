@@ -194,3 +194,96 @@ describe('GET + update + delete + aislamiento', () => {
     expect((other.json().data as Array<{ id: string }>).some((c) => c.id === id)).toBe(false);
   });
 });
+
+describe('POST /v1/customers/:id/erase (TM-05 — derecho al olvido)', () => {
+  it('pseudonymizes PII irreversibly, keeps the row, audits, and is idempotent', async () => {
+    const created = await createCustomer(keyA, {
+      name: 'Olvidable Pérez',
+      email: 'olvidable@test.fluvia.dev',
+      phone: '+57 300 111 2233',
+      description: 'cliente VIP',
+      metadata: { nickname: 'olvi' },
+    });
+    const id = created.json().id as string;
+
+    const erased = await app.inject({
+      method: 'POST',
+      url: `/v1/customers/${id}/erase`,
+      headers: auth(keyA),
+    });
+    expect(erased.statusCode).toBe(200);
+    expect(erased.json()).toEqual({ id, object: 'customer', erased: true });
+
+    // La fila PERMANECE (integridad referencial/contable) pero sin PII.
+    const row = await adminPool.query<{
+      email: string | null;
+      name: string | null;
+      phone: string | null;
+      description: string | null;
+      metadata: { pii_erased?: boolean };
+      deleted_at: Date | null;
+    }>(
+      `SELECT email, name, phone, description, metadata, deleted_at
+       FROM customers WHERE id = $1`,
+      [id]
+    );
+    expect(row.rows[0]).toBeDefined();
+    expect(row.rows[0]!.email).toBeNull();
+    expect(row.rows[0]!.name).toBeNull();
+    expect(row.rows[0]!.phone).toBeNull();
+    expect(row.rows[0]!.description).toBeNull();
+    expect(row.rows[0]!.metadata).toEqual({ pii_erased: true });
+    expect(row.rows[0]!.deleted_at).not.toBeNull();
+
+    // La PII original no existe en NINGUNA columna de la fila.
+    const leak = await adminPool.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM customers
+       WHERE id = $1 AND (customers::text ILIKE '%olvidable%' OR customers::text LIKE '%300 111%')`,
+      [id]
+    );
+    expect(leak.rows[0]!.n).toBe('0');
+
+    // Auditado en la misma transacción, riesgo alto, sin la PII en el evento.
+    const audit = await adminPool.query<{ risk_level: string; reason: string }>(
+      `SELECT risk_level, reason FROM audit_events
+       WHERE action = 'customer.pii_erased' AND resource_id = $1`,
+      [id]
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]!.risk_level).toBe('high');
+    expect(audit.rows[0]!.reason).toBe('right_to_erasure');
+
+    // Desaparece del plano de lectura (como un soft-delete).
+    const got = await app.inject({
+      method: 'GET',
+      url: `/v1/customers/${id}`,
+      headers: auth(keyARead),
+    });
+    expect(got.statusCode).toBe(404);
+
+    // Idempotente: borrar de nuevo devuelve lo mismo.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/v1/customers/${id}/erase`,
+      headers: auth(keyA),
+    });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().erased).toBe(true);
+  });
+
+  it('requires customers:write and is tenant-isolated (404 for a foreign customer)', async () => {
+    const id = (await createCustomer(keyA, { name: 'Aislado' })).json().id as string;
+    const wrongScope = await app.inject({
+      method: 'POST',
+      url: `/v1/customers/${id}/erase`,
+      headers: auth(keyARead),
+    });
+    expect(wrongScope.statusCode).toBe(403);
+    const foreign = await app.inject({
+      method: 'POST',
+      url: `/v1/customers/${id}/erase`,
+      headers: auth(keyB),
+    });
+    expect(foreign.statusCode).toBe(404);
+  });
+});

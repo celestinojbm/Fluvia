@@ -79,4 +79,22 @@ export function registerCustomerRoutes(
       return { id: res.id, object: 'customer', deleted: true };
     }
   );
+
+  // TM-05: derecho al olvido por PSEUDONIMIZACION (data-classification.md,
+  // clase PII). IRREVERSIBLE: sobrescribe email/name/phone/description/metadata
+  // y da de baja logica; el id y las FKs (checkout_sessions, ...) permanecen —
+  // la contabilidad no se toca. Auditado (riesgo alto). Idempotente.
+  app.post(
+    '/v1/customers/:id/erase',
+    { preHandler: security.apiKey(['customers:write']) },
+    async (req) => {
+      const { id } = IdParam.parse(req.params);
+      const res = await customerService.erase(req.apiKey!.tenantId, id, {
+        apiKeyId: req.apiKey!.apiKeyId,
+        requestId: req.id,
+        ip: req.ip,
+      });
+      return { id: res.id, object: 'customer', erased: true };
+    }
+  );
 }

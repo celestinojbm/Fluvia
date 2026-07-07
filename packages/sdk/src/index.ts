@@ -25,6 +25,7 @@ export const SDK_ROUTES = [
   { method: 'GET', path: '/v1/customers/{id}' },
   { method: 'POST', path: '/v1/customers/{id}' },
   { method: 'POST', path: '/v1/customers/{id}/delete' },
+  { method: 'POST', path: '/v1/customers/{id}/erase' },
   { method: 'POST', path: '/v1/checkout_sessions' },
   { method: 'GET', path: '/v1/checkout_sessions' },
   { method: 'GET', path: '/v1/checkout_sessions/{id}' },
@@ -324,6 +325,13 @@ export class FluviaClient {
       this.request<{ id: string; object: 'customer'; deleted: true }>(
         'POST',
         this.fill('/v1/customers/{id}/delete', id)
+      ),
+    /** TM-05: derecho al olvido — pseudonimiza la PII de forma IRREVERSIBLE
+     *  (la fila y las referencias contables permanecen). Idempotente. */
+    erase: (id: string) =>
+      this.request<{ id: string; object: 'customer'; erased: true }>(
+        'POST',
+        this.fill('/v1/customers/{id}/erase', id)
       ),
   };
 

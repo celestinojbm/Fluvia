@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
   'auth.step_up_password_failed',
   'api_key.created',
   'api_key.revoked',
+  'customer.pii_erased',
   'merchant.created',
   'merchant.updated',
   'ledger.transaction_reversed',
