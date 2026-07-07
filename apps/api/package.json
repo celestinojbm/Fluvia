@@ -14,7 +14,8 @@
     "test": "vitest run",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "drill:reconciliation": "tsx drills/reconciliation-drill.ts"
+    "drill:reconciliation": "tsx drills/reconciliation-drill.ts",
+    "drill:disputes": "tsx drills/disputes-drill.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",

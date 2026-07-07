@@ -34,4 +34,14 @@
 
 ## Drill (F4-06b)
 
-Pendiente: abrir una disputa (webhook `dispute.opened`) → envejecer > umbral → confirmar alerta/gauge → responder con evidencia → entregar `dispute.won`/`dispute.lost` del banco → `resolve` cierra con el asiento correcto. (Las suites de payments-core/worker ya prueban el ciclo abrir→retener→resolver y la salud del watchdog.)
+✅ **Ejecutado — PASS 7/7** (`pnpm --filter @fluvia/api run drill:disputes`, `apps/api/drills/disputes-drill.ts`). Ensaya este runbook sobre un stack real (Postgres + la API en proceso, conducida **sobre HTTP** para la acción del operador), cruzando los tres planos:
+
+1. El banco **ABRE** la disputa (idempotente: el inbox es at-least-once → reingerir el mismo `provider_ref` no doble-abre ni doble-retiene) y aparta el monto (`merchant.available → dispute.reserve`).
+2. Se **envejece** > umbral (7 días) y `sweep_disputes()` marca `held_aged ≥ 1` (alerta ALTA `fluvia_disputes_aged > 0`).
+3. **NIVEL A**: el watchdog SURFACEA salud pero **NO transiciona** — la disputa sigue `open` (sin cierres por asunción, V4 §23).
+4. **Gate RBAC**: un rol `read_only` (sin `reconciliation:manage`) → **403** al responder.
+5. El operador `finance` **RESPONDE con evidencia** por SESIÓN (F4-08e, idempotente) → `under_review`, con los fondos **aún apartados**.
+6. El banco entrega `dispute.won` → `dispute.reserve → merchant.available`: fondos **restaurados íntegros**, asiento balanceado, idempotente (evento tardío → `ignored_out_of_order`).
+7. Una segunda disputa `dispute.lost` → `dispute.reserve → provider.clearing`: fondos **forfeitados**, asiento balanceado.
+
+Cierre con `scripts/verify-ledger-invariants.sql` → `FLUVIA_INVARIANTS_OK` (sin drift). La ingesta HTTP→inbox del webhook firmado del banco la cubre `webhook-ingest.test.ts`; el drill representa el banco por el `DisputeService` (`openFromProvider`/`resolve`) — la misma vía que llama el handler verificado. La EJECUCIÓN es local (el CI no levanta el stack, como los E2E de navegador y el drill de conciliación).
