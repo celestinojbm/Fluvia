@@ -70,6 +70,22 @@ jobs:
       - name: Invariantes del ledger — SQL externo al ORM (F2-06, Gate Ledger)
         run: psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/verify-ledger-invariants.sql
 
+      - name: Asegurar pg_dump 16+ (para el restore drill)
+        run: |
+          major=$(pg_dump --version | awk '{print $NF}' | cut -d. -f1)
+          echo "pg_dump major=$major"
+          if [ "$major" -lt 16 ]; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client-16
+          fi
+          pg_dump --version
+
+      - name: Restore drill — Gate Restore (F6, TM-04)
+        # Ensaya el runbook de recuperación de desastre sobre PG16 real:
+        # pg_dump -Fc -> pg_restore --exit-on-error en base fresca -> invariantes +
+        # paridad (checksums row-level) sobre la copia -> drift detectado + rebuild
+        # -> RLS preservado. Corre tras la suite (BD poblada, como una copia real).
+        run: pnpm --filter @fluvia/api run drill:restore
+
   security:
     name: Secret scanning, dependencias y SBOM
     runs-on: ubuntu-latest
