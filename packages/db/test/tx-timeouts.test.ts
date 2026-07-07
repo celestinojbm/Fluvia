@@ -61,12 +61,9 @@ describe('withTenantTransaction — cotas de tiempo (V2-R1)', () => {
 
   it('statement_timeout actually aborts a slow statement', async () => {
     await expect(
-      withTenantTransaction(
-        ctx.app,
-        tenant,
-        async (c) => c.query('SELECT pg_sleep(1)'),
-        { statementTimeoutMs: 100 }
-      )
+      withTenantTransaction(ctx.app, tenant, async (c) => c.query('SELECT pg_sleep(1)'), {
+        statementTimeoutMs: 100,
+      })
     ).rejects.toMatchObject({ code: '57014' }); // canceling statement due to statement timeout
   });
 });
