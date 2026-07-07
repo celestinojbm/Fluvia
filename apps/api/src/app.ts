@@ -45,6 +45,7 @@ import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
+import { findCardData } from './card-data-guard.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
 
 export interface BuildAppOptions {
@@ -140,7 +141,39 @@ export function buildApp({
   });
 
   // F1-07: contadores/histogramas HTTP + GET /metrics (agregados anonimos).
-  registerMetrics(app, metricsRegistry ?? new MetricsRegistry());
+  const registry = metricsRegistry ?? new MetricsRegistry();
+  registerMetrics(app, registry);
+
+  // TM-06 (pci-scope.md §3): guard de datos de tarjeta. Fluvia jamas acepta
+  // PAN/CVV — solo tokens del proveedor. Corre en preValidation (body ya
+  // parseado, ANTES de auth/Zod/handler): un request con estructura de tarjeta
+  // se rechaza sin tocar nada mas, con log de incidente SIN el valor. Los
+  // bodies no-objeto (p. ej. la ingesta del webhook, string firmado) no
+  // aplican. Heuristica conservadora — no "resuelve PCI", refuerza la frontera.
+  const cardDataRejected = registry.counter(
+    'fluvia_card_data_rejected_total',
+    'Requests rechazados por contener datos aparentes de tarjeta (guard PCI)',
+    ['kind']
+  );
+  app.addHook('preValidation', async (req, reply) => {
+    if (req.body === null || typeof req.body !== 'object') return;
+    const hit = findCardData(req.body);
+    if (hit) {
+      req.log.error(
+        {
+          event: 'pci.card_data_rejected',
+          kind: hit.kind,
+          fieldPath: hit.path,
+          route: req.routeOptions.url ?? 'unmatched',
+        },
+        'card-like data rejected at the edge (PCI guard) — value not logged'
+      );
+      cardDataRejected.inc({ kind: hit.kind });
+      return reply
+        .code(ERROR_CATALOG.card_data_not_allowed.status)
+        .send(errorBody('card_data_not_allowed', req.id));
+    }
+  });
 
   app.get('/health', async () => ({
     status: 'ok',

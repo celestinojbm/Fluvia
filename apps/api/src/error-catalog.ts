@@ -214,6 +214,13 @@ export const ERROR_CATALOG = {
     type: 'unprocessable_error',
     message: "The payout amount exceeds the merchant's available balance",
   },
+  // TM-06 (pci-scope.md §3): Fluvia jamas acepta datos primarios de tarjeta.
+  card_data_not_allowed: {
+    status: 422,
+    type: 'unprocessable_error',
+    message:
+      'The request appears to contain primary card data (PAN/CVV). Fluvia never accepts raw card data; use provider tokenization (tok_...)',
+  },
   mfa_already_enabled: {
     status: 409,
     type: 'conflict_error',

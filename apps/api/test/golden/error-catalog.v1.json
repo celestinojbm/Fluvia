@@ -167,6 +167,11 @@
       "type": "unprocessable_error",
       "message": "The payout amount exceeds the merchant's available balance"
     },
+    "card_data_not_allowed": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The request appears to contain primary card data (PAN/CVV). Fluvia never accepts raw card data; use provider tokenization (tok_...)"
+    },
     "mfa_already_enabled": {
       "status": 409,
       "type": "conflict_error",
