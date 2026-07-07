@@ -9,7 +9,14 @@ import {
   VerifyEmailSchema,
 } from '@fluvia/auth';
 import { InvalidSessionError } from '@fluvia/auth';
-import { FixedWindowLimiter, emailKey, ipKey, rateLimit, type RateRule } from '../rate-limit.js';
+import {
+  FixedWindowLimiter,
+  emailKey,
+  ipKey,
+  rateLimit,
+  type RateLimiter,
+  type RateRule,
+} from '../rate-limit.js';
 
 export interface AuthRateLimits {
   loginPerEmail: RateRule;
@@ -31,6 +38,9 @@ export interface AuthRoutesOptions {
   /** Solo local/test: expone el token de verificacion en la respuesta de registro. */
   exposeVerificationToken: boolean;
   rateLimits?: AuthRateLimits;
+  /** TM-03: backend del limiter. Default: ventana fija in-memory (mono-instancia);
+   *  los despliegues compartidos inyectan `RedisFixedWindowLimiter`. */
+  limiter?: RateLimiter;
 }
 
 function bearerToken(req: FastifyRequest): string {
@@ -45,10 +55,10 @@ function meta(req: FastifyRequest) {
 
 export function registerAuthRoutes(
   app: FastifyInstance,
-  { authService, exposeVerificationToken, rateLimits }: AuthRoutesOptions
+  { authService, exposeVerificationToken, rateLimits, limiter: injected }: AuthRoutesOptions
 ): void {
   const limits = rateLimits ?? DEFAULT_AUTH_RATE_LIMITS;
-  const limiter = new FixedWindowLimiter();
+  const limiter = injected ?? new FixedWindowLimiter();
 
   app.post(
     '/v1/auth/register',

@@ -29,6 +29,7 @@ import {
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
+import type { RateLimiter } from './rate-limit.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
@@ -60,6 +61,9 @@ export interface BuildAppOptions {
   authRateLimits?: AuthRateLimits;
   /** Registro de metricas (F1-07). Por defecto cada app crea el suyo. */
   metricsRegistry?: MetricsRegistry;
+  /** TM-03: backend del rate limiter de /v1/auth/*. Default in-memory
+   *  (mono-instancia); despliegues compartidos inyectan el de Redis. */
+  rateLimiter?: RateLimiter;
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -80,6 +84,7 @@ export function buildApp({
   apiKeyService,
   authRateLimits,
   metricsRegistry,
+  rateLimiter,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -196,6 +201,7 @@ export function buildApp({
       authService,
       exposeVerificationToken: config.env === 'local' || config.env === 'test',
       rateLimits: authRateLimits,
+      limiter: rateLimiter,
     });
   }
 

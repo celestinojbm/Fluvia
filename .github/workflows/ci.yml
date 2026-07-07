@@ -19,6 +19,8 @@ jobs:
       RELAY_DATABASE_URL: postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia
       INBOX_DATABASE_URL: postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia
       AUTH_DATABASE_URL: postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia
+      # TM-03: los tests del rate limiter COMPARTIDO corren contra Redis real.
+      REDIS_URL: redis://127.0.0.1:6379
     services:
       postgres:
         image: postgres:16
@@ -30,6 +32,15 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d fluvia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 12
