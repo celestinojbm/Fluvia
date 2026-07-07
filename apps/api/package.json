@@ -19,7 +19,8 @@
     "drill:indeterminate": "tsx drills/indeterminate-payment-drill.ts",
     "drill:outbox-inbox": "tsx drills/outbox-inbox-stuck-drill.ts",
     "drill:worker-down": "tsx drills/worker-down-drill.ts",
-    "drill:webhook-dead-letter": "tsx drills/webhook-dead-letter-drill.ts"
+    "drill:webhook-dead-letter": "tsx drills/webhook-dead-letter-drill.ts",
+    "drill:restore": "tsx drills/restore-drill.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",

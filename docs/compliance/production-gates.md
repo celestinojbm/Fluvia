@@ -7,6 +7,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 ## 1. Gates técnicos mínimos
 
 ### Gate Ledger — 🟢 técnico (F2-02…F2-08 completos; revisión formal en Fase 6)
+
 - [x] **Cada transacción balancea por activo/moneda a nivel de MOTOR** (constraint trigger diferido `FLUVIA_UNBALANCED`; probado con SQL crudo incluso como superusuario; compensación cross-moneda rechazada; cabeceras vacías rechazadas — `ledger-invariants.test.ts`, F2-02)
 - [x] Inmutabilidad de asientos a nivel motor (`FLUVIA_IMMUTABLE`)
 - [x] Modelo causal: `source_type/source_id` + `reverses_tx_id` con FK (F2-01)
@@ -19,6 +20,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Concurrencia sin duplicados ni drift** (F2-08): suite formal reproducible (PRNG seeded) — conservación exacta bajo 120 postings concurrentes, presión de deadlock, carrera masiva de idempotencia N→1, presión mixta con rebuilds y reversal (`concurrency.test.ts`)
 
 ### Gate Multi-tenant — 🟢 técnico (revisión formal en Fase 6)
+
 - [x] Tenant A no lee ni escribe datos de Tenant B vía RLS (lectura, escritura por PK, UPDATE masivo, INSERT…SELECT, JOINs, sondas EXISTS, agregados — `tenant-escape.test.ts`)
 - [x] Pool de conexiones no fuga contexto (test explícito de la MISMA conexión a través de transacciones A → sin contexto → B)
 - [x] Autorización de aplicación (RBAC) activa con matriz verificada celda a celda (F1-04c)
@@ -29,6 +31,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §7); mitigación = consultas 100% parametrizadas + revisión Fase 6.
 
 ### Gate Idempotencia — 🟢 técnico (F2-09/F2-10; revisión formal en Fase 6)
+
 - [x] Tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` conforme al contrato de `idempotency.md` (migración 0008, AUD-P1-009)
 - [x] **Mismo key + mismo payload → mismo resultado**: replay exacto (status+body persistidos) sin re-ejecutar el handler, probado a nivel servicio y sobre HTTP real (`idempotency.test.ts`, `idempotency-http.test.ts`)
 - [x] **Mismo key + payload distinto → rechazado**: hash canónico sha256; 422 `idempotency_key_reuse`; el handler jamás se ejecuta
@@ -36,10 +39,12 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Pérdida de Redis no duplica**: Redis NO está en el camino (PostgreSQL única fuente, ADR-0006); si algún día se añade fast-path, este ítem se re-verifica con caída simulada
 
 ### Gate Conciliación — 🔴
+
 - [ ] Archivo simulado produce discrepancias detectadas (F4-02)
 - [ ] Casos creados, sin corrección silenciosa, evidencia de resolución (F4-03)
 
 ### Gate Seguridad — 🔴
+
 - [x] Credenciales `live` imposibles de emitir por código (`LiveKeysDisabledError`) hasta pasar gates + decisión humana PEND-004 (AUD-P2-003)
 - [x] Anti-mezcla de entornos: arranque falla fuera de local/test sin URLs de BD explícitas (`dbUrlsFromEnv` + `@fluvia/config`, AUD-P2-014)
 - [x] **MFA TOTP + step-up + rate limiting** (F1-04b, AUD-P1-006): TOTP RFC 6238 con anti-replay, secreto cifrado en reposo, backup codes de un solo uso, step-up en `keys:manage`, rate limiting por email/IP en auth — todo probado sobre HTTP. Nota Nivel C: el limitador es in-memory mono-instancia; store compartido requerido antes del sandbox compartido (PEND-006)
@@ -48,8 +53,10 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Observabilidad base operativa** (F1-07): métricas agregadas anónimas (sin ids de tenant — probado), alertas baseline definidas (`observability.md` §4). Pendiente para producción: `/metrics` en red interna de scrape y dashboards (F6)
 - [ ] Sin High/Critical sin aceptación explícita; secret/dependency scanning; threat model actualizado; pruebas SSRF y tenant escape (F1-02, F3, F6)
 
-### Gate Restore — 🔴
-- [ ] Backup restaurado + ledger verificado + proyecciones reconstruidas + conciliación post-restore (F6)
+### Gate Restore — 🟡
+
+- [x] **Procedimiento de restore probado en drill** (F6, cierra la pata restante de AUD-P2-007): backup `pg_dump -Fc` → `pg_restore --exit-on-error` (code=0 asserteado) en base fresca → `verify-ledger-invariants.sql`→`FLUVIA_INVARIANTS_OK` sobre la copia → paridad fuente↔copia (conteos de 4 tablas + Σamount + saldo del marcador + checksums row-level de asientos y transacciones, RPO=0) → drift inyectado DETECTADO + `rebuildProjection` explícito → RLS FORZADO + políticas preservadas. `pnpm --filter @fluvia/api run drill:restore` (`apps/api/drills/restore-drill.ts`, **PASS 7/7** local); runbook [`docs/ops/runbooks/backup-restore.md`](../ops/runbooks/backup-restore.md). Cubre restaurado + ledger verificado + proyecciones reconstruidas + base para conciliación post-restore.
+- [ ] **Infra de backup de producción**: cadencia/retención/cifrado en reposo/offsite + PITR/WAL para RPO→segundos — decisión de despliegue (F6/F7), no se simula. El criterio del gate (restaurar + verificar + reconstruir) es idéntico y ya está probado en drill.
 
 ## 2. Gates organizacionales y regulatorios (todos 🔴, requieren humanos)
 
