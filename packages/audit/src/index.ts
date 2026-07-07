@@ -21,6 +21,8 @@ export const AUDIT_ACTIONS = [
   'auth.mfa_enabled',
   'auth.mfa_disabled',
   'auth.step_up',
+  'auth.step_up_password',
+  'auth.step_up_password_failed',
   'api_key.created',
   'api_key.revoked',
   'merchant.created',

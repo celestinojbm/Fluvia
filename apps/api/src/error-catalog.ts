@@ -140,7 +140,8 @@ export const ERROR_CATALOG = {
   mfa_step_up_required: {
     status: 403,
     type: 'authorization_error',
-    message: 'This action requires recent MFA verification; call /v1/auth/mfa/step-up',
+    message:
+      'This action requires recent re-authentication: call /v1/auth/mfa/step-up (MFA) or /v1/auth/step-up/password (no MFA)',
   },
   // --- no encontrado (anti-enumeracion: cross-tenant es indistinguible) ---
   not_found: {

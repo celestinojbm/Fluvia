@@ -35,11 +35,13 @@ export {
   PasswordSchema,
   MfaVerifySchema,
   MfaCodeOnlySchema,
+  StepUpPasswordSchema,
   type RegisterInput,
   type LoginInput,
   type VerifyEmailInput,
   type MfaVerifyInput,
   type MfaCodeOnlyInput,
+  type StepUpPasswordInput,
 } from './schemas.js';
 export {
   AuthError,

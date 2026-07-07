@@ -45,3 +45,11 @@ export type MfaVerifyInput = z.infer<typeof MfaVerifySchema>;
 
 export const MfaCodeOnlySchema = z.object({ code: MfaCodeSchema }).strict();
 export type MfaCodeOnlyInput = z.infer<typeof MfaCodeOnlySchema>;
+
+/** TM-02: re-autenticación por password (step-up de usuarios sin MFA). */
+export const StepUpPasswordSchema = z
+  .object({
+    password: z.string().min(1).max(128),
+  })
+  .strict();
+export type StepUpPasswordInput = z.infer<typeof StepUpPasswordSchema>;

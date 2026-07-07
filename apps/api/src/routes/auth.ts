@@ -5,6 +5,7 @@ import {
   MfaCodeOnlySchema,
   MfaVerifySchema,
   RegisterSchema,
+  StepUpPasswordSchema,
   VerifyEmailSchema,
 } from '@fluvia/auth';
 import { InvalidSessionError } from '@fluvia/auth';
@@ -154,6 +155,26 @@ export function registerAuthRoutes(
         meta(req)
       );
       return { mfa_verified_at: result.mfaVerifiedAt.toISOString() };
+    }
+  );
+
+  // TM-02: step-up por RE-AUTENTICACION DE PASSWORD, solo usuarios SIN MFA
+  // (con MFA, el password no sustituye al factor fuerte: 403 step-up). Un
+  // fallo cuenta contra el MISMO lockout que el login; mismo limite por IP
+  // que el resto del plano MFA.
+  app.post(
+    '/v1/auth/step-up/password',
+    { preHandler: rateLimit(limiter, [{ keyOf: ipKey('stepup:ip'), rule: limits.mfaPerIp }]) },
+    async (req) => {
+      const identity = await authService.authenticateSession(bearerToken(req));
+      const body = StepUpPasswordSchema.parse(req.body);
+      const result = await authService.stepUpWithPassword(
+        identity.userId,
+        identity.sessionId,
+        body.password,
+        meta(req)
+      );
+      return { password_verified_at: result.passwordVerifiedAt.toISOString() };
     }
   );
 

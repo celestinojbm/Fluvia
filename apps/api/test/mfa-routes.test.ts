@@ -198,16 +198,56 @@ describe('MFA sobre HTTP', () => {
     expect(allowed.statusCode).toBe(201);
   });
 
-  it('users WITHOUT MFA are not blocked by the step-up guard (until PEND-006)', async () => {
+  it('TM-02: users WITHOUT MFA must re-authenticate with their password (step-up is no longer a no-op)', async () => {
     const user = await registerAndLogin();
     const orgId = await ownedOrg(user.userId);
+    const createKey = () =>
+      app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgId}/api-keys`,
+        headers: authed(user.sessionToken),
+        payload: { label: 'no-mfa-user', scopes: ['read'] },
+      });
+
+    // Sin re-autenticacion fresca: BLOQUEADO (antes esto pasaba — el hueco TM-02).
+    const blocked = await createKey();
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json().error.code).toBe('mfa_step_up_required');
+
+    // Password equivocado: 401 uniforme, y NO desbloquea.
+    const wrong = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/step-up/password',
+      headers: authed(user.sessionToken),
+      payload: { password: 'not-the-password-123' },
+    });
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json().error.code).toBe('invalid_credentials');
+    expect((await createKey()).statusCode).toBe(403);
+
+    // Re-autenticacion correcta: refresca password_verified_at y desbloquea.
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/step-up/password',
+      headers: authed(user.sessionToken),
+      payload: { password: PASSWORD },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().password_verified_at).toBeTruthy();
+    expect((await createKey()).statusCode).toBe(201);
+  });
+
+  it('TM-02: with MFA enabled, the password path does NOT substitute the strong factor', async () => {
+    const user = await enrollViaHttp(); // usuario CON MFA
     const res = await app.inject({
       method: 'POST',
-      url: `/v1/organizations/${orgId}/api-keys`,
+      url: '/v1/auth/step-up/password',
       headers: authed(user.sessionToken),
-      payload: { label: 'no-mfa-user', scopes: ['read'] },
+      payload: { password: PASSWORD },
     });
-    expect(res.statusCode).toBe(201);
+    // El servicio exige TOTP: el password jamas refresca el step-up de un usuario MFA.
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('mfa_step_up_required');
   });
 });
 
