@@ -113,6 +113,7 @@ BEGIN
                e.account_id::text, e.direction, e.amount, e.currency::text,
                e.bucket, e.reason,
                to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US'),
+               t.tenant_id::text,
                t.idempotency_key, t.reason, t.source_type, t.source_id,
                t.reverses_tx_id::text,
                to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')

@@ -88,6 +88,9 @@ describe('LedgerCheckpointer — sellado del hash-chain con rol worker (F6)', ()
     expect(sealed, 'el job nunca llegó a sellar un checkpoint').toBeDefined();
     expect(sealed!.checkpointsTotal).toBeGreaterThanOrEqual(1);
     expect(sealed!.sealedUptoSeq).toBeGreaterThan(0);
+    // El rezago de detección se expone (gauge de estancamiento); nunca negativo.
+    expect(typeof sealed!.unsealedSeq).toBe('number');
+    expect(sealed!.unsealedSeq).toBeGreaterThanOrEqual(0);
     expect(seen.length).toBeGreaterThan(0);
     expect(seen[seen.length - 1]).toEqual(sealed);
 

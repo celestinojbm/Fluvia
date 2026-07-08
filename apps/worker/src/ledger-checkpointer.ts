@@ -17,6 +17,9 @@ export interface LedgerChainHealth {
   sealedUptoSeq: number;
   sealedThisRun: number;
   candidateUptoSeq: number;
+  /** Rezago de detección: seq máximos aún sin cubrir por la cadena. NO decrece =
+   *  sellador atascado/caído (su fallo es silencioso) → alerta de estancamiento. */
+  unsealedSeq: number;
 }
 
 export interface LedgerCheckpointerOptions {
@@ -56,6 +59,7 @@ export class LedgerCheckpointer {
       sealedUptoSeq: byMetric.sealed_upto_seq ?? 0,
       sealedThisRun: byMetric.sealed_this_run ?? 0,
       candidateUptoSeq: byMetric.candidate_upto_seq ?? 0,
+      unsealedSeq: byMetric.unsealed_seq ?? 0,
     };
     try {
       this.options.onResult?.(health);

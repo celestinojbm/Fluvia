@@ -162,6 +162,10 @@ const ledgerChainSealedUpto = registry.gauge(
   'fluvia_ledger_chain_sealed_upto_seq',
   'Último seq de ledger_entries cubierto por la cadena — lo posterior es horizonte pendiente'
 );
+const ledgerChainUnsealedSeq = registry.gauge(
+  'fluvia_ledger_chain_unsealed_seq',
+  'Rezago de detección: seq aún sin sellar. Si NO decrece, el sellador está atascado/caído (su fallo es silencioso) — el punto ciego que la alerta de estancamiento cubre'
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -315,6 +319,7 @@ const ledgerCheckpointer = new LedgerCheckpointer(workerPool, logger, {
   onResult: (health) => {
     ledgerChainCheckpoints.set({}, health.checkpointsTotal);
     ledgerChainSealedUpto.set({}, health.sealedUptoSeq);
+    ledgerChainUnsealedSeq.set({}, health.unsealedSeq);
   },
 });
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
