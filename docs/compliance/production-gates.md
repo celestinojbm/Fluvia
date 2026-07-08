@@ -38,6 +38,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Mismo key + payload distinto → rechazado**: hash canónico sha256; 422 `idempotency_key_reuse`; el handler jamás se ejecuta
 - [x] **Crash recovery no duplica**: claim+efecto+respuesta en UNA transacción — kill pre-COMMIT ⇒ rollback conjunto y reintento limpio; kill post-COMMIT ⇒ replay. Carrera 8 concurrentes ⇒ exactamente 1 efecto; property test: efectos==1 para toda secuencia de reintentos
 - [x] **Pérdida de Redis no duplica**: Redis NO está en el camino (PostgreSQL única fuente, ADR-0006); si algún día se añade fast-path, este ítem se re-verifica con caída simulada
+- [x] **Retención + salud de huérfanos (F6, threat model §5)**: retención configurable (`IDEMPOTENCY_RETENTION_HOURS`, default 24 h, fijada explícita en `expires_at`) con la regla «>= ventana de retry del cliente» documentada (valor final = decisión del dueño antes de PEND-006); `IdempotencyWatchdog` + `sweep_idempotency_orphans()` (0041) alertan sobre claims `in_progress` envejecidos (>1 h) que bloquean su key hasta la purga (`idempotency-watchdog.test.ts`)
 
 ### Gate Conciliación — 🔴
 

@@ -263,7 +263,9 @@ export function buildApp({
     // timeout real + circuit breaker alrededor de CUALQUIER adapter — un solo
     // proveedor comparte circuito entre confirm y refund.
     const provider = new ResilientProvider(new MockPaymentProvider());
-    const idempotencyService = new IdempotencyService(appPool);
+    const idempotencyService = new IdempotencyService(appPool, {
+      retentionHours: config.idempotencyRetentionHours,
+    });
     const confirmationService = new PaymentConfirmationService(
       appPool,
       paymentIntentService,

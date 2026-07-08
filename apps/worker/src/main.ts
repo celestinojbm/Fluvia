@@ -23,6 +23,7 @@ import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watch
 import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { PayoutsRedriver } from './payouts-redriver.js';
 import { DisputesWatchdog } from './disputes-watchdog.js';
+import { IdempotencyWatchdog } from './idempotency-watchdog.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -143,6 +144,14 @@ const disputesHeld = registry.gauge(
 const disputesAged = registry.gauge(
   'fluvia_disputes_aged',
   'Disputas vivas envejecidas (>7 días) — 0 = sano; riesgo de pérdida por no responder'
+);
+const idempotencyInProgress = registry.gauge(
+  'fluvia_idempotency_in_progress',
+  'Claims de idempotencia `in_progress` ahora mismo (cross-tenant)'
+);
+const idempotencyInProgressAged = registry.gauge(
+  'fluvia_idempotency_in_progress_aged',
+  'Huérfanos `in_progress` envejecidos (>1 h) — 0 = sano; bloquean su key hasta la purga'
 );
 
 const worker = new WorkerProcess({
@@ -278,6 +287,17 @@ const disputesWatchdog = new DisputesWatchdog(workerPool, logger, {
     disputesAged.set({}, health.heldAged);
   },
 });
+// F6 (threat model §5): salud de la capa de idempotencia. La política vive en
+// sweep_idempotency_orphans() (0041); el job la invoca, expone los gauges y
+// ALERTA ante huérfanos `in_progress` envejecidos. NO transiciona nada (un
+// in_progress podría ser una op multi-paso externa viva — borrarlo arriesgaría
+// doble ejecución) — solo surfacea las keys bloqueadas.
+const idempotencyWatchdog = new IdempotencyWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    idempotencyInProgress.set({}, health.inProgressTotal);
+    idempotencyInProgressAged.set({}, health.inProgressAged);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -309,6 +329,7 @@ async function shutdown(signal: string): Promise<void> {
   payoutsWatchdog.stop();
   payoutsRedriver.stop();
   disputesWatchdog.stop();
+  idempotencyWatchdog.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -401,6 +422,18 @@ worker
       logger.info({ intervalMs: config.disputesWatchdog.intervalMs }, 'disputes watchdog started');
     } else {
       logger.info({}, 'disputes watchdog disabled by config (DISPUTES_WATCHDOG_ENABLED=false)');
+    }
+    if (config.idempotencyWatchdog.enabled) {
+      idempotencyWatchdog.start(config.idempotencyWatchdog.intervalMs);
+      logger.info(
+        { intervalMs: config.idempotencyWatchdog.intervalMs },
+        'idempotency watchdog started'
+      );
+    } else {
+      logger.info(
+        {},
+        'idempotency watchdog disabled by config (IDEMPOTENCY_WATCHDOG_ENABLED=false)'
+      );
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);

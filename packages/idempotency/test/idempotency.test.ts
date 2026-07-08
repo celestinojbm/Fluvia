@@ -347,3 +347,32 @@ describe('F2-10: crash-recovery y carrera (Gate Idempotencia)', () => {
     expect(await effectCount(name)).toBe(1);
   });
 });
+
+describe('retención configurable (F6, threat model §5)', () => {
+  it('sets expires_at from the configured retentionHours (>= client retry window)', async () => {
+    // La retención DEBE cubrir la ventana de retry del cliente: si la key
+    // expira antes de un reintento legítimo, la fila se purga y el efecto se
+    // RE-EJECUTA. Aquí se hace configurable (el valor final lo fija el dueño).
+    const longLived = new IdempotencyService(ctx.app, { retentionHours: 72 });
+    const key = `ret-${randomUUID()}`;
+    const name = `r-${randomUUID().slice(0, 8)}`;
+    await longLived.execute({
+      tenantId: org,
+      endpoint: ENDPOINT,
+      key,
+      requestHash: computeRequestHash({ name }),
+      handler: effectHandler(name),
+    });
+    const row = await ctx.admin.query<{ hours: number }>(
+      `SELECT round(extract(epoch FROM (expires_at - now())) / 3600)::int AS hours
+       FROM idempotency_keys WHERE tenant_id = $1 AND key = $2`,
+      [org, key]
+    );
+    expect(row.rows[0]!.hours).toBe(72);
+  });
+
+  it('rejects a retentionHours outside the safe range at construction', () => {
+    expect(() => new IdempotencyService(ctx.app, { retentionHours: 0 })).toThrow(RangeError);
+    expect(() => new IdempotencyService(ctx.app, { retentionHours: 721 })).toThrow(RangeError);
+  });
+});

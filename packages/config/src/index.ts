@@ -68,6 +68,19 @@ const EnvSchema = z.object({
   PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   DISPUTES_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   DISPUTES_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  // F6 (threat model §5): watchdog de huérfanos `in_progress` de idempotencia.
+  IDEMPOTENCY_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  IDEMPOTENCY_WATCHDOG_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .max(3_600_000)
+    .default(60_000),
+  // F6 (threat model §5): retención de idempotency keys. DEBE ser >= la ventana
+  // máxima de retry del cliente (un reintento tras la expiración re-ejecuta el
+  // efecto). Default 24 h (Nivel C); el propietario fija el valor definitivo
+  // antes del sandbox compartido (PEND-006). Rango 1 h – 30 días.
+  IDEMPOTENCY_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   // F4-03b: umbral (unidades menores) desde el cual un ajuste de caso exige
   // four-eyes (segundo aprobador distinto). Default 0 = SIEMPRE (Nivel A seguro).
   FOUR_EYES_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(0),
@@ -176,6 +189,13 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** F6: watchdog de huérfanos `in_progress` de idempotencia (threat model §5). */
+  idempotencyWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** F6: retención de idempotency keys en horas (>= ventana de retry del cliente). */
+  idempotencyRetentionHours: number;
   /** Umbral (unidades menores) desde el cual un ajuste de caso exige four-eyes (F4-03b). */
   fourEyesThresholdMinor: number;
   /** Fee de plataforma en basis points (F4-05c, PEND-002). 200 = 2%. */
@@ -286,6 +306,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.DISPUTES_WATCHDOG_ENABLED === 'true',
       intervalMs: e.DISPUTES_WATCHDOG_INTERVAL_MS,
     },
+    idempotencyWatchdog: {
+      enabled: e.IDEMPOTENCY_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.IDEMPOTENCY_WATCHDOG_INTERVAL_MS,
+    },
+    idempotencyRetentionHours: e.IDEMPOTENCY_RETENTION_HOURS,
     fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
     platformFeeBps: e.PLATFORM_FEE_BPS,
     corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
