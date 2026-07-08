@@ -6,17 +6,17 @@
 
 ## Qué corre el worker (y su gate)
 
-| Job | Gate `*_ENABLED` / `*_INTERVAL_MS` (default) | Métrica clave |
-| --- | --- | --- |
-| Heartbeat | (siempre; ~30 s) | `fluvia_worker_heartbeats_total` |
-| Outbox relay | `RELAY_*` (1 s) | `fluvia_outbox_relay_events_total{result}` |
-| Drift watcher | `DRIFT_CHECK_*` (60 s) | `fluvia_ledger_projection_drift_checks_total`, `..._accounts` |
-| Inbox processor | `INBOX_*` (1 s) | `fluvia_inbox_events_total{result}` |
-| Attempts watchdog | `ATTEMPTS_WATCHDOG_*` (60 s) | `fluvia_payment_attempts_indeterminate_aged` |
-| Checkout watchdog | `CHECKOUT_WATCHDOG_*` (60 s) | `fluvia_checkout_sessions_swept_total{result}` |
-| Reconciliation watchdog | `RECONCILIATION_WATCHDOG_*` (60 s) | `fluvia_reconciliation_discrepancies_last` |
-| Technical purge | `PURGE_*` (1 h) | `fluvia_technical_purge_runs_total` |
-| Webhook deliverer | `WEBHOOK_DELIVERY_*` (1 s) | `fluvia_webhook_deliveries_total{result}` |
+| Job                     | Gate `*_ENABLED` / `*_INTERVAL_MS` (default) | Métrica clave                                                 |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| Heartbeat               | (siempre; ~30 s)                             | `fluvia_worker_heartbeats_total`                              |
+| Outbox relay            | `RELAY_*` (1 s)                              | `fluvia_outbox_relay_events_total{result}`                    |
+| Drift watcher           | `DRIFT_CHECK_*` (60 s)                       | `fluvia_ledger_projection_drift_checks_total`, `..._accounts` |
+| Inbox processor         | `INBOX_*` (1 s)                              | `fluvia_inbox_events_total{result}`                           |
+| Attempts watchdog       | `ATTEMPTS_WATCHDOG_*` (60 s)                 | `fluvia_payment_attempts_indeterminate_aged`                  |
+| Checkout watchdog       | `CHECKOUT_WATCHDOG_*` (60 s)                 | `fluvia_checkout_sessions_swept_total{result}`                |
+| Reconciliation watchdog | `RECONCILIATION_WATCHDOG_*` (60 s)           | `fluvia_reconciliation_discrepancies_last`                    |
+| Technical purge         | `PURGE_*` (1 h)                              | `fluvia_technical_purge_runs_total`                           |
+| Webhook deliverer       | `WEBHOOK_DELIVERY_*` (1 s)                   | `fluvia_webhook_deliveries_total{result}`                     |
 
 Servidor de salud/métricas: `WORKER_METRICS_PORT` (default 9464), `GET /health` (200 `{status, heartbeats, env}`) y `GET /metrics` (Prometheus).
 
@@ -59,4 +59,4 @@ Servidor de salud/métricas: `WORKER_METRICS_PORT` (default 9464), `GET /health`
 4. El **drift watcher** (`ProjectionDriftWatcher.runOnce`) **DETECTA** el drift que se acumuló durante la caída (gauge en alerta — SEV-1).
 5. La reparación es **EXPLÍCITA** (`rebuildProjection`), jamás automática (V4 §30); tras repararla, el watcher queda limpio.
 
-Cubre la Resolución (reiniciar → los backlogs se drenan solos → verificar el daño acumulado, drift primero) y de paso **ensaya `ledger-drift`** (detección + rebuild explícito). El heartbeat interval-driven y el `/health` los cubren `worker.test.ts` y `metrics-server.test.ts`. Ejecución local.
+Cubre la Resolución (reiniciar → los backlogs se drenan solos → verificar el daño acumulado, drift primero) y de paso **ensaya `ledger-drift`** (detección + rebuild explícito). El heartbeat interval-driven y el `/health` los cubren `worker.test.ts` y `metrics-server.test.ts`. **Corre en el job `quality` de CI por commit** (F6, TM-04), tras la suite y sobre la BD que ésta pobló (como una caída real con backlog acumulado); el drenado del backlog es **dirigido por objetivo** —espera a que los eventos que sembró el drill queden `delivered`/`processed`, no un número fijo de iteraciones— para no volverse flaky si el backlog heredado crece. Solo requiere Postgres (sin Redis) y deja la BD consistente para el restore drill que corre a continuación.

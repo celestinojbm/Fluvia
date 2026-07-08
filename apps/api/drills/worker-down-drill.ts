@@ -133,23 +133,36 @@ async function main(): Promise<void> {
     ok('el worker reinicia: `checkReady` (SELECT 1) responde — la BD es accesible');
 
     // ── PASO 2: el relay del outbox DRENA su backlog → delivered ──────────────
-    for (let i = 0; i < 50; i += 1) {
-      const stats = await relay.runOnce();
-      if (stats.claimed === 0 && stats.dead === 0) break;
+    // En CI el drill corre sobre la BD POBLADA por la suite (cientos de eventos de
+    // outbox pendientes heredados; hoy ~700). Se drena hasta que los eventos que
+    // SEMBRÓ el drill queden delivered — dirigido por objetivo, NO un cap ciego de
+    // iteraciones: los del drill son los más nuevos (se drenan al final), así que un
+    // backlog heredado que crezca por encima del cap los dejaría sin drenar → FAIL
+    // espurio (flake latente). El techo alto solo acota un cuelgue: si nunca se
+    // drenan, el assert da un FAIL claro, jamás un falso-verde.
+    let outDeliveredN = 0;
+    for (let i = 0; i < 1000; i += 1) {
+      await relay.runOnce();
+      outDeliveredN = Number(
+        (
+          await adminPool.query<{ n: string }>(
+            `SELECT COUNT(*)::text AS n FROM outbox_events WHERE id = ANY($1::bigint[]) AND status='delivered'`,
+            [outIds]
+          )
+        ).rows[0]!.n
+      );
+      if (outDeliveredN === BACKLOG) break;
     }
-    const outDrained = await adminPool.query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM outbox_events WHERE id = ANY($1::bigint[]) AND status='delivered'`,
-      [outIds]
-    );
-    assert(
-      Number(outDrained.rows[0]!.n) === BACKLOG,
-      `los ${BACKLOG} eventos de outbox se drenaron (delivered)`
-    );
+    assert(outDeliveredN === BACKLOG, `los ${BACKLOG} eventos de outbox se drenaron (delivered)`);
     ok(`el relay retomó el backlog de outbox y lo drenó solo: ${BACKLOG}/${BACKLOG} delivered`);
 
     // ── PASO 3: el processor del inbox DRENA su backlog → processed ───────────
+    // Igual que PASO 2: sobre la BD poblada de CI el processor puede recorrer eventos
+    // heredados antes de llegar al del drill. El bucle ya es dirigido-por-objetivo
+    // (rompe cuando ESTE evento queda processed); el techo se eleva para no cortar
+    // antes con un backlog grande.
     let inDrained = false;
-    for (let i = 0; i < 50; i += 1) {
+    for (let i = 0; i < 1000; i += 1) {
       await inbox.runOnce();
       const s = (
         await adminPool.query<{ status: string }>(

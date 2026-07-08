@@ -81,6 +81,16 @@ jobs:
       - name: Invariantes del ledger — SQL externo al ORM (F2-06, Gate Ledger)
         run: psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/verify-ledger-invariants.sql
 
+      - name: Worker-down drill — Gate Restore/resiliencia (F6, TM-04)
+        # Ensaya el runbook «worker caído» sobre PG16 real (roles de mínimo
+        # privilegio): reinicio (checkReady) -> el relay del outbox y el processor
+        # del inbox DRENAN su backlog solos -> el drift watcher DETECTA el drift
+        # acumulado -> reparación EXPLÍCITA (rebuildProjection) deja el watcher
+        # limpio. Solo Postgres (sin Redis). Corre tras la suite sobre la BD poblada
+        # (drenado dirigido por objetivo, robusto al backlog heredado) y deja la BD
+        # consistente para el restore drill.
+        run: pnpm --filter @fluvia/api run drill:worker-down
+
       - name: Asegurar pg_dump 16+ (para el restore drill)
         run: |
           major=$(pg_dump --version | awk '{print $NF}' | cut -d. -f1)
