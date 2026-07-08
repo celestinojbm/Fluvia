@@ -213,6 +213,18 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
     expect(res.rows).toEqual([]);
   });
 
+  it('F6 (revisión de seguridad): the app/worker roles hold NO write grant on users (0045)', async () => {
+    // `users` no es tabla de credenciales pura (app tiene SELECT vía la política de
+    // membresía), pero nunca debe escribirla: 0045 revoca la asimetría heredada de
+    // los default privileges de 0002 (la RLS ya lo bloqueaba; esto añade el respaldo).
+    const res = await ctx.admin.query(`
+      SELECT grantee, privilege_type FROM information_schema.role_table_grants
+      WHERE grantee IN ('fluvia_app', 'fluvia_worker')
+        AND table_name = 'users' AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+    `);
+    expect(res.rows).toEqual([]);
+  });
+
   it('AUD-P1-007: NO runtime role has BYPASSRLS (cross-tenant reads are explicit policies)', async () => {
     const res = await ctx.admin.query<{ rolname: string; rolbypassrls: boolean }>(`
       SELECT rolname, rolbypassrls FROM pg_roles
@@ -388,6 +400,23 @@ describe('META-TESTS deny-by-default sobre TODOS los roles fluvia_% (F6)', () =>
     expect(
       offenders.map((r) => `${r.rolname}(createrole=${r.rolcreaterole},createdb=${r.rolcreatedb})`),
       'un rol de runtime puede crear roles/bases'
+    ).toEqual([]);
+  });
+
+  it('F6 (revisión de seguridad): NO fluvia_% role can create TEMP objects (cierra el shadowing de pg_temp)', async () => {
+    // Un rol capaz de `CREATE TEMP TABLE` podría shadowear las tablas SIN calificar
+    // de un SECURITY DEFINER: `SET search_path = public` NO excluye `pg_temp`, que
+    // PG busca PRIMERO para relaciones. 0045 revoca TEMPORARY a PUBLIC → ningún rol
+    // de runtime crea objetos temporales y el vector se cierra de raíz, con
+    // independencia del search_path de cada función.
+    const res = await ctx.admin.query<{ rolname: string; temp: boolean }>(`
+      SELECT rolname, has_database_privilege(rolname, current_database(), 'TEMP') AS temp
+      FROM pg_roles WHERE rolname LIKE 'fluvia\\_%'
+    `);
+    const offenders = res.rows.filter((r) => r.temp);
+    expect(
+      offenders.map((r) => r.rolname),
+      'un rol de runtime puede crear objetos temporales (vector de shadowing de pg_temp)'
     ).toEqual([]);
   });
 });

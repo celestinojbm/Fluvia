@@ -12,8 +12,9 @@ import { isWebhookTopic } from './events.js';
  * (p.ej. eventos internos del ledger) no generan webhooks.
  *
  * Reintento del relay tras un crash post-publish => posibles filas duplicadas
- * de webhook_events (at-least-once heredado); el comercio deduplica por
- * event_id (whe_) como dicta el contrato.
+ * de webhook_events (at-least-once heredado); el comercio deduplica por el
+ * `event_id` ESTABLE del sobre (el deliverer lo emite como `Fluvia-Event-Id`),
+ * que es idéntico entre filas duplicadas del MISMO evento de negocio.
  */
 export function createWebhookFanoutPublisher(
   relayPool: Pool,

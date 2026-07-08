@@ -339,13 +339,15 @@ export class AuthService {
         throw new EmailNotVerifiedError();
       }
 
-      await client.query(
-        'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
-        [user.id]
-      );
-
       // F1-04b: con MFA habilitado el password NO basta — se emite un reto
       // de corta vida y la sesion solo nace en verifyMfaChallenge().
+      //
+      // F6 (revisión de seguridad): el contador de lockout compartido NO se
+      // resetea aquí. Un éxito de PRIMER factor (password) no es un login
+      // COMPLETO cuando falta el MFA; resetear el contador dejaba que un atacante
+      // con el password re-logueara para limpiarlo entre intentos de TOTP, de
+      // modo que el lockout MFA jamás disparaba. El reset ocurre solo al COMPLETAR
+      // el login: en verifyMfaChallenge (rama MFA) o justo abajo (rama sin-MFA).
       if (user.totp_enabled_at) {
         const challenge = generateToken('fluvia_mfa');
         const challengeExpiresAt = new Date(Date.now() + this.mfaChallengeTtlMs);
@@ -369,6 +371,12 @@ export class AuthService {
         };
       }
 
+      // Login completo SIN MFA: el password ES la autenticación total → limpia
+      // el contador de lockout ahora (la rama MFA lo hace en verifyMfaChallenge).
+      await client.query(
+        'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
+        [user.id]
+      );
       const session = await this.createSession(client, user.id, meta, false);
       await insertAuditEvent(client, {
         action: 'auth.login_succeeded',
@@ -435,6 +443,28 @@ export class AuthService {
       mfaVerifiedAt: row.mfa_verified_at,
       passwordVerifiedAt: row.password_verified_at,
     };
+  }
+
+  /**
+   * F6 (revisión de seguridad) — TM-02: exige que ESTA sesión traiga una
+   * re-autenticación RECIENTE (la MISMA regla que el guard `stepUp` del API)
+   * antes de una operación sensible de CREDENCIALES. Se aplica a ENROLAR /
+   * ACTIVAR / DESHABILITAR MFA.
+   *
+   * Sin esto, una sesión secuestrada de un usuario SIN MFA podía auto-enrolar un
+   * factor MFA propio (`/mfa/setup` + `/mfa/activate` solo exigían sesión, y
+   * activate sella `mfa_verified_at`), y así satisfacer el step-up para acuñar
+   * API keys — el hueco EXACTO que TM-02 declara cerrado. Con la regla, enrolar
+   * MFA prueba primero al humano actual (password fresco para usuarios sin MFA;
+   * TOTP fresco para los que ya lo tienen), que el atacante no puede producir.
+   */
+  assertFreshStepUp(identity: SessionIdentity): void {
+    const fresh = (t: Date | null): boolean =>
+      t !== null && Date.now() - t.getTime() <= this.stepUpMaxAgeMs;
+    const ok = identity.mfaEnabled
+      ? fresh(identity.mfaVerifiedAt)
+      : fresh(identity.passwordVerifiedAt);
+    if (!ok) throw new StepUpRequiredError();
   }
 
   async logout(

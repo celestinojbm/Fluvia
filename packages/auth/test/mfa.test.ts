@@ -206,6 +206,37 @@ describe('login con MFA (reto -> verificacion -> sesion)', () => {
       AccountLockedError
     );
   });
+
+  it('SECURITY (F6): re-login with the password does NOT reset the MFA lockout counter', async () => {
+    // Un atacante con el password (pero sin el TOTP) intentaba re-loguear entre
+    // códigos MFA equivocados para limpiar el contador compartido y adivinar el
+    // segundo factor sin límite. Ahora el contador solo se limpia al COMPLETAR el
+    // login (verifyMfaChallenge), así que las re-autenticaciones de primer factor
+    // no lo resetean y el lockout dispara igual.
+    const service = new AuthService(ctx.auth, { maxFailedAttempts: 3, lockoutMs: 60_000 });
+    const user = await enrollMfa(service);
+
+    const freshChallenge = async (): Promise<string> => {
+      const outcome = await service.login({ email: user.email, password: PASSWORD });
+      if (!outcome.mfaRequired) throw new Error('unreachable');
+      return outcome.challengeToken;
+    };
+
+    // Cada intento MFA equivocado va precedido de un re-login (primer factor OK).
+    const c1 = await freshChallenge();
+    await expect(
+      service.verifyMfaChallenge({ challenge_token: c1, code: '000000' })
+    ).rejects.toThrow(InvalidMfaCodeError); // intento 1
+    const c2 = await freshChallenge(); // el re-login NO debe resetear el contador
+    await expect(
+      service.verifyMfaChallenge({ challenge_token: c2, code: '111111' })
+    ).rejects.toThrow(InvalidMfaCodeError); // intento 2
+    const c3 = await freshChallenge();
+    // 3.er MFA equivocado alcanza maxFailedAttempts=3 y BLOQUEA, pese a los re-logins.
+    await expect(
+      service.verifyMfaChallenge({ challenge_token: c3, code: '222222' })
+    ).rejects.toThrow(AccountLockedError);
+  });
 });
 
 describe('step-up y disable', () => {

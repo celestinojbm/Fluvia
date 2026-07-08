@@ -152,7 +152,18 @@ export class WebhookDeliverer {
 
         const rawBody = JSON.stringify(row.payload);
         const timestampSec = Math.floor(Date.now() / 1000);
-        const eventId = `whe_${row.id}`;
+        // F6 (revisión de seguridad): el id de cara al comercio (`Fluvia-Event-Id`,
+        // por el que el contrato pide deduplicar) es el `event_id` ESTABLE del sobre,
+        // NO el PK de la fila. El relay es at-least-once: un reintento tras crash
+        // puede materializar una fila `webhook_events` duplicada para el MISMO evento
+        // de negocio; con el id del sobre, ambas entregas llevan el MISMO id y el
+        // comercio SÍ puede deduplicar (antes salía de `row.id`, distinto por fila,
+        // así que el comercio veía dos ids y procesaba el evento dos veces).
+        const envelopeEventId = (row.payload as { event_id?: unknown }).event_id;
+        const eventId =
+          typeof envelopeEventId === 'string' && envelopeEventId.length > 0
+            ? envelopeEventId
+            : `whe_${row.id}`;
         // Keyring de rotación (ADR-0012): descifra con la clave actual o, durante
         // la ventana de rotación, con una retirada (el tag AES-GCM disambigua).
         const keyring = { current: this.encKeyHex, retired: this.retiredKeyHexes };

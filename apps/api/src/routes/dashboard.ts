@@ -72,7 +72,8 @@ const AcknowledgeBody = z.object({ assignee_user_id: z.string().uuid().optional(
 const ResolveBody = z.object({ resolution: z.string().trim().min(1).max(2000) }).strict();
 const ProposeBody = z
   .object({
-    amount: z.number().int().positive(),
+    // F6: cota de entero seguro (evita el `BigInt` de un double impreciso).
+    amount: z.number().int().positive().refine(Number.isSafeInteger, 'amount out of safe range'),
     currency: z.string().regex(/^[A-Z]{3}$/),
     direction: z.enum(ADJUSTMENT_DIRECTIONS as unknown as [string, ...string[]]),
     reason: z.string().trim().min(1).max(2000),

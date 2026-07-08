@@ -121,6 +121,24 @@ describe('firma versionada (§2)', () => {
       signWebhookDelivery(secret, ts, eventId, body)
     );
   });
+
+  it('SECURITY (F6): a malformed same-length signature returns false, never throws', () => {
+    const expected = signWebhookDelivery(secret, ts, eventId, body); // 64 hex
+    // Misma longitud de string (64) pero con caracteres NO-hex: antes
+    // Buffer.from(...,'hex') truncaba y timingSafeEqual lanzaba RangeError.
+    const malformed = 'z'.repeat(expected.length);
+    const verify = () =>
+      verifyWebhookDelivery({
+        secret,
+        signatureHeader: `v1=${malformed}`,
+        timestampSec: ts,
+        eventId,
+        rawBody: body,
+        nowMs: ts * 1000,
+      });
+    expect(verify).not.toThrow();
+    expect(verify()).toBe(false);
+  });
 });
 
 describe('cifrado de secretos de endpoint en reposo', () => {
@@ -154,6 +172,26 @@ describe('guard SSRF (§4)', () => {
       expect(isPrivateIp(ip), ip).toBe(true);
     }
     for (const ip of ['93.184.216.34', '2606:2800:220:1::1']) {
+      expect(isPrivateIp(ip), ip).toBe(false);
+    }
+  });
+
+  it('SECURITY (F6): denylists NON-CANONICAL IPv6 literals that string-matching missed', () => {
+    for (const ip of [
+      '0:0:0:0:0:0:0:1', // ::1 sin comprimir (loopback)
+      '0000:0000:0000:0000:0000:0000:0000:0001', // ::1 totalmente expandido
+      '::ffff:7f00:1', // v4-mapped 127.0.0.1 en hextets
+      '::ffff:0a00:0001', // v4-mapped 10.0.0.1 en hextets
+      '::ffff:169.254.169.254', // v4-mapped metadata (dotted)
+      'fe90::1', // resto de fe80::/10 (link-local), no solo fe80
+      'febf::dead', // borde superior de fe80::/10
+      'FD00::1', // ULA en MAYÚSCULAS
+      '::', // unspecified
+    ]) {
+      expect(isPrivateIp(ip), ip).toBe(true);
+    }
+    // IPv6 público legítimo sigue permitido (sin falsos positivos).
+    for (const ip of ['2606:4700:4700::1111', '2001:4860:4860::8888', '2a00:1450:4001:81b::200e']) {
       expect(isPrivateIp(ip), ip).toBe(false);
     }
   });

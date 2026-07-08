@@ -57,7 +57,11 @@ export function verifyWebhookDelivery(input: VerifyDeliveryInput): boolean {
   );
   return input.signatureHeader.split(',').some((part) => {
     const value = part.trim().replace(/^v1=/, '');
-    if (value.length !== expected.length) return false;
+    // Validar que sea hex ANTES de decodificar: `Buffer.from(x, 'hex')` trunca en
+    // el primer nibble inválido y produce un buffer más corto, con lo que
+    // `timingSafeEqual` LANZARÍA un RangeError (longitudes distintas) en vez de
+    // devolver `false` ante una firma mal formada de igual longitud de string.
+    if (value.length !== expected.length || !/^[0-9a-f]+$/i.test(value)) return false;
     return timingSafeEqual(Buffer.from(value, 'hex'), Buffer.from(expected, 'hex'));
   });
 }

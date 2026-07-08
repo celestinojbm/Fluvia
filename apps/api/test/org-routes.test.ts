@@ -187,6 +187,18 @@ describe('plano de dashboard: sesion + rol (RBAC)', () => {
     const res = await app.inject({ method: 'GET', url: '/v1/organizations' });
     expect(res.statusCode).toBe(401);
   });
+
+  it('SECURITY (F6): a malformed merchant id is a 400 validation_error, not a 500', async () => {
+    const orgId = await createOrg('Malformed Id Org');
+    const owner = await sessionUser('owner', orgId);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgId}/merchants/not-a-uuid`,
+      headers: owner.headers,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation_error');
+  });
 });
 
 describe('plano de integracion: API key + scopes', () => {
