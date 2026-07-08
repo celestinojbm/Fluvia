@@ -29,6 +29,9 @@ const EnvSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
     .optional(),
+  // F6 (ADR-0012): claves RETIRADAS de MFA (lista por comas) — solo descifran
+  // durante la rotación de MFA_SECRET_KEY. Validación por-clave en resolveMfaKeyring.
+  MFA_SECRET_KEY_RETIRED: z.string().optional(),
   API_KEY_HMAC_SECRET: z
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
@@ -147,6 +150,8 @@ export interface AppConfig {
   sessionIdleTimeoutMs: number;
   /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
   mfaSecretKey: string;
+  /** F6 (ADR-0012): claves MFA retiradas (solo descifran) durante la rotación. */
+  mfaSecretKeysRetired: string[];
   /** Pepper HMAC-SHA256 (64 hex) para hashes de API keys (AUD-P2-015). */
   apiKeyHmacSecret: string;
   relay: {
@@ -296,6 +301,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     return { webhookSecretEncKey: current, webhookSecretEncKeysRetired: retired };
   };
 
+  // F6 (ADR-0012): keyring de la clave de secretos TOTP — mismo contrato que el de
+  // webhooks. Closure evaluada en su POSICIÓN (tras el bloque `db`) para no alterar
+  // el orden de errores de secreto faltante (ADMIN_DATABASE_URL sigue el primero).
+  const resolveMfaKeyring = () => {
+    const current = required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey);
+    const retired = (e.MFA_SECRET_KEY_RETIRED ?? '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+    const seen = new Set<string>();
+    for (const k of retired) {
+      if (!/^[0-9a-f]{64}$/i.test(k)) {
+        throw new ConfigError('MFA_SECRET_KEY_RETIRED entries must each be 64 hex chars');
+      }
+      if (k.toLowerCase() === current.toLowerCase()) {
+        throw new ConfigError('MFA_SECRET_KEY_RETIRED must not include the current MFA_SECRET_KEY');
+      }
+      if (seen.has(k.toLowerCase())) {
+        throw new ConfigError('MFA_SECRET_KEY_RETIRED has duplicate entries');
+      }
+      seen.add(k.toLowerCase());
+    }
+    return { mfaSecretKey: current, mfaSecretKeysRetired: retired };
+  };
+
   return {
     env: e.NODE_ENV,
     port: e.PORT,
@@ -311,7 +341,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
     sessionIdleTimeoutMs: e.SESSION_IDLE_TIMEOUT_MS,
-    mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
+    ...resolveMfaKeyring(),
     apiKeyHmacSecret: required(
       'API_KEY_HMAC_SECRET',
       e.API_KEY_HMAC_SECRET,
