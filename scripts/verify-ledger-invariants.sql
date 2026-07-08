@@ -92,6 +92,51 @@ BEGIN
     problems := problems || format(' [6] projection drift accounts: %s;', bad);
   END IF;
 
+  -- 7. Hash-chain de tamper-evidence (F6, 0042): cada checkpoint SELLADO debe
+  --    reproducir EXACTAMENTE su segmento (asientos con seq en (prev_upto,
+  --    upto], canonico identico al de seal_ledger_checkpoints — CONTRATO:
+  --    cambiar uno exige cambiar el otro) y encadenar al checkpoint anterior.
+  --    Detecta lo que [1..6] no ven: editar/borrar/reordenar asientos ya
+  --    sellados — incluso borrar una transaccion balanceada COMPLETA (que
+  --    deja [1..6] verdes). Los asientos posteriores al ultimo checkpoint son
+  --    el horizonte pendiente (los cubre el proximo sellado). Requiere
+  --    pgcrypto (0042); con cero checkpoints el check pasa trivialmente.
+  SELECT count(*) INTO bad
+  FROM ledger_checkpoints c
+  LEFT JOIN LATERAL (
+    SELECT count(*) AS n,
+           encode(digest(coalesce(string_agg(s.canon, ',' ORDER BY s.seq), ''), 'sha256'), 'hex') AS seg
+    FROM (
+      SELECT e.seq,
+             jsonb_build_array(
+               e.seq, e.id::text, e.tenant_id::text, e.tx_root_id::text,
+               e.account_id::text, e.direction, e.amount, e.currency::text,
+               e.bucket, e.reason,
+               to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US'),
+               t.idempotency_key, t.reason, t.source_type, t.source_id,
+               t.reverses_tx_id::text,
+               to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')
+             )::text AS canon
+      FROM ledger_entries e
+      JOIN ledger_transactions t ON t.id = e.tx_root_id
+      WHERE e.seq > coalesce(
+              (SELECT max(p.upto_seq) FROM ledger_checkpoints p WHERE p.upto_seq < c.upto_seq), 0)
+        AND e.seq <= c.upto_seq
+    ) s
+  ) r ON true
+  WHERE r.n <> c.entry_count
+     OR r.seg <> c.segment_hash
+     OR c.prev_chain_hash <> coalesce(
+          (SELECT p.chain_hash FROM ledger_checkpoints p
+           WHERE p.upto_seq < c.upto_seq ORDER BY p.upto_seq DESC LIMIT 1),
+          'FLUVIA_CHAIN_GENESIS')
+     OR c.chain_hash <> encode(digest(
+          c.prev_chain_hash || '|' || c.upto_seq::text || '|' || r.n::text || '|' || r.seg,
+          'sha256'), 'hex');
+  IF bad > 0 THEN
+    problems := problems || format(' [7] hash-chain checkpoints broken (tampered/deleted sealed entries or checkpoints): %s;', bad);
+  END IF;
+
   IF problems <> '' THEN
     RAISE EXCEPTION 'FLUVIA_INVARIANT_VIOLATION:%', problems;
   END IF;

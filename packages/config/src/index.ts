@@ -81,6 +81,11 @@ const EnvSchema = z.object({
   // efecto). Default 24 h (Nivel C); el propietario fija el valor definitivo
   // antes del sandbox compartido (PEND-006). Rango 1 h – 30 días.
   IDEMPOTENCY_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  // F6 (threat model §5, fila Ledger): sellador del hash-chain de tamper-evidence
+  // (0042). El intervalo marca la cadencia de sellado (un segmento por corrida,
+  // en dos fases) — el horizonte pendiente de detección es ~2 intervalos.
+  LEDGER_CHECKPOINT_ENABLED: z.enum(['true', 'false']).default('true'),
+  LEDGER_CHECKPOINT_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(300_000),
   // F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso mas alla
   // de esta ventana es invalida (antes del expiry absoluto). Default 30 min;
   // rango 1 min – 24 h.
@@ -202,6 +207,11 @@ export interface AppConfig {
   };
   /** F6: retención de idempotency keys en horas (>= ventana de retry del cliente). */
   idempotencyRetentionHours: number;
+  /** F6: sellador del hash-chain de tamper-evidence del ledger (0042). */
+  ledgerCheckpoint: {
+    enabled: boolean;
+    intervalMs: number;
+  };
   /** Umbral (unidades menores) desde el cual un ajuste de caso exige four-eyes (F4-03b). */
   fourEyesThresholdMinor: number;
   /** Fee de plataforma en basis points (F4-05c, PEND-002). 200 = 2%. */
@@ -318,6 +328,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       intervalMs: e.IDEMPOTENCY_WATCHDOG_INTERVAL_MS,
     },
     idempotencyRetentionHours: e.IDEMPOTENCY_RETENTION_HOURS,
+    ledgerCheckpoint: {
+      enabled: e.LEDGER_CHECKPOINT_ENABLED === 'true',
+      intervalMs: e.LEDGER_CHECKPOINT_INTERVAL_MS,
+    },
     fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
     platformFeeBps: e.PLATFORM_FEE_BPS,
     corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')

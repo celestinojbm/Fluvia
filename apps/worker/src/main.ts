@@ -24,6 +24,7 @@ import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { PayoutsRedriver } from './payouts-redriver.js';
 import { DisputesWatchdog } from './disputes-watchdog.js';
 import { IdempotencyWatchdog } from './idempotency-watchdog.js';
+import { LedgerCheckpointer } from './ledger-checkpointer.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -152,6 +153,14 @@ const idempotencyInProgress = registry.gauge(
 const idempotencyInProgressAged = registry.gauge(
   'fluvia_idempotency_in_progress_aged',
   'Huérfanos `in_progress` envejecidos (>1 h) — 0 = sano; bloquean su key hasta la purga'
+);
+const ledgerChainCheckpoints = registry.gauge(
+  'fluvia_ledger_chain_checkpoints',
+  'Checkpoints sellados del hash-chain del ledger (0042) — tamper-evidence'
+);
+const ledgerChainSealedUpto = registry.gauge(
+  'fluvia_ledger_chain_sealed_upto_seq',
+  'Último seq de ledger_entries cubierto por la cadena — lo posterior es horizonte pendiente'
 );
 
 const worker = new WorkerProcess({
@@ -298,6 +307,16 @@ const idempotencyWatchdog = new IdempotencyWatchdog(workerPool, logger, {
     idempotencyInProgressAged.set({}, health.inProgressAged);
   },
 });
+// F6 (threat model §5, fila Ledger): sellador del hash-chain de tamper-evidence
+// (0042). Sella checkpoints en dos fases (candidato → finalización tras el
+// horizonte de txid); la VERIFICACIÓN corre como check [7] de
+// verify-ledger-invariants.sql (CI por commit + restore drill), no aquí.
+const ledgerCheckpointer = new LedgerCheckpointer(workerPool, logger, {
+  onResult: (health) => {
+    ledgerChainCheckpoints.set({}, health.checkpointsTotal);
+    ledgerChainSealedUpto.set({}, health.sealedUptoSeq);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -330,6 +349,7 @@ async function shutdown(signal: string): Promise<void> {
   payoutsRedriver.stop();
   disputesWatchdog.stop();
   idempotencyWatchdog.stop();
+  ledgerCheckpointer.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -434,6 +454,15 @@ worker
         {},
         'idempotency watchdog disabled by config (IDEMPOTENCY_WATCHDOG_ENABLED=false)'
       );
+    }
+    if (config.ledgerCheckpoint.enabled) {
+      ledgerCheckpointer.start(config.ledgerCheckpoint.intervalMs);
+      logger.info(
+        { intervalMs: config.ledgerCheckpoint.intervalMs },
+        'ledger checkpointer started'
+      );
+    } else {
+      logger.info({}, 'ledger checkpointer disabled by config (LEDGER_CHECKPOINT_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);
