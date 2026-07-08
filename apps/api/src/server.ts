@@ -24,7 +24,10 @@ const rateLimiter = new RedisFixedWindowLimiter(redis, {
 const app = buildApp({
   config,
   appPool,
-  authService: new AuthService(authPool, { mfaEncryptionKeyHex: config.mfaSecretKey }),
+  authService: new AuthService(authPool, {
+    mfaEncryptionKeyHex: config.mfaSecretKey,
+    sessionIdleTimeoutMs: config.sessionIdleTimeoutMs,
+  }),
   identityService: new IdentityService(appPool),
   apiKeyService: new ApiKeyService(appPool, { hmacSecretHex: config.apiKeyHmacSecret }),
   rateLimiter,

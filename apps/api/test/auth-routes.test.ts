@@ -133,6 +133,50 @@ describe('login y sesion', () => {
     expect(after.json().error.code).toBe('invalid_session');
   });
 
+  it('logout-all revokes EVERY session of the user, including the caller (F6)', async () => {
+    const { email, sessionToken: s1 } = await registerVerifyLogin();
+    // Segunda sesión del MISMO usuario (otro dispositivo).
+    const login2 = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: { email, password: PASSWORD },
+    });
+    const s2 = login2.json().session_token as string;
+
+    const alive = (t: string) =>
+      app
+        .inject({
+          method: 'GET',
+          url: '/v1/auth/session',
+          headers: { authorization: `Bearer ${t}` },
+        })
+        .then((r) => r.statusCode);
+    expect(await alive(s1)).toBe(200);
+    expect(await alive(s2)).toBe(200);
+
+    const all = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout-all',
+      headers: { authorization: `Bearer ${s1}` },
+    });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().revoked_sessions).toBeGreaterThanOrEqual(2);
+
+    // Ambas quedan inválidas — incluida la que ejecutó la revocación.
+    expect(await alive(s1)).toBe(401);
+    expect(await alive(s2)).toBe(401);
+  });
+
+  it('logout-all requires a valid session', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout-all',
+      headers: { authorization: 'Bearer fluvia_sess_garbage' },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.code).toBe('invalid_session');
+  });
+
   it('maps wrong credentials to 401 invalid_credentials (uniform)', async () => {
     const res = await app.inject({
       method: 'POST',

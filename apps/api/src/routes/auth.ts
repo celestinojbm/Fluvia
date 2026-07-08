@@ -193,6 +193,16 @@ export function registerAuthRoutes(
     return reply.code(204).send();
   });
 
+  // F6 (threat model §5): "cerrar sesión en todos los dispositivos". Revoca
+  // TODAS las sesiones del usuario (incluida la actual), auditado. Es el
+  // control de gestión de sesiones que faltaba y el hook para una futura
+  // revocación automática al cambiar credencial. Requiere sesión válida.
+  app.post('/v1/auth/logout-all', async (req, reply) => {
+    const identity = await authService.authenticateSession(bearerToken(req));
+    const revoked = await authService.revokeAllSessions(identity.userId, meta(req));
+    return reply.code(200).send({ revoked_sessions: revoked });
+  });
+
   app.get('/v1/auth/session', async (req) => {
     const identity = await authService.authenticateSession(bearerToken(req));
     const [memberships, mfa] = await Promise.all([

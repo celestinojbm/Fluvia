@@ -39,6 +39,12 @@ import {
 export interface AuthServiceOptions {
   /** TTL absoluto de sesion. Nivel C, configurable. */
   sessionTtlMs?: number;
+  /**
+   * F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso durante
+   * mas de esta ventana es invalida ANTES de su expiry absoluto (limita el
+   * robo de un token de una sesion olvidada/abandonada). Default 30 min.
+   */
+  sessionIdleTimeoutMs?: number;
   verificationTtlMs?: number;
   maxFailedAttempts?: number;
   lockoutMs?: number;
@@ -158,6 +164,7 @@ function hashBackupCode(code: string): string {
  */
 export class AuthService {
   private readonly sessionTtlMs: number;
+  private readonly sessionIdleTimeoutMs: number;
   private readonly verificationTtlMs: number;
   private readonly maxFailedAttempts: number;
   private readonly lockoutMs: number;
@@ -171,6 +178,7 @@ export class AuthService {
     options: AuthServiceOptions = {}
   ) {
     this.sessionTtlMs = options.sessionTtlMs ?? 24 * 60 * 60 * 1000;
+    this.sessionIdleTimeoutMs = options.sessionIdleTimeoutMs ?? 30 * 60 * 1000;
     this.verificationTtlMs = options.verificationTtlMs ?? 24 * 60 * 60 * 1000;
     this.maxFailedAttempts = options.maxFailedAttempts ?? 5;
     this.lockoutMs = options.lockoutMs ?? 15 * 60 * 1000;
@@ -389,11 +397,16 @@ export class AuthService {
       mfa_verified_at: Date | null;
       password_verified_at: Date | null;
     }>(
+      // El WHERE evalua last_seen_at PREVIO al SET (semantica de UPDATE): una
+      // sesion ociosa mas alla del idle-timeout no valida (ademas del expiry
+      // absoluto). Una sesion fresca tiene last_seen_at = now() (DEFAULT), asi
+      // que pasa. El SET refresca el reloj de inactividad en cada uso.
       `UPDATE sessions
        SET last_seen_at = now()
        WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+         AND last_seen_at > now() - make_interval(secs => $2)
        RETURNING id, user_id, mfa_verified_at, password_verified_at`,
-      [hashToken(sessionToken)]
+      [hashToken(sessionToken), this.sessionIdleTimeoutMs / 1000]
     );
     const row = res.rows[0];
     if (!row) throw new InvalidSessionError();
@@ -434,7 +447,10 @@ export class AuthService {
     });
   }
 
-  async revokeAllSessions(userId: string): Promise<number> {
+  async revokeAllSessions(
+    userId: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<number> {
     return this.withTx(async (c) => {
       const res = await c.query(
         'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
@@ -444,7 +460,7 @@ export class AuthService {
       if (count > 0) {
         await insertAuditEvent(c, {
           action: 'auth.sessions_revoked',
-          context: { actorType: 'user', actorId: userId, authMethod: 'session' },
+          context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
           resourceType: 'user',
           resourceId: userId,
           riskLevel: 'medium',

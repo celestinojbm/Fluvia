@@ -158,6 +158,32 @@ describe('sesiones', () => {
     await expect(service.authenticateSession(sessionToken)).rejects.toThrow(InvalidSessionError);
   });
 
+  it('idle-timeout (F6): an idle session is rejected; use within the window refreshes the clock', async () => {
+    const idleSvc = new AuthService(ctx.auth, { sessionIdleTimeoutMs: 60_000 }); // 1 min
+    const { email, userId } = await registeredAndVerified(idleSvc);
+    const { sessionToken } = await loginSession(idleSvc, { email, password: PASSWORD });
+
+    // Ociosa 30 s (DENTRO de la ventana): valida Y refresca last_seen_at a now().
+    await ctx.admin.query(
+      `UPDATE sessions SET last_seen_at = now() - interval '30 seconds' WHERE user_id = $1`,
+      [userId]
+    );
+    await expect(idleSvc.authenticateSession(sessionToken)).resolves.toMatchObject({ userId });
+    const refreshed = await ctx.admin.query<{ secs: number }>(
+      `SELECT extract(epoch FROM (now() - last_seen_at))::int AS secs
+       FROM sessions WHERE user_id = $1`,
+      [userId]
+    );
+    expect(refreshed.rows[0]!.secs).toBeLessThan(5); // el uso reinició el reloj de inactividad
+
+    // Ociosa 2 min (MÁS ALLÁ de la ventana): rechazada, aun sin vencer el TTL absoluto.
+    await ctx.admin.query(
+      `UPDATE sessions SET last_seen_at = now() - interval '2 minutes' WHERE user_id = $1`,
+      [userId]
+    );
+    await expect(idleSvc.authenticateSession(sessionToken)).rejects.toThrow(InvalidSessionError);
+  });
+
   it('logout revokes exactly that session', async () => {
     const { email } = await registeredAndVerified();
     const s1 = await loginSession(auth, { email, password: PASSWORD });

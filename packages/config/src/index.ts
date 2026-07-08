@@ -81,6 +81,10 @@ const EnvSchema = z.object({
   // efecto). Default 24 h (Nivel C); el propietario fija el valor definitivo
   // antes del sandbox compartido (PEND-006). Rango 1 h – 30 días.
   IDEMPOTENCY_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  // F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso mas alla
+  // de esta ventana es invalida (antes del expiry absoluto). Default 30 min;
+  // rango 1 min – 24 h.
+  SESSION_IDLE_TIMEOUT_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(1_800_000),
   // F4-03b: umbral (unidades menores) desde el cual un ajuste de caso exige
   // four-eyes (segundo aprobador distinto). Default 0 = SIEMPRE (Nivel A seguro).
   FOUR_EYES_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(0),
@@ -124,6 +128,8 @@ export interface AppConfig {
     webhook: string;
   };
   redisUrl: string;
+  /** F6: idle-timeout de sesion en ms (threat model §5). */
+  sessionIdleTimeoutMs: number;
   /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
   mfaSecretKey: string;
   /** Pepper HMAC-SHA256 (64 hex) para hashes de API keys (AUD-P2-015). */
@@ -244,6 +250,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       webhook: required('WEBHOOK_DATABASE_URL', e.WEBHOOK_DATABASE_URL, LOCAL_DEFAULTS.webhook),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
+    sessionIdleTimeoutMs: e.SESSION_IDLE_TIMEOUT_MS,
     mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
     apiKeyHmacSecret: required(
       'API_KEY_HMAC_SECRET',
