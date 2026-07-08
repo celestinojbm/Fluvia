@@ -437,6 +437,66 @@ describe('detección de tampering (superusuario que salta los triggers)', () => 
     expect(repaired.ok).toBe(true);
   }, 30_000);
 
+  it('DELETING a MIDDLE checkpoint breaks the successor prev-link (exercises [7] chain-continuity, not just self-hash)', async () => {
+    // Garantiza >= 3 checkpoints para que exista un intermedio CON sucesor.
+    for (const amt of [33_000, 34_000, 35_000]) {
+      await insertBalancedTx(amt);
+      await sealUntilCovers(await currentMaxSeq());
+    }
+    // El checkpoint intermedio (2º por upto_seq): borrarlo deja al sucesor con
+    // un prev_chain_hash que ya no coincide con el checkpoint anterior VIVO — el
+    // eslabón de continuidad de [7], distinto del recomputo de auto-hash.
+    const mid = (
+      await ctx.admin.query<{
+        id: string;
+        upto_seq: string;
+        entry_count: string;
+        segment_hash: string;
+        prev_chain_hash: string;
+        chain_hash: string;
+        sealed_at: string;
+      }>(
+        `SELECT id::text, upto_seq::text, entry_count::text, segment_hash, prev_chain_hash,
+                chain_hash, sealed_at::text
+         FROM ledger_checkpoints ORDER BY upto_seq ASC OFFSET 1 LIMIT 1`
+      )
+    ).rows[0]!;
+
+    try {
+      await bypassingTriggers((c) =>
+        c
+          .query(`DELETE FROM ledger_checkpoints WHERE id = $1::bigint`, [mid.id])
+          .then(() => undefined)
+      );
+      const inv = await runInvariants();
+      expect(inv.ok).toBe(false);
+      expect(inv.output).toMatch(/\[7\] hash-chain/);
+    } finally {
+      // Reinserta el checkpoint EXACTO (mismo id/hashes/ts) bajo replica.
+      await bypassingTriggers((c) =>
+        c
+          .query(
+            `INSERT INTO ledger_checkpoints
+               (id, upto_seq, entry_count, segment_hash, prev_chain_hash, chain_hash, sealed_at)
+             OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              mid.id,
+              mid.upto_seq,
+              mid.entry_count,
+              mid.segment_hash,
+              mid.prev_chain_hash,
+              mid.chain_hash,
+              mid.sealed_at,
+            ]
+          )
+          .then(() => undefined)
+      ).catch(() => undefined);
+    }
+    const repaired = await runInvariants();
+    expect(repaired.ok).toBe(true);
+  }, 40_000);
+
   it('tampering a SEALED checkpoint (chain_hash) breaks the chain (the chain protects itself)', async () => {
     await insertBalancedTx(29_000);
     const maxSeq = await currentMaxSeq();
