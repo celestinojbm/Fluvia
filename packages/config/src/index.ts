@@ -49,6 +49,10 @@ const EnvSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
     .optional(),
+  // F6 (ADR-0012, rotación de la clave de cifrado de webhooks): claves RETIRADAS
+  // (solo descifran) durante la ventana de rotación — lista separada por comas de
+  // 64-hex. Vacío = sin rotación en curso. Ver crypto.ts (keyring) + rotate.ts.
+  WEBHOOK_SECRET_ENC_KEY_RETIRED: z.string().optional(),
   WEBHOOK_DELIVERY_ENABLED: z.enum(['true', 'false']).default('true'),
   WEBHOOK_DELIVERY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   // Base de la URL de checkout alojado (F3-05b); no es secreto.
@@ -174,6 +178,8 @@ export interface AppConfig {
   mockWebhookSecret: string;
   /** Clave AES-256-GCM (64 hex) para secretos de endpoints de webhook (F3-07). */
   webhookSecretEncKey: string;
+  /** F6 (ADR-0012): claves de cifrado de webhooks RETIRADAS (solo descifran) durante la rotación. */
+  webhookSecretEncKeysRetired: string[];
   /** Deliverer de webhooks salientes (F3-07). */
   webhookDelivery: {
     enabled: boolean;
@@ -257,6 +263,39 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   };
 
+  // F6 (ADR-0012): keyring de cifrado de webhooks — clave actual + retiradas
+  // (solo descifran). Cada retirada 64-hex, distinta de la actual y sin
+  // duplicados (anti-mezcla). Closure para evaluar en su POSICIÓN del objeto
+  // (tras el bloque `db`), no antes — así el orden de errores de secreto
+  // faltante no cambia (ADMIN_DATABASE_URL sigue siendo el primero).
+  const resolveWebhookKeyring = () => {
+    const current = required(
+      'WEBHOOK_SECRET_ENC_KEY',
+      e.WEBHOOK_SECRET_ENC_KEY,
+      LOCAL_DEFAULTS.webhookSecretEncKey
+    );
+    const retired = (e.WEBHOOK_SECRET_ENC_KEY_RETIRED ?? '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+    const seen = new Set<string>();
+    for (const k of retired) {
+      if (!/^[0-9a-f]{64}$/i.test(k)) {
+        throw new ConfigError('WEBHOOK_SECRET_ENC_KEY_RETIRED entries must each be 64 hex chars');
+      }
+      if (k.toLowerCase() === current.toLowerCase()) {
+        throw new ConfigError(
+          'WEBHOOK_SECRET_ENC_KEY_RETIRED must not include the current WEBHOOK_SECRET_ENC_KEY'
+        );
+      }
+      if (seen.has(k.toLowerCase())) {
+        throw new ConfigError('WEBHOOK_SECRET_ENC_KEY_RETIRED has duplicate entries');
+      }
+      seen.add(k.toLowerCase());
+    }
+    return { webhookSecretEncKey: current, webhookSecretEncKeysRetired: retired };
+  };
+
   return {
     env: e.NODE_ENV,
     port: e.PORT,
@@ -304,11 +343,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       e.MOCK_WEBHOOK_SECRET,
       LOCAL_DEFAULTS.mockWebhookSecret
     ),
-    webhookSecretEncKey: required(
-      'WEBHOOK_SECRET_ENC_KEY',
-      e.WEBHOOK_SECRET_ENC_KEY,
-      LOCAL_DEFAULTS.webhookSecretEncKey
-    ),
+    ...resolveWebhookKeyring(),
     webhookDelivery: {
       enabled: e.WEBHOOK_DELIVERY_ENABLED === 'true',
       intervalMs: e.WEBHOOK_DELIVERY_INTERVAL_MS,
