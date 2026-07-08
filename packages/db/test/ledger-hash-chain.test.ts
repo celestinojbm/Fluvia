@@ -753,3 +753,81 @@ describe('anclaje externo del chain_hash (0043, check [8])', () => {
     ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
   }, 30_000);
 });
+
+/**
+ * F6 — check [9] (no-negatividad del motor a nivel BD, AUD-P1-010 defensa en
+ * profundidad). Prueba con DIENTES que el check DETECTA un saldo negativo en una
+ * cuenta PROTEGIDA del chart y EXENTA las transitorias. Se tampea SOLO
+ * `balance_projections` (mutable, sin trigger append-only) → reparable con DELETE.
+ * En el MISMO archivo que el resto de invariantes (corre `runInvariants` global):
+ * los tests de un archivo corren en serie, así que ningún otro `runInvariants` ve
+ * el tamper transitorio.
+ */
+describe('check [9] — no-negatividad del motor (defensa en profundidad)', () => {
+  async function setProjection(
+    accountId: string,
+    tenantId: string,
+    available: number
+  ): Promise<void> {
+    await ctx.admin.query(
+      `INSERT INTO balance_projections (account_id, tenant_id, available, pending)
+       VALUES ($1, $2, $3, 0)
+       ON CONFLICT (account_id) DO UPDATE SET available = EXCLUDED.available`,
+      [accountId, tenantId, available]
+    );
+  }
+
+  it('DETECTA un saldo negativo en una cuenta PROTEGIDA del chart (merchant.available)', async () => {
+    // Cuenta protegida credit-normal; el CODE del chart va antes de ':' → el check
+    // la reconoce como protegida (merchant.available). Tamper directo (sin guard).
+    const acct = await ctx.createLedgerAccount({
+      tenantId: org,
+      name: `merchant.available:${randomUUID()}`,
+      currency: 'USD',
+      normalSide: 'credit',
+    });
+    try {
+      await setProjection(acct, org, -100);
+      const inv = await runInvariants();
+      expect(inv.ok).toBe(false);
+      expect(inv.output).toMatch(/\[9\] negative balance on a protected/);
+    } finally {
+      // `balance_projections` es append-only (sin DELETE); se REPARA con UPDATE a 0,
+      // consistente con sus 0 asientos → [6] y [9] verdes para el resto del archivo.
+      await ctx.admin.query(
+        `UPDATE balance_projections SET available = 0, pending = 0 WHERE account_id = $1`,
+        [acct]
+      );
+    }
+    const after = await runInvariants();
+    expect(after.output).toContain('FLUVIA_INVARIANTS_OK');
+  }, 30_000);
+
+  it('EXENTA las transitorias: un `suspense` negativo NO dispara [9]', async () => {
+    // suspense es transitoria: `postReconAdjustment` (único posting sin guard) la
+    // puede dejar negativa POR DISEÑO. En un tenant fresco la ponemos negativa.
+    const nnOrg = await ctx.createTenant('NonNeg Exempt Org');
+    const suspense = await ctx.createLedgerAccount({
+      tenantId: nnOrg,
+      name: 'suspense',
+      currency: 'USD',
+      normalSide: 'debit',
+    });
+    try {
+      await setProjection(suspense, nnOrg, -100);
+      const inv = await runInvariants();
+      // El negativo de suspense NO cuenta para [9] (transitoria exenta), aunque [6]
+      // sí lo vea como drift (proyección sin asientos) — eso prueba que el check
+      // corrió y [9] la excluyó a propósito.
+      expect(inv.output).not.toMatch(/\[9\]/);
+      expect(inv.output).toMatch(/\[6\]/);
+    } finally {
+      await ctx.admin.query(
+        `UPDATE balance_projections SET available = 0, pending = 0 WHERE account_id = $1`,
+        [suspense]
+      );
+    }
+    const after = await runInvariants();
+    expect(after.output).toContain('FLUVIA_INVARIANTS_OK');
+  }, 30_000);
+});
