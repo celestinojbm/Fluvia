@@ -123,12 +123,12 @@ describe('database-level immutability (Directiva A.4)', () => {
 describe('authenticate_api_key', () => {
   it('resolves tenant from key hash without tenant context', async () => {
     const key = await ctx.createApiKey(tenantA);
-    const { hashApiKey, hmacApiKey } = await import('../src/testing.js');
+    const { hashApiKey, hmacApiKey, apiKeyPepperFp } = await import('../src/testing.js');
     const client = await ctx.app.connect();
     try {
       const res = await client.query<{ tenant_id: string }>(
-        'SELECT tenant_id FROM authenticate_api_key($1, $2)',
-        [hmacApiKey(key), hashApiKey(key)]
+        'SELECT tenant_id FROM authenticate_api_key($1, $2, $3, $4)',
+        [hmacApiKey(key), hashApiKey(key), [], apiKeyPepperFp()]
       );
       expect(res.rows[0]?.tenant_id).toBe(tenantA);
     } finally {
@@ -139,9 +139,11 @@ describe('authenticate_api_key', () => {
   it('rejects unknown keys', async () => {
     const client = await ctx.app.connect();
     try {
-      const res = await client.query('SELECT * FROM authenticate_api_key($1, $2)', [
+      const res = await client.query('SELECT * FROM authenticate_api_key($1, $2, $3, $4)', [
         'nope',
         'nope',
+        [],
+        'deadbeefdeadbeef',
       ]);
       expect(res.rowCount).toBe(0);
     } finally {

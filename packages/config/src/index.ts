@@ -36,6 +36,10 @@ const EnvSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
     .optional(),
+  // F6 (ADR-0012): peppers RETIRADOS de API keys (lista por comas) — solo VERIFICAN
+  // keys existentes durante la rotación de API_KEY_HMAC_SECRET (re-hash perezoso al
+  // autenticar). Validación por-pepper en resolveApiKeyPepper.
+  API_KEY_HMAC_SECRET_RETIRED: z.string().optional(),
   RELAY_ENABLED: z.enum(['true', 'false']).default('true'),
   RELAY_INTERVAL_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
@@ -154,6 +158,8 @@ export interface AppConfig {
   mfaSecretKeysRetired: string[];
   /** Pepper HMAC-SHA256 (64 hex) para hashes de API keys (AUD-P2-015). */
   apiKeyHmacSecret: string;
+  /** F6 (ADR-0012): peppers de API keys retirados (solo verifican) en rotación. */
+  apiKeyHmacSecretsRetired: string[];
   relay: {
     enabled: boolean;
     intervalMs: number;
@@ -326,6 +332,35 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     return { mfaSecretKey: current, mfaSecretKeysRetired: retired };
   };
 
+  // F6 (ADR-0012): pepper de API keys — mismo contrato que los otros keyrings.
+  const resolveApiKeyPepper = () => {
+    const current = required(
+      'API_KEY_HMAC_SECRET',
+      e.API_KEY_HMAC_SECRET,
+      LOCAL_DEFAULTS.apiKeyHmacSecret
+    );
+    const retired = (e.API_KEY_HMAC_SECRET_RETIRED ?? '')
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+    const seen = new Set<string>();
+    for (const k of retired) {
+      if (!/^[0-9a-f]{64}$/i.test(k)) {
+        throw new ConfigError('API_KEY_HMAC_SECRET_RETIRED entries must each be 64 hex chars');
+      }
+      if (k.toLowerCase() === current.toLowerCase()) {
+        throw new ConfigError(
+          'API_KEY_HMAC_SECRET_RETIRED must not include the current API_KEY_HMAC_SECRET'
+        );
+      }
+      if (seen.has(k.toLowerCase())) {
+        throw new ConfigError('API_KEY_HMAC_SECRET_RETIRED has duplicate entries');
+      }
+      seen.add(k.toLowerCase());
+    }
+    return { apiKeyHmacSecret: current, apiKeyHmacSecretsRetired: retired };
+  };
+
   return {
     env: e.NODE_ENV,
     port: e.PORT,
@@ -342,11 +377,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
     sessionIdleTimeoutMs: e.SESSION_IDLE_TIMEOUT_MS,
     ...resolveMfaKeyring(),
-    apiKeyHmacSecret: required(
-      'API_KEY_HMAC_SECRET',
-      e.API_KEY_HMAC_SECRET,
-      LOCAL_DEFAULTS.apiKeyHmacSecret
-    ),
+    ...resolveApiKeyPepper(),
     relay: {
       enabled: e.RELAY_ENABLED === 'true',
       intervalMs: e.RELAY_INTERVAL_MS,

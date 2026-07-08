@@ -243,6 +243,7 @@ export function buildApp({
       identityService,
       appPool,
       apiKeyHmacSecretHex: config.apiKeyHmacSecret,
+      apiKeyHmacSecretsRetiredHex: config.apiKeyHmacSecretsRetired,
     });
     const auditReader = new AuditReader(appPool);
     registerOrganizationRoutes(app, {

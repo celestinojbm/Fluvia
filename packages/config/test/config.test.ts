@@ -64,6 +64,26 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ MFA_SECRET_KEY_RETIRED: `${k1},${k1}` })).toThrow(/duplicate/i);
   });
 
+  it('parses and validates API_KEY_HMAC_SECRET_RETIRED (pepper rotation, ADR-0012)', () => {
+    const k1 = '55'.repeat(32);
+    const k2 = '66'.repeat(32);
+    const currentDev = 'ffeeddccbbaa00112233445566778899ffeeddccbbaa00112233445566778899';
+    // Sin la env → sin peppers retirados.
+    expect(loadConfig({}).apiKeyHmacSecretsRetired).toEqual([]);
+    // Lista separada por comas, con espacios recortados.
+    expect(
+      loadConfig({ API_KEY_HMAC_SECRET_RETIRED: ` ${k1}, ${k2} ` }).apiKeyHmacSecretsRetired
+    ).toEqual([k1, k2]);
+    // Un retirado NO puede ser el pepper actual (anti-mezcla).
+    expect(() => loadConfig({ API_KEY_HMAC_SECRET_RETIRED: currentDev })).toThrow(
+      /must not include the current/i
+    );
+    // Cada retirado debe ser 64 hex.
+    expect(() => loadConfig({ API_KEY_HMAC_SECRET_RETIRED: 'nothex' })).toThrow(/64 hex/i);
+    // Sin duplicados.
+    expect(() => loadConfig({ API_KEY_HMAC_SECRET_RETIRED: `${k1},${k1}` })).toThrow(/duplicate/i);
+  });
+
   it('forbids development defaults outside local/test (credential mixing)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/ADMIN_DATABASE_URL/);
     expect(() =>
