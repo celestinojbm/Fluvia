@@ -138,6 +138,32 @@ BEGIN
     problems := problems || format(' [7] hash-chain checkpoints broken (tampered/deleted sealed entries or checkpoints): %s;', bad);
   END IF;
 
+  -- 8. Anclaje EXTERNO del chain_hash (F6, 0043): cada anchor de
+  --    `ledger_chain_anchors` (almacen append-only SEPARADO de la cadena) debe
+  --    seguir coincidiendo con un checkpoint VIVO en su `upto_seq`. Detecta lo
+  --    que [7] NO puede: borrar la cadena ENTERA o TRUNCAR su sufijo HASTA (o por
+  --    debajo de) el ultimo tip anclado deja [7] verde trivial (menos
+  --    checkpoints, los que quedan siguen encadenando), pero el anchor apunta a
+  --    un `upto_seq`/`chain_hash` que ya no existe (LEFT JOIN sin fila) o que
+  --    difiere (cadena re-sellada/forjada). Autocontenido; con cero anchors el
+  --    check pasa trivialmente (el anclaje es opt-in del worker).
+  --    ALCANCE HONESTO: [8] protege HASTA el ultimo tip anclado. Truncar SOLO el
+  --    horizonte AUN NO anclado (checkpoints con `upto_seq` > el ultimo anchor)
+  --    no lo ve [8] (no hay anchor ahi) — es el analogo del horizonte pendiente
+  --    de [7], y lo cubre la alerta de rezago de anclaje (`sealed_upto_seq` sigue
+  --    creciendo mientras `anchored_upto_seq` se queda; observability §4).
+  --    Y el anchor vive EN la BD: un superusuario que borre la cadena Y los
+  --    anchors sigue indetectable sin una copia offsite (responsabilidad del
+  --    operador); el valor aqui es cerrar el hueco comun y elevar el costo a DOS
+  --    almacenes append-only.
+  SELECT count(*) INTO bad
+  FROM ledger_chain_anchors a
+  LEFT JOIN ledger_checkpoints c ON c.upto_seq = a.upto_seq
+  WHERE c.chain_hash IS NULL OR c.chain_hash <> a.chain_hash;
+  IF bad > 0 THEN
+    problems := problems || format(' [8] chain anchor mismatch (chain truncated/deleted/diverged below external anchor): %s;', bad);
+  END IF;
+
   IF problems <> '' THEN
     RAISE EXCEPTION 'FLUVIA_INVARIANT_VIOLATION:%', problems;
   END IF;

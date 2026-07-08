@@ -86,6 +86,12 @@ const EnvSchema = z.object({
   // en dos fases) — el horizonte pendiente de detección es ~2 intervalos.
   LEDGER_CHECKPOINT_ENABLED: z.enum(['true', 'false']).default('true'),
   LEDGER_CHECKPOINT_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(300_000),
+  // F6 (threat model §5, fila Ledger): anclaje EXTERNO del chain_hash (0043).
+  // Publica el tip de la cadena (upto_seq, chain_hash) a un almacen append-only
+  // SEPARADO — cierra el hueco de [7] (truncar/borrar la cadena). Cadencia >= la
+  // del sellador (anclar un tip aun no sellado no aporta). Default 5 min.
+  LEDGER_ANCHOR_ENABLED: z.enum(['true', 'false']).default('true'),
+  LEDGER_ANCHOR_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(300_000),
   // F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso mas alla
   // de esta ventana es invalida (antes del expiry absoluto). Default 30 min;
   // rango 1 min – 24 h.
@@ -212,6 +218,11 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** F6: anclaje externo del chain_hash — publica el tip a un almacén append-only separado (0043). */
+  ledgerAnchor: {
+    enabled: boolean;
+    intervalMs: number;
+  };
   /** Umbral (unidades menores) desde el cual un ajuste de caso exige four-eyes (F4-03b). */
   fourEyesThresholdMinor: number;
   /** Fee de plataforma en basis points (F4-05c, PEND-002). 200 = 2%. */
@@ -331,6 +342,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ledgerCheckpoint: {
       enabled: e.LEDGER_CHECKPOINT_ENABLED === 'true',
       intervalMs: e.LEDGER_CHECKPOINT_INTERVAL_MS,
+    },
+    ledgerAnchor: {
+      enabled: e.LEDGER_ANCHOR_ENABLED === 'true',
+      intervalMs: e.LEDGER_ANCHOR_INTERVAL_MS,
     },
     fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
     platformFeeBps: e.PLATFORM_FEE_BPS,
