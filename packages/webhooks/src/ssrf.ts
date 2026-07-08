@@ -35,8 +35,12 @@ function ipv6ToBytes(ip: string): number[] | null {
   if (s.includes('.')) {
     const lastColon = s.lastIndexOf(':');
     if (lastColon === -1) return null;
-    const quad = s.slice(lastColon + 1).split('.').map(Number);
-    if (quad.length !== 4 || quad.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    const quad = s
+      .slice(lastColon + 1)
+      .split('.')
+      .map(Number);
+    if (quad.length !== 4 || quad.some((n) => !Number.isInteger(n) || n < 0 || n > 255))
+      return null;
     const hi = ((quad[0]! << 8) | quad[1]!).toString(16);
     const lo = ((quad[2]! << 8) | quad[3]!).toString(16);
     s = `${s.slice(0, lastColon + 1)}${hi}:${lo}`;

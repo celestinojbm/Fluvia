@@ -2,7 +2,11 @@ import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { Money } from '@fluvia/money';
 import { insertAuditEvent } from '@fluvia/audit';
 import { EVENT_TOPICS, buildEnvelope } from '@fluvia/events';
-import { CHART_OF_ACCOUNTS, type AccountCode, type AccountDefinition } from './chart-of-accounts.js';
+import {
+  CHART_OF_ACCOUNTS,
+  type AccountCode,
+  type AccountDefinition,
+} from './chart-of-accounts.js';
 import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,

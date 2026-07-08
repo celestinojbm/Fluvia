@@ -1,3 +1,4 @@
+/* global process */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // La página alojada consume la API de Fluvia vía route handlers server-side

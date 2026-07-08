@@ -1,3 +1,4 @@
+/* global process */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // El dashboard consume la API de Fluvia SOLO server-side (route handlers y
