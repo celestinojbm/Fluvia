@@ -112,6 +112,27 @@ export function hmacApiKeySecret(pepperHex: string, secret: string): string {
   return createHmac('sha256', parseApiKeyHmacSecret(pepperHex)).update(secret).digest('hex');
 }
 
+/**
+ * Huella one-way del pepper (F6, ADR-0012 — gate de rotación). Etiqueta de agrupación
+ * por-fila para saber bajo qué pepper está un `key_hash` sin guardar el pepper. La
+ * calcula la APP (tiene el pepper); la BD nunca la deriva.
+ *
+ * Límite honesto (Nivel A): la huella SÍ es un dato derivado del pepper que se persiste
+ * — es un ORÁCULO de verificación: con un dump, un atacante puede CONFIRMAR un pepper
+ * ADIVINADO offline sin conocer ningún secreto (antes, `key_hash = hmac(pepper, secret)`
+ * exigía un secreto en claro para probar un candidato). NO es explotable contra un
+ * pepper aleatorio de 256 bits: confirmar exige adivinar los 256 bits (2^-256); la huella
+ * no ESTRECHA la búsqueda, solo verifica una adivinanza completa. 128 bits (32 hex) hacen
+ * las colisiones del gate despreciables (~k·2^-128) sin afinar ese oráculo inútil.
+ */
+export function apiKeyPepperFingerprint(pepperHex: string): string {
+  return createHash('sha256')
+    .update('fluvia:api-key-pepper-fp:v1\n')
+    .update(parseApiKeyHmacSecret(pepperHex))
+    .digest('hex')
+    .slice(0, 32);
+}
+
 const PREFIX_DISPLAY_LENGTH = 20;
 
 interface ApiKeyRow {
@@ -155,12 +176,13 @@ export class ApiKeyService {
 
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<{ id: string }>(
-        `INSERT INTO api_keys (tenant_id, key_hash, key_hash_version, key_prefix, label, scopes, environment, created_by_user_id)
-         VALUES ($1, $2, 2, $3, $4, $5, $6, $7)
+        `INSERT INTO api_keys (tenant_id, key_hash, key_hash_version, key_hash_pepper_fp, key_prefix, label, scopes, environment, created_by_user_id)
+         VALUES ($1, $2, 2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
         [
           tenantId,
           hmacApiKeySecret(this.hmacSecretHex, secret),
+          apiKeyPepperFingerprint(this.hmacSecretHex),
           keyPrefix,
           input.label,
           input.scopes,

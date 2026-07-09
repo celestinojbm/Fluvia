@@ -46,6 +46,7 @@ export {
   DEV_API_KEY_HMAC_SECRET_HEX,
   hashApiKeySecret,
   hmacApiKeySecret,
+  apiKeyPepperFingerprint,
   parseApiKeyHmacSecret,
   ApiKeyNotFoundError,
   InvalidApiKeyError,
@@ -56,3 +57,8 @@ export {
   type CreatedApiKey,
   type ApiKeyDto,
 } from './api-keys.js';
+export {
+  inspectApiKeyPepper,
+  backfillApiKeyPepperFp,
+  type ApiKeyPepperStatus,
+} from './rotate-api-key-pepper.js';

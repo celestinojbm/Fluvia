@@ -40,6 +40,15 @@ export function hmacApiKey(plaintext: string, pepperHex = DEV_API_KEY_HMAC_PEPPE
   return createHmac('sha256', Buffer.from(pepperHex, 'hex')).update(plaintext).digest('hex');
 }
 
+/** Huella del pepper (F6, espejo EXACTO de @fluvia/identity `apiKeyPepperFingerprint`). */
+export function apiKeyPepperFp(pepperHex = DEV_API_KEY_HMAC_PEPPER_HEX): string {
+  return createHash('sha256')
+    .update('fluvia:api-key-pepper-fp:v1\n')
+    .update(Buffer.from(pepperHex, 'hex'))
+    .digest('hex')
+    .slice(0, 32);
+}
+
 export async function createTestContext(): Promise<TestContext> {
   const urls = dbUrlsFromEnv();
   const admin = createPool({ connectionString: urls.admin, max: 4 });

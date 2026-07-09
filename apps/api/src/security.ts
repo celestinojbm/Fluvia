@@ -4,6 +4,7 @@ import type { AuthService } from '@fluvia/auth';
 import { InvalidSessionError, StepUpRequiredError } from '@fluvia/auth';
 import {
   DEV_API_KEY_HMAC_SECRET_HEX,
+  apiKeyPepperFingerprint,
   hasPermission,
   hashApiKeySecret,
   hmacApiKeySecret,
@@ -50,6 +51,8 @@ export interface SecurityDeps {
   appPool: Pool;
   /** Pepper HMAC de API keys (AUD-P2-015). Default SOLO local. */
   apiKeyHmacSecretHex?: string;
+  /** Peppers RETIRADOS (solo verifican) durante la rotación de API_KEY_HMAC_SECRET (F6). */
+  apiKeyHmacSecretsRetiredHex?: string[];
 }
 
 /**
@@ -112,17 +115,22 @@ export function createSecurity(deps: SecurityDeps) {
       return async (req: FastifyRequest): Promise<void> => {
         const token = bearer(req);
         if (!token || !token.startsWith('fluvia_sk_')) throw new InvalidApiKeyError();
-        // AUD-P2-015: se computan AMBOS hashes; la funcion definer autentica
-        // v2 (HMAC) o v1 (sha256 legado) y promueve v1->v2 en el mismo paso.
+        // AUD-P2-015 + F6: se computan el hmac con el pepper ACTUAL, cada pepper
+        // RETIRADO y el sha256 legado; la función definer autentica por cualquiera y
+        // RE-HASHEA al pepper actual (fijando su huella) en el mismo paso — así rota
+        // el pepper sin downtime (re-hash perezoso, migr. 0044).
         const pepper = deps.apiKeyHmacSecretHex ?? DEV_API_KEY_HMAC_SECRET_HEX;
+        const retired = deps.apiKeyHmacSecretsRetiredHex ?? [];
         const res = await deps.appPool.query<{
           tenant_id: string;
           api_key_id: string;
           scopes: string[];
           environment: string;
-        }>('SELECT * FROM authenticate_api_key($1, $2)', [
+        }>('SELECT * FROM authenticate_api_key($1, $2, $3, $4)', [
           hmacApiKeySecret(pepper, token),
           hashApiKeySecret(token),
+          retired.map((p) => hmacApiKeySecret(p, token)),
+          apiKeyPepperFingerprint(pepper),
         ]);
         const row = res.rows[0];
         if (!row) throw new InvalidApiKeyError();
