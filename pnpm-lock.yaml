@@ -271,6 +271,9 @@ importers:
       '@fluvia/audit':
         specifier: workspace:*
         version: link:../audit
+      '@fluvia/config':
+        specifier: workspace:*
+        version: link:../config
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db
@@ -287,6 +290,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.0
         version: 8.20.0
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

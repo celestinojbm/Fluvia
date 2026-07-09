@@ -18,12 +18,13 @@ import { dummyPasswordHash, hashPassword, verifyPassword } from './passwords.js'
 import { generateToken, hashToken } from './tokens.js';
 import {
   DEV_MFA_SECRET_KEY_HEX,
-  decryptSecret,
+  decryptMfaSecretWithKeyring,
   encryptSecret,
   generateTotpSecret,
   otpauthUri,
   parseMfaKey,
   verifyTotp,
+  type MfaEncKeyring,
 } from './totp.js';
 import {
   LoginSchema,
@@ -54,6 +55,13 @@ export interface AuthServiceOptions {
    * fuera de local (MFA_SECRET_KEY, anti-mezcla).
    */
   mfaEncryptionKeyHex?: string;
+  /**
+   * Claves RETIRADAS (64 hex c/u) que SOLO descifran, durante la ventana de
+   * rotación de `MFA_SECRET_KEY` (F6, ADR-0012). Un secreto TOTP cifrado con
+   * cualquiera de ellas se sigue descifrando (el tag AES-GCM disambigua) hasta
+   * que `reencryptMfaSecrets` lo migra a la actual. Vacío = sin rotación.
+   */
+  retiredMfaKeyHexes?: string[];
   /** TTL del reto MFA post-password (default 5 min). */
   mfaChallengeTtlMs?: number;
   /** Frescura maxima de la verificacion MFA para step-up (default 15 min). */
@@ -168,7 +176,10 @@ export class AuthService {
   private readonly verificationTtlMs: number;
   private readonly maxFailedAttempts: number;
   private readonly lockoutMs: number;
+  /** Clave ACTUAL (cifra los secretos TOTP nuevos). */
   private readonly mfaKey: Buffer;
+  /** Keyring de DESCIFRADO (actual + retiradas) — rotación sin downtime. */
+  private readonly mfaKeyring: MfaEncKeyring;
   private readonly mfaChallengeTtlMs: number;
   /** Publica: el guard de step-up (apps/api) la usa como unica fuente. */
   readonly stepUpMaxAgeMs: number;
@@ -182,7 +193,9 @@ export class AuthService {
     this.verificationTtlMs = options.verificationTtlMs ?? 24 * 60 * 60 * 1000;
     this.maxFailedAttempts = options.maxFailedAttempts ?? 5;
     this.lockoutMs = options.lockoutMs ?? 15 * 60 * 1000;
-    this.mfaKey = parseMfaKey(options.mfaEncryptionKeyHex ?? DEV_MFA_SECRET_KEY_HEX);
+    const mfaCurrentKeyHex = options.mfaEncryptionKeyHex ?? DEV_MFA_SECRET_KEY_HEX;
+    this.mfaKey = parseMfaKey(mfaCurrentKeyHex); // cifra con la ACTUAL
+    this.mfaKeyring = { current: mfaCurrentKeyHex, retired: options.retiredMfaKeyHexes ?? [] };
     this.mfaChallengeTtlMs = options.mfaChallengeTtlMs ?? 5 * 60 * 1000;
     this.stepUpMaxAgeMs = options.stepUpMaxAgeMs ?? 15 * 60 * 1000;
   }
@@ -495,7 +508,7 @@ export class AuthService {
    */
   private matchActiveTotp(user: MfaUserRow, code: string): bigint | null {
     if (!user.totp_secret_enc) return null;
-    const secret = decryptSecret(this.mfaKey, user.totp_secret_enc);
+    const secret = decryptMfaSecretWithKeyring(this.mfaKeyring, user.totp_secret_enc).plaintext;
     const step = verifyTotp(secret, code);
     if (step === null || step <= BigInt(user.totp_last_used_step)) return null;
     return step;
@@ -634,7 +647,10 @@ export class AuthService {
       const user = await this.lockUserForMfa(c, userId);
       if (user.totp_enabled_at) throw new MfaAlreadyEnabledError();
       if (!user.totp_pending_secret_enc) throw new MfaNotEnabledError();
-      const secret = decryptSecret(this.mfaKey, user.totp_pending_secret_enc);
+      const secret = decryptMfaSecretWithKeyring(
+        this.mfaKeyring,
+        user.totp_pending_secret_enc
+      ).plaintext;
       const step = verifyTotp(secret, code);
       if (step === null) throw new InvalidMfaCodeError();
 

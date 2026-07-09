@@ -43,6 +43,27 @@ describe('loadConfig', () => {
     );
   });
 
+  it('parses and validates MFA_SECRET_KEY_RETIRED (rotation keyring, ADR-0012)', () => {
+    const k1 = '33'.repeat(32);
+    const k2 = '44'.repeat(32);
+    const currentDev = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+    // Sin la env → keyring sin retiradas.
+    expect(loadConfig({}).mfaSecretKeysRetired).toEqual([]);
+    // Lista separada por comas, con espacios recortados.
+    expect(loadConfig({ MFA_SECRET_KEY_RETIRED: ` ${k1}, ${k2} ` }).mfaSecretKeysRetired).toEqual([
+      k1,
+      k2,
+    ]);
+    // Una retirada NO puede ser la clave actual (anti-mezcla).
+    expect(() => loadConfig({ MFA_SECRET_KEY_RETIRED: currentDev })).toThrow(
+      /must not include the current/i
+    );
+    // Cada retirada debe ser 64 hex.
+    expect(() => loadConfig({ MFA_SECRET_KEY_RETIRED: 'nothex' })).toThrow(/64 hex/i);
+    // Sin duplicados.
+    expect(() => loadConfig({ MFA_SECRET_KEY_RETIRED: `${k1},${k1}` })).toThrow(/duplicate/i);
+  });
+
   it('forbids development defaults outside local/test (credential mixing)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/ADMIN_DATABASE_URL/);
     expect(() =>

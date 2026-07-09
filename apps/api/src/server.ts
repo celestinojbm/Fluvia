@@ -26,6 +26,7 @@ const app = buildApp({
   appPool,
   authService: new AuthService(authPool, {
     mfaEncryptionKeyHex: config.mfaSecretKey,
+    retiredMfaKeyHexes: config.mfaSecretKeysRetired,
     sessionIdleTimeoutMs: config.sessionIdleTimeoutMs,
   }),
   identityService: new IdentityService(appPool),

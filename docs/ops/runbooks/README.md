@@ -33,6 +33,7 @@ Estado: Activo · Fase: 4 (F4-06a) · Procedimientos de operación de lo **ya co
 | Pérdida/corrupción de la base primaria          | (recuperación de desastre; drill periódico)                                                   | CRÍTICA | [`backup-restore.md`](./backup-restore.md)                         |
 | (investigación transversal)                     | `audit_log` / panel «Eventos»                                                                 | —       | [`audit-investigation.md`](./audit-investigation.md)               |
 | (mantenimiento planificado — rotación de clave)  | `WEBHOOK_SECRET_ENC_KEY` (ADR-0012; no es alerta)                                              | —       | [`webhook-enc-key-rotation.md`](./webhook-enc-key-rotation.md)     |
+| (mantenimiento planificado — rotación de clave)  | `MFA_SECRET_KEY` (secreto TOTP; ADR-0012; no es alerta)                                        | —       | [`mfa-key-rotation.md`](./mfa-key-rotation.md)                     |
 
 ## Estado de drill (F4-06b)
 

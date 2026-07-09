@@ -144,3 +144,64 @@ export function decryptSecret(key: Buffer, payload: string): string {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }
+
+// ----------------------------------------------------------------------------
+// ROTACIÓN de la clave `MFA_SECRET_KEY` (F6, ADR-0012 — mismo patrón AES-GCM que
+// la clave de cifrado de webhooks). Un KEYRING con la clave ACTUAL (cifra) +
+// RETIRADAS (solo descifran) rota sin downtime: el descifrado PRUEBA cada clave
+// y el TAG de AES-GCM disambigua (una clave ajena jamás autentica salvo forja
+// 2^-128), así que NO hay que versionar el blob ni tocar el esquema. Tras la
+// rotación, `reencryptMfaSecrets` (rotate-mfa.ts) migra los blobs a la actual.
+// ----------------------------------------------------------------------------
+
+/** Keyring de descifrado (hex): clave ACTUAL + RETIRADAS. Sin retiradas = clave única. */
+export interface MfaEncKeyring {
+  current: string;
+  retired: string[];
+}
+
+/** Normaliza un hex o un keyring a keyring (retro-compatibilidad de firmas). */
+export function toMfaKeyring(key: string | MfaEncKeyring): MfaEncKeyring {
+  return typeof key === 'string' ? { current: key, retired: [] } : key;
+}
+
+/** Cifra un secreto con una clave HEX (parsea + AES-256-GCM, IV fresco). */
+export function encryptMfaSecret(keyHex: string, plaintext: string): string {
+  return encryptSecret(parseMfaKey(keyHex), plaintext);
+}
+
+/** Descifra con UNA clave hex; null si el tag no autentica (clave equivocada). */
+function tryDecryptMfa(keyHex: string, payload: string): string | null {
+  // El FORMATO de la clave se valida FUERA del try: una clave mal configurada
+  // debe surgir con su error accionable, no enmascararse como «clave equivocada».
+  // Solo el fallo del TAG (clave ajena / dato corrupto) se degrada a null.
+  const key = parseMfaKey(keyHex);
+  try {
+    return decryptSecret(key, payload);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Descifra probando el keyring: primero la ACTUAL (isCurrent=true), luego cada
+ * RETIRADA en orden (isCurrent=false). `isCurrent` le dice a la rotación si el
+ * blob ya está bajo la clave actual. Lanza si ninguna clave autentica.
+ */
+export function decryptMfaSecretWithKeyring(
+  keyring: MfaEncKeyring,
+  payload: string
+): { plaintext: string; isCurrent: boolean } {
+  const asCurrent = tryDecryptMfa(keyring.current, payload);
+  if (asCurrent !== null) return { plaintext: asCurrent, isCurrent: true };
+  for (const retired of keyring.retired) {
+    const asRetired = tryDecryptMfa(retired, payload);
+    if (asRetired !== null) return { plaintext: asRetired, isCurrent: false };
+  }
+  throw new Error('no MFA enc key in the keyring can decrypt this secret');
+}
+
+/** Retro-compatible: descifra con una clave (o keyring) y devuelve solo el claro. */
+export function decryptMfaSecret(key: string | MfaEncKeyring, payload: string): string {
+  return decryptMfaSecretWithKeyring(toMfaKeyring(key), payload).plaintext;
+}

@@ -22,12 +22,23 @@ export {
   base32Decode,
   encryptSecret,
   decryptSecret,
+  encryptMfaSecret,
+  decryptMfaSecret,
+  decryptMfaSecretWithKeyring,
+  toMfaKeyring,
   parseMfaKey,
   DEV_MFA_SECRET_KEY_HEX,
   TOTP_DIGITS,
   TOTP_STEP_SECONDS,
+  type MfaEncKeyring,
   type VerifyTotpOptions,
 } from './totp.js';
+export {
+  inspectMfaSecretKeys,
+  reencryptMfaSecrets,
+  type MfaSecretKeyStatus,
+  type ReencryptMfaSecretsResult,
+} from './rotate-mfa.js';
 export {
   RegisterSchema,
   LoginSchema,
