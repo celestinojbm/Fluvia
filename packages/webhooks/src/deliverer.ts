@@ -47,6 +47,8 @@ export interface WebhookDelivererOptions {
   /** Timeout por intento (default 10 s, §3). */
   requestTimeoutMs?: number;
   encKeyHex?: string;
+  /** F6 (ADR-0012): claves de cifrado RETIRADAS (solo descifran) durante la rotación. */
+  retiredKeyHexes?: string[];
   ssrf?: SsrfGuardOptions;
   logger?: DelivererLogger;
   /** F1-07: observador de metricas por ciclo. Sus errores JAMAS afectan al deliverer. */
@@ -83,6 +85,7 @@ export class WebhookDeliverer {
   private readonly leaseMs: number;
   private readonly requestTimeoutMs: number;
   private readonly encKeyHex: string;
+  private readonly retiredKeyHexes: string[];
   private readonly ssrf: SsrfGuardOptions;
   private readonly logger: DelivererLogger | undefined;
   private readonly onStats: ((stats: DelivererRunStats) => void) | undefined;
@@ -100,6 +103,7 @@ export class WebhookDeliverer {
     this.leaseMs = options.leaseMs ?? 60_000;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
     this.encKeyHex = options.encKeyHex ?? DEV_WEBHOOK_SECRET_ENC_KEY_HEX;
+    this.retiredKeyHexes = options.retiredKeyHexes ?? [];
     this.ssrf = options.ssrf ?? {};
     this.logger = options.logger;
     this.onStats = options.onStats;
@@ -149,13 +153,16 @@ export class WebhookDeliverer {
         const rawBody = JSON.stringify(row.payload);
         const timestampSec = Math.floor(Date.now() / 1000);
         const eventId = `whe_${row.id}`;
-        const secrets = [decryptEndpointSecret(this.encKeyHex, endpoint.secret_enc)];
+        // Keyring de rotación (ADR-0012): descifra con la clave actual o, durante
+        // la ventana de rotación, con una retirada (el tag AES-GCM disambigua).
+        const keyring = { current: this.encKeyHex, retired: this.retiredKeyHexes };
+        const secrets = [decryptEndpointSecret(keyring, endpoint.secret_enc)];
         if (
           endpoint.prev_secret_enc &&
           endpoint.prev_secret_expires_at &&
           endpoint.prev_secret_expires_at.getTime() > Date.now()
         ) {
-          secrets.push(decryptEndpointSecret(this.encKeyHex, endpoint.prev_secret_enc));
+          secrets.push(decryptEndpointSecret(keyring, endpoint.prev_secret_enc));
         }
 
         const headers = {

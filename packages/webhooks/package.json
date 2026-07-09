@@ -11,16 +11,19 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "rotate:webhook-key": "tsx src/rotate-cli.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",
+    "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
     "@fluvia/outbox": "workspace:*"
   },
   "devDependencies": {
     "@fluvia/events": "workspace:*",
     "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

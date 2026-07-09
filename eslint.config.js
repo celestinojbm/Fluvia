@@ -17,7 +17,7 @@ export default tseslint.config(
   },
   {
     // CLIs y scripts pueden escribir a stdout
-    files: ['**/migrate-cli.ts', 'scripts/**'],
+    files: ['**/*-cli.ts', 'scripts/**'],
     rules: { 'no-console': 'off' },
   },
   {

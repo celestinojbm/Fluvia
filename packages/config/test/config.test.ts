@@ -21,6 +21,28 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ LOG_LEVEL: 'verbose' })).toThrow(ConfigError);
   });
 
+  it('parses and validates WEBHOOK_SECRET_ENC_KEY_RETIRED (rotation keyring, ADR-0012)', () => {
+    const k1 = '11'.repeat(32);
+    const k2 = '22'.repeat(32);
+    const currentDev = 'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899';
+    // Sin la env → keyring sin retiradas.
+    expect(loadConfig({}).webhookSecretEncKeysRetired).toEqual([]);
+    // Lista separada por comas, con espacios recortados.
+    expect(
+      loadConfig({ WEBHOOK_SECRET_ENC_KEY_RETIRED: ` ${k1}, ${k2} ` }).webhookSecretEncKeysRetired
+    ).toEqual([k1, k2]);
+    // Una retirada NO puede ser la clave actual (anti-mezcla).
+    expect(() => loadConfig({ WEBHOOK_SECRET_ENC_KEY_RETIRED: currentDev })).toThrow(
+      /must not include the current/i
+    );
+    // Cada retirada debe ser 64 hex.
+    expect(() => loadConfig({ WEBHOOK_SECRET_ENC_KEY_RETIRED: 'nothex' })).toThrow(/64 hex/i);
+    // Sin duplicados.
+    expect(() => loadConfig({ WEBHOOK_SECRET_ENC_KEY_RETIRED: `${k1},${k1}` })).toThrow(
+      /duplicate/i
+    );
+  });
+
   it('forbids development defaults outside local/test (credential mixing)', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(/ADMIN_DATABASE_URL/);
     expect(() =>

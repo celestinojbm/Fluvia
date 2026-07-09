@@ -345,6 +345,9 @@ const ledgerChainAnchorer = new LedgerChainAnchorer(workerPool, logger, {
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
   encKeyHex: config.webhookSecretEncKey,
+  // F6 (ADR-0012): durante la rotación de la clave de cifrado, las retiradas
+  // siguen descifrando los blobs aún no re-cifrados (keyring, sin downtime).
+  retiredKeyHexes: config.webhookSecretEncKeysRetired,
   // Redes privadas SOLO en local/test: guard duro por entorno, no por env var.
   ssrf: { allowPrivateNetworks: config.env === 'local' || config.env === 'test' },
   logger,

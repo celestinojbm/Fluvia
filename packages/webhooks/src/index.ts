@@ -2,10 +2,19 @@ export { WEBHOOK_TOPICS, isWebhookTopic, type WebhookTopic } from './events.js';
 export {
   DEV_WEBHOOK_SECRET_ENC_KEY_HEX,
   decryptEndpointSecret,
+  decryptEndpointSecretWithKeyring,
   encryptEndpointSecret,
   generateEndpointSecret,
   parseWebhookEncKey,
+  toKeyring,
+  type WebhookEncKeyring,
 } from './crypto.js';
+export {
+  inspectWebhookSecretKeys,
+  reencryptWebhookSecrets,
+  type ReencryptWebhookSecretsResult,
+  type WebhookSecretKeyStatus,
+} from './rotate.js';
 export {
   buildSignatureHeader,
   signWebhookDelivery,
