@@ -46,12 +46,33 @@ function ms(value: number, fallback: number): string {
 }
 
 export function createPool(options: CreatePoolOptions): pg.Pool {
-  return new pg.Pool({
+  const pool = new pg.Pool({
     connectionString: options.connectionString,
     max: options.max ?? 10,
     // Fail fast: en fintech preferimos error explicito a requests colgados.
     connectionTimeoutMillis: 10_000,
   });
+  // F6 (drill de caos): node-pg emite un evento `error` cuando una conexión falla
+  // FUERA del ciclo de una query (failover de Postgres, kill administrativo,
+  // partición de red, reinicio de la BD). SIN un listener, Node lo trata como
+  // excepción no capturada y TUMBA el proceso — un blip de conexión transitorio
+  // derribaría toda la API/worker. Se cubren AMBOS casos:
+  //   - `pool 'error'`: una conexión OCIOSA del pool falla (no hay query que la
+  //     cargue). Se registra; el pool la descarta y abre otra al demandarla.
+  //   - `client 'error'` (atado en `connect`, vive con cada conexión física del
+  //     pool): una conexión TOMADA cuya query muere EN VUELO (kill/failover). El
+  //     rechazo de la query/ROLLBACK sigue siendo la señal que maneja el caller;
+  //     este listener solo evita el crash por el evento duplicado del cliente.
+  // En ningún caso se tragan errores de QUERY (esos rechazan la promesa del caller).
+  pool.on('error', (err: Error) => {
+    console.error(`[db] pool idle-client error (descartada, el pool se recupera): ${err.message}`);
+  });
+  pool.on('connect', (client) => {
+    client.on('error', () => {
+      /* la query en vuelo ya rechaza; este listener solo evita el crash del proceso */
+    });
+  });
+  return pool;
 }
 
 /**

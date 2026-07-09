@@ -107,6 +107,17 @@ jobs:
         # -> RLS preservado. Corre tras la suite (BD poblada, como una copia real).
         run: pnpm --filter @fluvia/api run drill:restore
 
+      - name: Load-chaos drill — resiliencia bajo carga + fallo (F6, load-soak-chaos)
+        # Ataca las redes de seguridad de V2-R1 (pool acotado + cotas de tiempo por
+        # tx + reintento) inyectando fallo sobre PG16 real: saturación de pool
+        # (concurrencia >> max), kill de backends fluvia_app EN VUELO
+        # (pg_terminate_backend) e idempotencia bajo caos. Prueba que la INTEGRIDAD
+        # del dinero (conservación + proyección == recomputo, cero drift ni asiento
+        # huérfano) sobrevive al fallo abrupto. Corre el ÚLTIMO (es el más
+        # destructivo: mata conexiones). Encontró un crash real — sin handler de
+        # 'error' en el pool, una caída de conexión tumbaba el proceso.
+        run: pnpm --filter @fluvia/api run drill:load-chaos
+
   security:
     name: Secret scanning, dependencias y SBOM
     runs-on: ubuntu-latest
