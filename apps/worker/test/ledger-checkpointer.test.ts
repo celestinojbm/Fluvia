@@ -18,7 +18,10 @@ let org: string;
 let acctA: string;
 let acctB: string;
 
-async function insertBalancedTx(): Promise<void> {
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/** Inserta una tx balanceada y devuelve el seq máximo asignado (marcador). */
+async function insertBalancedTx(): Promise<number> {
   const client = await adminPool.connect();
   try {
     await client.query('BEGIN');
@@ -27,13 +30,15 @@ async function insertBalancedTx(): Promise<void> {
        VALUES ($1, $2, 'adjustment') RETURNING id`,
       [org, `lcp-${randomUUID()}`]
     );
-    await client.query(
+    const r = await client.query<{ n: string }>(
       `INSERT INTO ledger_entries (tenant_id, tx_root_id, account_id, direction, amount, currency, reason)
        VALUES ($1, $2, $3, 'debit', 4200, 'USD', 'adjustment'),
-              ($1, $2, $4, 'credit', 4200, 'USD', 'adjustment')`,
+              ($1, $2, $4, 'credit', 4200, 'USD', 'adjustment')
+       RETURNING seq::text AS n`,
       [org, tx.rows[0]!.id, acctA, acctB]
     );
     await client.query('COMMIT');
+    return Math.max(...r.rows.map((row) => Number(row.n)));
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw err;
@@ -70,24 +75,29 @@ afterAll(async () => {
 
 describe('LedgerCheckpointer — sellado del hash-chain con rol worker (F6)', () => {
   it('seals pending entries through the DEFINER function and reports the gauges', async () => {
-    await insertBalancedTx();
+    const seq = await insertBalancedTx();
     const seen: LedgerChainHealth[] = [];
     const job = new LedgerCheckpointer(workerPool, undefined, {
       minCandidateAgeMs: 0,
       onResult: (health) => seen.push(health),
     });
 
-    // Dos fases por diseño (candidato → finalización); otras suites pueden
-    // tener una tx abierta que retrase la fase 2 (horizonte de txid), así que
-    // se itera hasta observar un sellado — jamás un falso verde.
+    // Dos fases por diseño (candidato → finalización); ADEMÁS
+    // ledger-chain-anchorer.test.ts corre en paralelo y también sella, así que un
+    // candidato puede AGRUPAR ambas txs y un SOLO finalize (de cualquiera de los
+    // dos) las cubre. Por eso se espera al estado ACUMULADO `sealedUptoSeq >= seq`
+    // (robusto a QUIÉN selló + al horizonte de txid de otra suite con una tx
+    // abierta), no a `sealedThisRun === 1` de ESTA llamada — que inanicionaría al
+    // perdedor del finalize. Cota dura + backoff → FAIL claro, jamás falso verde.
     let sealed: LedgerChainHealth | undefined;
-    for (let i = 0; i < 50 && !sealed; i += 1) {
+    for (let i = 0; i < 240 && !sealed; i += 1) {
       const health = await job.runOnce();
-      if (health.sealedThisRun === 1) sealed = health;
+      if (health.sealedUptoSeq >= seq) sealed = health;
+      else await sleep(25);
     }
-    expect(sealed, 'el job nunca llegó a sellar un checkpoint').toBeDefined();
+    expect(sealed, 'la cadena nunca cubrió la tx sembrada').toBeDefined();
     expect(sealed!.checkpointsTotal).toBeGreaterThanOrEqual(1);
-    expect(sealed!.sealedUptoSeq).toBeGreaterThan(0);
+    expect(sealed!.sealedUptoSeq).toBeGreaterThanOrEqual(seq);
     // El rezago de detección se expone (gauge de estancamiento); nunca negativo.
     expect(typeof sealed!.unsealedSeq).toBe('number');
     expect(sealed!.unsealedSeq).toBeGreaterThanOrEqual(0);

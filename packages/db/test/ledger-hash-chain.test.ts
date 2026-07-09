@@ -579,3 +579,177 @@ describe('mínimo privilegio (0042)', () => {
     ).rejects.toThrow(/GENERATED ALWAYS|cannot insert a non-DEFAULT value/i);
   });
 });
+
+/**
+ * F6 (threat model §5, fila Ledger) — ANCLAJE EXTERNO del chain_hash (0043).
+ *
+ * El hash-chain (0042/[7]) hace detectable editar/borrar asientos SELLADOS, pero
+ * [7] solo recorre los checkpoints que EXISTEN: borrar la cadena ENTERA o truncar
+ * su sufijo lo deja verde TRIVIAL. El anclaje registra el tip de la cadena en un
+ * almacén append-only SEPARADO (`ledger_chain_anchors` + evento de auditoría) y el
+ * check [8] compara los anchors contra la cadena viva — cerrando ese hueco.
+ *
+ * Estas pruebas viven en ESTE archivo a propósito: es el único de packages/db que
+ * corre el script REAL de invariantes vía psql, y vitest ejecuta los `it` de un
+ * archivo en SERIE. Correrlas aquí evita la ventana de tampering global cruzándose
+ * con el `runInvariants()` de otro archivo (los ~9 corren en paralelo). Reutilizan
+ * los helpers de arriba (insertBalancedTx/sealUntilCovers/runInvariants/bypassing).
+ */
+
+/** Ancla el tip actual vía la función DEFINER (como el worker). Devuelve las métricas. */
+async function anchorOnce(): Promise<{
+  anchorsTotal: number;
+  anchoredUptoSeq: number;
+  anchoredThisRun: number;
+}> {
+  const res = await ctx.admin.query<{ metric: string; value: string }>(
+    `SELECT metric, value::text FROM anchor_ledger_chain()`
+  );
+  const m = Object.fromEntries(res.rows.map((r) => [r.metric, Number(r.value)]));
+  return {
+    anchorsTotal: m.anchors_total ?? 0,
+    anchoredUptoSeq: m.anchored_upto_seq ?? 0,
+    anchoredThisRun: m.anchored_this_run ?? 0,
+  };
+}
+
+describe('anclaje externo del chain_hash (0043, check [8])', () => {
+  it('anchors the sealed tip, writes an audit trail, and [8] verifies it against the live chain', async () => {
+    const { maxSeq } = await insertBalancedTx(41_000);
+    const sealed = await sealUntilCovers(maxSeq);
+
+    const anchored = await anchorOnce();
+    // El tip avanzó (asiento nuevo + sellado) ⇒ se registró un anchor fresco.
+    expect(anchored.anchoredThisRun).toBe(1);
+    expect(anchored.anchoredUptoSeq).toBe(sealed.sealedUptoSeq);
+
+    // El anchor coincide con el checkpoint VIVO del tip (mismo upto_seq/chain_hash).
+    const match = await ctx.admin.query<{ n: string }>(
+      `SELECT count(*)::text AS n
+         FROM ledger_chain_anchors a
+         JOIN ledger_checkpoints c ON c.upto_seq = a.upto_seq AND c.chain_hash = a.chain_hash
+        WHERE a.upto_seq = $1::bigint`,
+      [sealed.sealedUptoSeq]
+    );
+    expect(Number(match.rows[0]!.n)).toBe(1);
+
+    // Segundo almacén append-only: el evento de plataforma (tenant NULL, system).
+    const audit = await ctx.admin.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM audit_events
+        WHERE action = 'ledger.chain_anchored' AND actor_type = 'system'
+          AND auth_method = 'platform' AND tenant_id IS NULL
+          AND (after_summary->>'upto_seq')::bigint = $1::bigint`,
+      [sealed.sealedUptoSeq]
+    );
+    expect(Number(audit.rows[0]!.n)).toBeGreaterThanOrEqual(1);
+
+    const inv = await runInvariants();
+    expect(inv.output).toContain('FLUVIA_INVARIANTS_OK');
+    expect(inv.ok).toBe(true);
+  }, 40_000);
+
+  it('re-anchoring the SAME tip is a no-op (idempotent, monotone via UNIQUE(upto_seq))', async () => {
+    // Asegura que el tip actual ya está anclado.
+    await sealUntilCovers(await currentMaxSeq());
+    await anchorOnce();
+    const first = await anchorOnce();
+    // Sin nuevos asientos/sellado el tip no avanza: no se registra otro anchor.
+    const again = await anchorOnce();
+    expect(again.anchoredThisRun).toBe(0);
+    expect(again.anchorsTotal).toBe(first.anchorsTotal);
+    expect(again.anchoredUptoSeq).toBe(first.anchoredUptoSeq);
+  }, 40_000);
+
+  it('[8]-only: deleting the ENTIRE chain leaves [7] TRIVIALLY green but the external anchor catches it', async () => {
+    // El escenario que [7] NO puede ver: sin checkpoints, [7] recorre cero filas
+    // y pasa trivial; los asientos intactos dejan [1..6] verdes. SOLO [8] (el
+    // anchor apunta a un upto_seq/chain_hash que ya no existe) rompe.
+    const { maxSeq } = await insertBalancedTx(43_000);
+    await sealUntilCovers(maxSeq);
+    const anchored = await anchorOnce();
+    expect(anchored.anchoredUptoSeq).toBeGreaterThan(0);
+
+    // Captura COMPLETA de la cadena (sealed_at como TEXTO — micros exactos).
+    const checkpoints = (
+      await ctx.admin.query<{
+        id: string;
+        upto_seq: string;
+        entry_count: string;
+        segment_hash: string;
+        prev_chain_hash: string;
+        chain_hash: string;
+        sealed_at: string;
+      }>(
+        `SELECT id::text, upto_seq::text, entry_count::text, segment_hash,
+                prev_chain_hash, chain_hash, sealed_at::text
+           FROM ledger_checkpoints ORDER BY upto_seq ASC`
+      )
+    ).rows;
+    expect(checkpoints.length).toBeGreaterThanOrEqual(1);
+
+    try {
+      // Borra la cadena ENTERA como el adversario del tier superior.
+      await bypassingTriggers((c) =>
+        c.query(`DELETE FROM ledger_checkpoints`).then(() => undefined)
+      );
+
+      const inv = await runInvariants();
+      expect(inv.ok).toBe(false);
+      // El anclaje externo lo detecta...
+      expect(inv.output).toMatch(/\[8\] chain anchor/);
+      // ...y NINGÚN otro check ([1..7]) dispara: [7] queda verde trivial.
+      expect(inv.output).not.toMatch(/\[[1-7]\] /);
+    } finally {
+      // Reinserta la cadena EXACTA (mismos id/hashes/ts) bajo replica.
+      await bypassingTriggers(async (c) => {
+        for (const cp of checkpoints) {
+          await c.query(
+            `INSERT INTO ledger_checkpoints
+               (id, upto_seq, entry_count, segment_hash, prev_chain_hash, chain_hash, sealed_at)
+             OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (id) DO NOTHING`,
+            [
+              cp.id,
+              cp.upto_seq,
+              cp.entry_count,
+              cp.segment_hash,
+              cp.prev_chain_hash,
+              cp.chain_hash,
+              cp.sealed_at,
+            ]
+          );
+        }
+      }).catch(() => undefined);
+    }
+    const repaired = await runInvariants();
+    expect(repaired.output).toContain('FLUVIA_INVARIANTS_OK');
+    expect(repaired.ok).toBe(true);
+  }, 40_000);
+
+  it('mínimo privilegio: the worker role can EXECUTE the anchor function but cannot touch the anchors table', async () => {
+    const viaWorker = await ctx.worker.query(
+      `SELECT metric, value::text FROM anchor_ledger_chain()`
+    );
+    expect(viaWorker.rows.length).toBeGreaterThan(0);
+    await expect(ctx.worker.query('SELECT * FROM ledger_chain_anchors')).rejects.toThrow(
+      /permission denied/i
+    );
+    await expect(ctx.app.query(`SELECT * FROM anchor_ledger_chain()`)).rejects.toThrow(
+      /permission denied/i
+    );
+    await expect(ctx.app.query('SELECT * FROM ledger_chain_anchors')).rejects.toThrow(
+      /permission denied/i
+    );
+  });
+
+  it('anchors are append-only even for raw SQL (triggers)', async () => {
+    await sealUntilCovers(await currentMaxSeq());
+    await anchorOnce();
+    await expect(ctx.admin.query(`DELETE FROM ledger_chain_anchors`)).rejects.toThrow(
+      /FLUVIA_IMMUTABLE/
+    );
+    await expect(
+      ctx.admin.query(`UPDATE ledger_chain_anchors SET chain_hash = repeat('0', 64)`)
+    ).rejects.toThrow(/FLUVIA_IMMUTABLE/);
+  }, 30_000);
+});

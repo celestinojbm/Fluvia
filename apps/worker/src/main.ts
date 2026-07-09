@@ -25,6 +25,7 @@ import { PayoutsRedriver } from './payouts-redriver.js';
 import { DisputesWatchdog } from './disputes-watchdog.js';
 import { IdempotencyWatchdog } from './idempotency-watchdog.js';
 import { LedgerCheckpointer } from './ledger-checkpointer.js';
+import { LedgerChainAnchorer } from './ledger-chain-anchorer.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -165,6 +166,14 @@ const ledgerChainSealedUpto = registry.gauge(
 const ledgerChainUnsealedSeq = registry.gauge(
   'fluvia_ledger_chain_unsealed_seq',
   'Rezago de detección: seq aún sin sellar. Si NO decrece, el sellador está atascado/caído (su fallo es silencioso) — el punto ciego que la alerta de estancamiento cubre'
+);
+const ledgerChainAnchorsTotal = registry.gauge(
+  'fluvia_ledger_chain_anchors_total',
+  'Anchors externos del tip de la cadena (0043) — cada uno cierra el hueco truncar/borrar de [7]'
+);
+const ledgerChainAnchoredUpto = registry.gauge(
+  'fluvia_ledger_chain_anchored_upto_seq',
+  'Último upto_seq del tip anclado en el almacén append-only separado (external tamper-evidence). El estancamiento del anchorador = este gauge se rezaga de fluvia_ledger_chain_sealed_upto_seq (que sigue creciendo aunque el anchorador esté caído) — alerta en observability §4'
 );
 
 const worker = new WorkerProcess({
@@ -322,6 +331,16 @@ const ledgerCheckpointer = new LedgerCheckpointer(workerPool, logger, {
     ledgerChainUnsealedSeq.set({}, health.unsealedSeq);
   },
 });
+// F6 (threat model §5, fila Ledger): anclaje EXTERNO del chain_hash (0043).
+// Publica el tip de la cadena a un almacén append-only SEPARADO — cierra el
+// hueco de [7] (truncar/borrar la cadena). La VERIFICACIÓN corre como check [8]
+// de verify-ledger-invariants.sql (CI + restore drill), no aquí.
+const ledgerChainAnchorer = new LedgerChainAnchorer(workerPool, logger, {
+  onResult: (health) => {
+    ledgerChainAnchorsTotal.set({}, health.anchorsTotal);
+    ledgerChainAnchoredUpto.set({}, health.anchoredUptoSeq);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -355,6 +374,7 @@ async function shutdown(signal: string): Promise<void> {
   disputesWatchdog.stop();
   idempotencyWatchdog.stop();
   ledgerCheckpointer.stop();
+  ledgerChainAnchorer.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -468,6 +488,15 @@ worker
       );
     } else {
       logger.info({}, 'ledger checkpointer disabled by config (LEDGER_CHECKPOINT_ENABLED=false)');
+    }
+    if (config.ledgerAnchor.enabled) {
+      ledgerChainAnchorer.start(config.ledgerAnchor.intervalMs);
+      logger.info(
+        { intervalMs: config.ledgerAnchor.intervalMs },
+        'ledger chain anchorer started (external tamper-evidence)'
+      );
+    } else {
+      logger.info({}, 'ledger chain anchorer disabled by config (LEDGER_ANCHOR_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);
