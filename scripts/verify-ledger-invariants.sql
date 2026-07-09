@@ -164,6 +164,42 @@ BEGIN
     problems := problems || format(' [8] chain anchor mismatch (chain truncated/deleted/diverged below external anchor): %s;', bad);
   END IF;
 
+  -- 9. No-negatividad del motor a nivel BD (F6, AUD-P1-010 — defensa en profundidad).
+  --    Ninguna cuenta PROTEGIDA puede tener saldo `available` o `pending` negativo en
+  --    `balance_projections` (el store que valida [6] y sobre el que corre el guard).
+  --    El motor ya lo GARANTIZA bajo locks de cuenta (service.ts postTransaction:
+  --    `nonNegativeAccounts` aborta cualquier posting que deje en negativo una cuenta
+  --    que DECRECE — su lado credit-normal debitado o su lado debit-normal acreditado).
+  --    Este check es la EVIDENCIA a nivel BD (CI por commit + copia del restore drill)
+  --    de que NINGUN camino —un bug del guard, un tamper directo de proyecciones, o un
+  --    posting futuro sin guard— dejo una cuenta real por debajo de cero; complementa a
+  --    [6] (que solo exige que la proyeccion COINCIDA con los asientos, no que sea >= 0).
+  --    ALCANCE: solo las cuentas del CHART que NO son transitorias. Se excluyen (a) las
+  --    transitorias `suspense`/`recon.differences`, que `postReconAdjustment` (posting
+  --    SIN guard cuyos dos asientos SON justo estas dos) puede llevar a negativo POR
+  --    DISENO. (`reverseTransaction` tambien postea sin guard, pero HOY no tiene llamador
+  --    de produccion — solo tests con cuentas fuera del chart; si ganara uno que dejara
+  --    una cuenta PROTEGIDA en negativo, [9] lo DETECTARIA: deteccion correcta, no falso
+  --    positivo.) Y se excluyen (b) cuentas FUERA del chart (p. ej. `conc.*` de tests de
+  --    concurrencia con asientos crudos) — en produccion toda cuenta nace del chart
+  --    (ensureChart/ensurePlatformAccounts), asi que estas solo existen en tests y estan
+  --    fuera de la garantia del motor. CONTRATO: esta lista == las cuentas del chart
+  --    (chart-of-accounts.ts) con `type` != 'transitory' (matcheadas por su CODE, el
+  --    prefijo antes de ':'); anadir una cuenta protegida al chart EXIGE anadirla aqui.
+  SELECT count(*) INTO bad
+  FROM balance_projections p
+  JOIN ledger_accounts a ON a.id = p.account_id
+  WHERE split_part(a.name, ':', 1) IN (
+          'provider.clearing', 'provider.receivable', 'provider.payable', 'provider.fees',
+          'platform.fees', 'platform.cash', 'payout.in_transit',
+          'merchant.pending', 'merchant.available', 'merchant.reserve',
+          'refund.liability', 'dispute.reserve'
+        )
+    AND (p.available < 0 OR p.pending < 0);
+  IF bad > 0 THEN
+    problems := problems || format(' [9] negative balance on a protected (non-transitory) account: %s;', bad);
+  END IF;
+
   IF problems <> '' THEN
     RAISE EXCEPTION 'FLUVIA_INVARIANT_VIOLATION:%', problems;
   END IF;
