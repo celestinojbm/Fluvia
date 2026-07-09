@@ -126,15 +126,23 @@ export function registerAuthRoutes(
     }
   );
 
-  // Enrolamiento (requiere sesion): setup -> activate (con codigo) -> enabled.
+  // Enrolamiento (requiere sesion + STEP-UP fresco): setup -> activate -> enabled.
+  // F6 (revisión de seguridad, TM-02): enrolar/activar/deshabilitar MFA es una
+  // operación de credenciales sensible — exige re-autenticación reciente (password
+  // fresco para usuarios sin MFA; TOTP fresco para los que ya lo tienen), igual que
+  // acuñar API keys. Sin esto, una sesión secuestrada de un usuario SIN MFA podía
+  // auto-enrolar un factor propio y así pasar el step-up (403 mfa_step_up_required /
+  // step_up_required guía al cliente a /v1/auth/step-up/password o /v1/auth/mfa/step-up).
   app.post('/v1/auth/mfa/setup', async (req) => {
     const identity = await authService.authenticateSession(bearerToken(req));
+    authService.assertFreshStepUp(identity);
     const setup = await authService.setupMfa(identity.userId);
     return { secret: setup.secret, otpauth_uri: setup.otpauthUri };
   });
 
   app.post('/v1/auth/mfa/activate', async (req) => {
     const identity = await authService.authenticateSession(bearerToken(req));
+    authService.assertFreshStepUp(identity);
     const body = MfaCodeOnlySchema.parse(req.body);
     const result = await authService.activateMfa(identity.userId, body.code, {
       sessionId: identity.sessionId,
@@ -146,6 +154,7 @@ export function registerAuthRoutes(
 
   app.post('/v1/auth/mfa/disable', async (req) => {
     const identity = await authService.authenticateSession(bearerToken(req));
+    authService.assertFreshStepUp(identity);
     const body = MfaCodeOnlySchema.parse(req.body);
     await authService.disableMfa(identity.userId, body.code, meta(req));
     return { enabled: false };

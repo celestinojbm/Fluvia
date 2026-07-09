@@ -24,8 +24,9 @@ import type { Security } from '../security.js';
 const CreatePayoutSchema = z
   .object({
     merchant_id: z.string().uuid(),
-    /** Unidades MENORES (estrictamente positivo). */
-    amount: z.number().int().positive(),
+    /** Unidades MENORES (estrictamente positivo). F6: `int()` acepta enteros fuera
+     *  del rango seguro (double impreciso → `BigInt` equivocado) → mismo bound que Money.of. */
+    amount: z.number().int().positive().refine(Number.isSafeInteger, 'amount out of safe range'),
     currency: z.string().regex(/^[A-Z]{3}$/),
     reason: z.string().trim().min(1).max(500).optional(),
   })

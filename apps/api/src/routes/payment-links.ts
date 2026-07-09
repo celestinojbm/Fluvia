@@ -19,7 +19,8 @@ import type { Security } from '../security.js';
 const CreateSchema = z
   .object({
     merchant_id: z.string().uuid(),
-    amount: z.number().int().positive(),
+    // F6: cota de entero seguro (evita el `BigInt` de un double impreciso).
+    amount: z.number().int().positive().refine(Number.isSafeInteger, 'amount out of safe range'),
     currency: z.string().regex(/^[A-Z]{3}$/),
     description: z.string().trim().min(1).max(500).optional(),
     metadata: ResourceMetadataSchema.optional(),

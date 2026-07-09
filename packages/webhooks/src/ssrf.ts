@@ -19,6 +19,56 @@ export class UnsafeWebhookUrlError extends Error {
   }
 }
 
+/**
+ * Expande una IPv6 (ya validada por `isIP`) a sus 16 bytes canónicos, incluida la
+ * compresión `::` y un IPv4 embebido en notación con puntos (`::ffff:1.2.3.4`).
+ * Devuelve null si no parsea. Trabajar sobre bytes es lo que hace la denylist
+ * robusta: comparar por STRING deja pasar formas equivalentes no canónicas
+ * (`0:0:0:0:0:0:0:1`, `::ffff:7f00:1`, el resto del rango `fe80::/10`, etc.).
+ */
+function ipv6ToBytes(ip: string): number[] | null {
+  let s = ip.toLowerCase();
+  const zone = s.indexOf('%');
+  if (zone !== -1) s = s.slice(0, zone);
+
+  // IPv4 embebido en notación con puntos → convertir el último cuarteto a 2 hextets.
+  if (s.includes('.')) {
+    const lastColon = s.lastIndexOf(':');
+    if (lastColon === -1) return null;
+    const quad = s
+      .slice(lastColon + 1)
+      .split('.')
+      .map(Number);
+    if (quad.length !== 4 || quad.some((n) => !Number.isInteger(n) || n < 0 || n > 255))
+      return null;
+    const hi = ((quad[0]! << 8) | quad[1]!).toString(16);
+    const lo = ((quad[2]! << 8) | quad[3]!).toString(16);
+    s = `${s.slice(0, lastColon + 1)}${hi}:${lo}`;
+  }
+
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 ? (halves[1] ? halves[1].split(':') : []) : null;
+  let groups: string[];
+  if (tail === null) {
+    groups = head;
+  } else {
+    const missing = 8 - head.length - tail.length;
+    if (missing < 1) return null;
+    groups = [...head, ...Array<string>(missing).fill('0'), ...tail];
+  }
+  if (groups.length !== 8) return null;
+
+  const bytes: number[] = [];
+  for (const g of groups) {
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    const v = parseInt(g, 16);
+    bytes.push((v >> 8) & 0xff, v & 0xff);
+  }
+  return bytes;
+}
+
 export function isPrivateIp(ip: string): boolean {
   const family = isIP(ip);
   if (family === 4) {
@@ -32,12 +82,20 @@ export function isPrivateIp(ip: string): boolean {
     return false;
   }
   if (family === 6) {
-    const lower = ip.toLowerCase();
-    if (lower === '::1' || lower === '::') return true; // loopback / unspecified
-    if (lower.startsWith('fe80')) return true; // link-local
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA
-    if (lower.startsWith('ff')) return true; // multicast
-    if (lower.startsWith('::ffff:')) return isPrivateIp(lower.slice(7)); // v4-mapped
+    const b = ipv6ToBytes(ip);
+    if (!b) return true; // IPv6 no parseable ⇒ rechazar por defecto
+    const z10 = b.slice(0, 10).every((x) => x === 0);
+    // v4-mapped ::ffff:a.b.c.d → evaluar el IPv4 embebido con la denylist v4.
+    if (z10 && b[10] === 0xff && b[11] === 0xff) return isPrivateIp(b.slice(12).join('.'));
+    if (b.every((x) => x === 0)) return true; // unspecified ::
+    if (b.slice(0, 15).every((x) => x === 0) && b[15] === 1) return true; // loopback ::1
+    // v4-compatible ::a.b.c.d (obsoleto) con IPv4 embebido no trivial → evaluarlo.
+    if (z10 && b[10] === 0 && b[11] === 0 && !(b[12] === 0 && b[13] === 0 && b[14] === 0)) {
+      return isPrivateIp(b.slice(12).join('.'));
+    }
+    if ((b[0]! & 0xfe) === 0xfc) return true; // ULA fc00::/7 (fc/fd)
+    if (b[0] === 0xfe && (b[1]! & 0xc0) === 0x80) return true; // link-local fe80::/10
+    if (b[0] === 0xff) return true; // multicast ff00::/8
     return false;
   }
   return true; // no es una IP: rechazar por defecto

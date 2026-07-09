@@ -23,8 +23,14 @@ import type { Security } from '../security.js';
 const CreateRefundSchema = z
   .object({
     payment_intent_id: z.string().uuid(),
-    /** Unidades MENORES; ausente = reembolso total de lo remanente. */
-    amount: z.number().int().positive().optional(),
+    /** Unidades MENORES; ausente = reembolso total de lo remanente. F6: cota de
+     *  entero seguro (evita el `BigInt` de un double impreciso). */
+    amount: z
+      .number()
+      .int()
+      .positive()
+      .refine(Number.isSafeInteger, 'amount out of safe range')
+      .optional(),
     reason: z.string().trim().min(1).max(500).optional(),
   })
   .strict();

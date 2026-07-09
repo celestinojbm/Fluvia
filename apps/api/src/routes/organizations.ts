@@ -38,6 +38,13 @@ const AuditQuerySchema = z
   })
   .strict();
 
+// F6 (revisión de seguridad): valida los IDs de ruta como UUID ANTES de tocar la
+// BD. Sin esto, un id malformado (`.../merchants/not-a-uuid`) llegaba a un
+// `WHERE id = $1` sobre una columna uuid → error 22P02 → 500 `internal_error`
+// (en vez del 400 `validation_error` uniforme, y un oráculo débil 500-vs-404).
+const MerchantParams = z.object({ merchantId: z.string().uuid() });
+const ApiKeyParams = z.object({ apiKeyId: z.string().uuid() });
+
 /**
  * Plano de dashboard (sesion + rol por organizacion). Toda ruta bajo
  * /v1/organizations/:orgId pasa por session() y org(permiso): BOLA se corta
@@ -109,7 +116,7 @@ export function registerOrganizationRoutes(
     '/v1/organizations/:orgId/merchants/:merchantId',
     { preHandler: [security.session, security.org('merchants:read')] },
     async (req) => {
-      const { merchantId } = req.params as { merchantId: string };
+      const { merchantId } = MerchantParams.parse(req.params);
       return identityService.getMerchant(req.org!.organizationId, merchantId);
     }
   );
@@ -118,7 +125,7 @@ export function registerOrganizationRoutes(
     '/v1/organizations/:orgId/merchants/:merchantId',
     { preHandler: [security.session, security.org('merchants:write')] },
     async (req) => {
-      const { merchantId } = req.params as { merchantId: string };
+      const { merchantId } = MerchantParams.parse(req.params);
       const input = UpdateMerchantSchema.parse(req.body);
       return identityService.updateMerchant(
         req.org!.organizationId,
@@ -172,7 +179,7 @@ export function registerOrganizationRoutes(
     '/v1/organizations/:orgId/api-keys/:apiKeyId/revoke',
     { preHandler: [security.session, security.org('keys:manage'), security.stepUp] },
     async (req, reply) => {
-      const { apiKeyId } = req.params as { apiKeyId: string };
+      const { apiKeyId } = ApiKeyParams.parse(req.params);
       await apiKeyService.revoke(req.org!.organizationId, apiKeyId, auditContext(req));
       return reply.code(204).send();
     }

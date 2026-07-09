@@ -169,6 +169,19 @@ describe('POST /v1/payouts (idempotente, asincrono)', () => {
     expect(res.json().error.code).toBe('payout_amount_exceeds_balance');
   });
 
+  it('SECURITY (F6): an amount outside the safe-integer range is a 400 validation_error', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/payouts',
+      headers: { ...auth(keyA), 'idempotency-key': `pf-${randomUUID()}` },
+      // 9e21 pasa `Number.isInteger` pero NO `Number.isSafeInteger`: su double no es
+      // exacto y `BigInt(...)` daría un valor equivocado. Debe rechazarse en el borde.
+      payload: { merchant_id: merchantA, amount: 9e21, currency: 'COP' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation_error');
+  });
+
   it('requires the Idempotency-Key header (400)', async () => {
     const res = await app.inject({
       method: 'POST',

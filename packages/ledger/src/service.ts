@@ -3,6 +3,11 @@ import { Money } from '@fluvia/money';
 import { insertAuditEvent } from '@fluvia/audit';
 import { EVENT_TOPICS, buildEnvelope } from '@fluvia/events';
 import {
+  CHART_OF_ACCOUNTS,
+  type AccountCode,
+  type AccountDefinition,
+} from './chart-of-accounts.js';
+import {
   AccountCurrencyMismatchError,
   AccountNotFoundError,
   CannotReverseReversalError,
@@ -452,6 +457,16 @@ export class LedgerService {
       this.appPool,
       tenantId,
       async (c) => {
+        // F6 (revisión de seguridad): toma el lock de la cuenta ANTES de las dos
+        // lecturas (recomputo de entries + proyección), como hace rebuildProjection.
+        // Sin él, un posting que commitee ENTRE ambas lecturas produce un
+        // `matches:false` ESPURIO (señal de drift falsa). El watcher programado
+        // (ledger_projection_drift) ya es atómico en un solo statement; esta
+        // primitiva de audit-replay no lo era.
+        const locked = await c.query(`SELECT 1 FROM ledger_accounts WHERE id = $1 FOR UPDATE`, [
+          accountId,
+        ]);
+        if (!locked.rows[0]) throw new AccountNotFoundError([accountId]);
         // V2-R4: `SUM(bigint)` en PG ya es `numeric` (no hay overflow silencioso) y
         // `bigint + bigint` que se pase de rango ABORTA (no envuelve). El `::numeric`
         // explicito evita ademas un cast intermedio a bigint que fallaria en el borde;
@@ -533,9 +548,14 @@ export class LedgerService {
         amount: string;
         currency: string;
         bucket: 'available' | 'pending';
+        normal_side: 'debit' | 'credit';
+        name: string;
       }>(
-        `SELECT account_id, direction, amount::text, currency, bucket
-         FROM ledger_entries WHERE tx_root_id = $1 ORDER BY id`,
+        `SELECT e.account_id, e.direction, e.amount::text, e.currency, e.bucket,
+                a.normal_side, a.name
+         FROM ledger_entries e
+         JOIN ledger_accounts a ON a.id = e.account_id
+         WHERE e.tx_root_id = $1 ORDER BY e.id`,
         [input.transactionId]
       );
       return entries.rows;
@@ -548,6 +568,25 @@ export class LedgerService {
       bucket: e.bucket,
     }));
 
+    // F6 (revisión de seguridad): reverseTransaction reusaba postTransaction SIN
+    // el guard de no-negatividad (a diferencia de twoLegged), así que revertir una
+    // captura cuyo `merchant.pending` ya se drenó dejaba una cuenta PROTEGIDA en
+    // negativo. Se deriva `nonNegativeAccounts` del espejo con la misma regla que
+    // twoLegged: una cuenta DECRECE cuando la dirección del espejo NO coincide con
+    // su lado normal; se guardan solo las cuentas PROTEGIDAS del chart (las
+    // transitorias suspense/recon.differences pueden ir negativas por diseño — la
+    // misma exención que el check [9]). reverseTransaction sigue sin callers de
+    // producción; esto hace que el guard valga el día que se cablee.
+    const guardedSet = new Set<string>();
+    for (const e of original) {
+      const mirroredDirection = e.direction === 'debit' ? 'credit' : 'debit';
+      const decreases = mirroredDirection !== e.normal_side;
+      const code = e.name.split(':')[0] as AccountCode;
+      const def = CHART_OF_ACCOUNTS[code] as AccountDefinition | undefined;
+      const isProtected = def !== undefined && def.type !== 'transitory';
+      if (decreases && isProtected) guardedSet.add(e.account_id);
+    }
+
     try {
       return await this.postTransaction({
         tenantId: input.tenantId,
@@ -555,6 +594,7 @@ export class LedgerService {
         reason: 'reversal',
         source: input.source,
         entries: mirrored,
+        nonNegativeAccounts: [...guardedSet],
         reversesTxId: input.transactionId,
         onPosted: async (c, posted) => {
           await insertAuditEvent(c, {

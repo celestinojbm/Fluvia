@@ -181,6 +181,15 @@ describe('entrega (rol webhook)', () => {
       })
     ).toBe(true);
 
+    // F6 (revisión de seguridad): el `Fluvia-Event-Id` es el event_id ESTABLE del
+    // sobre (no el PK de la fila) — así, si el relay at-least-once re-materializa la
+    // fila tras un crash, ambas entregas llevan el MISMO id y el comercio deduplica.
+    const stored = await ctx.admin.query<{ payload: { event_id: string } }>(
+      `SELECT payload FROM webhook_events WHERE endpoint_id = $1`,
+      [endpoint.id]
+    );
+    expect(hit!.headers['fluvia-event-id']).toBe(stored.rows[0]!.payload.event_id);
+
     const row = await ctx.admin.query<{ status: string }>(
       `SELECT status FROM webhook_events WHERE endpoint_id = $1`,
       [endpoint.id]

@@ -66,6 +66,15 @@ async function ownedOrg(userId: string): Promise<string> {
 /** Enrola MFA via HTTP y devuelve el secreto + backup codes + sesion. */
 async function enrollViaHttp() {
   const user = await registerAndLogin();
+  // F6 (revisión de seguridad, TM-02): enrolar MFA exige step-up fresco. Un
+  // usuario SIN MFA re-autentica con su password antes de setup/activate.
+  const stepUp = await app.inject({
+    method: 'POST',
+    url: '/v1/auth/step-up/password',
+    headers: authed(user.sessionToken),
+    payload: { password: PASSWORD },
+  });
+  expect(stepUp.statusCode).toBe(200);
   const setup = await app.inject({
     method: 'POST',
     url: '/v1/auth/mfa/setup',
@@ -248,6 +257,57 @@ describe('MFA sobre HTTP', () => {
     // El servicio exige TOTP: el password jamas refresca el step-up de un usuario MFA.
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe('mfa_step_up_required');
+  });
+
+  it('SECURITY (F6): a hijacked no-MFA session cannot self-enroll MFA to defeat the step-up gate', async () => {
+    // Sesión SIN MFA y SIN step-up fresco (lo que tiene un atacante con un token robado).
+    const user = await registerAndLogin();
+    const orgId = await ownedOrg(user.userId);
+
+    // El camino del atacante: auto-enrolar un factor MFA propio para pasar el
+    // step-up. Ahora BLOQUEADO — setup/activate exigen re-autenticación fresca.
+    const setup = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mfa/setup',
+      headers: authed(user.sessionToken),
+    });
+    expect(setup.statusCode).toBe(403);
+    expect(setup.json().error.code).toBe('mfa_step_up_required');
+
+    const activate = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mfa/activate',
+      headers: authed(user.sessionToken),
+      payload: { code: '123456' },
+    });
+    expect(activate.statusCode).toBe(403);
+    expect(activate.json().error.code).toBe('mfa_step_up_required');
+
+    // Y acuñar API keys sigue bloqueado: el step-up no fue satisfecho.
+    const key = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgId}/api-keys`,
+      headers: authed(user.sessionToken),
+      payload: { label: 'attacker', scopes: ['read'] },
+    });
+    expect(key.statusCode).toBe(403);
+    expect(key.json().error.code).toBe('mfa_step_up_required');
+
+    // El camino legítimo: re-autenticar con el PASSWORD (que el atacante no tiene),
+    // y entonces sí enrolar MFA.
+    const stepUp = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/step-up/password',
+      headers: authed(user.sessionToken),
+      payload: { password: PASSWORD },
+    });
+    expect(stepUp.statusCode).toBe(200);
+    const setupOk = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mfa/setup',
+      headers: authed(user.sessionToken),
+    });
+    expect(setupOk.statusCode).toBe(200);
   });
 });
 

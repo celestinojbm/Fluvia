@@ -4,6 +4,7 @@ import { Money } from '@fluvia/money';
 import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import {
   CannotReverseReversalError,
+  InsufficientBalanceError,
   LedgerService,
   ReversalNoteRequiredError,
   TransactionAlreadyReversedError,
@@ -248,5 +249,68 @@ describe('F2-07: reverseTransaction (Gate Ledger — compensaciones)', () => {
     const bal = await ledger.getBalance(org, pendingAcc);
     expect(bal.pending).toBe('0');
     expect(bal.available).toBe('0');
+  });
+
+  it('SECURITY (F6): a reversal cannot drive a PROTECTED account negative (nonNegativeAccounts guard)', async () => {
+    // Cuentas con nombres DEL CHART (protegidas) — el guard solo cubre esas, no
+    // las `rev.*` fuera de chart de los otros tests.
+    const merchantId = randomUUID();
+    const pending = (
+      await ledger.createAccount({
+        tenantId: org,
+        name: `merchant.pending:${merchantId}`,
+        currency: 'USD',
+        normalSide: 'credit',
+      })
+    ).id;
+    const clearingAcc = (
+      await ledger.createAccount({
+        tenantId: org,
+        name: `provider.clearing:${randomUUID()}`,
+        currency: 'USD',
+        normalSide: 'debit',
+      })
+    ).id;
+
+    // Captura: acredita merchant.pending (pending sube a 5000).
+    const original = await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: key(),
+      reason: 'payment',
+      source: { type: 'payment_attempt', id: randomUUID() },
+      entries: [
+        { accountId: clearingAcc, direction: 'debit', amount: usd(5_000) },
+        { accountId: pending, direction: 'credit', amount: usd(5_000) },
+      ],
+    });
+    expect((await ledger.getBalance(org, pending)).available).toBe('5000');
+
+    // El pending se drena (settlement → available/payout): vuelve a 0.
+    await ledger.postTransaction({
+      tenantId: org,
+      idempotencyKey: key(),
+      reason: 'settlement',
+      source: { type: 'incident', id: 'drain' },
+      entries: [
+        { accountId: pending, direction: 'debit', amount: usd(5_000) },
+        { accountId: clearingAcc, direction: 'credit', amount: usd(5_000) },
+      ],
+    });
+    expect((await ledger.getBalance(org, pending)).available).toBe('0');
+
+    // Revertir la captura debitaría merchant.pending por 5000 sobre saldo 0 →
+    // NEGATIVO. El guard derivado del espejo lo BLOQUEA (antes commiteaba negativo).
+    await expect(
+      ledger.reverseTransaction({
+        tenantId: org,
+        transactionId: original.transactionId,
+        idempotencyKey: key(),
+        source: { type: 'incident', id: 'unsafe-reversal' },
+        note: 'reversal after pending drained',
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    // La reversión abortó: el pending sigue en 0, sin rastro negativo.
+    expect((await ledger.getBalance(org, pending)).available).toBe('0');
   });
 });

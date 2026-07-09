@@ -32,8 +32,18 @@ const LinesSchema = z
         z
           .object({
             provider_ref: z.string().trim().min(1).max(200),
-            amount: z.number().int().positive(),
-            fee: z.number().int().min(0).optional(),
+            // F6: cota de entero seguro (evita el `BigInt` de un double impreciso).
+            amount: z
+              .number()
+              .int()
+              .positive()
+              .refine(Number.isSafeInteger, 'amount out of safe range'),
+            fee: z
+              .number()
+              .int()
+              .min(0)
+              .refine(Number.isSafeInteger, 'fee out of safe range')
+              .optional(),
             settled_at: z.string().datetime({ offset: true }),
           })
           .strict()
