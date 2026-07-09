@@ -14,5 +14,7 @@ Formato: Contexto · Decisión · Alternativas · Consecuencias · Riesgos · Es
 | [0008](0008-money-value-object-propio.md) | Money VO propio con bigint | Aceptado |
 | [0009](0009-webhooks-salientes-internos.md) | Webhooks salientes internos (Svix futuro) | Aceptado |
 | [0010](0010-fastify-zod-sin-nestjs.md) | Fastify + Zod sin NestJS | Aceptado |
+| [0011](0011-outbox-relay-role.md) | Rol dedicado del outbox relay (sin BYPASSRLS) | Aceptado |
+| [0012](0012-secret-manager-produccion.md) | Secret manager en producción: inyección por env + rotación | Propuesto |
 
-Los ADR se numeran secuencialmente y nunca se editan tras aceptarse: se sustituyen por uno nuevo (`Superseded by`).
+Los ADR se numeran secuencialmente y nunca se editan tras aceptarse: se sustituyen por uno nuevo (`Superseded by`). Un ADR **Propuesto** aún puede editarse hasta que el propietario lo acepte.
