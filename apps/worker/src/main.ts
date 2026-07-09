@@ -7,16 +7,24 @@ import { MetricsRegistry } from '@fluvia/observability';
 import { OutboxRelay } from '@fluvia/outbox';
 import { WebhookDeliverer, createWebhookFanoutPublisher } from '@fluvia/webhooks';
 import {
+  DisputeService,
+  FlatBpsFeeSchedule,
   MOCK_PROVIDER_NAME,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  PayoutService,
   ResilientProvider,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
 import { AttemptsWatchdog } from './attempts-watchdog.js';
 import { CheckoutSessionWatchdog } from './checkout-watchdog.js';
 import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watchdog.js';
+import { PayoutsWatchdog } from './payouts-watchdog.js';
+import { PayoutsRedriver } from './payouts-redriver.js';
+import { DisputesWatchdog } from './disputes-watchdog.js';
+import { IdempotencyWatchdog } from './idempotency-watchdog.js';
+import { LedgerCheckpointer } from './ledger-checkpointer.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
 import { WorkerProcess } from './worker.js';
@@ -109,6 +117,55 @@ const reconciliationDiscrepancies = registry.gauge(
   'fluvia_reconciliation_discrepancies_last',
   'Discrepancias detectadas en el último barrido de conciliación (0 = cuadrado)'
 );
+const payoutsSweptTotal = registry.counter(
+  'fluvia_payouts_swept_total',
+  'Payouts barridos de in_transit a indeterminate (lease vencido)'
+);
+const payoutsIndeterminate = registry.gauge(
+  'fluvia_payouts_indeterminate',
+  'Payouts en indeterminate ahora mismo (fondos retenidos en tránsito)'
+);
+const payoutsIndeterminateAged = registry.gauge(
+  'fluvia_payouts_indeterminate_aged',
+  'Payouts indeterminate envejecidos (>30 min) — 0 = sano'
+);
+const payoutsRequestedStuck = registry.gauge(
+  'fluvia_payouts_requested_stuck',
+  'Payouts en requested cuyo execute nunca corrió (>5 min) — 0 = sano'
+);
+const payoutsRedrivenTotal = registry.counter(
+  'fluvia_payouts_redriven_total',
+  'Payouts `requested` atascados re-conducidos por el redriver, por resultado',
+  ['result']
+);
+const disputesHeld = registry.gauge(
+  'fluvia_disputes_held',
+  'Disputas vivas (open/under_review) ahora mismo — fondos apartados en dispute.reserve'
+);
+const disputesAged = registry.gauge(
+  'fluvia_disputes_aged',
+  'Disputas vivas envejecidas (>7 días) — 0 = sano; riesgo de pérdida por no responder'
+);
+const idempotencyInProgress = registry.gauge(
+  'fluvia_idempotency_in_progress',
+  'Claims de idempotencia `in_progress` ahora mismo (cross-tenant)'
+);
+const idempotencyInProgressAged = registry.gauge(
+  'fluvia_idempotency_in_progress_aged',
+  'Huérfanos `in_progress` envejecidos (>1 h) — 0 = sano; bloquean su key hasta la purga'
+);
+const ledgerChainCheckpoints = registry.gauge(
+  'fluvia_ledger_chain_checkpoints',
+  'Checkpoints sellados del hash-chain del ledger (0042) — tamper-evidence'
+);
+const ledgerChainSealedUpto = registry.gauge(
+  'fluvia_ledger_chain_sealed_upto_seq',
+  'Último seq de ledger_entries cubierto por la cadena — lo posterior es horizonte pendiente'
+);
+const ledgerChainUnsealedSeq = registry.gauge(
+  'fluvia_ledger_chain_unsealed_seq',
+  'Rezago de detección: seq aún sin sellar. Si NO decrece, el sellador está atascado/caído (su fallo es silencioso) — el punto ciego que la alerta de estancamiento cubre'
+);
 
 const worker = new WorkerProcess({
   pool: workerPool,
@@ -148,12 +205,24 @@ const purgeJob = new TechnicalPurgeJob(workerPool, logger, {
 // F3-03b: primer handler real del inbox — resuelve attempts asincronos o
 // indeterminados del MockProvider por webhook firmado (fuente verificada).
 const paymentIntents = new PaymentIntentService(appPool);
+const inboxPosting = new PostingService(new LedgerService(appPool), appPool);
+const inboxProvider = new ResilientProvider(new MockPaymentProvider());
 const confirmation = new PaymentConfirmationService(
   appPool,
   paymentIntents,
-  new PostingService(new LedgerService(appPool), appPool),
-  new ResilientProvider(new MockPaymentProvider())
+  inboxPosting,
+  inboxProvider,
+  new FlatBpsFeeSchedule(config.platformFeeBps)
 );
+// F4-07c-ii + F4-07e: un solo PayoutService sobre el appPool sirve dos consumos
+// del worker — el webhook firmado del banco lo resuelve (`resolveFromProvider`,
+// fuente verificada, jamas por asuncion — V4 §23) y el redriver re-conduce los
+// `requested` atascados (`execute`, seguro: el banco jamas fue contactado).
+const payouts = new PayoutService(appPool, inboxPosting, inboxProvider);
+// F4-08c: el mismo webhook firmado del banco ABRE disputas (dispute.opened,
+// idempotente por provider_ref) y las RESUELVE (dispute.won/lost) por fuente
+// verificada — jamas por asuncion (V4 §23).
+const disputes = new DisputeService(appPool, inboxPosting);
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
   onStats: (stats) => {
@@ -164,7 +233,10 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
     if (stats.dead > 0) inboxEventsTotal.inc({ result: 'dead' }, stats.dead);
   },
 });
-inboxProcessor.register(MOCK_PROVIDER_NAME, createMockInboxRegistration(confirmation));
+inboxProcessor.register(
+  MOCK_PROVIDER_NAME,
+  createMockInboxRegistration(confirmation, payouts, disputes)
+);
 // F3-04: barrido submitting->indeterminate + salud de indeterminados. La
 // politica vive en sweep_payment_attempts() (0018); el job la invoca.
 const attemptsWatchdog = new AttemptsWatchdog(workerPool, logger, {
@@ -197,6 +269,59 @@ const reconciliationWatchdog = new ReconciliationWatchdog(workerPool, logger, {
     reconciliationDiscrepancies.set({}, discrepancyCount(r));
   },
 });
+// F4-07c: robustez del plano de payouts. La politica vive en sweep_payouts()
+// (0034); el job la invoca, expone metricas y ALERTA ante indeterminados
+// envejecidos + requested atascados. Un payout barrido queda indeterminate
+// (fondos retenidos), jamas failed por asuncion (V4 §23).
+const payoutsWatchdog = new PayoutsWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    if (health.sweptToIndeterminate > 0) payoutsSweptTotal.inc({}, health.sweptToIndeterminate);
+    payoutsIndeterminate.set({}, health.indeterminateTotal);
+    payoutsIndeterminateAged.set({}, health.indeterminateAged);
+    payoutsRequestedStuck.set({}, health.requestedStuck);
+  },
+});
+// F4-07e: re-drive de los `requested` atascados que F4-07c surfacea. La
+// serializacion (lease + SKIP LOCKED) vive en claim_stuck_payouts() (0035); el
+// job reclama y llama execute — seguro, el banco jamas fue contactado.
+const payoutsRedriver = new PayoutsRedriver(workerPool, payouts, logger, {
+  onResult: (r) => {
+    if (r.redriven > 0) payoutsRedrivenTotal.inc({ result: 'redriven' }, r.redriven);
+    if (r.failed > 0) payoutsRedrivenTotal.inc({ result: 'failed' }, r.failed);
+  },
+});
+// F4-10: salud del plano de disputas. La politica vive en sweep_disputes()
+// (0038); el job la invoca, expone los gauges y ALERTA ante disputas
+// envejecidas. NO transiciona nada (la resolucion es solo por fuente verificada,
+// V4 §23) — solo surfacea el dinero apartado a riesgo.
+const disputesWatchdog = new DisputesWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    disputesHeld.set({}, health.heldTotal);
+    disputesAged.set({}, health.heldAged);
+  },
+});
+// F6 (threat model §5): salud de la capa de idempotencia. La política vive en
+// sweep_idempotency_orphans() (0041); el job la invoca, expone los gauges y
+// ALERTA ante huérfanos `in_progress` envejecidos. NO transiciona nada (un
+// in_progress podría ser una op multi-paso externa viva — borrarlo arriesgaría
+// doble ejecución) — solo surfacea las keys bloqueadas.
+const idempotencyWatchdog = new IdempotencyWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    idempotencyInProgress.set({}, health.inProgressTotal);
+    idempotencyInProgressAged.set({}, health.inProgressAged);
+  },
+});
+// F6 (threat model §5, fila Ledger): sellador del hash-chain de tamper-evidence
+// (0042). Sella checkpoints en dos fases (candidato → finalización tras el
+// horizonte de txid); la VERIFICACIÓN corre como check [7] de
+// verify-ledger-invariants.sql (CI por commit + restore drill), no aquí.
+const ledgerCheckpointer = new LedgerCheckpointer(workerPool, logger, {
+  onResult: (health) => {
+    ledgerChainCheckpoints.set({}, health.checkpointsTotal);
+    ledgerChainSealedUpto.set({}, health.sealedUptoSeq);
+    ledgerChainUnsealedSeq.set({}, health.unsealedSeq);
+  },
+});
 // F3-07: deliverer de webhooks salientes — firma versionada, SSRF guard con
 // pinning por intento, calendario de reintentos del contrato.
 const webhookDeliverer = new WebhookDeliverer(webhookPool, {
@@ -225,6 +350,11 @@ async function shutdown(signal: string): Promise<void> {
   attemptsWatchdog.stop();
   checkoutWatchdog.stop();
   reconciliationWatchdog.stop();
+  payoutsWatchdog.stop();
+  payoutsRedriver.stop();
+  disputesWatchdog.stop();
+  idempotencyWatchdog.stop();
+  ledgerCheckpointer.stop();
   webhookDeliverer.stop();
   metricsServer.close();
   await worker.stop();
@@ -299,6 +429,45 @@ worker
         {},
         'reconciliation watchdog disabled by config (RECONCILIATION_WATCHDOG_ENABLED=false)'
       );
+    }
+    if (config.payoutsWatchdog.enabled) {
+      payoutsWatchdog.start(config.payoutsWatchdog.intervalMs);
+      logger.info({ intervalMs: config.payoutsWatchdog.intervalMs }, 'payouts watchdog started');
+    } else {
+      logger.info({}, 'payouts watchdog disabled by config (PAYOUTS_WATCHDOG_ENABLED=false)');
+    }
+    if (config.payoutsRedriver.enabled) {
+      payoutsRedriver.start(config.payoutsRedriver.intervalMs);
+      logger.info({ intervalMs: config.payoutsRedriver.intervalMs }, 'payouts redriver started');
+    } else {
+      logger.info({}, 'payouts redriver disabled by config (PAYOUTS_REDRIVER_ENABLED=false)');
+    }
+    if (config.disputesWatchdog.enabled) {
+      disputesWatchdog.start(config.disputesWatchdog.intervalMs);
+      logger.info({ intervalMs: config.disputesWatchdog.intervalMs }, 'disputes watchdog started');
+    } else {
+      logger.info({}, 'disputes watchdog disabled by config (DISPUTES_WATCHDOG_ENABLED=false)');
+    }
+    if (config.idempotencyWatchdog.enabled) {
+      idempotencyWatchdog.start(config.idempotencyWatchdog.intervalMs);
+      logger.info(
+        { intervalMs: config.idempotencyWatchdog.intervalMs },
+        'idempotency watchdog started'
+      );
+    } else {
+      logger.info(
+        {},
+        'idempotency watchdog disabled by config (IDEMPOTENCY_WATCHDOG_ENABLED=false)'
+      );
+    }
+    if (config.ledgerCheckpoint.enabled) {
+      ledgerCheckpointer.start(config.ledgerCheckpoint.intervalMs);
+      logger.info(
+        { intervalMs: config.ledgerCheckpoint.intervalMs },
+        'ledger checkpointer started'
+      );
+    } else {
+      logger.info({}, 'ledger checkpointer disabled by config (LEDGER_CHECKPOINT_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);

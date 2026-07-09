@@ -74,6 +74,21 @@ export interface ReconAdjustmentInput {
  *   refund.cancel R:       debit refund.liability R   / credit merchant.available R
  *                          (el proveedor RECHAZO el refund: la reserva vuelve
  *                          integra al comercio — F3-08)
+ *   reserve.hold X:        debit merchant.available X / credit merchant.reserve X   (F4-05a)
+ *   reserve.release X:     debit merchant.reserve X   / credit merchant.available X (F4-05a)
+ *                          (reclasificacion entre pasivos del comercio: la
+ *                          obligacion total no cambia; no depende de pricing)
+ *
+ *   Flujo de fondos hacia afuera (F4-05b, no depende de pricing):
+ *   provider.settle X:     debit platform.cash X      / credit provider.clearing X   (el proveedor liquida a caja)
+ *   payout.emit X:         debit merchant.available X / credit payout.in_transit X   (a "en transito")
+ *   payout.settle X:       debit payout.in_transit X  / credit platform.cash X       (el banco confirma; sale caja)
+ *   payout.fail X:         debit payout.in_transit X  / credit merchant.available X  (rebotado: vuelve al comercio)
+ *
+ *   Disputa / chargeback (F4-08, mismo esqueleto que refunds; sin double-spend):
+ *   dispute.open X:        debit merchant.available X / credit dispute.reserve X     (el banco abre: se aparta)
+ *   dispute.win X:         debit dispute.reserve X    / credit merchant.available X  (ganada: vuelve integra)
+ *   dispute.lose X:        debit dispute.reserve X    / credit provider.clearing X   (perdida: se va vía proveedor)
  */
 export class PostingService {
   constructor(
@@ -278,9 +293,83 @@ export class PostingService {
     return this.twoLegged(input, 'refund', 'refund.liability', 'merchant.available');
   }
 
+  /**
+   * F4-05a — APARTA fondos del disponible del comercio a su reserva
+   * (riesgo/disputas). Reclasificacion entre dos pasivos del comercio: la
+   * obligacion total NO cambia, solo deja de estar disponible para payout. El
+   * guard de no-negatividad impide reservar mas de lo disponible. No depende de
+   * pricing (el monto es una entrada; la politica de cuanto/cuanto tiempo es un
+   * parametro del que llama).
+   */
+  async holdReserve(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'reserve', 'merchant.available', 'merchant.reserve');
+  }
+
+  /** F4-05a — LIBERA fondos de la reserva al disponible del comercio (reverso
+   * de holdReserve). El guard impide liberar mas de lo reservado. */
+  async releaseReserve(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'reserve', 'merchant.reserve', 'merchant.available');
+  }
+
+  /**
+   * F4-05b — el proveedor LIQUIDA a la caja/banco de Fluvia los fondos que tenia
+   * en clearing (el lado de CAJA de la liquidacion; el lado de pasivo del
+   * comercio es releaseSettlement). Convierte "el proveedor tiene nuestro dinero"
+   * en "tenemos caja". Guard: no liquidar mas de lo que el proveedor tiene en
+   * clearing.
+   */
+  async receiveProviderSettlement(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'settlement', 'platform.cash', 'provider.clearing');
+  }
+
+  /**
+   * F4-05b — EMITE un payout: el disponible del comercio pasa a "en transito"
+   * (obligacion en vuelo). Guard AUD-P1-010: no emitir mas de lo disponible ⇒
+   * los fondos en vuelo no se pueden re-pagar ni refundar (no double-spend).
+   */
+  async emitPayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'merchant.available', 'payout.in_transit');
+  }
+
+  /** F4-05b — el banco CONFIRMA el payout: la obligacion en transito se descarga
+   * contra la caja (el dinero sale de verdad). Guard: no pagar mas caja de la que
+   * hay. */
+  async settlePayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'payout.in_transit', 'platform.cash');
+  }
+
+  /** F4-05b — el payout FALLO (rebotado por el banco): la obligacion en transito
+   * vuelve integra al disponible del comercio (reverso de emitPayout). */
+  async failPayout(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'payout', 'payout.in_transit', 'merchant.available');
+  }
+
+  /**
+   * F4-08 — el banco ABRE una disputa: se APARTA el monto disputado del
+   * disponible del comercio a `dispute.reserve`. Guard AUD-P1-010: no se puede
+   * apartar mas de lo disponible ⇒ el dinero disputado no se puede pagar ni
+   * disputar dos veces (no double-spend). Mismo esqueleto que requestRefund.
+   */
+  async openDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'merchant.available', 'dispute.reserve');
+  }
+
+  /** F4-08 — el comercio GANA la disputa: lo apartado vuelve integro al
+   * disponible (reverso de openDispute). Guard: no liberar mas de lo apartado. */
+  async winDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'dispute.reserve', 'merchant.available');
+  }
+
+  /** F4-08 — el comercio PIERDE la disputa: lo apartado se forfeita al proveedor
+   * (el dinero se va de vuelta, como un refund forzado — mismo destino que
+   * settleRefund). Guard: dispute.reserve y provider.clearing no quedan negativos. */
+  async loseDispute(input: SimpleAmountInput): Promise<PostedTransaction> {
+    return this.twoLegged(input, 'dispute', 'dispute.reserve', 'provider.clearing');
+  }
+
   private async twoLegged(
     input: SimpleAmountInput,
-    reason: 'settlement' | 'refund',
+    reason: 'settlement' | 'refund' | 'reserve' | 'payout' | 'dispute',
     debitCode: AccountCode,
     creditCode: AccountCode
   ): Promise<PostedTransaction> {
@@ -288,6 +377,15 @@ export class PostingService {
       throw new InvalidEntriesError('Amount must be strictly positive');
     }
     const chart = await this.ensureChart(input.tenantId, input.merchantId, input.amount.currency);
+    // AUD-P1-010: ninguna cuenta que DECRECE con este asiento puede quedar en
+    // negativo (no se mueve hacia afuera mas de lo que hay). Una cuenta decrece
+    // si se debita su lado credit-normal (pasivo/ingreso) o se acredita su lado
+    // debit-normal (activo/gasto/transitoria). Se calcula desde el chart para que
+    // valga con cualquier par de cuentas (p. ej. provider.settle acredita un
+    // activo, payout.settle acredita la caja). Verificado bajo lock en el motor.
+    const guarded: string[] = [];
+    if (CHART_OF_ACCOUNTS[debitCode].normalSide === 'credit') guarded.push(chart[debitCode]);
+    if (CHART_OF_ACCOUNTS[creditCode].normalSide === 'debit') guarded.push(chart[creditCode]);
     return this.ledger.postTransaction({
       tenantId: input.tenantId,
       idempotencyKey: input.idempotencyKey,
@@ -297,9 +395,7 @@ export class PostingService {
         { accountId: chart[debitCode], direction: 'debit', amount: input.amount },
         { accountId: chart[creditCode], direction: 'credit', amount: input.amount },
       ],
-      // AUD-P1-010: la cuenta debitada no puede quedar en negativo (no se
-      // libera/refunda mas de lo que hay). Verificado bajo lock en el motor.
-      nonNegativeAccounts: [chart[debitCode]],
+      nonNegativeAccounts: guarded,
       onPosted: input.onPosted,
     });
   }

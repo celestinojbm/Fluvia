@@ -1,5 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { canResendRole, fetchDashboardData, fetchOrganizations, login } from '../app/lib/api';
+import {
+  canManageReconciliation,
+  canReadAudit,
+  canResendRole,
+  fetchAuditEvents,
+  fetchDashboardData,
+  fetchMerchants,
+  fetchOperationalCase,
+  fetchOperationalCases,
+  fetchOrganizations,
+  filterMerchants,
+  liveAdjustment,
+  login,
+  type CaseAdjustment,
+  type Merchant,
+} from '../app/lib/api';
 
 /**
  * F3-09b — lógica pura del cliente de la API (server-side), probada en CI sin
@@ -60,6 +75,178 @@ describe('canResendRole', () => {
     for (const r of ['finance', 'support', 'analyst', 'read_only', undefined]) {
       expect(canResendRole(r)).toBe(false);
     }
+  });
+});
+
+describe('canManageReconciliation', () => {
+  it('allows money-governing roles (owner/admin/finance) and rejects the rest', () => {
+    // Espeja ROLE_PERMISSIONS de @fluvia/identity: reconciliation:manage.
+    for (const r of ['owner', 'admin', 'finance']) expect(canManageReconciliation(r)).toBe(true);
+    for (const r of ['developer', 'read_only', 'support', undefined]) {
+      expect(canManageReconciliation(r)).toBe(false);
+    }
+  });
+});
+
+function adj(status: CaseAdjustment['status']): CaseAdjustment {
+  return {
+    id: `adj_${status}`,
+    case_id: 'c1',
+    amount: 9_000,
+    currency: 'COP',
+    direction: 'debit_differences',
+    reason: 'r',
+    status,
+    requires_second_approval: true,
+    proposed_by_user_id: 'u1',
+    approved_by_user_id: null,
+    rejected_by_user_id: null,
+    rejection_reason: null,
+    ledger_transaction_id: null,
+    version: 1,
+    created_at: '2026-07-06T00:00:00Z',
+    decided_at: null,
+  };
+}
+
+describe('liveAdjustment', () => {
+  it('finds a proposed/applied adjustment but ignores rejected ones', () => {
+    expect(liveAdjustment([adj('rejected')])).toBeUndefined();
+    expect(liveAdjustment([adj('rejected'), adj('proposed')])?.status).toBe('proposed');
+    expect(liveAdjustment([adj('applied')])?.status).toBe('applied');
+    expect(liveAdjustment([])).toBeUndefined();
+  });
+});
+
+describe('operational cases fetchers', () => {
+  it('fetchOperationalCases passes status/severity filters and degrades to []', async () => {
+    const spy = fakeFetch(200, { data: [{ id: 'case_1' }] });
+    const ok = await fetchOperationalCases({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      status: 'open',
+      fetchImpl: spy,
+    });
+    expect(ok).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('status=open'), expect.anything());
+    const bad = await fetchOperationalCases({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual([]);
+  });
+
+  it('fetchOperationalCase returns the detail and null on error', async () => {
+    const ok = await fetchOperationalCase({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      caseId: 'case_1',
+      fetchImpl: fakeFetch(200, { id: 'case_1', adjustments: [] }),
+    });
+    expect(ok?.id).toBe('case_1');
+    const missing = await fetchOperationalCase({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      caseId: 'nope',
+      fetchImpl: fakeFetch(404, {}),
+    });
+    expect(missing).toBeNull();
+  });
+});
+
+function fakeFetch(status: number, body: unknown): typeof fetch {
+  return vi.fn(() =>
+    Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) })
+  ) as unknown as typeof fetch;
+}
+
+function merchant(over: Partial<Merchant> = {}): Merchant {
+  return {
+    id: 'mer_abc',
+    name: 'Acme',
+    country: 'CO',
+    defaultCurrency: 'COP',
+    status: 'active',
+    createdAt: '2026-07-06T00:00:00Z',
+    ...over,
+  };
+}
+
+describe('fetchMerchants', () => {
+  it('returns the merchants list and degrades to [] on error', async () => {
+    const ok = await fetchMerchants({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(200, { merchants: [merchant()] }),
+    });
+    expect(ok).toHaveLength(1);
+    const bad = await fetchMerchants({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual([]);
+  });
+});
+
+describe('filterMerchants', () => {
+  const list = [
+    merchant({ id: 'mer_1', name: 'Tienda Norte', country: 'CO', defaultCurrency: 'COP' }),
+    merchant({ id: 'mer_2', name: 'Shop South', country: 'US', defaultCurrency: 'USD' }),
+  ];
+  it('returns everything for an empty/blank query', () => {
+    expect(filterMerchants(list, undefined)).toHaveLength(2);
+    expect(filterMerchants(list, '   ')).toHaveLength(2);
+  });
+  it('matches case-insensitively on name, id, country and currency', () => {
+    expect(filterMerchants(list, 'norte').map((m) => m.id)).toEqual(['mer_1']);
+    expect(filterMerchants(list, 'MER_2').map((m) => m.id)).toEqual(['mer_2']);
+    expect(filterMerchants(list, 'us').map((m) => m.id)).toEqual(['mer_2']);
+    expect(filterMerchants(list, 'cop').map((m) => m.id)).toEqual(['mer_1']);
+    expect(filterMerchants(list, 'nomatch')).toEqual([]);
+  });
+});
+
+describe('canReadAudit', () => {
+  it('allows audit-reading roles (owner/admin/finance/analyst) and rejects the rest', () => {
+    for (const r of ['owner', 'admin', 'finance', 'analyst']) expect(canReadAudit(r)).toBe(true);
+    for (const r of ['developer', 'support', 'read_only', undefined]) {
+      expect(canReadAudit(r)).toBe(false);
+    }
+  });
+});
+
+describe('fetchAuditEvents', () => {
+  it('returns events with the cursor and passes ?before, degrading on error', async () => {
+    const spy = fakeFetch(200, {
+      audit_events: [{ id: '42', action: 'x' }],
+      next_before: '42',
+    });
+    const ok = await fetchAuditEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      before: '99',
+      fetchImpl: spy,
+    });
+    expect(ok.events).toHaveLength(1);
+    expect(ok.nextBefore).toBe('42');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('before=99'), expect.anything());
+
+    const bad = await fetchAuditEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: fakeFetch(403, {}),
+    });
+    expect(bad).toEqual({ events: [], nextBefore: null });
   });
 });
 

@@ -138,6 +138,13 @@ export class Money {
    * Reparte el monto segun ratios enteros positivos sin perder ni crear
    * una sola unidad menor (metodo de mayor residuo). La suma de las partes
    * es SIEMPRE identica al monto original.
+   *
+   * V2-R5 (re-auditoria v2): el residuo se reparte round-robin EMPEZANDO en el
+   * indice 0, asi que en un split con residuo el participante 0 recibe la primera
+   * unidad menor extra. Es DETERMINISTA a proposito (misma entrada => misma
+   * salida, reproducible en tests y auditoria). Si un caller necesita repartir el
+   * sesgo (p. ej. muchos splits de fees con el mismo primer ratio), debe barajar
+   * el orden de los ratios el mismo (el algoritmo no lo hace por diseno).
    */
   allocate(ratios: readonly number[]): Money[] {
     if (ratios.length === 0) {

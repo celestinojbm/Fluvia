@@ -19,6 +19,8 @@ jobs:
       RELAY_DATABASE_URL: postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia
       INBOX_DATABASE_URL: postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia
       AUTH_DATABASE_URL: postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia
+      # TM-03: los tests del rate limiter COMPARTIDO corren contra Redis real.
+      REDIS_URL: redis://127.0.0.1:6379
     services:
       postgres:
         image: postgres:16
@@ -33,12 +35,21 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -70,22 +81,53 @@ jobs:
       - name: Invariantes del ledger — SQL externo al ORM (F2-06, Gate Ledger)
         run: psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/verify-ledger-invariants.sql
 
+      - name: Worker-down drill — Gate Restore/resiliencia (F6, TM-04)
+        # Ensaya el runbook «worker caído» sobre PG16 real (roles de mínimo
+        # privilegio): reinicio (checkReady) -> el relay del outbox y el processor
+        # del inbox DRENAN su backlog solos -> el drift watcher DETECTA el drift
+        # acumulado -> reparación EXPLÍCITA (rebuildProjection) deja el watcher
+        # limpio. Solo Postgres (sin Redis). Corre tras la suite sobre la BD poblada
+        # (drenado dirigido por objetivo, robusto al backlog heredado) y deja la BD
+        # consistente para el restore drill.
+        run: pnpm --filter @fluvia/api run drill:worker-down
+
+      - name: Asegurar pg_dump 16+ (para el restore drill)
+        run: |
+          major=$(pg_dump --version | awk '{print $NF}' | cut -d. -f1)
+          echo "pg_dump major=$major"
+          if [ "$major" -lt 16 ]; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client-16
+          fi
+          pg_dump --version
+
+      - name: Restore drill — Gate Restore (F6, TM-04)
+        # Ensaya el runbook de recuperación de desastre sobre PG16 real:
+        # pg_dump -Fc -> pg_restore --exit-on-error en base fresca -> invariantes +
+        # paridad (checksums row-level) sobre la copia -> drift detectado + rebuild
+        # -> RLS preservado. Corre tras la suite (BD poblada, como una copia real).
+        run: pnpm --filter @fluvia/api run drill:restore
+
   security:
     name: Secret scanning, dependencias y SBOM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
       - name: Secret scanning (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Version del binario EXPLICITA (la config vive en .gitleaks.toml): la
+          # action ya va pineada por SHA de commit, pero DESCARGA un binario de
+          # gitleaks aparte; sin esto la version del escaner podria cambiar bajo
+          # ese SHA. Dependabot mantiene ambos (el SHA de la action y este pin).
+          GITLEAKS_VERSION: 8.24.3
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -97,8 +139,22 @@ jobs:
         run: pnpm audit --audit-level high
 
       - name: SBOM (syft, SPDX)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: spdx-json
           artifact-name: fluvia-sbom.spdx.json
+
+      # F6 (threat model §5 — Secretos/cadena): el SBOM se generaba pero nadie
+      # lo LEÍA (capacidad simulada). Grype escanea el mismo árbol y ROMPE el
+      # build ante High/Critical no aceptadas explícitamente en `.grype.yaml`
+      # (el registro de aceptación versionado — proceso en
+      # docs/security/vulnerability-acceptance.md). Complementa `pnpm audit`
+      # (otra base de datos, otro matcher: defensa en profundidad).
+      - name: Escaneo de vulnerabilidades (grype — falla en High/Critical no aceptadas)
+        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6.5.1
+        with:
+          path: '.'
+          fail-build: true
+          severity-cutoff: high
+          output-format: table

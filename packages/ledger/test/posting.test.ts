@@ -53,7 +53,7 @@ afterAll(async () => {
 });
 
 describe('Chart of Accounts (catalogo == doc)', () => {
-  it('GOLDEN: the catalog has exactly the 13 documented accounts', () => {
+  it('GOLDEN: the catalog has exactly the 14 documented accounts', () => {
     expect([...ACCOUNT_CODES].sort()).toEqual(
       [
         'provider.clearing',
@@ -61,6 +61,7 @@ describe('Chart of Accounts (catalogo == doc)', () => {
         'provider.payable',
         'provider.fees',
         'platform.fees',
+        'platform.cash',
         'payout.in_transit',
         'suspense',
         'recon.differences',
@@ -82,16 +83,16 @@ describe('Chart of Accounts (catalogo == doc)', () => {
     }
   });
 
-  it('ensureChart provisions all 13 accounts idempotently', async () => {
+  it('ensureChart provisions all 14 accounts idempotently', async () => {
     const first = await posting.ensureChart(org, merchantId, 'COP');
     const second = await posting.ensureChart(org, merchantId, 'COP');
-    expect(Object.keys(first)).toHaveLength(13);
+    expect(Object.keys(first)).toHaveLength(14);
     expect(second).toEqual(first);
     const count = await ctx.admin.query(
       `SELECT count(*)::int AS n FROM ledger_accounts WHERE tenant_id = $1 AND currency = 'COP'`,
       [org]
     );
-    expect(count.rows[0]!.n).toBe(13);
+    expect(count.rows[0]!.n).toBe(14);
   });
 
   it('rejects codes outside the catalog (fuera de catalogo = irrepresentable)', async () => {
@@ -346,5 +347,332 @@ describe('GOLDEN: ciclo completo captura -> liquidacion -> refund', () => {
     expect(replay.replayed).toBe(true);
     const bal = await ledger.getBalance(org, chart['merchant.pending']);
     expect(bal.available).toBe('10000');
+  });
+});
+
+describe('GOLDEN: reserves hold/release — F4-05a', () => {
+  it('capture -> settle -> hold(30000) -> release(10000): reclasifica sin cambiar la obligacion total', async () => {
+    const rOrg = await ctx.createTenant('Golden Reserve Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(rOrg, m, 'COP');
+    const base = { tenantId: rOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-r',
+      amount: cop(100_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-r',
+      amount: cop(100_000),
+    });
+    // available = 100000
+    await posting.holdReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'hold-r',
+      amount: cop(30_000),
+    });
+    await posting.releaseReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'rel-r',
+      amount: cop(10_000),
+    });
+
+    const b = await balances(rOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('80000'); // 100000 - 30000 + 10000
+    expect(b['merchant.reserve']).toBe('20000'); // 30000 - 10000
+    // Invariante: la obligacion total con el comercio no cambia (solo se reclasifica).
+    expect(Number(b['merchant.available']) + Number(b['merchant.reserve'])).toBe(100_000);
+    for (const code of ['merchant.available', 'merchant.reserve'] as AccountCode[]) {
+      const check = await ledger.verifyProjection(rOrg, chart[code]);
+      expect(check.matches, `${code}: ${JSON.stringify(check)}`).toBe(true);
+    }
+  });
+
+  // AUD-P1-010: la cuenta debitada de cada operacion no puede quedar negativa.
+  it('cannot hold more than available nor release more than reserved (sin efectos)', async () => {
+    const gOrg = await ctx.createTenant('Golden Reserve Guard Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(gOrg, m, 'COP');
+    const base = { tenantId: gOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-g',
+      amount: cop(50_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-g',
+      amount: cop(50_000),
+    });
+    // available = 50000: reservar 50001 falla sin efectos.
+    await expect(
+      posting.holdReserve({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'hold-over',
+        amount: cop(50_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    await posting.holdReserve({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'hold-g',
+      amount: cop(20_000),
+    });
+    // reserve = 20000: liberar 20001 falla sin efectos.
+    await expect(
+      posting.releaseReserve({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'rel-over',
+        amount: cop(20_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    const b = await balances(gOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('30000'); // 50000 - 20000; los intentos fallidos no tocaron nada
+    expect(b['merchant.reserve']).toBe('20000');
+  });
+
+  it('holdReserve is idempotent (replay does not double-hold)', async () => {
+    const m = randomUUID();
+    const chart = await posting.ensureChart(org, m, 'COP');
+    const base = { tenantId: org, merchantId: m, sourceType: 'test' };
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-i',
+      amount: cop(10_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-i',
+      amount: cop(10_000),
+    });
+    const hold = { ...base, idempotencyKey: key(), sourceId: 'hold-i', amount: cop(4_000) };
+    await posting.holdReserve(hold);
+    const replay = await posting.holdReserve(hold);
+    expect(replay.replayed).toBe(true);
+    const bal = await ledger.getBalance(org, chart['merchant.reserve']);
+    expect(bal.available).toBe('4000'); // no se duplico
+  });
+});
+
+describe('GOLDEN: payout hacia afuera — F4-05b', () => {
+  // Flujo completo de fondos: captura -> el proveedor liquida a caja -> el pasivo
+  // del comercio pasa a disponible -> payout emit -> el banco confirma (settle).
+  it('capture -> provider.settle -> release -> payout emit(60000) + settle(60000): balances exactos', async () => {
+    const pOrg = await ctx.createTenant('Golden Payout Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(pOrg, m, 'COP');
+    const base = { tenantId: pOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-p',
+      amount: cop(100_000),
+    });
+    // provider.clearing = 100000, merchant.pending = 100000
+    await posting.receiveProviderSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'psettle-p',
+      amount: cop(100_000),
+    });
+    // platform.cash = 100000, provider.clearing = 0
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-p',
+      amount: cop(100_000),
+    });
+    // merchant.available = 100000, merchant.pending = 0
+    await posting.emitPayout({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'payout-p',
+      amount: cop(60_000),
+    });
+    // merchant.available = 40000, payout.in_transit = 60000 (obligacion en vuelo)
+    await posting.settlePayout({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'payout-p',
+      amount: cop(60_000),
+    });
+    // payout.in_transit = 0, platform.cash = 40000 (salieron 60000)
+
+    const b = await balances(pOrg, chart as Record<AccountCode, string>);
+    expect(b['provider.clearing']).toBe('0');
+    expect(b['merchant.pending']).toBe('0');
+    expect(b['merchant.available']).toBe('40000'); // 100000 - 60000 pagados
+    expect(b['payout.in_transit']).toBe('0'); // obligacion descargada
+    expect(b['platform.cash']).toBe('40000'); // 100000 recibidos - 60000 pagados
+    for (const code of [
+      'platform.cash',
+      'payout.in_transit',
+      'merchant.available',
+      'provider.clearing',
+    ] as AccountCode[]) {
+      const check = await ledger.verifyProjection(pOrg, chart[code]);
+      expect(check.matches, `${code}: ${JSON.stringify(check)}`).toBe(true);
+    }
+  });
+
+  // El banco RECHAZA el payout: la obligacion en transito vuelve integra al comercio.
+  it('payout emit -> fail devuelve el disponible al comercio (sin tocar caja)', async () => {
+    const fOrg = await ctx.createTenant('Golden Payout Fail Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(fOrg, m, 'COP');
+    const base = { tenantId: fOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-f',
+      amount: cop(50_000),
+    });
+    await posting.receiveProviderSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'psettle-f',
+      amount: cop(50_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-f',
+      amount: cop(50_000),
+    });
+    await posting.emitPayout({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'payout-f',
+      amount: cop(30_000),
+    });
+    await posting.failPayout({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'payout-f-fail',
+      amount: cop(30_000),
+    });
+
+    const b = await balances(fOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('50000'); // devuelto integro
+    expect(b['payout.in_transit']).toBe('0');
+    expect(b['platform.cash']).toBe('50000'); // intacta: el dinero jamas salio
+  });
+
+  // AUD-P1-010, generalizado a toda cuenta que decrece: no liquidar más del
+  // clearing del proveedor, no emitir más de lo disponible (no double-spend de
+  // fondos en vuelo), no confirmar más caja de la que hay.
+  it('non-negativity guards: provider.settle>clearing, emit>available, settle>cash (sin efectos)', async () => {
+    const gOrg = await ctx.createTenant('Golden Payout Guard Org');
+    const m = randomUUID();
+    const chart = await posting.ensureChart(gOrg, m, 'COP');
+    const base = { tenantId: gOrg, merchantId: m, sourceType: 'test' };
+
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-g',
+      amount: cop(50_000),
+    });
+    // clearing = 50000: liquidar 50001 a caja falla (guard sobre provider.clearing).
+    await expect(
+      posting.receiveProviderSettlement({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'ps-over',
+        amount: cop(50_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    // Fondea caja PARCIALMENTE (30000) para poder probar el guard de caja luego.
+    await posting.receiveProviderSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'ps-g',
+      amount: cop(30_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-g',
+      amount: cop(50_000),
+    });
+    // available = 50000: emitir 50001 falla (guard sobre merchant.available).
+    await expect(
+      posting.emitPayout({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'emit-over',
+        amount: cop(50_001),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    // Emite 40000 (en transito = 40000) con caja = 30000 < 40000.
+    await posting.emitPayout({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'emit-g',
+      amount: cop(40_000),
+    });
+    // Confirmar 40000 dejaría la caja en -10000: falla (guard sobre platform.cash).
+    await expect(
+      posting.settlePayout({
+        ...base,
+        idempotencyKey: key(),
+        sourceId: 'settle-over',
+        amount: cop(40_000),
+      })
+    ).rejects.toThrow(InsufficientBalanceError);
+
+    const b = await balances(gOrg, chart as Record<AccountCode, string>);
+    expect(b['merchant.available']).toBe('10000'); // 50000 - 40000; los fallidos no tocaron nada
+    expect(b['payout.in_transit']).toBe('40000');
+    expect(b['platform.cash']).toBe('30000'); // sin salir: la confirmación falló
+  });
+
+  it('emitPayout is idempotent (replay does not double-emit)', async () => {
+    const m = randomUUID();
+    const chart = await posting.ensureChart(org, m, 'COP');
+    const base = { tenantId: org, merchantId: m, sourceType: 'test' };
+    await posting.capturePayment({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'pay-pi',
+      amount: cop(10_000),
+    });
+    await posting.receiveProviderSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'ps-pi',
+      amount: cop(10_000),
+    });
+    await posting.releaseSettlement({
+      ...base,
+      idempotencyKey: key(),
+      sourceId: 'settle-pi',
+      amount: cop(10_000),
+    });
+    const emit = { ...base, idempotencyKey: key(), sourceId: 'emit-pi', amount: cop(4_000) };
+    await posting.emitPayout(emit);
+    const replay = await posting.emitPayout(emit);
+    expect(replay.replayed).toBe(true);
+    const bal = await ledger.getBalance(org, chart['payout.in_transit']);
+    expect(bal.available).toBe('4000'); // no se duplico
   });
 });

@@ -134,6 +134,15 @@ describe('reenvío manual auditado', () => {
       [org, fresh.id]
     );
     expect(audit.rowCount).toBe(1);
+
+    // Cuarentena: el clon queda `pending` ELEGIBLE apuntando a example.test;
+    // el claim del deliverer de delivery.test (archivo paralelo) es global y
+    // lo tomaría, metiendo DNS real y latencia ajena en aquel archivo. Se
+    // empuja fuera de la ventana (las aserciones de aquí no dependen de eso).
+    await ctx.admin.query(
+      `UPDATE webhook_events SET next_attempt_at = now() + interval '1 hour' WHERE id = $1`,
+      [fresh.id]
+    );
   });
 
   it('refuses to resend a non-dead event', async () => {

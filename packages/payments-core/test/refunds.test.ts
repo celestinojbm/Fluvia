@@ -12,6 +12,7 @@ import {
   PaymentIntentService,
   RefundAmountExceedsRemainingError,
   RefundService,
+  ZERO_FEE_SCHEDULE,
   type PaymentProvider,
   type ProviderOutcome,
   type RefundPaymentInput,
@@ -131,7 +132,8 @@ beforeAll(async () => {
     ctx.app,
     intents,
     posting,
-    new MockPaymentProvider()
+    new MockPaymentProvider(),
+    ZERO_FEE_SCHEDULE
   );
   refunds = new RefundService(ctx.app, intents, posting, new MockPaymentProvider());
   org = await ctx.createTenant(`Refund ${randomUUID().slice(0, 8)}`);

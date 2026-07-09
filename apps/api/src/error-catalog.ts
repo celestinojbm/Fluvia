@@ -140,7 +140,8 @@ export const ERROR_CATALOG = {
   mfa_step_up_required: {
     status: 403,
     type: 'authorization_error',
-    message: 'This action requires recent MFA verification; call /v1/auth/mfa/step-up',
+    message:
+      'This action requires recent re-authentication: call /v1/auth/mfa/step-up (MFA) or /v1/auth/step-up/password (no MFA)',
   },
   // --- no encontrado (anti-enumeracion: cross-tenant es indistinguible) ---
   not_found: {
@@ -208,6 +209,18 @@ export const ERROR_CATALOG = {
     status: 422,
     type: 'unprocessable_error',
     message: 'The refund amount exceeds the remaining refundable amount for this payment',
+  },
+  payout_amount_exceeds_balance: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: "The payout amount exceeds the merchant's available balance",
+  },
+  // TM-06 (pci-scope.md §3): Fluvia jamas acepta datos primarios de tarjeta.
+  card_data_not_allowed: {
+    status: 422,
+    type: 'unprocessable_error',
+    message:
+      'The request appears to contain primary card data (PAN/CVV). Fluvia never accepts raw card data; use provider tokenization (tok_...)',
   },
   mfa_already_enabled: {
     status: 409,
@@ -281,6 +294,11 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // refunds F3-08
   RefundNotFoundError: 'not_found',
   RefundAmountExceedsRemainingError: 'refund_amount_exceeds_remaining',
+  // payouts F4-07
+  PayoutNotFoundError: 'not_found',
+  InsufficientPayoutBalanceError: 'payout_amount_exceeds_balance',
+  // disputas F4-08
+  DisputeNotFoundError: 'not_found',
   // checkout sessions F3-05b
   CheckoutSessionNotFoundError: 'not_found',
   CheckoutSessionInvalidCustomerError: 'validation_error',

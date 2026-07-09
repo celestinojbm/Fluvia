@@ -63,3 +63,48 @@ export class RefundAmountExceedsRemainingError extends PaymentsCoreError {
     );
   }
 }
+
+export class PayoutNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Payout not found');
+  }
+}
+
+/**
+ * F4-07: un payout jamás puede emitir más que el disponible del comercio (menos
+ * los payouts ya en vuelo). Pre-chequeo en fase 1; el guard AUD-P1-010 del motor
+ * es la protección atómica final. V4 Nivel A (conservador: jamás sobre-paga).
+ */
+export class InsufficientPayoutBalanceError extends PaymentsCoreError {
+  constructor(
+    readonly requested: string,
+    readonly available: string
+  ) {
+    super(
+      `Payout amount ${requested} exceeds the merchant's available balance ${available} (available minus in-flight payouts)`
+    );
+  }
+}
+
+export class DisputeNotFoundError extends PaymentsCoreError {
+  constructor() {
+    super('Dispute not found');
+  }
+}
+
+/**
+ * F4-08: abrir una disputa aparta el monto disputado del disponible del comercio
+ * (available -> dispute.reserve); en el sandbox v1 el guard de no-negatividad
+ * AUD-P1-010 impide apartar más de lo disponible. (En real una disputa puede
+ * dejar al comercio en negativo: modelo de saldo deudor, decisión mayor futura.)
+ */
+export class InsufficientDisputeBalanceError extends PaymentsCoreError {
+  constructor(
+    readonly amount: string,
+    readonly available: string
+  ) {
+    super(
+      `Dispute amount ${amount} exceeds the merchant's available balance ${available} (cannot set aside more than available in sandbox v1)`
+    );
+  }
+}

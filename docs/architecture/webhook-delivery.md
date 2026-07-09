@@ -28,6 +28,8 @@ Backoff exponencial con jitter, calendario configurable (Nivel C; baseline: 0s, 
 
 - Resolver DNS y validar **todas** las IPs (v4 y v6) contra denylist: rangos privados (RFC1918, ULA), loopback, link-local (169.254.0.0/16 — metadata endpoints), multicast.
 - Re-validación en cada intento (protección contra DNS rebinding): conectar a la IP validada, no re-resolver.
+- Failover de conexión (V2-N2, F6): si la conexión (TCP/TLS) **jamás se estableció** con una IP — nadie recibió un byte del payload — el intento prueba las demás IPs **ya validadas** de la misma resolución (máx. 3; el cap acota el trabajo extra por fila). Jamás re-resuelve, y jamás si el socket conectó o hubo respuesta HTTP (aun 5xx): re-enviar el mismo intento firmado a otra IP sería doble entrega dentro del intento; ese reintento pertenece al calendario. El attempt registra la IP que contestó (o todas las inalcanzables en el error si ninguna conectó).
+- TLS estricto: `rejectUnauthorized: true` EXPLÍCITO (el default de Node es anulable con `NODE_TLS_REJECT_UNAUTHORIZED=0`; fijado en código, el footgun no aplica — probado contra un receptor self-signed que jamás recibe el payload firmado); SNI solo con nombre DNS (RFC 6066).
 - HTTPS obligatorio (HTTP solo en entorno local), puertos permitidos 443 (+80 local), sin seguir redirects cross-host, límite de tamaño de respuesta, registro del destino resuelto en cada attempt.
 
 ## 5. Catálogo de eventos del MVP (normalizado; auditoría D3)
@@ -35,9 +37,11 @@ Backoff exponencial con jitter, calendario configurable (Nivel C; baseline: 0s, 
 `payment_intent.created|processing|requires_action|succeeded|failed|canceled`,
 `refund.created|processing|succeeded|failed|canceled`,
 `checkout_session.completed|expired`,
+`payout.requested|in_transit|paid|failed`,
+`dispute.open|under_review|won|lost`,
 `merchant.updated`.
 
-Reservados post-MVP: `charge.*`, `dispute.*`, `settlement.*`, `payout.*`. El catálogo vive en código (`packages/webhooks/src/events.ts`) y este documento se genera/verifica contra él (F3).
+Reservados post-MVP: `charge.*`, `settlement.*`. `payout.*` (F4-07) y `dispute.*` (F4-08) se graduaron de reservados a activos con **F4-09**: los motores los emiten al outbox y el fan-out (§1) los entrega a los endpoints suscritos (el estado payout indeterminate queda interno/silente, no se emite). El catálogo vive en código (`packages/webhooks/src/events.ts`) y este documento se genera/verifica contra él (F3).
 
 ## 6. Por qué no Svix todavía
 

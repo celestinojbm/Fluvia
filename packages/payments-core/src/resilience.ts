@@ -4,6 +4,7 @@ import {
   type ProviderOutcome,
   type RefundPaymentInput,
   type SubmitPaymentInput,
+  type SubmitPayoutInput,
 } from './provider.js';
 
 /**
@@ -86,6 +87,15 @@ export class ResilientProvider implements PaymentProvider {
       throw new Error(`Provider ${this.name} does not support refunds`);
     }
     return this.guarded(() => refund(input));
+  }
+
+  /** Mismo circuito y timeout para payouts (F4-07): el proveedor es UNO. */
+  async submitPayout(input: SubmitPayoutInput): Promise<ProviderOutcome> {
+    const payout = this.inner.submitPayout?.bind(this.inner);
+    if (!payout) {
+      throw new Error(`Provider ${this.name} does not support payouts`);
+    }
+    return this.guarded(() => payout(input));
   }
 
   private async guarded(call: () => Promise<ProviderOutcome>): Promise<ProviderOutcome> {

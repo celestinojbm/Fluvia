@@ -1,0 +1,33 @@
+# Dependabot (threat model §5 — Secretos/cadena): sin esto las dependencias
+# envejecen en silencio y el «fix disponible» de una CVE jamás llega solo. Los
+# PRs de bump pasan por el MISMO CI que todo lo demás (suite completa contra
+# PG real + gates de seguridad), así que un upgrade roto no puede mergear.
+version: 2
+updates:
+  # Monorepo pnpm: un solo lockfile en la raíz cubre todos los workspaces.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Bumps menores/patch agrupados: un PR revisable por semana, no veinte.
+      minor-y-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Actions de CI (checkout, setup-node, gitleaks, anchore…): son código que
+  # corre con permisos del repo — misma cadena de suministro que las deps.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # La imagen base del Dockerfile está pineada por digest; Dependabot propone
+  # el bump del digest cuando node:22-slim avanza (parches de seguridad de la
+  # base llegan como PR explícito, no re-apuntando el tag en silencio).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

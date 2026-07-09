@@ -274,6 +274,7 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
   });
 
   it('ADR-0011: fluvia_relay holds ONLY outbox_events SELECT + column-scoped UPDATE', async () => {
+    // (mantiene la aserción específica; el barrido deny-by-default vive abajo)
     const tables = await ctx.admin.query<{ table_name: string; privilege_type: string }>(`
       SELECT DISTINCT table_name, privilege_type
       FROM information_schema.role_table_grants
@@ -299,5 +300,94 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
       'next_attempt_at',
       'status',
     ]);
+  });
+});
+
+/**
+ * F6 (threat model §5 — Multi-tenant): los meta-tests de arriba fijaban una
+ * LISTA de roles a mano — un rol `fluvia_%` nuevo (una futura integración, un
+ * job) podía nacer con BYPASSRLS o DELETE sin romper nada. Este bloque es
+ * DENY-BY-DEFAULT: descubre TODOS los roles `fluvia_%` de `pg_catalog` y les
+ * aplica las invariantes; además exige que cada rol descubierto esté en un
+ * allowlist conocido, así un rol nuevo rompe el build hasta que un humano lo
+ * revise y lo clasifique.
+ */
+describe('META-TESTS deny-by-default sobre TODOS los roles fluvia_% (F6)', () => {
+  /** Roles de runtime conocidos y su rol declarado (config.ts / migraciones). */
+  const KNOWN_RUNTIME_ROLES = new Set([
+    'fluvia_app',
+    'fluvia_worker',
+    'fluvia_relay',
+    'fluvia_inbox',
+    'fluvia_auth',
+    'fluvia_webhook',
+  ]);
+
+  async function discoverFluviaRoles(): Promise<
+    { rolname: string; rolsuper: boolean; rolbypassrls: boolean }[]
+  > {
+    const res = await ctx.admin.query<{
+      rolname: string;
+      rolsuper: boolean;
+      rolbypassrls: boolean;
+    }>(
+      `SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname LIKE 'fluvia\\_%' ORDER BY rolname`
+    );
+    return res.rows;
+  }
+
+  it('every discovered fluvia_% role is a KNOWN role (an unknown one forces review)', async () => {
+    const roles = await discoverFluviaRoles();
+    // Non-vacuidad: el descubrimiento realmente ve los roles del sistema.
+    expect(roles.length).toBeGreaterThanOrEqual(KNOWN_RUNTIME_ROLES.size);
+    const unknown = roles.map((r) => r.rolname).filter((n) => !KNOWN_RUNTIME_ROLES.has(n));
+    expect(
+      unknown,
+      `rol fluvia_% no clasificado (revisar privilegios y añadir a KNOWN_RUNTIME_ROLES): ${unknown.join(', ')}`
+    ).toEqual([]);
+  });
+
+  it('NO fluvia_% role is SUPERUSER or has BYPASSRLS (discovered dynamically)', async () => {
+    const roles = await discoverFluviaRoles();
+    const escalated = roles.filter((r) => r.rolsuper || r.rolbypassrls);
+    expect(
+      escalated.map((r) => `${r.rolname}(super=${r.rolsuper},bypassrls=${r.rolbypassrls})`),
+      'un rol de runtime puede saltar RLS o es superusuario'
+    ).toEqual([]);
+  });
+
+  it('NO fluvia_% role has EFFECTIVE DELETE/TRUNCATE on ANY table (incl. PUBLIC + inherited)', async () => {
+    // `has_table_privilege` calcula el privilegio EFECTIVO: cubre grants a
+    // PUBLIC y los heredados por membresía de grupo (con rolinherit) — que un
+    // barrido de grants DIRECTOS por nombre (role_table_grants) NO ve. Se
+    // recorre cada rol fluvia_% × cada tabla de `public`.
+    const res = await ctx.admin.query<{ rolname: string; tablename: string; priv: string }>(`
+      SELECT r.rolname, t.tablename,
+             CASE WHEN has_table_privilege(r.rolname, format('%I.%I', t.schemaname, t.tablename), 'DELETE')
+                  THEN 'DELETE' ELSE 'TRUNCATE' END AS priv
+      FROM pg_roles r
+      CROSS JOIN pg_tables t
+      WHERE r.rolname LIKE 'fluvia\\_%'
+        AND t.schemaname = 'public'
+        AND (has_table_privilege(r.rolname, format('%I.%I', t.schemaname, t.tablename), 'DELETE')
+             OR has_table_privilege(r.rolname, format('%I.%I', t.schemaname, t.tablename), 'TRUNCATE'))
+    `);
+    expect(
+      res.rows.map((r) => `${r.rolname}:${r.priv} on ${r.tablename}`),
+      'un rol de runtime tiene DELETE/TRUNCATE efectivo (directo, PUBLIC o heredado)'
+    ).toEqual([]);
+  });
+
+  it('NO fluvia_% role can CREATE roles or databases (discovered dynamically)', async () => {
+    const res = await ctx.admin.query<{
+      rolname: string;
+      rolcreaterole: boolean;
+      rolcreatedb: boolean;
+    }>(`SELECT rolname, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname LIKE 'fluvia\\_%'`);
+    const offenders = res.rows.filter((r) => r.rolcreaterole || r.rolcreatedb);
+    expect(
+      offenders.map((r) => `${r.rolname}(createrole=${r.rolcreaterole},createdb=${r.rolcreatedb})`),
+      'un rol de runtime puede crear roles/bases'
+    ).toEqual([]);
   });
 });

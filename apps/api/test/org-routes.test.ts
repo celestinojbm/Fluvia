@@ -40,10 +40,17 @@ async function sessionUser(role?: string, orgId?: string) {
     url: '/v1/auth/login',
     payload: { email, password: PASSWORD },
   });
-  return {
-    userId: user_id as string,
-    headers: { authorization: `Bearer ${login.json().session_token as string}` },
-  };
+  const headers = { authorization: `Bearer ${login.json().session_token as string}` };
+  // TM-02: keys:manage exige re-autenticacion fresca tambien SIN MFA. La sesion
+  // de esta suite se step-up-ea como haria un operador real antes de gestionar
+  // keys; los denies de RBAC/scopes que se prueban abajo siguen intactos.
+  await app.inject({
+    method: 'POST',
+    url: '/v1/auth/step-up/password',
+    headers,
+    payload: { password: PASSWORD },
+  });
+  return { userId: user_id as string, headers };
 }
 
 async function createOrg(name: string): Promise<string> {

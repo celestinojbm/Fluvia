@@ -79,9 +79,21 @@ stateDiagram-v2
 
 Invariantes: `Σ refunds no-fallidos ≤ monto capturado` (servicio + property test); todo `succeeded` publica asiento compensatorio en la misma unidad de consistencia; idempotencia por `(tenant, refund idempotency key)`. `indeterminate` (V4 §23, igual que attempts): tras llamar al proveedor con desenlace desconocido (throw/timeout) o aceptación asíncrona (`pending`), la reserva contable queda RETENIDA y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (`resolveFromProvider`); jamás por asunción ni re-envío.
 
-## 4. Dispute (modelo presente, programa fuera del MVP)
+## 4. Dispute (F4-08 — recurso gestionado, money clawed back)
 
-`created → needs_response → under_review → won | lost → closed`, con `evidence`, `deadline`, impacto contable vía `dispute.reserve`. Relación N:1 con el pago; no muta el estado del intent — el intent refleja disputas mediante campo derivado/flag, no cambiando su FSM.
+Estados: `open`, `under_review`, `won`, `lost`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> open
+    open --> under_review : evidencia enviada (sin mover dinero)
+    open --> won : resolución verificada (banco)
+    open --> lost : resolución verificada (banco)
+    under_review --> won : resolución verificada
+    under_review --> lost : resolución verificada
+```
+
+La disputa la INICIA el banco (relación N:1 con el pago; no muta la FSM del intent). Al ABRIR se aparta el monto disputado del disponible del comercio a `dispute.reserve` (`openDispute`: `merchant.available → dispute.reserve`, guard AUD-P1-010 — no se puede pagar ni disputar dos veces el mismo dinero; en sandbox v1 exige disponible suficiente, `InsufficientDisputeBalanceError`; el saldo deudor es decisión mayor futura). `under_review` cubre la fase de evidencia (cambio de estado puro). El desenlace llega SIEMPRE de fuente verificada (el banco vía webhook — slice posterior), jamás por asunción (V4 §23): `won` (`winDispute`: `dispute.reserve → merchant.available`, el comercio recupera lo apartado) o `lost` (`loseDispute`: `dispute.reserve → provider.clearing`, el dinero se va de vuelta vía el proveedor, como un refund forzado). No hay `indeterminate` porque la disputa no hace una llamada saliente cuyo resultado se desconozca (nos lo empujan). Terminales: `won`, `lost`. FSM hecha cumplir EN el motor (migración 0036). Disputas públicas/reales bloqueadas hasta los gates aplicables (Nivel A); F4-08a es el motor contable + FSM en sandbox.
 
 ## 5. Checkout Session
 
@@ -96,9 +108,23 @@ stateDiagram-v2
 
 `completed` cuando el payment intent asociado tiene éxito; `expired` por TTL (Nivel C, default 24 h). Un comprador que cancela se redirige a `cancel_url` pero la sesión sigue `open` hasta expirar (puede reintentar) — no hay estado `canceled` explícito. Protección de doble submit: la confirmación es idempotente por sesión. Terminales: `completed`, `expired`. FSM hecha cumplir EN el motor (migración 0022); el disparo de completed/expired y sus eventos `checkout_session.*` llegan con el flujo alojado (F3-05c).
 
-## 6. Settlement / Payout (abstracciones en Fase 4)
+## 6. Payout (F4-07 — recurso gestionado, money out)
 
-Settlement: `open → closing → settled`. Payout: `created → processing → succeeded | failed`, con `payout.in_transit` contable. Payouts reales bloqueados hasta gates aplicables (Nivel A).
+Estados: `requested`, `in_transit`, `paid`, `failed`, `indeterminate`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> requested
+    requested --> in_transit : emitPayout (available → in_transit)
+    requested --> failed : sin disponible (nunca se envió al banco)
+    in_transit --> paid : settlePayout (in_transit → platform.cash)
+    in_transit --> failed : failPayout (rebote; fondos de vuelta)
+    in_transit --> indeterminate : desenlace desconocido (throw/timeout/pending)
+    indeterminate --> paid : resolución verificada
+    indeterminate --> failed : resolución verificada
+```
+
+Sobre las primitivas contables de F4-05b (`emitPayout`/`settlePayout`/`failPayout`, `payout.in_transit` credit-normal). `requested → failed` cubre la carrera donde el disponible se drenó entre la validación y el emit — desenlace CONOCIDO, el banco jamás fue contactado. `indeterminate` (V4 §23, igual que attempts/refunds): tras llamar al banco el desenlace es DESCONOCIDO (throw/timeout o aceptación asíncrona `pending`); los fondos quedan RETENIDOS en tránsito y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (jamás por asunción). Terminales: `paid`, `failed`. FSM hecha cumplir EN el motor (migración 0033). Un payout atascado en `in_transit` más allá del lease (5 min) — el proceso murió entre el emit y el registro del desenlace del banco — lo barre `sweep_payouts()` (0034, F4-07c) a `indeterminate`, con los fondos retenidos en tránsito y auditoría atómica; el `PayoutsWatchdog` del worker lo invoca en intervalo, expone métricas y ALERTA ante indeterminados envejecidos + `requested` atascados. Payouts públicos/reales siguen bloqueados hasta los gates aplicables (Nivel A); F4-07a/b/c son el motor + API + robustez en sandbox. Settlement (el lado de conciliación: `open → closing → settled`) es un concepto interno del reporte de liquidación, no una FSM materializada.
 
 ## 7. Implementación normativa
 

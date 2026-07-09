@@ -107,6 +107,14 @@ export interface ExecuteIdempotentResult extends IdempotentResponse {
 export interface IdempotencyServiceOptions {
   /** Espera maxima sobre una key en vuelo antes de responder 409 (default 3000). */
   lockTimeoutMs?: number;
+  /**
+   * F6 (threat model §5): retencion de la key en HORAS (default 24). DEBE ser
+   * >= la ventana maxima de retry del cliente: si la key expira antes de un
+   * reintento legitimo, la fila se purga y el efecto se RE-EJECUTA (doble
+   * cobro). El valor definitivo lo fija el propietario antes del sandbox
+   * compartido (PEND-006); aqui solo se hace configurable.
+   */
+  retentionHours?: number;
 }
 
 interface StoredKeyRow {
@@ -118,6 +126,7 @@ interface StoredKeyRow {
 
 export class IdempotencyService {
   private readonly lockTimeoutMs: number;
+  private readonly retentionHours: number;
 
   constructor(
     /** Pool con rol fluvia_app (RLS por tenant sobre idempotency_keys). */
@@ -129,6 +138,11 @@ export class IdempotencyService {
       throw new RangeError('lockTimeoutMs must be between 1 and 60000');
     }
     this.lockTimeoutMs = t;
+    const h = Math.floor(options.retentionHours ?? 24);
+    if (!Number.isFinite(h) || h < 1 || h > 720) {
+      throw new RangeError('retentionHours must be between 1 and 720');
+    }
+    this.retentionHours = h;
   }
 
   async execute(input: ExecuteIdempotentInput): Promise<ExecuteIdempotentResult> {
@@ -142,11 +156,13 @@ export class IdempotencyService {
       let claimed;
       try {
         claimed = await client.query(
-          `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash)
-           VALUES ($1, $2, $3, $4)
+          // expires_at EXPLICITO desde config (F6): la retencion debe cubrir la
+          // ventana de retry del cliente (el DEFAULT de la tabla es solo fallback).
+          `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash, expires_at)
+           VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5))
            ON CONFLICT (tenant_id, endpoint, key) DO NOTHING
            RETURNING key`,
-          [input.tenantId, input.endpoint, input.key, input.requestHash]
+          [input.tenantId, input.endpoint, input.key, input.requestHash, this.retentionHours]
         );
       } catch (err) {
         if ((err as { code?: string }).code === '55P03') {

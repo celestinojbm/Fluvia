@@ -9,6 +9,7 @@ import {
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
+  ZERO_FEE_SCHEDULE,
   type PaymentProvider,
 } from '../src/index.js';
 
@@ -30,7 +31,8 @@ beforeAll(async () => {
     ctx.app,
     intents,
     new PostingService(new LedgerService(ctx.app), ctx.app),
-    new MockPaymentProvider()
+    new MockPaymentProvider(),
+    ZERO_FEE_SCHEDULE
   );
   org = await ctx.createTenant(`Watchdog ${randomUUID().slice(0, 8)}`);
   merchantId = (
@@ -146,7 +148,8 @@ describe('circuito abierto en la confirmacion (fallo limpio)', () => {
       ctx.app,
       intents,
       new PostingService(new LedgerService(ctx.app), ctx.app),
-      alwaysOpen
+      alwaysOpen,
+      ZERO_FEE_SCHEDULE
     );
     const intent = await intents.create({ tenantId: org, merchantId, amount: cop(20_000) });
     const { attemptId } = await withTenantTransaction(ctx.app, org, (c) =>

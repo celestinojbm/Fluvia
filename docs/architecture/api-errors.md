@@ -19,6 +19,7 @@ Toda respuesta de error, sin excepción (dominio, validación, forma del request
 ```
 
 Reglas duras (probadas por contract tests):
+
 - **El `message` interno de los errores de dominio jamás llega al cliente** (AUD-P2-009): va solo a logs. El cliente recibe el texto público del catálogo.
 - Los 5xx son opacos (`internal_error`, sin detalle).
 - Fastify nunca responde con su forma por defecto (`{statusCode, error, message}`): todo pasa por el catálogo.
@@ -33,20 +34,21 @@ Reglas duras (probadas por contract tests):
 
 ## 3. Categorías y familia HTTP (invariante probada)
 
-| type | HTTP permitido |
-|------|----------------|
-| `validation_error` | 400, 413, 415 |
-| `authentication_error` | 401 |
-| `authorization_error` | 403 |
-| `not_found_error` | 404 |
-| `conflict_error` | 409 |
-| `locked_error` | 423 |
-| `rate_limit_error` | 429 (reservado: F1-04b) |
-| `internal_error` | ≥500 |
+| type                   | HTTP permitido          |
+| ---------------------- | ----------------------- |
+| `validation_error`     | 400, 413, 415           |
+| `authentication_error` | 401                     |
+| `authorization_error`  | 403                     |
+| `not_found_error`      | 404                     |
+| `conflict_error`       | 409                     |
+| `unprocessable_error`  | 422                     |
+| `locked_error`         | 423                     |
+| `rate_limit_error`     | 429 (reservado: F1-04b) |
+| `internal_error`       | ≥500                    |
 
 ## 4. Catálogo v1 (resumen)
 
-Fuente de verdad: `error-catalog.ts`. Códigos: `validation_error`, `invalid_json`, `bad_request`, `payload_too_large`, `unsupported_media_type`, `invalid_verification_token`, `reversal_note_required` · `invalid_credentials`, `invalid_session`, `invalid_api_key`, `invalid_signature` · `email_not_verified`, `insufficient_permissions`, `insufficient_scope`, `live_keys_disabled` · `not_found` · `email_taken`, `merchant_name_taken`, `organization_slug_taken`, `insufficient_balance`, `idempotency_conflict`, `already_reversed`, `cannot_reverse_reversal` · `account_locked` · `rate_limited` (reservado) · `internal_error`.
+Fuente de verdad: `error-catalog.ts` (la lista COMPLETA y autoritativa es el golden `error-catalog.v1.json`; este resumen no se mantiene exhaustivo). Códigos iniciales: `validation_error`, `invalid_json`, `bad_request`, `payload_too_large`, `unsupported_media_type`, `invalid_verification_token`, `reversal_note_required` · `invalid_credentials`, `invalid_session`, `invalid_api_key`, `invalid_signature` · `email_not_verified`, `insufficient_permissions`, `insufficient_scope`, `live_keys_disabled` · `not_found` · `email_taken`, `merchant_name_taken`, `organization_slug_taken`, `insufficient_balance`, `idempotency_conflict`, `already_reversed`, `cannot_reverse_reversal` · `account_locked` · `rate_limited` (reservado) · `internal_error`. Añadidos posteriores destacados: los 422 de dinero (`idempotency_key_reuse`, `refund_amount_exceeds_remaining`, `payout_amount_exceeds_balance`) y **`card_data_not_allowed`** (TM-06: el request aparenta traer PAN/CVV — Fluvia solo acepta tokens; rechazado en el borde antes de auth/validación).
 
 ## 5. Cómo añadir un error nuevo
 

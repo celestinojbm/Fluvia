@@ -3,8 +3,10 @@ import { z } from 'zod';
 import type { AuditContext } from '@fluvia/audit';
 import type {
   CheckoutSessionService,
+  DisputeService,
   PaymentIntentService,
   PaymentLinkService,
+  PayoutService,
   RefundService,
 } from '@fluvia/payments-core';
 import { WEBHOOK_EVENT_STATUSES, type WebhookEventService } from '@fluvia/webhooks';
@@ -21,6 +23,8 @@ import {
 import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
 import { publicRefund } from './refunds.js';
+import { publicPayout } from './payouts.js';
+import { publicDispute } from './disputes.js';
 import { publicSession } from './checkout-sessions.js';
 import { publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
@@ -45,6 +49,8 @@ const LimitQuery = z
   .object({ limit: z.coerce.number().int().min(1).max(100).default(25) })
   .passthrough();
 const RefundsQuery = LimitQuery.extend({ payment_intent_id: z.string().uuid().optional() });
+const PayoutsQuery = LimitQuery.extend({ merchant_id: z.string().uuid().optional() });
+const DisputesQuery = LimitQuery.extend({ merchant_id: z.string().uuid().optional() });
 const WebhookEventsQuery = LimitQuery.extend({
   endpoint_id: z.string().uuid().optional(),
   status: z.enum(WEBHOOK_EVENT_STATUSES as unknown as [string, ...string[]]).optional(),
@@ -78,6 +84,8 @@ export interface DashboardRoutesOptions {
   security: Security;
   paymentIntentService: PaymentIntentService;
   refundService: RefundService;
+  payoutService: PayoutService;
+  disputeService: DisputeService;
   checkoutSessionService: CheckoutSessionService;
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
@@ -114,6 +122,8 @@ export function registerDashboardRoutes(
     security,
     paymentIntentService,
     refundService,
+    payoutService,
+    disputeService,
     checkoutSessionService,
     paymentLinkService,
     webhookEventService,
@@ -158,6 +168,40 @@ export function registerDashboardRoutes(
   app.get('/v1/organizations/:orgId/refunds/:id', guard, async (req) => {
     const { id } = IdParams.parse(req.params);
     return publicRefund(await refundService.get(tenant(req), id));
+  });
+
+  // --- payouts (F4-07d: lectura por sesión del recurso money-out) ---
+  app.get('/v1/organizations/:orgId/payouts', guard, async (req) => {
+    const q = PayoutsQuery.parse(req.query ?? {});
+    OrgParam.parse(req.params);
+    const payouts = await payoutService.list(tenant(req), q.merchant_id, q.limit);
+    return { object: 'list', data: payouts.map(publicPayout) };
+  });
+  app.get('/v1/organizations/:orgId/payouts/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicPayout(await payoutService.get(tenant(req), id));
+  });
+
+  // --- disputas (F4-08d: lectura por sesión del recurso money-clawed-back) ---
+  app.get('/v1/organizations/:orgId/disputes', guard, async (req) => {
+    const q = DisputesQuery.parse(req.query ?? {});
+    OrgParam.parse(req.params);
+    const disputes = await disputeService.list(tenant(req), q.merchant_id, q.limit);
+    return { object: 'list', data: disputes.map(publicDispute) };
+  });
+  app.get('/v1/organizations/:orgId/disputes/:id', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicDispute(await disputeService.get(tenant(req), id));
+  });
+  // Acción de OPERACIÓN por sesión (F4-08e): RESPONDER a la disputa con evidencia
+  // (`open -> under_review`). Espeja el endpoint de API key (`payments:write`);
+  // aquí exige `reconciliation:manage` (owner/admin/finance — los mismos roles que
+  // gobiernan el dinero). Idempotente: re-responder sobre `under_review` devuelve
+  // el estado actual; sobre una disputa terminal es `invalid_state_transition`. El
+  // DESENLACE (won/lost) jamás se alcanza aquí: llega SOLO por el webhook del banco.
+  app.post('/v1/organizations/:orgId/disputes/:id/evidence', manage, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicDispute(await disputeService.submitEvidence(tenant(req), id));
   });
 
   // --- checkout sessions ---

@@ -16,23 +16,32 @@ import {
 } from '@fluvia/reconciliation';
 import {
   CheckoutSessionService,
+  DisputeService,
+  FlatBpsFeeSchedule,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
   PaymentLinkService,
+  PayoutService,
   RefundService,
   ResilientProvider,
 } from '@fluvia/payments-core';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
+import type { RateLimiter } from './rate-limit.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
+import { registerPayoutRoutes } from './routes/payouts.js';
+import { registerDisputeRoutes } from './routes/disputes.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCheckoutSessionRoutes } from './routes/checkout-sessions.js';
 import { registerPaymentLinkRoutes } from './routes/payment-links.js';
-import { registerProviderWebhookRoutes } from './routes/provider-webhooks.js';
+import {
+  registerProviderWebhookRoutes,
+  type ProviderWebhookRateLimits,
+} from './routes/provider-webhooks.js';
 import { registerWebhookEndpointRoutes } from './routes/webhook-endpoints.js';
 import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
@@ -40,6 +49,7 @@ import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
+import { findCardData } from './card-data-guard.js';
 import { DOMAIN_ERROR_CODES, ERROR_CATALOG, errorBody } from './error-catalog.js';
 
 export interface BuildAppOptions {
@@ -52,12 +62,44 @@ export interface BuildAppOptions {
   apiKeyService?: ApiKeyService;
   /** Override de limites de tasa de /v1/auth/* (tests usan ventanas cortas). */
   authRateLimits?: AuthRateLimits;
+  /** Override del limite de ingesta de webhooks del proveedor (tests). */
+  providerWebhookRateLimits?: ProviderWebhookRateLimits;
   /** Registro de metricas (F1-07). Por defecto cada app crea el suyo. */
   metricsRegistry?: MetricsRegistry;
+  /** TM-03: backend del rate limiter de /v1/auth/*. Default in-memory
+   *  (mono-instancia); despliegues compartidos inyectan el de Redis. */
+  rateLimiter?: RateLimiter;
+  /** Solo tests: captura el output del logger para verificar la redacción
+   *  sobre la instancia REAL de pino del app (no una copia de la config). */
+  loggerStream?: { write: (msg: string) => void };
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
 // contract test). Este archivo solo enruta hacia ella.
+
+/**
+ * Redaccion del logger — COMPARTIDA con log-redaction.test.ts: el test prueba
+ * este MISMO objeto (no una copia) Y que buildApp lo cablea (probe por los
+ * paths top-level, que no pasan por serializer). Nota de alcance: el
+ * serializer `req` por defecto de Fastify ya DESCARTA los headers; los paths
+ * `req.*`/`res.*` censuran si un serializer futuro los incluyera, y los
+ * gemelos top-level cubren logs ad-hoc tipo `log.info({ headers })`.
+ */
+export const LOG_REDACT = {
+  paths: [
+    'req.headers.authorization',
+    'req.headers["x-api-key"]',
+    'req.headers.cookie',
+    'req.headers["x-checkout-client-secret"]',
+    'res.headers["set-cookie"]',
+    'headers.authorization',
+    'headers["x-api-key"]',
+    'headers.cookie',
+    'headers["x-checkout-client-secret"]',
+    'headers["set-cookie"]',
+  ],
+  censor: '[REDACTED]',
+};
 
 /**
  * Construye la instancia Fastify del API (F1-01).
@@ -73,15 +115,16 @@ export function buildApp({
   identityService,
   apiKeyService,
   authRateLimits,
+  providerWebhookRateLimits,
   metricsRegistry,
+  rateLimiter,
+  loggerStream,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
       level: config.logLevel,
-      redact: {
-        paths: ['req.headers.authorization', 'req.headers["x-api-key"]', 'req.headers.cookie'],
-        censor: '[REDACTED]',
-      },
+      redact: LOG_REDACT,
+      ...(loggerStream ? { stream: loggerStream } : {}),
     },
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];
@@ -135,7 +178,39 @@ export function buildApp({
   });
 
   // F1-07: contadores/histogramas HTTP + GET /metrics (agregados anonimos).
-  registerMetrics(app, metricsRegistry ?? new MetricsRegistry());
+  const registry = metricsRegistry ?? new MetricsRegistry();
+  registerMetrics(app, registry);
+
+  // TM-06 (pci-scope.md §3): guard de datos de tarjeta. Fluvia jamas acepta
+  // PAN/CVV — solo tokens del proveedor. Corre en preValidation (body ya
+  // parseado, ANTES de auth/Zod/handler): un request con estructura de tarjeta
+  // se rechaza sin tocar nada mas, con log de incidente SIN el valor. Los
+  // bodies no-objeto (p. ej. la ingesta del webhook, string firmado) no
+  // aplican. Heuristica conservadora — no "resuelve PCI", refuerza la frontera.
+  const cardDataRejected = registry.counter(
+    'fluvia_card_data_rejected_total',
+    'Requests rechazados por contener datos aparentes de tarjeta (guard PCI)',
+    ['kind']
+  );
+  app.addHook('preValidation', async (req, reply) => {
+    if (req.body === null || typeof req.body !== 'object') return;
+    const hit = findCardData(req.body);
+    if (hit) {
+      req.log.error(
+        {
+          event: 'pci.card_data_rejected',
+          kind: hit.kind,
+          fieldPath: hit.path,
+          route: req.routeOptions.url ?? 'unmatched',
+        },
+        'card-like data rejected at the edge (PCI guard) — value not logged'
+      );
+      cardDataRejected.inc({ kind: hit.kind });
+      return reply
+        .code(ERROR_CATALOG.card_data_not_allowed.status)
+        .send(errorBody('card_data_not_allowed', req.id));
+    }
+  });
 
   app.get('/health', async () => ({
     status: 'ok',
@@ -158,6 +233,7 @@ export function buildApp({
       authService,
       exposeVerificationToken: config.env === 'local' || config.env === 'test',
       rateLimits: authRateLimits,
+      limiter: rateLimiter,
     });
   }
 
@@ -187,12 +263,15 @@ export function buildApp({
     // timeout real + circuit breaker alrededor de CUALQUIER adapter — un solo
     // proveedor comparte circuito entre confirm y refund.
     const provider = new ResilientProvider(new MockPaymentProvider());
-    const idempotencyService = new IdempotencyService(appPool);
+    const idempotencyService = new IdempotencyService(appPool, {
+      retentionHours: config.idempotencyRetentionHours,
+    });
     const confirmationService = new PaymentConfirmationService(
       appPool,
       paymentIntentService,
       postingService,
-      provider
+      provider,
+      new FlatBpsFeeSchedule(config.platformFeeBps)
     );
     registerPaymentIntentRoutes(app, {
       security,
@@ -208,6 +287,15 @@ export function buildApp({
       provider
     );
     registerRefundRoutes(app, { security, idempotencyService, refundService });
+    // F4-07b: payouts como recurso (money out) sobre el motor de F4-07a. Mismo
+    // circuito/timeout que el resto (provider resiliente); sandbox, sin exponer.
+    const payoutService = new PayoutService(appPool, postingService, provider);
+    registerPayoutRoutes(app, { security, idempotencyService, payoutService });
+    // F4-08b: disputas como recurso (money clawed back) sobre el motor de F4-08a.
+    // Plano de LECTURA + envio de evidencia; la apertura/resolucion llegan por el
+    // webhook del banco (F4-08c). Sandbox, sin exponer.
+    const disputeService = new DisputeService(appPool, postingService);
+    registerDisputeRoutes(app, { security, disputeService });
     // F3-05a: customers (plano de integracion; primer consumidor = checkout).
     registerCustomerRoutes(app, {
       security,
@@ -229,9 +317,13 @@ export function buildApp({
     });
     registerPaymentLinkRoutes(app, { security, idempotencyService, paymentLinkService });
     // F3-03b: ingesta de webhooks del proveedor (firma HMAC, sin API key).
+    // Rate-limited por IP (threat model §5); mismo backend inyectable que
+    // /v1/auth/* — en despliegues compartidos la ventana vive en Redis (TM-03).
     registerProviderWebhookRoutes(app, {
       ingestService: new InboxIngestService(appPool),
       mockWebhookSecret: config.mockWebhookSecret,
+      rateLimits: providerWebhookRateLimits,
+      limiter: rateLimiter,
     });
     // F3-07: gestion de endpoints de webhooks salientes (scope webhooks:manage).
     registerWebhookEndpointRoutes(app, {
@@ -266,6 +358,8 @@ export function buildApp({
       security,
       paymentIntentService,
       refundService,
+      payoutService,
+      disputeService,
       checkoutSessionService,
       paymentLinkService,
       webhookEventService,

@@ -24,6 +24,7 @@ declare module 'fastify' {
       sessionId: string;
       mfaEnabled: boolean;
       mfaVerifiedAt: Date | null;
+      passwordVerifiedAt: Date | null;
     };
     org?: { organizationId: string; role: Role };
     apiKey?: {
@@ -69,23 +70,28 @@ export function createSecurity(deps: SecurityDeps) {
         sessionId: identity.sessionId,
         mfaEnabled: identity.mfaEnabled,
         mfaVerifiedAt: identity.mfaVerifiedAt,
+        passwordVerifiedAt: identity.passwordVerifiedAt,
       };
     },
 
     /**
-     * F1-04b: STEP-UP para acciones sensibles (keys:manage). Si el usuario
-     * tiene MFA habilitado, la sesion debe traer una verificacion MFA
-     * reciente (authService.stepUpMaxAgeMs); si no la tiene, se le exige
-     * /v1/auth/mfa/step-up. Los usuarios sin MFA no se bloquean hoy — el
-     * sandbox compartido exigira enrolamiento (PEND-006).
+     * F1-04b + TM-02: STEP-UP para acciones sensibles (keys:manage). La sesion
+     * debe traer una re-autenticacion RECIENTE (authService.stepUpMaxAgeMs):
+     *  - con MFA habilitado, verificacion TOTP (/v1/auth/mfa/step-up) — el
+     *    password NO sustituye al factor fuerte;
+     *  - sin MFA, re-autenticacion por password (/v1/auth/step-up/password).
+     * TM-02 cierra el hueco anterior (los usuarios sin MFA no se bloqueaban:
+     * una sesion secuestrada acunaba keys sin prueba fresca). El sandbox
+     * compartido ademas exigira enrolamiento MFA (PEND-006).
      */
     stepUp: async (req: FastifyRequest): Promise<void> => {
       const identity = req.identity!;
-      if (!identity.mfaEnabled) return;
       const maxAge = deps.authService.stepUpMaxAgeMs;
-      const fresh =
-        identity.mfaVerifiedAt !== null && Date.now() - identity.mfaVerifiedAt.getTime() <= maxAge;
-      if (!fresh) throw new StepUpRequiredError();
+      const fresh = (t: Date | null): boolean => t !== null && Date.now() - t.getTime() <= maxAge;
+      const ok = identity.mfaEnabled
+        ? fresh(identity.mfaVerifiedAt)
+        : fresh(identity.passwordVerifiedAt);
+      if (!ok) throw new StepUpRequiredError();
     },
 
     org(permission: Permission) {

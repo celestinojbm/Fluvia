@@ -1,5 +1,6 @@
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import { isIP } from 'node:net';
 import type { Pool } from '@fluvia/db';
 import { DEV_WEBHOOK_SECRET_ENC_KEY_HEX, decryptEndpointSecret } from './crypto.js';
 import { buildSignatureHeader } from './signing.js';
@@ -23,6 +24,15 @@ import { resolveSafeWebhookTarget, type SsrfGuardOptions } from './ssrf.js';
 export const RETRY_SCHEDULE_MS: readonly number[] = [
   0, 30_000, 120_000, 600_000, 3_600_000, 21_600_000, 86_400_000,
 ];
+
+/**
+ * V2-N2: cuantas de las IPs YA validadas se intentan dentro de UN intento
+ * cuando la CONEXION nunca se establece. El cap acota el trabajo extra POR
+ * FILA (peor caso ~3x el timeout); el lease del claim es por batch y la
+ * entrega es at-least-once por diseño — un overrun de batch re-entrega con
+ * dedup por event id, igual que antes del failover.
+ */
+export const MAX_CONNECT_FAILOVER_IPS = 3;
 
 export interface DelivererLogger {
   info(obj: Record<string, unknown>, msg: string): void;
@@ -148,7 +158,7 @@ export class WebhookDeliverer {
           secrets.push(decryptEndpointSecret(this.encKeyHex, endpoint.prev_secret_enc));
         }
 
-        statusCode = await this.post(target, endpoint.url, rawBody, {
+        const headers = {
           'content-type': 'application/json',
           'user-agent': 'Fluvia-Webhooks/1.0',
           'fluvia-event-id': eventId,
@@ -156,7 +166,41 @@ export class WebhookDeliverer {
           'fluvia-timestamp': String(timestampSec),
           'fluvia-attempt-id': `wha_${row.id}_${row.attempts}`,
           'fluvia-signature': buildSignatureHeader(secrets, timestampSec, eventId, rawBody),
-        });
+        };
+
+        // V2-N2: failover SOLO cuando la conexion (TCP/TLS) jamas se
+        // establecio con esa IP — nadie recibio ni un byte del payload — y
+        // SOLO entre las IPs ya validadas de ESTA resolucion. Si el socket
+        // conecto (aunque el destino luego calle o falle drenando), o hubo
+        // respuesta HTTP — aun 5xx —, el reintento pertenece al calendario:
+        // repetir el POST en otra IP seria doble entrega dentro del intento.
+        let connectError: unknown;
+        const failedIps: string[] = [];
+        for (const ip of target.ips.slice(0, MAX_CONNECT_FAILOVER_IPS)) {
+          resolvedIp = ip;
+          try {
+            statusCode = await this.post({ ...target, ip }, endpoint.url, rawBody, headers);
+            connectError = undefined;
+            if (failedIps.length > 0) {
+              this.logger?.info(
+                { webhookEventId: row.id, failedIps, deliveredVia: ip },
+                'webhook delivered via IP failover'
+              );
+            }
+            break;
+          } catch (err) {
+            connectError = err;
+            if ((err as { connectionEstablished?: boolean }).connectionEstablished) break;
+            failedIps.push(`${ip} (${String(err).slice(0, 120)})`);
+          }
+        }
+        if (statusCode === null) {
+          // Rastro forense: si se intento mas de una IP, el error del attempt
+          // registra TODAS las que fallaron, no solo la ultima.
+          throw failedIps.length > 1
+            ? new Error(`all validated IPs unreachable: ${failedIps.join(' | ')}`)
+            : connectError;
+        }
 
         if (statusCode >= 200 && statusCode < 300) {
           await this.finish(row, stats, 'delivered', null);
@@ -221,6 +265,12 @@ export class WebhookDeliverer {
   ): Promise<number> {
     return new Promise<number>((resolve, reject) => {
       const isHttps = target.protocol === 'https:';
+      // Distingue "la conexion jamas se establecio" (candidato a failover de
+      // IP: nadie recibio un byte) de "conecto y fallo despues" (jamas
+      // failover — el payload pudo llegar): ver runOnce. Para https cuenta el
+      // handshake completo (secureConnect); un socket reutilizado del agente
+      // ya esta conectado.
+      let connectionEstablished = false;
       const req = (isHttps ? httpsRequest : httpRequest)({
         // Pinning: conectamos a la IP validada; Host/SNI llevan el hostname.
         host: target.ip,
@@ -230,9 +280,29 @@ export class WebhookDeliverer {
         setHost: false,
         headers: { ...headers, host: target.hostname },
         timeout: this.requestTimeoutMs,
-        ...(isHttps ? { servername: target.hostname } : {}),
+        // rejectUnauthorized EXPLICITO: el default de Node ya valida, pero es
+        // anulable por NODE_TLS_REJECT_UNAUTHORIZED=0 en el entorno; fijado
+        // aqui, ese footgun no puede degradar la entrega firmada a TLS ciego.
+        // SNI solo con nombre DNS (RFC 6066 prohibe IP literal; la identidad
+        // del cert se verifica igual contra el host).
+        ...(isHttps
+          ? {
+              servername: isIP(target.hostname) ? undefined : target.hostname,
+              rejectUnauthorized: true,
+            }
+          : {}),
+      });
+      req.on('socket', (socket) => {
+        if (!socket.connecting) {
+          connectionEstablished = true;
+          return;
+        }
+        socket.once(isHttps ? 'secureConnect' : 'connect', () => {
+          connectionEstablished = true;
+        });
       });
       req.on('response', (res) => {
+        connectionEstablished = true;
         // Limite de tamano de respuesta: solo drenamos, nunca almacenamos.
         let drained = 0;
         res.on('data', (chunk: Buffer) => {
@@ -245,7 +315,9 @@ export class WebhookDeliverer {
       req.on('timeout', () => {
         req.destroy(new Error(`webhook request timed out after ${this.requestTimeoutMs}ms`));
       });
-      req.on('error', reject);
+      req.on('error', (err) => {
+        reject(connectionEstablished ? Object.assign(err, { connectionEstablished: true }) : err);
+      });
       req.end(body);
     });
   }

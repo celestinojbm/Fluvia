@@ -32,7 +32,7 @@ crear usuario → organización → comercio → API key sandbox → customer �
 - Webhooks salientes firmados (HMAC, timestamp, reintentos con backoff, SSRF guard).
 - Conciliación contra el "reporte" del MockProvider con creación de casos.
 - Dashboard comercial mínimo (overview, payments, refunds, balance, developers/webhooks).
-- Panel admin mínimo (buscar comercios, ver eventos, reprocesar webhooks, casos de conciliación).
+- Panel admin mínimo (buscar comercios, ver eventos, reprocesar webhooks, casos de conciliación). **Entregado (F4-04, `apps/dashboard`)**: comercios (F4-04a) + eventos de auditoría (F4-04b) + reenvío de webhooks `dead` (F3-09b-iii) + casos de conciliación con four-eyes (F4-03c-ii).
 - Auditoría append-only de acciones sensibles.
 - Observabilidad: logs estructurados con correlation ID, métricas base, health/readiness.
 

@@ -28,6 +28,18 @@ export function canResendRole(role: string | undefined): boolean {
   return role !== undefined && RESEND_ROLES.has(role);
 }
 
+/**
+ * Roles que pueden GOBERNAR la conciliación (permiso RBAC `reconciliation:manage`;
+ * espeja `ROLE_PERMISSIONS` en @fluvia/identity: owner/admin/finance). Como
+ * `canResendRole`, es solo una PISTA de UX — el API es la fuente de verdad y
+ * rechaza (403 `insufficient_permissions`) a quien no lo tenga. Autorizar dinero
+ * es un acto humano: una API key jamás alcanza este plano.
+ */
+const RECONCILIATION_MANAGE_ROLES = new Set(['owner', 'admin', 'finance']);
+export function canManageReconciliation(role: string | undefined): boolean {
+  return role !== undefined && RECONCILIATION_MANAGE_ROLES.has(role);
+}
+
 export type LoginResult =
   | { ok: true; sessionToken: string }
   | { ok: false; mfaRequired: true }
@@ -153,6 +165,141 @@ export async function fetchReconciliationEntries(
   return body?.data ?? [];
 }
 
+// --- payouts (F4-07d: money out, lectura por sesión) ---
+export interface Payout {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reason: string | null;
+  failure_code: string | null;
+  created_at: string;
+}
+
+export async function fetchPayouts(opts: ClientOptions & { orgId: string }): Promise<Payout[]> {
+  const body = await apiGet<{ data?: Payout[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payouts?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchPayout(
+  opts: ClientOptions & { orgId: string; payoutId: string }
+): Promise<Payout | null> {
+  return apiGet<Payout>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payouts/${encodeURIComponent(opts.payoutId)}`
+  );
+}
+
+// --- disputas (F4-08d: money clawed back, lectura por sesión) ---
+export interface Dispute {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reason: string | null;
+  provider_ref: string | null;
+  created_at: string;
+}
+
+export async function fetchDisputes(opts: ClientOptions & { orgId: string }): Promise<Dispute[]> {
+  const body = await apiGet<{ data?: Dispute[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/disputes?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchDispute(
+  opts: ClientOptions & { orgId: string; disputeId: string }
+): Promise<Dispute | null> {
+  return apiGet<Dispute>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/disputes/${encodeURIComponent(opts.disputeId)}`
+  );
+}
+
+// --- casos operativos + ajustes con four-eyes (F4-03c-ii) ---
+export type CaseStatus = 'open' | 'acknowledged' | 'resolved';
+export type CaseSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type AdjustmentDirection = 'debit_differences' | 'credit_differences';
+export type AdjustmentStatus = 'proposed' | 'applied' | 'rejected';
+
+export interface OperationalCase {
+  id: string;
+  case_type: string;
+  severity: CaseSeverity;
+  status: CaseStatus;
+  reconciliation_entry_id: string;
+  report_id: string | null;
+  provider: string | null;
+  provider_ref: string | null;
+  discrepancy_status: string | null;
+  ledger_amount: number | null;
+  provider_amount: number | null;
+  assignee_user_id: string | null;
+  resolution: string | null;
+  resolved_by_user_id: string | null;
+  version: number;
+  created_at: string;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+}
+
+export interface CaseAdjustment {
+  id: string;
+  case_id: string;
+  amount: number;
+  currency: string;
+  direction: AdjustmentDirection;
+  reason: string;
+  status: AdjustmentStatus;
+  requires_second_approval: boolean;
+  proposed_by_user_id: string;
+  approved_by_user_id: string | null;
+  rejected_by_user_id: string | null;
+  rejection_reason: string | null;
+  ledger_transaction_id: string | null;
+  version: number;
+  created_at: string;
+  decided_at: string | null;
+}
+
+/** El detalle de un caso trae sus ajustes embebidos (como la ruta de sesión). */
+export type OperationalCaseDetail = OperationalCase & { adjustments: CaseAdjustment[] };
+
+export async function fetchOperationalCases(
+  opts: ClientOptions & { orgId: string; status?: CaseStatus; severity?: CaseSeverity }
+): Promise<OperationalCase[]> {
+  const params = new URLSearchParams({ limit: '200' });
+  if (opts.status) params.set('status', opts.status);
+  if (opts.severity) params.set('severity', opts.severity);
+  const body = await apiGet<{ data?: OperationalCase[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/operational_cases?${params.toString()}`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchOperationalCase(
+  opts: ClientOptions & { orgId: string; caseId: string }
+): Promise<OperationalCaseDetail | null> {
+  return apiGet<OperationalCaseDetail>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/operational_cases/${encodeURIComponent(opts.caseId)}`
+  );
+}
+
+/** ¿Hay un ajuste VIVO (proposed/applied)? Bloquea proponer otro (índice único
+ * parcial en la BD `WHERE status<>'rejected'`); la UI oculta el formulario. */
+export function liveAdjustment(adjustments: CaseAdjustment[]): CaseAdjustment | undefined {
+  return adjustments.find((a) => a.status !== 'rejected');
+}
+
 /**
  * Trae las 5 vistas del plano de lectura de operación en paralelo. El fallo de
  * un recurso (p.ej. permiso o red) degrada a lista vacía sin tumbar el panel.
@@ -172,4 +319,79 @@ export async function fetchDashboardData(
     g('webhook_events'),
   ]);
   return { intents, refunds, sessions, links, webhookEvents };
+}
+
+// --- panel admin: comercios (F4-04a) ---
+export interface Merchant {
+  id: string;
+  name: string;
+  country: string;
+  defaultCurrency: string;
+  status: 'active' | 'frozen';
+  createdAt: string;
+}
+
+export async function fetchMerchants(opts: ClientOptions & { orgId: string }): Promise<Merchant[]> {
+  const body = await apiGet<{ merchants?: Merchant[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/merchants`
+  );
+  return body?.merchants ?? [];
+}
+
+/**
+ * «Buscar comercios»: filtro puro sobre la lista ya traída (la lista por org es
+ * pequeña). Casa por nombre, id, país o moneda, sin distinguir mayúsculas.
+ * Cadena vacía ⇒ todo. Testeable sin red ni navegador.
+ */
+export function filterMerchants(merchants: Merchant[], query: string | undefined): Merchant[] {
+  const q = (query ?? '').trim().toLowerCase();
+  if (!q) return merchants;
+  return merchants.filter((m) =>
+    [m.name, m.id, m.country, m.defaultCurrency].some((f) => f.toLowerCase().includes(q))
+  );
+}
+
+// --- panel admin: eventos de auditoría (F4-04b) ---
+/**
+ * Roles que pueden LEER la auditoría (permiso RBAC `audit:read`; espeja
+ * `ROLE_PERMISSIONS`: owner/admin/finance/analyst). Solo es un hint de UX para
+ * ocultar el enlace a quien no puede — el API es la fuente de verdad (403).
+ */
+const AUDIT_READ_ROLES = new Set(['owner', 'admin', 'finance', 'analyst']);
+export function canReadAudit(role: string | undefined): boolean {
+  return role !== undefined && AUDIT_READ_ROLES.has(role);
+}
+
+export interface AuditEvent {
+  id: string;
+  actor_type: string;
+  actor_id: string | null;
+  auth_method: string;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  result: string;
+  risk_level: string;
+  reason: string | null;
+  request_id: string | null;
+  created_at: string;
+}
+
+export interface AuditEventsPage {
+  events: AuditEvent[];
+  /** Cursor (id del último evento) para la página anterior/más antigua. */
+  nextBefore: string | null;
+}
+
+export async function fetchAuditEvents(
+  opts: ClientOptions & { orgId: string; before?: string }
+): Promise<AuditEventsPage> {
+  const params = new URLSearchParams({ limit: '50' });
+  if (opts.before) params.set('before', opts.before);
+  const body = await apiGet<{ audit_events?: AuditEvent[]; next_before?: string | null }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/audit-events?${params.toString()}`
+  );
+  return { events: body?.audit_events ?? [], nextBefore: body?.next_before ?? null };
 }

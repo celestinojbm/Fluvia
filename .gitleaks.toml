@@ -1,0 +1,29 @@
+# Configuración versionada de gitleaks (threat model §5 — Secretos/cadena).
+#
+# Antes el scan corría con la config por defecto SIN archivo en el repo: las
+# excepciones (cuando llegaran) habrían terminado como flags ad-hoc en CI o
+# supresiones invisibles. Con el archivo versionado, toda excepción pasa por
+# code review y queda auditable en el historial.
+#
+# REGLAS del allowlist (gobernanza §2):
+#  - Cada entrada lleva comentario con el porqué y el alcance más estrecho
+#    posible: regex ANCLADO tipo '''(?:^|/)archivo\.ext$''' (gitleaks casa por
+#    SUBSTRING — un patrón sin anclar exime cualquier path que lo contenga) y,
+#    cuando aplique, acotado a reglas concretas — jamás una regla global.
+#  - Prohibido allowlistear credenciales "de verdad" aunque estén rotadas:
+#    una credencial filtrada se rota Y se reescribe/invalida, no se acepta.
+#  - Los lockfiles (pnpm-lock.yaml incluido) YA los exime el allowlist por
+#    defecto de gitleaks (heredado abajo) — no repetirlos aquí.
+#  - Los secretos de DESARROLLO deliberados del repo (p. ej. passwords de
+#    docker-compose local, DEV_*_KEY_HEX con guard de entorno AUD-P2-008) no
+#    disparan las reglas por defecto hoy; si una regla futura los detecta, la
+#    excepción se añade AQUÍ, acotada, con justificación — no silenciando CI.
+
+[extend]
+# Hereda TODAS las reglas y el allowlist por defecto de gitleaks; este
+# archivo solo ACOTA (añadir excepciones), jamás relaja reglas.
+useDefault = true
+
+[allowlist]
+description = "Excepciones revisables de Fluvia (vacío = ninguna excepción vigente)"
+paths = []

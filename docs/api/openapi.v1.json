@@ -618,6 +618,30 @@
         }
       }
     },
+    "/v1/customers/{id}/erase": {
+      "post": {
+        "summary": "Derecho al olvido por PSEUDONIMIZACIÓN (TM-05, data-classification): sobrescribe IRREVERSIBLEMENTE los campos PII (email/name/phone/description/metadata) y da de baja lógica; el id y las referencias contables permanecen. Scope customers:write. Auditado (riesgo alto). Idempotente.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PII del customer pseudonimizada (irreversible)"
+          },
+          "404": {
+            "description": "not_found"
+          }
+        }
+      }
+    },
     "/v1/checkout_sessions": {
       "post": {
         "summary": "Crear una checkout session sobre un payment intent abierto (scope payments:write; idempotente). Devuelve la URL alojada + el client_secret (UNA sola vez). El intent debe estar sin resolver; customer opcional. TTL 5 min–24 h (default 24 h). Alcance F3-05b: el recurso; el flujo alojado (retrieval por client_secret, completed/expired, eventos checkout_session.*) llega en F3-05c.",

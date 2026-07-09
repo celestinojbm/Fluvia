@@ -12,6 +12,7 @@ import {
   InvalidVerificationTokenError,
   MfaAlreadyEnabledError,
   MfaNotEnabledError,
+  StepUpRequiredError,
 } from './errors.js';
 import { dummyPasswordHash, hashPassword, verifyPassword } from './passwords.js';
 import { generateToken, hashToken } from './tokens.js';
@@ -38,6 +39,12 @@ import {
 export interface AuthServiceOptions {
   /** TTL absoluto de sesion. Nivel C, configurable. */
   sessionTtlMs?: number;
+  /**
+   * F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso durante
+   * mas de esta ventana es invalida ANTES de su expiry absoluto (limita el
+   * robo de un token de una sesion olvidada/abandonada). Default 30 min.
+   */
+  sessionIdleTimeoutMs?: number;
   verificationTtlMs?: number;
   maxFailedAttempts?: number;
   lockoutMs?: number;
@@ -84,6 +91,9 @@ export interface SessionIdentity {
   mfaEnabled: boolean;
   /** Ultima verificacion MFA de ESTA sesion (null si nunca). */
   mfaVerifiedAt: Date | null;
+  /** Ultima re-autenticacion por PASSWORD de esta sesion (step-up TM-02,
+   *  usuarios sin MFA). Con MFA habilitado NO sustituye a mfaVerifiedAt. */
+  passwordVerifiedAt: Date | null;
 }
 
 export interface MfaSetup {
@@ -154,6 +164,7 @@ function hashBackupCode(code: string): string {
  */
 export class AuthService {
   private readonly sessionTtlMs: number;
+  private readonly sessionIdleTimeoutMs: number;
   private readonly verificationTtlMs: number;
   private readonly maxFailedAttempts: number;
   private readonly lockoutMs: number;
@@ -167,6 +178,7 @@ export class AuthService {
     options: AuthServiceOptions = {}
   ) {
     this.sessionTtlMs = options.sessionTtlMs ?? 24 * 60 * 60 * 1000;
+    this.sessionIdleTimeoutMs = options.sessionIdleTimeoutMs ?? 30 * 60 * 1000;
     this.verificationTtlMs = options.verificationTtlMs ?? 24 * 60 * 60 * 1000;
     this.maxFailedAttempts = options.maxFailedAttempts ?? 5;
     this.lockoutMs = options.lockoutMs ?? 15 * 60 * 1000;
@@ -383,12 +395,18 @@ export class AuthService {
       id: string;
       user_id: string;
       mfa_verified_at: Date | null;
+      password_verified_at: Date | null;
     }>(
+      // El WHERE evalua last_seen_at PREVIO al SET (semantica de UPDATE): una
+      // sesion ociosa mas alla del idle-timeout no valida (ademas del expiry
+      // absoluto). Una sesion fresca tiene last_seen_at = now() (DEFAULT), asi
+      // que pasa. El SET refresca el reloj de inactividad en cada uso.
       `UPDATE sessions
        SET last_seen_at = now()
        WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
-       RETURNING id, user_id, mfa_verified_at`,
-      [hashToken(sessionToken)]
+         AND last_seen_at > now() - make_interval(secs => $2)
+       RETURNING id, user_id, mfa_verified_at, password_verified_at`,
+      [hashToken(sessionToken), this.sessionIdleTimeoutMs / 1000]
     );
     const row = res.rows[0];
     if (!row) throw new InvalidSessionError();
@@ -402,6 +420,7 @@ export class AuthService {
       userId: row.user_id,
       mfaEnabled: user.rows[0].totp_enabled_at !== null,
       mfaVerifiedAt: row.mfa_verified_at,
+      passwordVerifiedAt: row.password_verified_at,
     };
   }
 
@@ -428,7 +447,10 @@ export class AuthService {
     });
   }
 
-  async revokeAllSessions(userId: string): Promise<number> {
+  async revokeAllSessions(
+    userId: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<number> {
     return this.withTx(async (c) => {
       const res = await c.query(
         'UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
@@ -438,7 +460,7 @@ export class AuthService {
       if (count > 0) {
         await insertAuditEvent(c, {
           action: 'auth.sessions_revoked',
-          context: { actorType: 'user', actorId: userId, authMethod: 'session' },
+          context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
           resourceType: 'user',
           resourceId: userId,
           riskLevel: 'medium',
@@ -728,6 +750,99 @@ export class AuthService {
       await client.query('COMMIT');
       inTx = false;
       return { mfaVerifiedAt: updated.rows[0].mfa_verified_at };
+    } catch (err) {
+      if (inTx) await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * TM-02 (threat model §5) — step-up por RE-AUTENTICACIÓN DE PASSWORD, solo
+   * para usuarios SIN MFA (con MFA habilitado el password no sustituye al
+   * factor fuerte: se exige `/v1/auth/mfa/step-up`). Un password fallido cuenta
+   * contra el MISMO lockout que el login (no es un oráculo de fuerza bruta
+   * paralelo), y el éxito refresca `sessions.password_verified_at` (0040)
+   * auditado en la misma transacción.
+   */
+  async stepUpWithPassword(
+    userId: string,
+    sessionId: string,
+    password: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<{ passwordVerifiedAt: Date }> {
+    const client = await this.authPool.connect();
+    let inTx = false;
+    try {
+      await client.query('BEGIN');
+      inTx = true;
+      const res = await client.query<{
+        id: string;
+        password_hash: string | null;
+        failed_login_attempts: number;
+        locked_until: Date | null;
+        totp_enabled_at: Date | null;
+      }>(
+        `SELECT id, password_hash, failed_login_attempts, locked_until, totp_enabled_at
+         FROM users WHERE id = $1 AND deleted_at IS NULL
+         FOR UPDATE`,
+        [userId]
+      );
+      const user = res.rows[0];
+      if (!user || user.password_hash === null) {
+        await verifyPassword(password, await dummyPasswordHash());
+        throw new InvalidCredentialsError();
+      }
+      if (user.locked_until && user.locked_until.getTime() > Date.now()) {
+        throw new AccountLockedError();
+      }
+      // Con MFA habilitado, el step-up es SIEMPRE por TOTP.
+      if (user.totp_enabled_at) throw new StepUpRequiredError();
+
+      const valid = await verifyPassword(password, user.password_hash);
+      if (!valid) {
+        const attempts = user.failed_login_attempts + 1;
+        const lock = attempts >= this.maxFailedAttempts;
+        await client.query(
+          `UPDATE users
+           SET failed_login_attempts = $2,
+               locked_until = CASE WHEN $3 THEN now() + make_interval(secs => $4) ELSE locked_until END
+           WHERE id = $1`,
+          [user.id, lock ? 0 : attempts, lock, this.lockoutMs / 1000]
+        );
+        await insertAuditEvent(client, {
+          action: lock ? 'auth.account_locked' : 'auth.step_up_password_failed',
+          context: { actorType: 'user', actorId: user.id, authMethod: 'session', ...meta },
+          resourceType: 'session',
+          resourceId: sessionId,
+          result: 'failure',
+          riskLevel: lock ? 'high' : 'medium',
+          reason: lock ? 'max_failed_attempts_reached' : 'invalid_password',
+        });
+        await client.query('COMMIT');
+        inTx = false;
+        throw lock ? new AccountLockedError() : new InvalidCredentialsError();
+      }
+
+      await client.query(`UPDATE users SET failed_login_attempts = 0 WHERE id = $1`, [user.id]);
+      const updated = await client.query<{ password_verified_at: Date }>(
+        `UPDATE sessions SET password_verified_at = now()
+         WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+         RETURNING password_verified_at`,
+        [sessionId, userId]
+      );
+      if (!updated.rows[0]) throw new InvalidSessionError();
+      await insertAuditEvent(client, {
+        action: 'auth.step_up_password',
+        context: { actorType: 'user', actorId: userId, authMethod: 'session', ...meta },
+        resourceType: 'session',
+        resourceId: sessionId,
+        riskLevel: 'medium',
+      });
+      await client.query('COMMIT');
+      inTx = false;
+      return { passwordVerifiedAt: updated.rows[0].password_verified_at };
     } catch (err) {
       if (inTx) await client.query('ROLLBACK').catch(() => undefined);
       throw err;

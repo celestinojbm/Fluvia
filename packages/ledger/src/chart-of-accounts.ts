@@ -24,7 +24,13 @@ export const CHART_OF_ACCOUNTS = {
   'provider.payable': { scope: 'platform', type: 'liability', normalSide: 'credit' },
   'provider.fees': { scope: 'platform', type: 'expense', normalSide: 'debit' },
   'platform.fees': { scope: 'platform', type: 'income', normalSide: 'credit' },
-  'payout.in_transit': { scope: 'platform', type: 'asset', normalSide: 'debit' },
+  // Caja/banco operativo de Fluvia (F4-05b): activo del que salen los payouts.
+  'platform.cash': { scope: 'platform', type: 'asset', normalSide: 'debit' },
+  // Payout en tránsito (F4-05b): obligación en vuelo, aún no confirmada por el
+  // banco. Tratamiento contable estándar = PASIVO (credit-normal): al emitir se
+  // acredita desde merchant.available; al liquidar se debita contra platform.cash.
+  // (Corrige el placeholder original 'asset'; la cuenta jamás se usó — saldo 0.)
+  'payout.in_transit': { scope: 'platform', type: 'liability', normalSide: 'credit' },
   suspense: { scope: 'platform', type: 'transitory', normalSide: 'debit' },
   'recon.differences': { scope: 'platform', type: 'transitory', normalSide: 'debit' },
   'merchant.pending': { scope: 'merchant', type: 'liability', normalSide: 'credit' },

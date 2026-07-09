@@ -13,6 +13,7 @@ import {
   PaymentConfirmationService,
   PaymentIntentNotFoundError,
   PaymentIntentService,
+  ZERO_FEE_SCHEDULE,
   hashClientSecret,
 } from '../src/index.js';
 
@@ -70,7 +71,8 @@ beforeAll(async () => {
       ctx.app,
       intents,
       posting,
-      new MockPaymentProvider()
+      new MockPaymentProvider(),
+      ZERO_FEE_SCHEDULE
     ),
   });
   org = await ctx.createTenant(`CO ${randomUUID().slice(0, 8)}`);

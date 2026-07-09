@@ -62,9 +62,39 @@ const EnvSchema = z.object({
     .min(1000)
     .max(3_600_000)
     .default(60_000),
+  PAYOUTS_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  PAYOUTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  PAYOUTS_REDRIVER_ENABLED: z.enum(['true', 'false']).default('true'),
+  PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  DISPUTES_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  DISPUTES_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  // F6 (threat model §5): watchdog de huérfanos `in_progress` de idempotencia.
+  IDEMPOTENCY_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  IDEMPOTENCY_WATCHDOG_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .max(3_600_000)
+    .default(60_000),
+  // F6 (threat model §5): retención de idempotency keys. DEBE ser >= la ventana
+  // máxima de retry del cliente (un reintento tras la expiración re-ejecuta el
+  // efecto). Default 24 h (Nivel C); el propietario fija el valor definitivo
+  // antes del sandbox compartido (PEND-006). Rango 1 h – 30 días.
+  IDEMPOTENCY_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  // F6 (threat model §5, fila Ledger): sellador del hash-chain de tamper-evidence
+  // (0042). El intervalo marca la cadencia de sellado (un segmento por corrida,
+  // en dos fases) — el horizonte pendiente de detección es ~2 intervalos.
+  LEDGER_CHECKPOINT_ENABLED: z.enum(['true', 'false']).default('true'),
+  LEDGER_CHECKPOINT_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(300_000),
+  // F6 (threat model §5): idle-timeout de sesion. Una sesion sin uso mas alla
+  // de esta ventana es invalida (antes del expiry absoluto). Default 30 min;
+  // rango 1 min – 24 h.
+  SESSION_IDLE_TIMEOUT_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(1_800_000),
   // F4-03b: umbral (unidades menores) desde el cual un ajuste de caso exige
   // four-eyes (segundo aprobador distinto). Default 0 = SIEMPRE (Nivel A seguro).
   FOUR_EYES_THRESHOLD_MINOR: z.coerce.number().int().min(0).default(0),
+  // Fee de plataforma en basis points (F4-05c, PEND-002). Default 200 = 2%.
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(200),
   // CORS (F3-11a, AUD-P2-016): lista de orígenes permitidos separada por comas.
   // Vacío = NINGÚN cross-origin (default seguro; checkout/dashboard llaman al API
   // server-side, no desde el navegador). `*` permite cualquier origen. No secreto.
@@ -103,6 +133,8 @@ export interface AppConfig {
     webhook: string;
   };
   redisUrl: string;
+  /** F6: idle-timeout de sesion en ms (threat model §5). */
+  sessionIdleTimeoutMs: number;
   /** Clave AES-256-GCM (64 hex) para secretos TOTP en reposo (F1-04b). */
   mfaSecretKey: string;
   /** Pepper HMAC-SHA256 (64 hex) para hashes de API keys (AUD-P2-015). */
@@ -153,8 +185,37 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Watchdog de payouts: barrido de in_transit atascado + salud (F4-07c). */
+  payoutsWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Re-drive de payouts `requested` atascados: execute nunca corrio (F4-07e). */
+  payoutsRedriver: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Watchdog de disputas: salud de fondos apartados + envejecidas (F4-10). */
+  disputesWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** F6: watchdog de huérfanos `in_progress` de idempotencia (threat model §5). */
+  idempotencyWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** F6: retención de idempotency keys en horas (>= ventana de retry del cliente). */
+  idempotencyRetentionHours: number;
+  /** F6: sellador del hash-chain de tamper-evidence del ledger (0042). */
+  ledgerCheckpoint: {
+    enabled: boolean;
+    intervalMs: number;
+  };
   /** Umbral (unidades menores) desde el cual un ajuste de caso exige four-eyes (F4-03b). */
   fourEyesThresholdMinor: number;
+  /** Fee de plataforma en basis points (F4-05c, PEND-002). 200 = 2%. */
+  platformFeeBps: number;
   /** Orígenes CORS permitidos (F3-11a). Vacío = ningún cross-origin; `['*']` = todos. */
   corsAllowedOrigins: string[];
 }
@@ -199,6 +260,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       webhook: required('WEBHOOK_DATABASE_URL', e.WEBHOOK_DATABASE_URL, LOCAL_DEFAULTS.webhook),
     },
     redisUrl: required('REDIS_URL', e.REDIS_URL, LOCAL_DEFAULTS.redis),
+    sessionIdleTimeoutMs: e.SESSION_IDLE_TIMEOUT_MS,
     mfaSecretKey: required('MFA_SECRET_KEY', e.MFA_SECRET_KEY, LOCAL_DEFAULTS.mfaSecretKey),
     apiKeyHmacSecret: required(
       'API_KEY_HMAC_SECRET',
@@ -249,7 +311,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.RECONCILIATION_WATCHDOG_ENABLED === 'true',
       intervalMs: e.RECONCILIATION_WATCHDOG_INTERVAL_MS,
     },
+    payoutsWatchdog: {
+      enabled: e.PAYOUTS_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.PAYOUTS_WATCHDOG_INTERVAL_MS,
+    },
+    payoutsRedriver: {
+      enabled: e.PAYOUTS_REDRIVER_ENABLED === 'true',
+      intervalMs: e.PAYOUTS_REDRIVER_INTERVAL_MS,
+    },
+    disputesWatchdog: {
+      enabled: e.DISPUTES_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.DISPUTES_WATCHDOG_INTERVAL_MS,
+    },
+    idempotencyWatchdog: {
+      enabled: e.IDEMPOTENCY_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.IDEMPOTENCY_WATCHDOG_INTERVAL_MS,
+    },
+    idempotencyRetentionHours: e.IDEMPOTENCY_RETENTION_HOURS,
+    ledgerCheckpoint: {
+      enabled: e.LEDGER_CHECKPOINT_ENABLED === 'true',
+      intervalMs: e.LEDGER_CHECKPOINT_INTERVAL_MS,
+    },
     fourEyesThresholdMinor: e.FOUR_EYES_THRESHOLD_MINOR,
+    platformFeeBps: e.PLATFORM_FEE_BPS,
     corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter((o) => o.length > 0),

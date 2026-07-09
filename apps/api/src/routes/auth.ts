@@ -5,10 +5,18 @@ import {
   MfaCodeOnlySchema,
   MfaVerifySchema,
   RegisterSchema,
+  StepUpPasswordSchema,
   VerifyEmailSchema,
 } from '@fluvia/auth';
 import { InvalidSessionError } from '@fluvia/auth';
-import { FixedWindowLimiter, emailKey, ipKey, rateLimit, type RateRule } from '../rate-limit.js';
+import {
+  FixedWindowLimiter,
+  emailKey,
+  ipKey,
+  rateLimit,
+  type RateLimiter,
+  type RateRule,
+} from '../rate-limit.js';
 
 export interface AuthRateLimits {
   loginPerEmail: RateRule;
@@ -30,6 +38,9 @@ export interface AuthRoutesOptions {
   /** Solo local/test: expone el token de verificacion en la respuesta de registro. */
   exposeVerificationToken: boolean;
   rateLimits?: AuthRateLimits;
+  /** TM-03: backend del limiter. Default: ventana fija in-memory (mono-instancia);
+   *  los despliegues compartidos inyectan `RedisFixedWindowLimiter`. */
+  limiter?: RateLimiter;
 }
 
 function bearerToken(req: FastifyRequest): string {
@@ -44,10 +55,10 @@ function meta(req: FastifyRequest) {
 
 export function registerAuthRoutes(
   app: FastifyInstance,
-  { authService, exposeVerificationToken, rateLimits }: AuthRoutesOptions
+  { authService, exposeVerificationToken, rateLimits, limiter: injected }: AuthRoutesOptions
 ): void {
   const limits = rateLimits ?? DEFAULT_AUTH_RATE_LIMITS;
-  const limiter = new FixedWindowLimiter();
+  const limiter = injected ?? new FixedWindowLimiter();
 
   app.post(
     '/v1/auth/register',
@@ -157,9 +168,39 @@ export function registerAuthRoutes(
     }
   );
 
+  // TM-02: step-up por RE-AUTENTICACION DE PASSWORD, solo usuarios SIN MFA
+  // (con MFA, el password no sustituye al factor fuerte: 403 step-up). Un
+  // fallo cuenta contra el MISMO lockout que el login; mismo limite por IP
+  // que el resto del plano MFA.
+  app.post(
+    '/v1/auth/step-up/password',
+    { preHandler: rateLimit(limiter, [{ keyOf: ipKey('stepup:ip'), rule: limits.mfaPerIp }]) },
+    async (req) => {
+      const identity = await authService.authenticateSession(bearerToken(req));
+      const body = StepUpPasswordSchema.parse(req.body);
+      const result = await authService.stepUpWithPassword(
+        identity.userId,
+        identity.sessionId,
+        body.password,
+        meta(req)
+      );
+      return { password_verified_at: result.passwordVerifiedAt.toISOString() };
+    }
+  );
+
   app.post('/v1/auth/logout', async (req, reply) => {
     await authService.logout(bearerToken(req), meta(req));
     return reply.code(204).send();
+  });
+
+  // F6 (threat model §5): "cerrar sesión en todos los dispositivos". Revoca
+  // TODAS las sesiones del usuario (incluida la actual), auditado. Es el
+  // control de gestión de sesiones que faltaba y el hook para una futura
+  // revocación automática al cambiar credencial. Requiere sesión válida.
+  app.post('/v1/auth/logout-all', async (req, reply) => {
+    const identity = await authService.authenticateSession(bearerToken(req));
+    const revoked = await authService.revokeAllSessions(identity.userId, meta(req));
+    return reply.code(200).send({ revoked_sessions: revoked });
   });
 
   app.get('/v1/auth/session', async (req) => {

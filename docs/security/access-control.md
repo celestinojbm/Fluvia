@@ -7,28 +7,28 @@ Estado: Versión inicial · Fase: 0 · Implementación en F1 (RBAC) y F4 (admin)
 - **RBAC por organización** vía `memberships(user, organization, role)`. Roles iniciales: `owner`, `admin`, `developer`, `finance`, `support`, `analyst`, `read_only`.
 - **API keys con scopes** (lectura, pagos, refunds, webhooks) y entorno (`test`/`live`); una key nunca cruza entornos.
 - **Separación dura dashboard ↔ administración interna**: apps, dominios de sesión y roles distintos; el staff de Fluvia no usa cuentas de comercio.
-- **Step-up authentication** (re-auth MFA) para operaciones sensibles: crear/rotar API keys, modificar webhooks, cambiar datos legales/bancarios, aprobar refunds sobre umbral, desactivar MFA, congelar comercios, ajustes contables.
+- **Step-up authentication** para operaciones sensibles. Implementado hoy sobre `keys:manage` (crear/revocar API keys) y **para TODO usuario** (TM-02): con MFA → verificación TOTP fresca (`/v1/auth/mfa/step-up`); sin MFA → re-autenticación por password (`/v1/auth/step-up/password`, `sessions.password_verified_at`, migración 0040) — el password NUNCA sustituye al TOTP cuando hay MFA, y un fallo cuenta contra el MISMO lockout que el login. La extensión a más superficies (webhooks, datos legales/bancarios, refunds sobre umbral, desactivar MFA, congelar comercios, ajustes contables) queda como diseño para cuando existan esas operaciones por sesión.
 - **Four-eyes** cuando corresponda (ajustes de conciliación sobre umbral, payouts futuros): el proponente no puede aprobar su propia acción (constraint en el modelo de casos).
 - **Mínimo privilegio en BD**: roles `fluvia_app`/`fluvia_worker` sin DELETE; el owner de esquema solo migra; `fluvia_auth` (F1-04a) es el único rol con acceso a credenciales/sesiones y solo a esas tres tablas.
 
 ## Estado de implementación (F1-04a, 2026-07-04)
 
-Implementado: registro con verificación de email (token un solo uso, hash en BD), login con scrypt (formato versionado), error uniforme anti-enumeración con igualación de costo temporal, lockout configurable por intentos fallidos, sesiones opacas revocables (individual y global), separación dura del plano de auth (rol `fluvia_auth`). Completado además (F1-04c): API keys con scopes y RBAC por endpoint. Completado (F1-05): audit log append-only — toda acción sensible (API keys, merchants, login/lockout/logout) escribe su evento EN LA MISMA transacción, con actor/razón/request-id y resúmenes redactados; consulta paginada vía `audit:read`. Pendiente (F1-04b): MFA TOTP, step-up, recuperación de contraseña, canal real de email.
+Implementado: registro con verificación de email (token un solo uso, hash en BD), login con scrypt (formato versionado), error uniforme anti-enumeración con igualación de costo temporal, lockout configurable por intentos fallidos, sesiones opacas revocables — individual (`/v1/auth/logout`) y **global (`/v1/auth/logout-all`, F6: revoca TODAS las sesiones del usuario, auditado)** — con **idle-timeout** (F6, `SESSION_IDLE_TIMEOUT_MS`, default 30 min: una sesión ociosa es inválida antes del expiry absoluto de 24 h; el reloj se refresca en cada uso), separación dura del plano de auth (rol `fluvia_auth`). Completado además (F1-04c): API keys con scopes y RBAC por endpoint. Completado (F1-05): audit log append-only — toda acción sensible (API keys, merchants, login/lockout/logout) escribe su evento EN LA MISMA transacción, con actor/razón/request-id y resúmenes redactados; consulta paginada vía `audit:read`. Completado (F1-04b, TM-02): MFA TOTP + step-up (TOTP fresco con MFA; re-autenticación por password sin MFA). Pendiente (acoplado al canal de email): recuperación de contraseña + respuesta neutral en `register` + canal real de email.
 
 ## Matriz de permisos (v1 — F1-04c, fuente de verdad: `packages/identity/src/rbac.ts`)
 
-| Permiso \ Rol   | owner | admin | developer | finance | support | analyst | read_only |
-| --------------- | :---: | :---: | :-------: | :-----: | :-----: | :-----: | :-------: |
-| org:read        |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| members:read    |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| merchants:read  |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| merchants:write |  ✅   |  ✅   |    ❌     |   ❌    |   ❌    |   ❌    |    ❌     |
-| keys:read       |  ✅   |  ✅   |    ✅     |   ✅    |   ❌    |   ❌    |    ❌     |
-| keys:manage     |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
-| audit:read      |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |
-| payments:read   |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| webhooks:manage |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
-| reconciliation:manage | ✅ | ✅ |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
+| Permiso \ Rol         | owner | admin | developer | finance | support | analyst | read_only |
+| --------------------- | :---: | :---: | :-------: | :-----: | :-----: | :-----: | :-------: |
+| org:read              |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| members:read          |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| merchants:read        |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| merchants:write       |  ✅   |  ✅   |    ❌     |   ❌    |   ❌    |   ❌    |    ❌     |
+| keys:read             |  ✅   |  ✅   |    ✅     |   ✅    |   ❌    |   ❌    |    ❌     |
+| keys:manage           |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
+| audit:read            |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |
+| payments:read         |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
+| webhooks:manage       |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
+| reconciliation:manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
 
 El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda a celda; un cambio en código sin actualizar la matriz esperada rompe CI. La matriz crecerá con cada dominio nuevo (pagos, refunds, webhooks) en el mismo PR que exponga los endpoints.
 
@@ -36,7 +36,7 @@ El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda 
 
 **`webhooks:manage` (F3-09b-iii)**: acción de OPERACIÓN sobre webhooks (reenvío de eventos `dead`) por SESIÓN, bajo `POST /v1/organizations/:orgId/webhook_events/:id/resend`. Espeja el scope de API key homónimo (son enums distintos — permiso RBAC vs scope de API key — que representan la misma capacidad en planos de auth distintos). Solo lo tienen los roles que gestionan la integración (owner/admin/developer); el resto del plano de operador es de solo lectura.
 
-**`reconciliation:manage` (F4-03c)**: operación de conciliación por SESIÓN — trabajar casos (`operational_cases`: acknowledge/resolve) y **AUTORIZAR ajustes monetarios** con **four-eyes** (`case_adjustments`: proponer/aprobar/rechazar), bajo `/v1/organizations/:orgId/operational_cases/*` y `/case_adjustments/*`. Solo roles que gobiernan el dinero/conciliación (owner/admin/finance). **El four-eyes (aprobador ≠ proponente sobre umbral) NO se modela como permiso** — se exige por IDENTIDAD de usuario en el servicio y por CHECK en la BD (0030): dos personas distintas *con este permiso* deben intervenir. Autorizar dinero exige actor humano (una API key jamás alcanza este plano).
+**`reconciliation:manage` (F4-03c)**: operación de conciliación por SESIÓN — trabajar casos (`operational_cases`: acknowledge/resolve) y **AUTORIZAR ajustes monetarios** con **four-eyes** (`case_adjustments`: proponer/aprobar/rechazar), bajo `/v1/organizations/:orgId/operational_cases/*` y `/case_adjustments/*`. Solo roles que gobiernan el dinero/conciliación (owner/admin/finance). **El four-eyes (aprobador ≠ proponente sobre umbral) NO se modela como permiso** — se exige por IDENTIDAD de usuario en el servicio y por CHECK en la BD (0030): dos personas distintas _con este permiso_ deben intervenir. Autorizar dinero exige actor humano (una API key jamás alcanza este plano).
 
 **Scopes de API keys (integración)**: `read`, `payments:write`, `customers:write`, `webhooks:manage`. Deliberadamente **no existe** scope de gestión de API keys: una key robada no puede crear más keys ni escalar — la gestión es exclusiva del plano de sesión con rol (`keys:manage`).
 

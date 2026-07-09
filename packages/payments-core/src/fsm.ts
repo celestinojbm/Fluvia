@@ -95,6 +95,60 @@ export const REFUND_TRANSITIONS: Record<RefundStatus, readonly RefundStatus[]> =
   canceled: [],
 };
 
+export const PAYOUT_STATUSES = [
+  'requested',
+  'in_transit',
+  'paid',
+  'failed',
+  'indeterminate',
+] as const;
+export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
+
+/**
+ * Payout (F4-07 — recurso gestionado sobre las primitivas contables de F4-05b).
+ * `requested` nace la solicitud; al EMITIR el disponible del comercio pasa a
+ * `in_transit` (`emitPayout`: available -> payout.in_transit, guard AUD-P1-010).
+ * `requested -> failed` cubre la carrera donde el disponible se drenó entre la
+ * validación y el emit (nunca se contactó al banco: desenlace CONOCIDO). Desde
+ * `in_transit`: `paid` (`settlePayout`: in_transit -> platform.cash, el banco
+ * confirma), `failed` (`failPayout`: in_transit -> available, el banco rebota,
+ * los fondos vuelven íntegros) o `indeterminate` (V4 §23: desenlace DESCONOCIDO
+ * tras llamar al banco — throw/timeout o aceptación asíncrona; los fondos quedan
+ * RETENIDOS en tránsito y SOLO una fuente verificada lo cierra). Terminales:
+ * `paid`, `failed`.
+ */
+export const PAYOUT_TRANSITIONS: Record<PayoutStatus, readonly PayoutStatus[]> = {
+  requested: ['in_transit', 'failed'],
+  in_transit: ['paid', 'failed', 'indeterminate'],
+  indeterminate: ['paid', 'failed'],
+  paid: [],
+  failed: [],
+};
+
+export const DISPUTE_STATUSES = ['open', 'under_review', 'won', 'lost'] as const;
+export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
+
+/**
+ * Dispute / chargeback (F4-08 — recurso gestionado, money clawed back). El banco
+ * abre la disputa: al ABRIR se APARTA el monto disputado del disponible del
+ * comercio a `dispute.reserve` (`openDispute`: available -> dispute.reserve,
+ * guard AUD-P1-010) — no se puede pagar ni disputar dos veces el mismo dinero.
+ * `under_review` cubre la fase de evidencia (el comercio respondió). Desenlace:
+ * `won` (`winDispute`: dispute.reserve -> available, el comercio recupera lo
+ * apartado) o `lost` (`loseDispute`: dispute.reserve -> provider.clearing, el
+ * dinero se va de vuelta vía el proveedor, como un refund forzado). El desenlace
+ * llega SIEMPRE de una fuente verificada (el banco vía webhook — slice
+ * posterior), jamás por asunción; no hay `indeterminate` porque la disputa no
+ * hace una llamada saliente cuyo resultado se desconozca (nos lo empujan).
+ * Terminales: `won`, `lost`.
+ */
+export const DISPUTE_TRANSITIONS: Record<DisputeStatus, readonly DisputeStatus[]> = {
+  open: ['under_review', 'won', 'lost'],
+  under_review: ['won', 'lost'],
+  won: [],
+  lost: [],
+};
+
 export const CHECKOUT_SESSION_STATUSES = ['open', 'completed', 'expired'] as const;
 export type CheckoutSessionStatus = (typeof CHECKOUT_SESSION_STATUSES)[number];
 
