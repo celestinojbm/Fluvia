@@ -1,6 +1,6 @@
 # Reporte de licencias transitivas (generado)
 
-- **Fecha**: 2026-07-10 · **Commit base**: `beabf26a9396f8906f1bdad7525bc3a30cb40648`
+- **Fecha**: 2026-07-10 · **Commit base**: `e0751728f5befac0d1d2756bf2bd7f2bba0d3324`
 - **Herramienta**: `pnpm licenses list --json` (nativa de pnpm; licencias DECLARADAS en manifests — ver limitaciones)
 - **Comandos**: `pnpm licenses list --prod --json` (gate) · `pnpm licenses list --json` (informativo)
 - **Regenerar**: `pnpm licenses:report` · **Gate**: `pnpm licenses:check` (CI, job security)
@@ -34,7 +34,7 @@ Total: **355 paquetes** · fuera del tier permitido: `@img/sharp-libvips-linux-x
 
 ## Resultado
 
-**PASS** — sin prohibidas ni desconocidas en producción; 2 restringida(s) pendiente(s) de decisión humana (bloquean release, no este check en modo normal).
+**PASS** — sin prohibidas ni desconocidas en producción.
 
 ## Limitaciones conocidas
 

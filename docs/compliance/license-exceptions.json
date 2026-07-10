@@ -1,4 +1,33 @@
 {
-  "$comment": "Registro de decisiones humanas sobre licencias (license-policy.md §3). VACÍO a propósito: ninguna excepción ha sido aceptada. Cada entrada: { package, license, status: 'aceptada'|'rechazada', reason, approvedBy, date }. Solo el propietario añade entradas.",
-  "exceptions": []
+  "$comment": "Registro de decisiones humanas sobre licencias (license-policy.md §3). Cada entrada: { package, license, status: 'aceptada'|'rechazada', reason, approvedBy, date }. Solo el propietario añade entradas. Las aceptaciones NO autorizan producción/release: ver reviewBy de cada entrada.",
+  "exceptions": [
+    {
+      "package": "caniuse-lite",
+      "version": "1.0.30001800",
+      "license": "CC-BY-4.0",
+      "status": "aceptada",
+      "scope": "produccion (via next/browserslist; datos de compatibilidad usados en build)",
+      "dependencyPath": "apps/{checkout,dashboard} > next@15.5.20 > caniuse-lite",
+      "reason": "Base de datos de compatibilidad de navegadores usada por Next/Browserslist; no es codigo de aplicacion; obligacion principal de atribucion al redistribuir; uso comun del ecosistema; sin distribucion publica actual",
+      "obligations": "Conservar LICENSE del paquete en artefactos distribuidos; incluir atribucion/aviso de terceros en cualquier release publico o comercial; no remover avisos de licencia",
+      "approvedBy": "Celestino Briceño",
+      "approvalDate": "2026-07-10",
+      "reviewBy": "re-evaluar en el gate de primer release publico/comercial",
+      "notes": "Eliminarla no es viable sin abandonar Next/Browserslist; aceptacion no equivale a aprobacion de produccion"
+    },
+    {
+      "package": "@img/sharp-libvips-linux-x64",
+      "version": "1.2.4",
+      "license": "LGPL-3.0-or-later",
+      "status": "aceptada",
+      "scope": "produccion (binario prebuilt de libvips, transitiva opcional de next > sharp; actualmente dormant porque next/image no se usa)",
+      "dependencyPath": "apps/{checkout,dashboard} > next@15.5.20 > sharp@0.34.5 > @img/sharp-linux-x64 > @img/sharp-libvips-linux-x64",
+      "reason": "Componente LGPL usado como biblioteca/binario separado, sin modificaciones locales, enlazado dinamicamente y reemplazable; actualmente no se carga porque no se usa next/image; sin distribucion publica actual",
+      "obligations": "Mantener el componente sin modificaciones locales salvo nueva revision; conservar avisos/licencia; incluir aviso de terceros y referencia al fuente upstream de libvips en cualquier release publico/comercial; no impedir reemplazo/relinking del componente; si se modifica libvips, se enlaza estaticamente o se empaqueta de forma no reemplazable, esta excepcion caduca",
+      "approvedBy": "Celestino Briceño",
+      "approvalDate": "2026-07-10",
+      "reviewBy": "revision legal LGPLv3 antes del primer release publico/comercial",
+      "notes": "Aceptacion condicionada al modo de uso actual: binario dinamico, sin modificaciones, componente separado y producto aun sandbox; no equivale a aprobacion de produccion"
+    }
+  ]
 }
