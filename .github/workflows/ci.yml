@@ -149,13 +149,14 @@ jobs:
       - name: Dependency audit (falla en High/Critical — Gate Seguridad)
         run: pnpm audit --audit-level high
 
-      - name: Licencias transitivas (política RA-F6-004)
-        # Gate de docs/compliance/license-policy.md: falla ante licencia
-        # PROHIBIDA o DESCONOCIDA en dependencias de producción; las
-        # RESTRINGIDAS sin decisión humana registrada se listan como warning
-        # (bloquean release vía production-gates, no este check en modo normal).
-        # Reproducible en local: `pnpm licenses:check`.
-        run: pnpm licenses:check
+      - name: Licencias transitivas (política RA-F6-004, modo estricto)
+        # Gate de docs/compliance/license-policy.md en --strict: falla ante
+        # licencia PROHIBIDA o DESCONOCIDA en producción Y ante RESTRINGIDA sin
+        # decisión humana registrada en license-exceptions.json (las 2 actuales
+        # fueron decididas por el propietario el 2026-07-10 — la aceptación NO
+        # autoriza producción; la LGPL exige revisión legal antes del primer
+        # release). Reproducible: `pnpm licenses:check --strict`.
+        run: pnpm licenses:check --strict
 
       - name: SBOM (syft, SPDX)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
