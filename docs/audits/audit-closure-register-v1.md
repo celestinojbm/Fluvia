@@ -103,7 +103,7 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 | RA-F6-002 | P2 | Dependencias | **CERRADO** (override mínimo; pendiente de ratificación por el delta final) | — | — | — (pero producción sigue bloqueada por RA-F6-004) | `fix/ra-f6-002-postcss-cve` |
 | RA-F6-003 | P3 | Documentación/gobernanza | **ABIERTO** | No | No | No (deuda de trazabilidad; se cierra antes del release) | `docs/ra-f6-003-gates-reconciliation` (docs-only) |
 | RA-F6-004 | P2 | Compliance/licencias | **CERRADO** (reporte + política + check `--strict` en CI + decisiones humanas registradas 2026-07-10; la excepción LGPL exige revisión legal antes del primer release) | — | — | — (la aceptación NO autoriza producción) | `feat/ra-f6-004-license-report` + `docs/ra-f6-004-license-decisions` |
-| RA-F6-005 | P3 | Ledger/verificación | **ABIERTO** | No | No | No (la cobertura ACTUAL es correcta; es deuda de sincronización futura) | `test/ra-f6-005-nonneg-chart-metatest` (solo meta-test) |
+| RA-F6-005 | P3 | Ledger/verificación | **CERRADO** (meta-test chart↔[9] con dientes probados; cobertura actual confirmada exacta 12/12) | — | — | — | `test/ra-f6-005-nonneg-chart-metatest` |
 
 ### RA-F6-001 (P1) — Idempotencia financiera sin cotas transaccionales completas — CERRADO
 
@@ -132,13 +132,12 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 - **Resultado real (baseline `beabf26`)**: producción **126 paquetes** — 124 permitidas, **0 prohibidas, 0 desconocidas**, **2 RESTRINGIDAS pendientes de DECISIÓN HUMANA**: `caniuse-lite@1.0.30001800` (**CC-BY-4.0**, datos de soporte de navegadores, vía next/browserslist) y `@img/sharp-libvips-linux-x64@1.2.4` (**LGPL-3.0-or-later**, binarios prebuilt de libvips vía next/sharp). Árbol completo 355 (dev incluye MPL-2.0, Python-2.0, BlueOak — informativo, no se distribuyen). **Ninguna licencia fue aceptada por el agente**: las 2 restringidas bloquean producción/release hasta que el propietario registre su decisión en license-exceptions.json (entonces CI puede pasar a `--strict`).
 - **Decisión humana registrada (2026-07-10, Celestino Briceño)**: AMBAS restringidas **aceptadas como excepciones controladas** en `license-exceptions.json`, con obligaciones explícitas (atribución/avisos para CC-BY-4.0; enlace dinámico + sin modificar + avisos + fuente upstream para LGPL, con cláusula de caducidad) y **revisión obligatoria antes del primer release público/comercial** (la LGPL con revisión LEGAL). **La aceptación NO autoriza producción** ni levanta ningún gate. Con las decisiones registradas, el check de CI pasó a **`--strict`** (verificado: strict fallaba antes del registro y pasa después; reporte regenerado). RA-F6-004 queda **CERRADO a nivel de compliance interno** — pendiente solo la ratificación del delta final.
 
-### RA-F6-005 (P3) — El check [9] depende de sincronización manual con el chart — ABIERTO
+### RA-F6-005 (P3) — El check [9] depende de sincronización manual con el chart — CERRADO (2026-07-10)
 
-- **Evidencia del auditor**: la lista de cuentas protegidas del verificador SQL está hardcodeada; **la cobertura actual es correcta**, pero una cuenta protegida futura podría incorporarse al chart sin incorporarse al check [9] (deriva silenciosa de cobertura).
-- **Impacto**: pérdida FUTURA de detección; hoy no hay hueco.
-- **Bloquea**: nada; es defensa contra drift de mantenimiento.
-- **Criterio de cierre**: meta-test que compare las cuentas NO transitorias protegidas de `CHART_OF_ACCOUNTS` con la lista usada por `verify-ledger-invariants.sql` [9] (mismo patrón doc↔código ya usado en el repo, p. ej. topics de webhooks).
-- **Notas**: pequeño pero toca la verificación de invariantes del ledger → PR aislado propio; NO se agrega el meta-test en este PR docs-only.
+- **Evidencia del auditor**: la lista de cuentas protegidas del verificador SQL está hardcodeada; la cobertura actual es correcta, pero una cuenta protegida futura podría incorporarse al chart sin incorporarse al check [9] (deriva silenciosa de cobertura).
+- **Diagnóstico previo verificado**: cobertura actual **EXACTA** — las 12 cuentas no transitorias de `CHART_OF_ACCOUNTS` (`provider.clearing/receivable/payable/fees`, `platform.fees/cash`, `payout.in_transit`, `merchant.pending/available/reserve`, `refund.liability`, `dispute.reserve`) == la lista IN(...) del check [9]; las 2 transitorias (`suspense`, `recon.differences`) correctamente excluidas. Sin divergencia real hoy (coincide con el auditor).
+- **Cierre aplicado (solo meta-test, patrón doc↔código del repo)**: `packages/ledger/test/chart-nonneg-sync.test.ts` — ESTÁTICO (sin PG): importa el `CHART_OF_ACCOUNTS` real, deriva programáticamente las protegidas (`type != 'transitory'`), parsea la lista IN(...) del [9] en `scripts/verify-ledger-invariants.sql` real, y FALLA con mensaje accionable si (a) una protegida del chart falta en [9], (b) [9] lista algo que ya no es protegida del chart, o (c) una transitoria se cuela en [9] (falso positivo). Anti-vacuidad: si la extracción del SQL deja de matchear por un refactor, el test ROMPE ruidosamente en vez de pasar en vacío. **Dientes probados**: quitando `dispute.reserve` del SQL el test falla con el mensaje exacto de sincronización; restaurado, 3/3 verde. NO se tocó el SQL, ni el chart, ni el runtime.
+- **Notas**: cierre pendiente de ratificación por el delta final. Queda solo **RA-F6-003** (reconciliación docs de gates) antes del cierre documental de F6.
 
 ### Plan de remediación recomendado (NO ejecutado aún — cada paso requiere autorización)
 
