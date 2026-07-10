@@ -102,7 +102,7 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 | RA-F6-001 | P1 | Idempotencia | **CERRADO** (delta aprobado; PR #23; run #327) | — | — | — | #23 (mergeado) |
 | RA-F6-002 | P2 | Dependencias | **CERRADO** (override mínimo; pendiente de ratificación por el delta final) | — | — | — (pero producción sigue bloqueada por RA-F6-004) | `fix/ra-f6-002-postcss-cve` |
 | RA-F6-003 | P3 | Documentación/gobernanza | **ABIERTO** | No | No | No (deuda de trazabilidad; se cierra antes del release) | `docs/ra-f6-003-gates-reconciliation` (docs-only) |
-| RA-F6-004 | P2 | Compliance/licencias | **ABIERTO** | No | No por sí solo | **Sí** | `feat/ra-f6-004-license-report` (tooling CI + política) |
+| RA-F6-004 | P2 | Compliance/licencias | **CERRADO** (reporte + política + check en CI; 2 restringidas listadas para decisión humana — bloquean release, no el mecanismo) | — | — | — (release sigue bloqueado hasta decidir las 2 restringidas) | `feat/ra-f6-004-license-report` |
 | RA-F6-005 | P3 | Ledger/verificación | **ABIERTO** | No | No | No (la cobertura ACTUAL es correcta; es deuda de sincronización futura) | `test/ra-f6-005-nonneg-chart-metatest` (solo meta-test) |
 
 ### RA-F6-001 (P1) — Idempotencia financiera sin cotas transaccionales completas — CERRADO
@@ -125,13 +125,12 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 - **Criterio de cierre**: reconciliar `production-gates.md`, `STATE.md`, `HANDOFF.md` y este registro con el baseline exacto; separar explícitamente los tres estadios (**sandbox cerrado / sandbox compartido / producción**); dejar claro en todos que el script actual verifica **[1]–[9]**.
 - **Notas**: en este PR solo se REGISTRA la deuda (nota mínima en `production-gates.md`); la reconciliación completa va en su PR docs-only propio para no convertir esta integración en limpieza amplia.
 
-### RA-F6-004 (P2) — Falta reporte transitivo de licencias — ABIERTO
+### RA-F6-004 (P2) — Falta reporte transitivo de licencias — CERRADO (2026-07-10)
 
-- **Evidencia del auditor**: el SBOM SPDX se genera en CI y grype/gitleaks corren, pero **no existe evidencia de análisis automático de licencias transitivas** ni una política de licencias permitidas/prohibidas.
-- **Impacto**: riesgo legal/compliance en release público (una transitiva copyleft/incompatible pasaría inadvertida).
-- **Bloquea**: sandbox NO · F5 no por sí solo · **producción/release público SÍ**.
-- **Criterio de cierre**: generar reporte de licencias transitivas (idealmente derivado del SBOM SPDX ya existente) → definir política de licencias permitidas/prohibidas versionada → resolver incompatibilidades o documentar aceptación formal → check en CI si es viable.
-- **Notas**: requiere tooling nuevo — NO se introduce en este PR docs-only.
+- **Evidencia del auditor**: el SBOM SPDX se genera en CI y grype/gitleaks corren, pero **no existía análisis automático de licencias transitivas** ni política de licencias.
+- **Cierre aplicado (Opción B — capacidad nativa de pnpm, CERO dependencias nuevas)**: `pnpm licenses list --json` lee las licencias DECLARADAS de todo el árbol del lockfile — la MISMA fuente de la que syft deriva la metadata de licencias del SBOM, así que derivar del SBOM (Opción A) añadía partes móviles (syft solo existe en CI) sin fidelidad extra. Entregado: **(a)** `scripts/check-licenses.mjs` — clasifica contra la política (expresiones SPDX OR/AND incluidas; desconocida = bloqueante), gate DURO sobre dependencias de PRODUCCIÓN (prohibida/desconocida → falla; restringida sin decisión → warning visible, y fallo en `--strict`), reporte reproducible; **(b)** política versionada `docs/compliance/license-policy.md` (tiers permitida/restringida/prohibida, duales, excepciones SOLO por decisión del propietario); **(c)** registro de decisiones `docs/compliance/license-exceptions.json` (VACÍO a propósito — nada auto-aceptado, convención `.grype.yaml`); **(d)** reporte generado `docs/compliance/license-report.md`; **(e)** check en CI (job security, paso «Licencias transitivas», tras el audit) + scripts `licenses:check`/`licenses:report`.
+- **Resultado real (baseline `beabf26`)**: producción **126 paquetes** — 124 permitidas, **0 prohibidas, 0 desconocidas**, **2 RESTRINGIDAS pendientes de DECISIÓN HUMANA**: `caniuse-lite@1.0.30001800` (**CC-BY-4.0**, datos de soporte de navegadores, vía next/browserslist) y `@img/sharp-libvips-linux-x64@1.2.4` (**LGPL-3.0-or-later**, binarios prebuilt de libvips vía next/sharp). Árbol completo 355 (dev incluye MPL-2.0, Python-2.0, BlueOak — informativo, no se distribuyen). **Ninguna licencia fue aceptada por el agente**: las 2 restringidas bloquean producción/release hasta que el propietario registre su decisión en license-exceptions.json (entonces CI puede pasar a `--strict`).
+- **Notas**: cierre del MECANISMO pendiente de ratificación por el delta final; la **decisión humana sobre las 2 restringidas** queda abierta explícitamente (no bloquea sandbox ni F5; SÍ release).
 
 ### RA-F6-005 (P3) — El check [9] depende de sincronización manual con el chart — ABIERTO
 
