@@ -2,6 +2,8 @@
 
 Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlazará a su prueba cuando exista.
 
+> **Deuda registrada — RA-F6-003 (P3, re-auditoría F6 delta)**: este documento (y otros) mezcla estados históricos de Fase 2/F4/F6 — p. ej. el «Estado global» de abajo aún dice «Fase 2», y hay menciones a **seis** verificaciones de ledger cuando `scripts/verify-ledger-invariants.sql` verifica HOY los checks **[1]–[9]**. La reconciliación completa (con separación explícita de los estadios *sandbox cerrado / sandbox compartido / producción*) se hará en el PR docs-only `docs/ra-f6-003-gates-reconciliation` — aquí solo se registra la deuda para no mezclarla con la integración del informe. Estado vivo: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta.
+
 ## Estado global: 🔴 PRE-PRODUCCIÓN (Fase 2 — sandbox; live keys bloqueadas por código)
 
 ## 1. Gates técnicos mínimos

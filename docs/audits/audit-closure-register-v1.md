@@ -95,15 +95,59 @@ Los 11 hallazgos vigentes del informe v2 y su estado tras este lote de remediaci
 
 ## Re-auditoría F6 delta (2026-07-10) — hallazgos RA-F6-\*
 
-Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6a185d876cdb04a9c4a0e3da3020adcce0a3763`. Veredicto: **0 P0, 1 P1** (RA-F6-001). El P1 **bloquea el F6 gate, la Fase 5, la exposición pública y producción** hasta que el delta audit confirme su cierre. F6 **NO se declara aprobado** hasta esa confirmación.
+Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6a185d876cdb04a9c4a0e3da3020adcce0a3763`. Veredicto: **0 P0, 1 P1** (RA-F6-001) + **2 P2 + 2 P3** (RA-F6-002…005, integrados 2026-07-10 con el detalle entregado por el propietario). **RA-F6-001 quedó CERRADO**: fix en PR **#23**, aprobación del delta audit **limitada a ese hallazgo** (head auditado `227efca`), merge commit `888db826ce7646d80503ae5996383badb2890cec`, CI post-merge **run #327 VERDE**. La aprobación delta **NO** autoriza Fase 5, ni levantar el freeze (#24), ni `live`, ni proveedor real, ni producción. **F6 NO se declara aprobado** mientras RA-F6-002…005 sigan abiertos sin cierre o aceptación formal.
 
-| ID | Sev | Hallazgo | Estado |
-| --- | --- | --- | --- |
-| RA-F6-001 | P1 | **Idempotencia financiera sin cotas transaccionales completas**: `IdempotencyService.execute()` (`packages/idempotency/src/index.ts`) abría una transacción MANUAL con solo `SET LOCAL lock_timeout` (interpolado), sin `statement_timeout` ni `idle_in_transaction_session_timeout` — divergía de la defensa sistémica V2-R1 de `withTenantTransaction` (`packages/db/src/pool.ts`): un handler patológico o una sesión idle dentro de la tx podía acaparar una conexión del pool sin límite, en el camino del dinero | **REMEDIADO — pendiente de confirmación por el delta audit** (PR aislado `fix/ra-f6-001-idempotency-transaction-timeouts`). Fix: `execute()` corre ahora por `withTenantTransaction` (las TRES cotas como `set_config(..., true)` parametrizado + clamping; se elimina el `BEGIN` manual y la interpolación `${}` del `lock_timeout` — la entrada del allowlist del guard estático se retira). Opciones nuevas validadas `statementTimeoutMs` (default 30 s) e `idleInTxTimeoutMs` (default 60 s) con la regla `statement > lock` que preserva el contrato 55P03 → 409. Semántica intacta: el COMMIT temprano del replay (solo lectura) pasa al COMMIT del helper (equivalente observacional); mapeo 55P03 → `processing_in_flight` conservado; mismo client/tx para el handler. Teeth: `packages/idempotency/test/tx-timeouts.test.ts` (5 tests vs PG16: tres cotas activas + tenant intacto; 57014 con rollback atómico y retry limpio; idle-kill sin estado huérfano y pool usable; secuencia de fallos sin agotar un pool max=2; validación del constructor). Los 13 tests existentes del contrato pasan sin cambios. Evidencia CI: se registra abajo al verde |
-| RA-F6-002 | — | Reportado por el delta audit según instrucción del propietario; **el detalle del informe aún NO fue entregado al repo** | **PENDIENTE de integración** — NO abordado en este PR (aislamiento del fix) |
-| RA-F6-003 | — | Ídem | **PENDIENTE de integración** |
-| RA-F6-004 | — | Ídem | **PENDIENTE de integración** |
-| RA-F6-005 | — | Ídem | **PENDIENTE de integración** |
+| ID | Sev | Área | Estado | ¿Bloquea sandbox cerrado? | ¿Bloquea F5? | ¿Bloquea producción/exposición pública? | PR de cierre futuro esperado |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RA-F6-001 | P1 | Idempotencia | **CERRADO** (delta aprobado; PR #23; run #327) | — | — | — | #23 (mergeado) |
+| RA-F6-002 | P2 | Dependencias | **ABIERTO** | No | No por sí solo | **Sí** (salvo update o aceptación formal) | `fix/ra-f6-002-postcss-cve` (solo el update mínimo) |
+| RA-F6-003 | P3 | Documentación/gobernanza | **ABIERTO** | No | No | No (deuda de trazabilidad; se cierra antes del release) | `docs/ra-f6-003-gates-reconciliation` (docs-only) |
+| RA-F6-004 | P2 | Compliance/licencias | **ABIERTO** | No | No por sí solo | **Sí** | `feat/ra-f6-004-license-report` (tooling CI + política) |
+| RA-F6-005 | P3 | Ledger/verificación | **ABIERTO** | No | No | No (la cobertura ACTUAL es correcta; es deuda de sincronización futura) | `test/ra-f6-005-nonneg-chart-metatest` (solo meta-test) |
+
+### RA-F6-001 (P1) — Idempotencia financiera sin cotas transaccionales completas — CERRADO
+
+`IdempotencyService.execute()` abría una transacción MANUAL con solo `SET LOCAL lock_timeout` (interpolado), sin `statement_timeout` ni `idle_in_transaction_session_timeout` — divergía de la defensa sistémica V2-R1 de `withTenantTransaction`: un handler patológico o una sesión idle dentro de la tx podía acaparar una conexión del pool sin límite, en el camino del dinero. **Fix** (PR #23): `execute()` corre por `withTenantTransaction` (las TRES cotas como `set_config(..., true)` parametrizado + clamping; sin `BEGIN` manual ni interpolación `${}`), opciones validadas `statementTimeoutMs`/`idleInTxTimeoutMs` con la regla `statement > lock` (preserva 55P03 → 409), semántica del contrato intacta, teeth tests `tx-timeouts.test.ts` (5 vs PG16) + los 13 del contrato sin cambios. **Cierre**: delta audit aprobó (alcance limitado a este hallazgo; head auditado `227efca`, base `e6a185d`); merge commit `888db82`; CI post-merge run **#327** verde. Evidencia detallada abajo en §Evidencia CI.
+
+### RA-F6-002 (P2) — Dependencia vulnerable `postcss@8.4.31` — ABIERTO
+
+- **Evidencia del auditor**: CVE-2026-41305 / GHSA-qx2v-qp2m-jg93; ruta `apps__checkout > next > postcss`; fix disponible en `postcss >= 8.5.10`. El advisory requiere un flujo que reserialice CSS controlado por el usuario y lo inserte en un `<style>`; **ese flujo NO fue demostrado en Fluvia**.
+- **Impacto**: exposición a una vulnerabilidad conocida en la cadena de build/render del checkout; explotabilidad no demostrada en este código.
+- **Bloquea**: sandbox cerrado NO · F5 no por sí solo · **producción/release público SÍ** (salvo actualización o aceptación formal de riesgo).
+- **Criterio de cierre**: confirmar la ruta real en lockfile/dependency graph → actualizar de forma mínima y segura si es posible → si la transitiva lo impide, documentar mitigación/aceptación temporal CON razón (proceso `vulnerability-acceptance.md`, registro `.grype.yaml`) → CI completa verde.
+- **Notas**: NO se toca en este PR docs-only (ni dependencias ni lockfiles). PR aislado exclusivo de este update.
+
+### RA-F6-003 (P3) — Documentación de gates no completamente sincronizada — ABIERTO
+
+- **Evidencia del auditor**: documentos que mezclan estados históricos de Fase 2/F4/F6 (p. ej. `production-gates.md` declara «Fase 2 — sandbox» en su estado global); algunos documentos aún describen **seis** verificaciones de ledger cuando `scripts/verify-ledger-invariants.sql` tiene **nueve** ([1]–[9]).
+- **Impacto**: gobernanza y trazabilidad; NO comportamiento funcional.
+- **Bloquea**: nada por sí solo; se cierra antes de cualquier release para que el paquete de evidencia sea coherente.
+- **Criterio de cierre**: reconciliar `production-gates.md`, `STATE.md`, `HANDOFF.md` y este registro con el baseline exacto; separar explícitamente los tres estadios (**sandbox cerrado / sandbox compartido / producción**); dejar claro en todos que el script actual verifica **[1]–[9]**.
+- **Notas**: en este PR solo se REGISTRA la deuda (nota mínima en `production-gates.md`); la reconciliación completa va en su PR docs-only propio para no convertir esta integración en limpieza amplia.
+
+### RA-F6-004 (P2) — Falta reporte transitivo de licencias — ABIERTO
+
+- **Evidencia del auditor**: el SBOM SPDX se genera en CI y grype/gitleaks corren, pero **no existe evidencia de análisis automático de licencias transitivas** ni una política de licencias permitidas/prohibidas.
+- **Impacto**: riesgo legal/compliance en release público (una transitiva copyleft/incompatible pasaría inadvertida).
+- **Bloquea**: sandbox NO · F5 no por sí solo · **producción/release público SÍ**.
+- **Criterio de cierre**: generar reporte de licencias transitivas (idealmente derivado del SBOM SPDX ya existente) → definir política de licencias permitidas/prohibidas versionada → resolver incompatibilidades o documentar aceptación formal → check en CI si es viable.
+- **Notas**: requiere tooling nuevo — NO se introduce en este PR docs-only.
+
+### RA-F6-005 (P3) — El check [9] depende de sincronización manual con el chart — ABIERTO
+
+- **Evidencia del auditor**: la lista de cuentas protegidas del verificador SQL está hardcodeada; **la cobertura actual es correcta**, pero una cuenta protegida futura podría incorporarse al chart sin incorporarse al check [9] (deriva silenciosa de cobertura).
+- **Impacto**: pérdida FUTURA de detección; hoy no hay hueco.
+- **Bloquea**: nada; es defensa contra drift de mantenimiento.
+- **Criterio de cierre**: meta-test que compare las cuentas NO transitorias protegidas de `CHART_OF_ACCOUNTS` con la lista usada por `verify-ledger-invariants.sql` [9] (mismo patrón doc↔código ya usado en el repo, p. ej. topics de webhooks).
+- **Notas**: pequeño pero toca la verificación de invariantes del ledger → PR aislado propio; NO se agrega el meta-test en este PR docs-only.
+
+### Plan de remediación recomendado (NO ejecutado aún — cada paso requiere autorización)
+
+1. **PR aislado RA-F6-002** (`fix/ra-f6-002-postcss-cve`): SOLO el update mínimo de la ruta `next > postcss` (o la aceptación formal si la transitiva lo impide) + CI completa verde. Primero: es P2 bloqueante de release y el de menor riesgo/mayor certeza.
+2. **PR aislado RA-F6-004** (`feat/ra-f6-004-license-report`): reporte de licencias transitivas + política versionada + check CI si es viable. Segundo: el otro P2 bloqueante de release; requiere tooling y decisión de política (posible decisión humana sobre licencias aceptadas).
+3. **PR aislado RA-F6-005** (`test/ra-f6-005-nonneg-chart-metatest`): el meta-test chart↔[9]. Tercero: pequeño, pero toca invariantes — aislado y con la disciplina completa (adversarial review + drills).
+4. **PR docs-only RA-F6-003** (`docs/ra-f6-003-gates-reconciliation`): reconciliación de gates + registro del baseline final estable post-delta. VA AL FINAL a propósito: así documenta el estado que dejaron los tres cierres anteriores y fija el baseline definitivo en una sola pasada (evita reconciliar dos veces).
+5. **Revisión final**: delta audit limitado a RA-F6-002…005 (o revisión documental final de F6) sobre ese baseline.
 
 ## Decisiones humanas abiertas derivadas (no bloquean el plan)
 
@@ -216,6 +260,8 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 - **MERGE DEL STACK COMPLETO (PRs #2–#10) a `claude/new-session-haeo7h` — 9/9 runs de push VERDES (2026-07-09)** — el propietario autorizó el merge («Opción A»): merge commits (sin squash), orden estricto #2→#3→#4→#5→#6→#7→#8→#9→#10, re-apuntando la base del siguiente PR tras cada merge y esperando CI verde en la rama por defecto antes de continuar. Evidencia por merge (commit de merge → run de push verde): PR #2 `efaa789` → **#281**; PR #3 `d0dc9b5` → **#304**; PR #4 `e5c7991` → **#305**; PR #5 `01e115b` → **#306**; PR #6 `1c5d061` → **#309**; PR #7 `ebd4527` → **#314**; PR #8 `dba92c6` → **#317**; PR #9 `53d1e30` → **#318**; PR #10 `d60e4595` → **#319** (`https://github.com/celestinojbm/Fluvia/actions/runs/29056398115`). Cada run es el pipeline completo (lint, format, typecheck, migrate ×2 idempotente sobre BD fresca — 0001–0045 —, suite vs PG16, invariantes [1]–[9] `FLUVIA_INVARIANTS_OK`, drills worker-down + restore + load-chaos, gitleaks, dependency audit, SBOM). Pre-flight verificado antes del primer merge: historia 100% lineal (cadena de ancestros confirmada con `merge-base --is-ancestor` en los 9 eslabones), simulación `git merge-tree` limpia contra la punta de la rama por defecto (cuyo único commit extra, `62f7a94` — el delta de la re-auditoría v2 —, no intersecta ningún archivo del stack), y hashes SHA-256 de `docs/audits/independent-audit-v1/` intactos contra el manifest. **Baseline de re-auditoría: `claude/new-session-haeo7h` @ `d60e45956bef4c1cc696ff4e3cca31c8bc8346d1` (run #319)**. Nota: los PRs de dependabot que aparecieron tras el merge del stack quedan SIN mergear a propósito (decisión #26 — no mover el baseline durante la ventana de re-auditoría).
 
 - **RA-F6-001 · fix(idempotency): apply full transaction timeouts — runs #323/#324 VERDES (2026-07-10)** — commit `3f29beb`, `https://github.com/celestinojbm/Fluvia/actions/runs/29059869311` (run #324 pull_request; push gemelo #323 también verde; CI completo: lint, format, typecheck, migrate ×2 sobre BD fresca, suite vs PG16, invariantes [1]–[9], drills worker-down + restore + load-chaos, gitleaks, dependency audit, SBOM) — PR **#23** `fix/ra-f6-001-idempotency-transaction-timeouts`, base `claude/new-session-haeo7h` @ `e6a185d` (el baseline auditado). Detalle del fix y teeth tests en §Re-auditoría F6 delta. **Verificación local previa** (PG 16.13 + Redis reales): idempotency 18/18 (13 contrato + 5 nuevos), suite completa verde (único rojo: el flake documentado `payouts-redriver`, 46/46 aislado), `FLUVIA_INVARIANTS_OK`, drills 5/5 + 7/7 + 4/4. El PR queda en DRAFT **sin merge** hasta autorización del propietario; F6 NO se declara aprobado hasta que el delta audit confirme el cierre.
+
+- **RA-F6-001 · MERGE de PR #23 aprobado por el delta audit — run #327 VERDE (2026-07-10)** — el delta audit aprobó el cierre (alcance LIMITADO a RA-F6-001; head auditado `227efcada51126aec9c5b3d8516f261756ee1470`, base auditada `e6a185d`; sin P0/P1/P2 nuevos). Pre-merge verificado: PR abierto, head idéntico al auditado (cero commits no auditados), base intacta, `mergeable_state: clean`. Merge commit **`888db826ce7646d80503ae5996383badb2890cec`** (merge commit, sin squash/rebase); CI post-merge sobre `claude/new-session-haeo7h`: **run #327 success** (`https://github.com/celestinojbm/Fluvia/actions/runs/29068762870`, pipeline completo). **RA-F6-001 CERRADO**. La aprobación NO autoriza F5/freeze/live/proveedor real/producción; RA-F6-002…005 siguen abiertos (ver §Re-auditoría F6 delta).
 
 ## Criterio de re-auditoría (adoptado del auditor)
 
