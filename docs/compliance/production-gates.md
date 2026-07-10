@@ -1,14 +1,29 @@
 # Production Gates
 
-Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlazará a su prueba cuando exista.
+Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlaza a su prueba cuando existe. **Reconciliado con el baseline post-F6 (RA-F6-003, 2026-07-10).**
 
-> **Deuda registrada — RA-F6-003 (P3, re-auditoría F6 delta)**: este documento (y otros) mezcla estados históricos de Fase 2/F4/F6 — p. ej. el «Estado global» de abajo aún dice «Fase 2», y hay menciones a **seis** verificaciones de ledger cuando `scripts/verify-ledger-invariants.sql` verifica HOY los checks **[1]–[9]**. La reconciliación completa (con separación explícita de los estadios *sandbox cerrado / sandbox compartido / producción*) se hará en el PR docs-only `docs/ra-f6-003-gates-reconciliation` — aquí solo se registra la deuda para no mezclarla con la integración del informe. Estado vivo: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta.
+## Estado global: 🔴 PRE-PRODUCCIÓN — SANDBOX CERRADO (F1–F4 + hardening F6 completos y auditados; Fase 5 NO iniciada; live keys bloqueadas por código; exposición pública CONGELADA por decisión #24)
 
-## Estado global: 🔴 PRE-PRODUCCIÓN (Fase 2 — sandbox; live keys bloqueadas por código)
+## 0. Estadios — qué autoriza cada uno (separación RA-F6-003)
+
+### Estadio ACTUAL: sandbox cerrado ✅ (lo único autorizado hoy)
+
+- Desarrollo y test controlado contra PostgreSQL 16 real; la evidencia del hardening es la CI por commit (suite + invariantes [1]–[9] + 3 drills + gitleaks/audit/licencias-strict/SBOM/grype) + las dos auditorías independientes integradas + la re-auditoría F6 delta (registro de cierre).
+- **MockProvider es el ÚNICO proveedor** — no se mueve dinero real.
+- **Sin credenciales `live`** — emisión bloqueada por código (`LiveKeysDisabledError`) hasta gates + decisión humana (PEND-004).
+- **Sin exposición pública** (freeze decisión #24) · **Fase 5 NO iniciada**.
+
+### Estadio SIGUIENTE: sandbox compartido 🔴 (requiere PEND-006 — decisión humana + gates de exposición)
+
+Pendientes ya documentados en el threat model §5 (ninguno nuevo): `trustProxy` acotado al poner un proxy delante (el keying por `req.ip` de los rate limits lo exige) · Origin-check · CSP con nonce · cookie `Secure` por entorno · store COMPARTIDO como default del rate limiting (el backend Redis ya está probado multi-instancia — TM-03; hoy el default es in-memory mono-instancia) · aserción de `normal_side` en startup · valor definitivo de retención de idempotency keys (>= ventana de retry del cliente, decisión del propietario).
+
+### Estadio FINAL: producción / release público 🔴 (BLOQUEADO)
+
+Bloqueado por (todos ya documentados; nada nuevo): proveedor real NO integrado (F5, tras la matriz jurisdiccional Colombia con verificación legal) · secret manager real pendiente (enfoque decidido en ADR-0012; vendor + integración al desplegar) · credenciales `live` bloqueadas (PEND-004) · **revisión legal LGPLv3 de `@img/sharp-libvips-linux-x64` antes del PRIMER release público/comercial** + obligaciones de atribución registradas (`license-policy.md` / `license-exceptions.json`) · cifrado field-level de credenciales de proveedor (F5) · infra de backup de producción (PITR/offsite) · copia offsite de los anchors del ledger (operador) · los gates de exposición del estadio anterior · TODOS los gates organizacionales/regulatorios de §2.
 
 ## 1. Gates técnicos mínimos
 
-### Gate Ledger — 🟢 técnico (F2-02…F2-08 completos; revisión formal en Fase 6)
+### Gate Ledger — 🟢 técnico (F2-02…F2-08 + hardening F6: hash-chain [7], anclaje [8], no-negatividad [9]; revisado en F6 — security review interna + re-auditoría delta)
 
 - [x] **Cada transacción balancea por activo/moneda a nivel de MOTOR** (constraint trigger diferido `FLUVIA_UNBALANCED`; probado con SQL crudo incluso como superusuario; compensación cross-moneda rechazada; cabeceras vacías rechazadas — `ledger-invariants.test.ts`, F2-02)
 - [x] Inmutabilidad de asientos a nivel motor (`FLUVIA_IMMUTABLE`)
@@ -16,12 +31,12 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Coherencia cuenta-tenant-moneda a nivel de MOTOR**: FK compuesta `(account_id, tenant_id, currency)` — ni el superusuario puede enlazar un asiento a una cuenta de otro tenant u otra moneda (migración 0008, AUD-P1-001 — `ledger-invariants.test.ts`)
 - [x] **Guarda de saldo no-negativo race-safe** en operaciones que lo exigen (release/refund): `nonNegativeAccounts` bajo locks de cuenta, rollback total (AUD-P1-010 — golden tests en `posting.test.ts`)
 - [x] **Replay idempotente con huella causal completa**: reason/source/reverses divergentes ⇒ conflicto, jamás replay silencioso (AUD-P2-001 — `ledger-service.test.ts`)
-- [x] **Scripts externos al ORM verifican invariantes** (F2-06): `scripts/verify-ledger-invariants.sql` autocontenido, en CI tras la suite y ejecutable por cron/post-restore; detecta corrupción sembrada (probado en `drift.test.ts`)
+- [x] **Scripts externos al ORM verifican invariantes — checks [1]–[9]** (F2-06 + F6): `scripts/verify-ledger-invariants.sql` autocontenido — balanceo, append-only, proyección==recomputo, **hash-chain [7]**, **anclaje externo [8]**, **no-negatividad de cuentas protegidas [9]** — en CI tras la suite, sobre la copia del restore drill y ejecutable por cron/post-restore; detecta corrupción sembrada (`drift.test.ts` + teeth tests de [7]/[8]/[9]). La lista protegida de [9] está guardada contra drift chart↔SQL por el meta-test `packages/ledger/test/chart-nonneg-sync.test.ts` (RA-F6-005)
 - [x] **Rebuild de proyección == ledger** (F2-05): `rebuildProjection` bajo lock de cuenta, property test con transferencias y rebuilds concurrentes; drift check programado (`ledger_projection_drift()` + watcher en worker)
 - [x] **Compensaciones vía servicio** (F2-07): espejo exacto, reversión única a nivel de MOTOR (índice único parcial, carrera concurrente probada), no-reversión-de-reversiones, razón obligatoria + auditoría atómica, idempotente (`reversal.test.ts`)
 - [x] **Concurrencia sin duplicados ni drift** (F2-08): suite formal reproducible (PRNG seeded) — conservación exacta bajo 120 postings concurrentes, presión de deadlock, carrera masiva de idempotencia N→1, presión mixta con rebuilds y reversal (`concurrency.test.ts`)
 
-### Gate Multi-tenant — 🟢 técnico (revisión formal en Fase 6)
+### Gate Multi-tenant — 🟢 técnico (revisado en F6 — security review interna + re-auditoría delta)
 
 - [x] Tenant A no lee ni escribe datos de Tenant B vía RLS (lectura, escritura por PK, UPDATE masivo, INSERT…SELECT, JOINs, sondas EXISTS, agregados — `tenant-escape.test.ts`)
 - [x] Pool de conexiones no fuga contexto (test explícito de la MISMA conexión a través de transacciones A → sin contexto → B)
@@ -33,7 +48,7 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Parametrización + roles deny-by-default (F6)**: candado ESTÁTICO (`sql-parameterization.test.ts` — en un literal SQL de sentencia completa toda `${}` es un identificador vetado o un número de config no parametrizable, nunca un valor; ADEMÁS prohíbe concatenación y composición desde fragmentos) + suite BEHAVIORAL de SQLi (`sql-injection.test.ts` — payloads hostiles round-trip como dato, tabla intacta, RLS respetado) + meta-tests de roles que enumeran TODOS los `fluvia_%` de `pg_catalog` (rol nuevo = build roto; ninguno super/bypassrls/createrole/DELETE) + lint de arquitectura (ninguna ruta instancia el pool admin)
 - Nota de límite documentado: RLS defiende contra bugs de lógica, no contra ejecución de SQL arbitrario con el rol app (ver `architecture/multi-tenancy.md` §6.5); mitigación = consultas 100% parametrizadas (ahora con GATE estático + behavioral, F6) + revisión Fase 6.
 
-### Gate Idempotencia — 🟢 técnico (F2-09/F2-10; revisión formal en Fase 6)
+### Gate Idempotencia — 🟢 técnico (F2-09/F2-10; revisado en F6 — RA-F6-001 cerró las cotas transaccionales completas vía `withTenantTransaction`, delta audit aprobado)
 
 - [x] Tabla `idempotency_keys` con PK `(tenant_id, endpoint, key)` conforme al contrato de `idempotency.md` (migración 0008, AUD-P1-009)
 - [x] **Mismo key + mismo payload → mismo resultado**: replay exacto (status+body persistidos) sin re-ejecutar el handler, probado a nivel servicio y sobre HTTP real (`idempotency.test.ts`, `idempotency-http.test.ts`)
@@ -42,10 +57,10 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Pérdida de Redis no duplica**: Redis NO está en el camino (PostgreSQL única fuente, ADR-0006); si algún día se añade fast-path, este ítem se re-verifica con caída simulada
 - [x] **Retención + salud de huérfanos (F6, threat model §5)**: retención configurable (`IDEMPOTENCY_RETENTION_HOURS`, default 24 h, fijada explícita en `expires_at`) con la regla «>= ventana de retry del cliente» documentada (valor final = decisión del dueño antes de PEND-006); `IdempotencyWatchdog` + `sweep_idempotency_orphans()` (0041) alertan sobre claims `in_progress` envejecidos (>1 h) que bloquean su key hasta la purga (`idempotency-watchdog.test.ts`)
 
-### Gate Conciliación — 🔴
+### Gate Conciliación — 🟢 técnico (F4 completa — criterio de salida cumplido; reconciliación contra proveedor REAL llega con F5)
 
-- [ ] Archivo simulado produce discrepancias detectadas (F4-02)
-- [ ] Casos creados, sin corrección silenciosa, evidencia de resolución (F4-03)
+- [x] Archivo simulado produce discrepancias detectadas (F4-02: motor/batch/casos; drill `reconciliation-discrepancy` **9/9** ejecutado — runbook con Drill ✅)
+- [x] Casos creados, sin corrección silenciosa, evidencia de resolución (F4-03: four-eyes como CHECK en BD, ajustes solo vía cuentas transitorias `suspense`/`recon.differences`, panel admin con gate `reconciliation:manage`; evidencia CI por incremento en `audit-closure-register-v1.md`)
 
 ### Gate Seguridad — 🔴
 
@@ -60,7 +75,8 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 - [x] **Secret/dependency scanning + tenant-escape** (F1-02/F1-06): gitleaks + `pnpm audit --audit-level high` + SBOM SPDX en CI; suite de tenant-escape + meta-tests estructurales en `pg_catalog` (tablas y roles futuros). SSRF: guard completo (`ssrf.ts`, deniega TODAS las IPs resueltas) + bundle F6 probado (failover solo-sin-conexión entre IPs validadas — cierra V2-N2 —, `rejectUnauthorized:true` explícito contra receptor TLS self-signed, ingest con rate limit por IP y test del body >1 MiB). Nota: el keying por `req.ip` de los rate limits exige `trustProxy` acotado al poner un proxy delante (threat model §5, bloqueante de PEND-006)
 - [x] **Cadena de suministro gated (F6)**: grype rompe el build ante High/Critical no aceptadas (registro de aceptación versionado: `.grype.yaml` vacío + proceso en [`vulnerability-acceptance.md`](../security/vulnerability-acceptance.md)); `.gitleaks.toml` versionado (excepciones por code review, no flags ad-hoc); imagen base pineada por digest; Dependabot semanal (npm/actions/docker); redacción del logger ampliada y PROBADA (`log-redaction.test.ts`)
 - [x] **Los 6 P2 del threat model §5 cerrados (F6)**: TM-01 (gate de cobertura de no-negatividad), TM-02 (step-up por password sin MFA, migr. 0040), TM-03 (rate limiter compartido en Redis, probado multi-instancia), TM-04 (restore + worker-down drills en CI), TM-05 (PII erasure por pseudonimización), TM-06 (guard PCI de datos de tarjeta) — cada uno con tests + evidencia CI en el registro
-- [ ] **Resto (P3 del threat model §5)**: breaker compartido al escalar el worker; secret-manager + rotación (ADR antes del sandbox); `trustProxy` acotado (PEND-006)
+- [x] **Licencias transitivas gated (RA-F6-004, F6)**: política versionada (`license-policy.md`) + `pnpm licenses:check --strict` en CI (licencia prohibida, desconocida o restringida SIN decisión humana = build roto) + reporte reproducible (`license-report.md`) + registro de decisiones (`license-exceptions.json` — 2 excepciones aceptadas por el propietario el 2026-07-10; la aceptación NO autoriza producción y la LGPL exige **revisión legal antes del primer release**)
+- [ ] **Resto (P3 del threat model §5)**: breaker compartido al escalar el worker; `trustProxy` acotado + Origin-check/CSP-nonce/`Secure` (PEND-006). Nota de reconciliación: el ADR de secret-manager (**ADR-0012**) y las TRES rotaciones de claves (webhook-enc, MFA, pepper) quedaron **HECHOS en F6**; lo pendiente es el vendor + integración al desplegar (F5)
 
 ### Gate Restore — 🟢 técnico (infra de backup de prod pendiente, F6/F7)
 
@@ -70,6 +86,6 @@ Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin c
 
 ## 2. Gates organizacionales y regulatorios (todos 🔴, requieren humanos)
 
-Jurisdicción definida (PEND-001) · revisión legal · contrato con proveedor · ToS · privacy policy · refund policy · KYC/KYB · AML · sanciones · evaluación PCI aplicable · incident response operativo · on-call · monitoring y alertas · reconciliation operativa · load tests · rotación de secretos · gestión de vulnerabilidades · merchant freeze · pending payment procedure · política de retención · access matrix · payout review · procedimiento de disputas · procedimiento de fraude · soporte operativo · plan de continuidad · repositorio de evidencia · revisión de aislamiento · validación de ledger · revisión de idempotencia · certificación con proveedor · separación sandbox-producción.
+Jurisdicción definida ✅ **Colombia** (decisión #15, ex PEND-001; la matriz jurisdiccional aún requiere verificación legal — bloquea F5) · revisión legal · contrato con proveedor · ToS · privacy policy · refund policy · KYC/KYB · AML · sanciones · evaluación PCI aplicable · incident response operativo · on-call · monitoring y alertas · reconciliation operativa · load tests · rotación de secretos · gestión de vulnerabilidades · merchant freeze · pending payment procedure · política de retención · access matrix · payout review · procedimiento de disputas · procedimiento de fraude · soporte operativo · plan de continuidad · repositorio de evidencia · revisión de aislamiento · validación de ledger · revisión de idempotencia · certificación con proveedor · separación sandbox-producción.
 
 **Regla operativa:** este archivo se actualiza en el mismo PR que aporta la evidencia de cada ítem; marcar un ítem sin enlace a evidencia es una violación de gobernanza (§2 "no declarar capacidades inexistentes").
