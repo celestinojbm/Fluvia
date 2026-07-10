@@ -55,6 +55,15 @@ Reconciliación completa: `docs/audits/audit-integration-plan-v1.md` · estado v
 
 Los demás hallazgos abiertos NO son ítems nuevos: viven dentro de F1-04b, F1-08, F1-09, F2-05, F2-06, F2-09, F2-11, F2-12, F3-01, F3-11, F4 (marcados arriba) — sin duplicación.
 
+## RA-F6 — Re-auditoría F6 delta (2026-07-10, sobre `e6a185d`)
+
+Estado vivo: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta. El P1 bloquea F6 gate / F5 / exposición pública / producción hasta confirmación del delta audit.
+
+| ID | Título | Sev | Estado |
+| --- | --- | --- | --- |
+| RA-F6-001 | Idempotencia financiera sin cotas transaccionales completas (`IdempotencyService.execute()` sin `statement_timeout` ni `idle_in_transaction_session_timeout`) | P1 | **Remediado en PR aislado** `fix/ra-f6-001-idempotency-transaction-timeouts` — pendiente delta audit |
+| RA-F6-002…005 | Detalle del informe delta pendiente de entrega por el propietario | — | **Pendientes de integración** (no abordados en el PR de RA-F6-001) |
+
 ## Futuro (no planificar aún)
 
 Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verificación legal de la matriz de jurisdicción), hardening (Fase 6), production readiness (Fase 7), disputas completas, billing (ver Lago), multi-país.

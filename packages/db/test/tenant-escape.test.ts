@@ -349,15 +349,29 @@ describe('META-TESTS deny-by-default sobre TODOS los roles fluvia_% (F6)', () =>
   }
 
   it('every discovered fluvia_% role is a KNOWN role (an unknown one forces review)', async () => {
-    const roles = await discoverFluviaRoles();
-    // Non-vacuidad: el descubrimiento realmente ve los roles del sistema.
-    expect(roles.length).toBeGreaterThanOrEqual(KNOWN_RUNTIME_ROLES.size);
-    const unknown = roles.map((r) => r.rolname).filter((n) => !KNOWN_RUNTIME_ROLES.has(n));
+    // `migration-guard.test.ts` crea el rol TRANSITORIO `fluvia_guard_probe`
+    // EN PARALELO (mismo paquete) y lo dropea en su afterAll: si el único
+    // desconocido es ese probe, se re-consulta acotadamente hasta que
+    // desaparezca. Un rol desconocido REAL (o un probe que persista — p. ej.
+    // alguien ocupando ese nombre) sigue fallando: la propiedad de seguridad
+    // «todo rol fluvia_% está clasificado» no se relaja, solo se elimina la
+    // carrera entre archivos.
+    const TRANSIENT_PROBES = new Set(['fluvia_guard_probe']);
+    let unknown: string[] = [];
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const roles = await discoverFluviaRoles();
+      // Non-vacuidad: el descubrimiento realmente ve los roles del sistema.
+      expect(roles.length).toBeGreaterThanOrEqual(KNOWN_RUNTIME_ROLES.size);
+      unknown = roles.map((r) => r.rolname).filter((n) => !KNOWN_RUNTIME_ROLES.has(n));
+      const onlyTransient = unknown.length > 0 && unknown.every((n) => TRANSIENT_PROBES.has(n));
+      if (!onlyTransient) break;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
     expect(
       unknown,
       `rol fluvia_% no clasificado (revisar privilegios y añadir a KNOWN_RUNTIME_ROLES): ${unknown.join(', ')}`
     ).toEqual([]);
-  });
+  }, 45_000);
 
   it('NO fluvia_% role is SUPERUSER or has BYPASSRLS (discovered dynamically)', async () => {
     const roles = await discoverFluviaRoles();

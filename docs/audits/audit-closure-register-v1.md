@@ -93,6 +93,18 @@ Los 11 hallazgos vigentes del informe v2 y su estado tras este lote de remediaci
 
 **Cobertura del auditor (no hallazgos):** v2 marcó `AUD-P1-006` (rate limiting + MFA) y `AUD-P2-014` (dbUrls anti-mezcla) como "no verificados en profundidad" por falta de lectura, no por defecto. Ambos ya están **RESUELTOS** con evidencia v1 (run #29 para MFA/rate-limiting; `config.ts` `required()`/anti-mezcla V4 §43 para dbUrls, citado arriba en V2-N1).
 
+## Re-auditoría F6 delta (2026-07-10) — hallazgos RA-F6-\*
+
+Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6a185d876cdb04a9c4a0e3da3020adcce0a3763`. Veredicto: **0 P0, 1 P1** (RA-F6-001). El P1 **bloquea el F6 gate, la Fase 5, la exposición pública y producción** hasta que el delta audit confirme su cierre. F6 **NO se declara aprobado** hasta esa confirmación.
+
+| ID | Sev | Hallazgo | Estado |
+| --- | --- | --- | --- |
+| RA-F6-001 | P1 | **Idempotencia financiera sin cotas transaccionales completas**: `IdempotencyService.execute()` (`packages/idempotency/src/index.ts`) abría una transacción MANUAL con solo `SET LOCAL lock_timeout` (interpolado), sin `statement_timeout` ni `idle_in_transaction_session_timeout` — divergía de la defensa sistémica V2-R1 de `withTenantTransaction` (`packages/db/src/pool.ts`): un handler patológico o una sesión idle dentro de la tx podía acaparar una conexión del pool sin límite, en el camino del dinero | **REMEDIADO — pendiente de confirmación por el delta audit** (PR aislado `fix/ra-f6-001-idempotency-transaction-timeouts`). Fix: `execute()` corre ahora por `withTenantTransaction` (las TRES cotas como `set_config(..., true)` parametrizado + clamping; se elimina el `BEGIN` manual y la interpolación `${}` del `lock_timeout` — la entrada del allowlist del guard estático se retira). Opciones nuevas validadas `statementTimeoutMs` (default 30 s) e `idleInTxTimeoutMs` (default 60 s) con la regla `statement > lock` que preserva el contrato 55P03 → 409. Semántica intacta: el COMMIT temprano del replay (solo lectura) pasa al COMMIT del helper (equivalente observacional); mapeo 55P03 → `processing_in_flight` conservado; mismo client/tx para el handler. Teeth: `packages/idempotency/test/tx-timeouts.test.ts` (5 tests vs PG16: tres cotas activas + tenant intacto; 57014 con rollback atómico y retry limpio; idle-kill sin estado huérfano y pool usable; secuencia de fallos sin agotar un pool max=2; validación del constructor). Los 13 tests existentes del contrato pasan sin cambios. Evidencia CI: se registra abajo al verde |
+| RA-F6-002 | — | Reportado por el delta audit según instrucción del propietario; **el detalle del informe aún NO fue entregado al repo** | **PENDIENTE de integración** — NO abordado en este PR (aislamiento del fix) |
+| RA-F6-003 | — | Ídem | **PENDIENTE de integración** |
+| RA-F6-004 | — | Ídem | **PENDIENTE de integración** |
+| RA-F6-005 | — | Ídem | **PENDIENTE de integración** |
+
 ## Decisiones humanas abiertas derivadas (no bloquean el plan)
 
 - **PEND-004**: política definitiva de credenciales `live` (hoy: creación bloqueada por código). Propietario: humano.
