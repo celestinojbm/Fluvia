@@ -57,12 +57,15 @@ Los demás hallazgos abiertos NO son ítems nuevos: viven dentro de F1-04b, F1-0
 
 ## RA-F6 — Re-auditoría F6 delta (2026-07-10, sobre `e6a185d`)
 
-Estado vivo: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta. El P1 bloquea F6 gate / F5 / exposición pública / producción hasta confirmación del delta audit.
+Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta. Los P2 bloquean **producción/release público** (no el sandbox cerrado); ninguno bloquea F5 por sí solo. Un PR aislado por hallazgo — no mezclar.
 
-| ID | Título | Sev | Estado |
-| --- | --- | --- | --- |
-| RA-F6-001 | Idempotencia financiera sin cotas transaccionales completas (`IdempotencyService.execute()` sin `statement_timeout` ni `idle_in_transaction_session_timeout`) | P1 | **Remediado en PR aislado** `fix/ra-f6-001-idempotency-transaction-timeouts` — pendiente delta audit |
-| RA-F6-002…005 | Detalle del informe delta pendiente de entrega por el propietario | — | **Pendientes de integración** (no abordados en el PR de RA-F6-001) |
+| ID | Título | Sev | Estado | PR de cierre esperado |
+| --- | --- | --- | --- | --- |
+| RA-F6-001 | Idempotencia sin cotas transaccionales completas | P1 | **CERRADO** (PR #23 + delta audit + CI run #327) | #23 (mergeado, `888db82`) |
+| RA-F6-002 | `postcss@8.4.31` vulnerable (CVE-2026-41305, vía `checkout > next > postcss`; fix en ≥ 8.5.10) | P2 | **ABIERTO** | `fix/ra-f6-002-postcss-cve` |
+| RA-F6-003 | Docs de gates desincronizadas (estadios mezclados; «6 checks» vs [1]–[9] reales) | P3 | **ABIERTO** | `docs/ra-f6-003-gates-reconciliation` |
+| RA-F6-004 | Falta reporte/política de licencias transitivas (el SBOM existe; el análisis no) | P2 | **ABIERTO** | `feat/ra-f6-004-license-report` |
+| RA-F6-005 | Lista de cuentas protegidas de [9] hardcodeada (falta meta-test chart↔SQL) | P3 | **ABIERTO** | `test/ra-f6-005-nonneg-chart-metatest` |
 
 ## Futuro (no planificar aún)
 
