@@ -125,11 +125,40 @@ const all = licensesJson(false);
 const prodB = bucketize(prod.data);
 const allB = bucketize(all.data);
 const exceptions = loadExceptions();
-const accepted = new Set(
-  exceptions.filter((e) => e.status === 'aceptada').map((e) => `${e.package}|${e.license}`)
+// Fuente ÚNICA de verdad de las decisiones humanas — la MISMA que consumen el check estricto Y el
+// reporte (F6-DELTA-001). Map `package|license` → excepción aceptada: `.has()` sirve al gate (igual
+// que el Set anterior); `.get()` da la decisión completa para renderizarla en el reporte, sin duplicar
+// la lógica de excepciones ni permitir que ambos modos se desincronicen.
+const accepted = new Map(
+  exceptions.filter((e) => e.status === 'aceptada').map((e) => [`${e.package}|${e.license}`, e])
 );
 
 const fmt = (list) => list.map((p) => `${p.name}@${p.versions.join(',')} [${p.license}]`).join('\n  ');
+
+// Renderiza una licencia RESTRINGIDA de producción en el reporte reflejando la decisión humana
+// vigente en license-exceptions.json (F6-DELTA-001): las ACEPTADAS muestran el bloque completo de la
+// excepción; las que NO tienen decisión se marcan explícitamente como pendientes (bloquean release).
+function renderRestricted(p) {
+  const e = accepted.get(`${p.name}|${p.license}`);
+  const head = `- \`${p.name}@${p.versions.join(',')}\` — **${p.license}**`;
+  if (!e) {
+    return `${head} — **sin decisión registrada** en license-exceptions.json (bloquea release/producción hasta decisión del propietario)`;
+  }
+  const lines = [
+    `${head} — **estado: aceptada** (decisión humana registrada)`,
+    `  - **Aprobado por**: ${e.approvedBy} · **Fecha de aprobación**: ${e.approvalDate}`,
+    `  - **Razón**: ${e.reason}`,
+    `  - **Obligaciones**: ${e.obligations}`,
+    `  - **reviewBy**: ${e.reviewBy}`,
+    `  - **La aceptación NO autoriza producción/release.**`,
+  ];
+  if (/LGPL/i.test(p.license)) {
+    lines.push(
+      `  - **LGPLv3**: requiere **revisión legal antes del primer release público/comercial**; la excepción caduca si cambia el modo de uso, si se modifica libvips, si se enlaza estáticamente o si se empaqueta de forma no reemplazable.`
+    );
+  }
+  return lines.join('\n');
+}
 
 console.log(`Licencias transitivas — PRODUCCIÓN: ${prodB.total} paquetes · árbol completo: ${allB.total}`);
 console.log(`  permitidas(prod): ${prodB.buckets.permitida.length}`);
@@ -182,9 +211,9 @@ Total: **${prodB.total} paquetes** · permitidas ${prodB.buckets.permitida.lengt
 | --- | --- | --- |
 ${summary(prodB)}
 
-### Restringidas — REQUIEREN DECISIÓN HUMANA antes de producción/release
+### Restringidas — DECISIÓN HUMANA registrada en license-exceptions.json (bloquean release hasta decidirse)
 
-${prodB.buckets.restringida.length ? prodB.buckets.restringida.map((p) => `- \`${p.name}@${p.versions.join(',')}\` — **${p.license}** (sin decisión registrada en license-exceptions.json)`).join('\n') : '- (ninguna)'}
+${prodB.buckets.restringida.length ? prodB.buckets.restringida.map(renderRestricted).join('\n') : '- (ninguna)'}
 
 ### Prohibidas / desconocidas en producción
 
@@ -204,6 +233,29 @@ Total: **${allB.total} paquetes** · fuera del tier permitido: ${[...allB.bucket
 - El árbol proviene del lockfile (incluye optional deps de todas las plataformas pineadas, p. ej. los binarios de sharp/libvips).
 - Este reporte es una FOTO del commit indicado; el check de CI es el gate vivo por commit.
 `;
+  // Guard anti-regresión (F6-DELTA-001): el reporte NO puede contradecir license-exceptions.json.
+  // Ejercita el MISMO `renderRestricted` que arma el markdown, así el chequeo refleja la salida real:
+  //  - aceptada → debe mostrar «estado: aceptada» y nunca «sin decisión registrada»;
+  //  - sin excepción → debe seguir marcándose «sin decisión registrada» (no silenciar una pendiente).
+  // Cualquier inconsistencia aborta la generación con exit 1 en vez de escribir un reporte engañoso.
+  for (const p of prodB.buckets.restringida) {
+    const block = renderRestricted(p);
+    const isAccepted = accepted.has(`${p.name}|${p.license}`);
+    const saysUndecided = /sin decisión registrada/i.test(block);
+    const saysAccepted = /estado: aceptada/i.test(block);
+    if (isAccepted && (saysUndecided || !saysAccepted)) {
+      console.error(
+        `✗ F6-DELTA-001: ${p.name}@${p.versions.join(',')} [${p.license}] está ACEPTADA en license-exceptions.json pero el reporte no la refleja.`
+      );
+      process.exit(1);
+    }
+    if (!isAccepted && !saysUndecided) {
+      console.error(
+        `✗ F6-DELTA-001: ${p.name}@${p.versions.join(',')} [${p.license}] es restringida SIN excepción pero el reporte no la marca como pendiente.`
+      );
+      process.exit(1);
+    }
+  }
   writeFileSync('docs/compliance/license-report.md', md);
   console.log('Reporte escrito en docs/compliance/license-report.md');
 }
