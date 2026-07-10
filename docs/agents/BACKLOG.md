@@ -63,7 +63,7 @@ Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §
 | --- | --- | --- | --- | --- |
 | RA-F6-001 | Idempotencia sin cotas transaccionales completas | P1 | **CERRADO** (PR #23 + delta audit + CI run #327) | #23 (mergeado, `888db82`) |
 | RA-F6-002 | `postcss@8.4.31` vulnerable (CVE-2026-41305, vía `checkout > next > postcss` — y también dashboard; fix en ≥ 8.5.10) | P2 | **CERRADO** (override mínimo → 8.5.16; audit limpio; pendiente ratificación del delta final) | `fix/ra-f6-002-postcss-cve` |
-| RA-F6-003 | Docs de gates desincronizadas (estadios mezclados; «6 checks» vs [1]–[9] reales) | P3 | **ABIERTO** | `docs/ra-f6-003-gates-reconciliation` |
+| RA-F6-003 | Docs de gates desincronizadas (estadios mezclados; «6 checks» vs [1]–[9] reales) | P3 | **CERRADO** (reconciliación docs-only; pendiente ratificación del delta final) | `docs/ra-f6-003-gates-reconciliation` |
 | RA-F6-004 | Falta reporte/política de licencias transitivas (el SBOM existe; el análisis no) | P2 | **CERRADO** (check `--strict` en CI; 2 excepciones aceptadas por el propietario 2026-07-10 — la LGPL con revisión legal antes del primer release; NO autoriza producción) | `feat/ra-f6-004-license-report` + `docs/ra-f6-004-license-decisions` |
 | RA-F6-005 | Lista de cuentas protegidas de [9] hardcodeada (falta meta-test chart↔SQL) | P3 | **CERRADO** (meta-test `chart-nonneg-sync.test.ts`, dientes probados; cobertura 12/12 exacta) | `test/ra-f6-005-nonneg-chart-metatest` |
 
