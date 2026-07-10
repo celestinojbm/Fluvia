@@ -52,8 +52,9 @@ const ALLOWED_INTERPOLATIONS: Record<string, string> = {
   // (`['email','name','phone','description']`) donde cada entrada es
   // `${field} = $N`: el identificador es literal, el valor va por `$N`.
   "sets.join(', ')": 'cláusula SET desde tupla de campos literal; valores por $N',
-  // SET LOCAL no admite parámetros; es un número de config, no input.
-  'this.lockTimeoutMs': 'número de config en SET LOCAL (no parametrizable)',
+  // RA-F6-001: la entrada `this.lockTimeoutMs` (SET LOCAL interpolado en
+  // @fluvia/idempotency) se ELIMINÓ — el servicio ahora pasa por
+  // withTenantTransaction, que usa set_config(..., true) parametrizado.
 };
 
 /** Constantes que DEBEN ser puras listas de columnas (candado secundario). */

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Pool, PoolClient } from '@fluvia/db';
+import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 
 /**
  * F2-09 — Capa de idempotencia API (ADR-0006, contrato de idempotency.md §3).
@@ -22,6 +22,11 @@ import type { Pool, PoolClient } from '@fluvia/db';
  *    Redis; su perdida es irrelevante para la garantia.
  *  - `expires_at` (0013) solo gobierna la purga administrada (F1-09):
  *    mientras la fila exista se comporta igual.
+ *  - RA-F6-001: la transaccion corre por `withTenantTransaction` (V2-R1), asi
+ *    que las TRES cotas de tiempo (`statement_timeout`, `lock_timeout`,
+ *    `idle_in_transaction_session_timeout`) quedan activas como SET LOCAL —
+ *    un handler patologico o una sesion idle dentro de la tx no puede acaparar
+ *    una conexion del pool sin limite.
  */
 
 export class IdempotencyError extends Error {
@@ -108,6 +113,19 @@ export interface IdempotencyServiceOptions {
   /** Espera maxima sobre una key en vuelo antes de responder 409 (default 3000). */
   lockTimeoutMs?: number;
   /**
+   * RA-F6-001: maximo por sentencia dentro de la tx idempotente (default
+   * 30 000 — el default sistemico de V2-R1). DEBE ser > `lockTimeoutMs` para
+   * que un claim bloqueado siempre supere primero el lock_timeout (55P03 →
+   * 409 `processing_in_flight`) y nunca un 57014 crudo.
+   */
+  statementTimeoutMs?: number;
+  /**
+   * RA-F6-001: maximo idle DENTRO de la tx idempotente antes de que Postgres
+   * la aborte (default 60 000 — el default sistemico de V2-R1). Acota un
+   * handler que se queda esperando I/O ajeno con la tx abierta.
+   */
+  idleInTxTimeoutMs?: number;
+  /**
    * F6 (threat model §5): retencion de la key en HORAS (default 24). DEBE ser
    * >= la ventana maxima de retry del cliente: si la key expira antes de un
    * reintento legitimo, la fila se purga y el efecto se RE-EJECUTA (doble
@@ -124,8 +142,13 @@ interface StoredKeyRow {
   response_body: unknown;
 }
 
+/** Techo de los *_timeout de Postgres (integer ms) — espejo de @fluvia/db. */
+const PG_MAX_TIMEOUT_MS = 2_147_483_647;
+
 export class IdempotencyService {
   private readonly lockTimeoutMs: number;
+  private readonly statementTimeoutMs: number;
+  private readonly idleInTxTimeoutMs: number;
   private readonly retentionHours: number;
 
   constructor(
@@ -138,6 +161,22 @@ export class IdempotencyService {
       throw new RangeError('lockTimeoutMs must be between 1 and 60000');
     }
     this.lockTimeoutMs = t;
+    const s = Math.floor(options.statementTimeoutMs ?? 30_000);
+    if (!Number.isFinite(s) || s < 1 || s > PG_MAX_TIMEOUT_MS) {
+      throw new RangeError('statementTimeoutMs must be between 1 and 2147483647');
+    }
+    // Contrato 55P03: un claim bloqueado debe agotar PRIMERO el lock_timeout
+    // (→ 409 processing_in_flight); si statement <= lock, la espera podria
+    // abortar como 57014 crudo y romper la semantica documentada.
+    if (s <= t) {
+      throw new RangeError('statementTimeoutMs must be greater than lockTimeoutMs');
+    }
+    this.statementTimeoutMs = s;
+    const i = Math.floor(options.idleInTxTimeoutMs ?? 60_000);
+    if (!Number.isFinite(i) || i < 1 || i > PG_MAX_TIMEOUT_MS) {
+      throw new RangeError('idleInTxTimeoutMs must be between 1 and 2147483647');
+    }
+    this.idleInTxTimeoutMs = i;
     const h = Math.floor(options.retentionHours ?? 24);
     if (!Number.isFinite(h) || h < 1 || h > 720) {
       throw new RangeError('retentionHours must be between 1 and 720');
@@ -146,71 +185,73 @@ export class IdempotencyService {
   }
 
   async execute(input: ExecuteIdempotentInput): Promise<ExecuteIdempotentResult> {
-    const client = await this.appPool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query("SELECT set_config('app.tenant_id', $1, true)", [input.tenantId]);
-      // Acota la espera sobre el claim de otra request en vuelo (55P03).
-      await client.query(`SET LOCAL lock_timeout = '${this.lockTimeoutMs}ms'`);
-
-      let claimed;
-      try {
-        claimed = await client.query(
-          // expires_at EXPLICITO desde config (F6): la retencion debe cubrir la
-          // ventana de retry del cliente (el DEFAULT de la tabla es solo fallback).
-          `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash, expires_at)
-           VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5))
-           ON CONFLICT (tenant_id, endpoint, key) DO NOTHING
-           RETURNING key`,
-          [input.tenantId, input.endpoint, input.key, input.requestHash, this.retentionHours]
-        );
-      } catch (err) {
-        if ((err as { code?: string }).code === '55P03') {
-          throw new ProcessingInFlightError(input.key);
+    // RA-F6-001: la tx corre por el UNICO camino sancionado (withTenantTransaction,
+    // V2-R1) — contexto de tenant + las TRES cotas (`statement_timeout`,
+    // `lock_timeout`, `idle_in_transaction_session_timeout`) como SET LOCAL
+    // parametrizado; mueren con el COMMIT/ROLLBACK.
+    return withTenantTransaction(
+      this.appPool,
+      input.tenantId,
+      async (client) => {
+        let claimed;
+        try {
+          claimed = await client.query(
+            // expires_at EXPLICITO desde config (F6): la retencion debe cubrir la
+            // ventana de retry del cliente (el DEFAULT de la tabla es solo fallback).
+            `INSERT INTO idempotency_keys (tenant_id, endpoint, key, request_hash, expires_at)
+             VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5))
+             ON CONFLICT (tenant_id, endpoint, key) DO NOTHING
+             RETURNING key`,
+            [input.tenantId, input.endpoint, input.key, input.requestHash, this.retentionHours]
+          );
+        } catch (err) {
+          if ((err as { code?: string }).code === '55P03') {
+            throw new ProcessingInFlightError(input.key);
+          }
+          throw err;
         }
-        throw err;
-      }
 
-      if ((claimed.rowCount ?? 0) === 0) {
-        // Key ya comprometida por una request anterior: decidir por contrato.
-        const existing = await client.query<StoredKeyRow>(
-          `SELECT request_hash, status, response_status, response_body
-           FROM idempotency_keys
+        if ((claimed.rowCount ?? 0) === 0) {
+          // Key ya comprometida por una request anterior: decidir por contrato.
+          // Rama SOLO LECTURA: que termine en COMMIT (return) o ROLLBACK (throw)
+          // es observacionalmente identico — no hay efecto que persistir.
+          const existing = await client.query<StoredKeyRow>(
+            `SELECT request_hash, status, response_status, response_body
+             FROM idempotency_keys
+             WHERE endpoint = $1 AND key = $2`,
+            [input.endpoint, input.key]
+          );
+          const row = existing.rows[0];
+          if (!row) {
+            // Solo posible si otra rama del RLS la oculta: tratar como conflicto.
+            throw new IdempotencyKeyReuseError(input.key);
+          }
+          if (row.request_hash !== input.requestHash) {
+            throw new IdempotencyKeyReuseError(input.key);
+          }
+          if (row.status !== 'completed' || row.response_status === null) {
+            // in_progress COMMITEADO: huerfano de un flujo multi-paso ajeno a
+            // esta capa (aqui nunca se commitea in_progress). Cliente reintenta.
+            throw new ProcessingInFlightError(input.key);
+          }
+          return { status: row.response_status, body: row.response_body, replayed: true };
+        }
+
+        // Somos los primeros: efecto + respuesta en ESTA transaccion.
+        const response = await input.handler(client);
+        await client.query(
+          `UPDATE idempotency_keys
+           SET status = 'completed', response_status = $3, response_body = $4, updated_at = now()
            WHERE endpoint = $1 AND key = $2`,
-          [input.endpoint, input.key]
+          [input.endpoint, input.key, response.status, JSON.stringify(response.body ?? null)]
         );
-        await client.query('COMMIT'); // solo lectura
-        const row = existing.rows[0];
-        if (!row) {
-          // Solo posible si otra rama del RLS la oculta: tratar como conflicto.
-          throw new IdempotencyKeyReuseError(input.key);
-        }
-        if (row.request_hash !== input.requestHash) {
-          throw new IdempotencyKeyReuseError(input.key);
-        }
-        if (row.status !== 'completed' || row.response_status === null) {
-          // in_progress COMMITEADO: huerfano de un flujo multi-paso ajeno a
-          // esta capa (aqui nunca se commitea in_progress). Cliente reintenta.
-          throw new ProcessingInFlightError(input.key);
-        }
-        return { status: row.response_status, body: row.response_body, replayed: true };
+        return { ...response, replayed: false };
+      },
+      {
+        lockTimeoutMs: this.lockTimeoutMs,
+        statementTimeoutMs: this.statementTimeoutMs,
+        idleInTxTimeoutMs: this.idleInTxTimeoutMs,
       }
-
-      // Somos los primeros: efecto + respuesta en ESTA transaccion.
-      const response = await input.handler(client);
-      await client.query(
-        `UPDATE idempotency_keys
-         SET status = 'completed', response_status = $3, response_body = $4, updated_at = now()
-         WHERE endpoint = $1 AND key = $2`,
-        [input.endpoint, input.key, response.status, JSON.stringify(response.body ?? null)]
-      );
-      await client.query('COMMIT');
-      return { ...response, replayed: false };
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw err;
-    } finally {
-      client.release();
-    }
+    );
   }
 }
