@@ -39,7 +39,7 @@
     "@fluvia/payments-core": "workspace:*",
     "@fluvia/reconciliation": "workspace:*",
     "@fluvia/webhooks": "workspace:*",
-    "fastify": "^5.2.0",
+    "fastify": "^5.10.0",
     "redis": "6.1.0",
     "zod": "^3.25.0"
   },
