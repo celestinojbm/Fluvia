@@ -1,0 +1,4 @@
+{
+  "$comment": "Registro de decisiones humanas sobre licencias (license-policy.md §3). VACÍO a propósito: ninguna excepción ha sido aceptada. Cada entrada: { package, license, status: 'aceptada'|'rechazada', reason, approvedBy, date }. Solo el propietario añade entradas.",
+  "exceptions": []
+}

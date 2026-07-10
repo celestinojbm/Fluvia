@@ -64,7 +64,7 @@ Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §
 | RA-F6-001 | Idempotencia sin cotas transaccionales completas | P1 | **CERRADO** (PR #23 + delta audit + CI run #327) | #23 (mergeado, `888db82`) |
 | RA-F6-002 | `postcss@8.4.31` vulnerable (CVE-2026-41305, vía `checkout > next > postcss` — y también dashboard; fix en ≥ 8.5.10) | P2 | **CERRADO** (override mínimo → 8.5.16; audit limpio; pendiente ratificación del delta final) | `fix/ra-f6-002-postcss-cve` |
 | RA-F6-003 | Docs de gates desincronizadas (estadios mezclados; «6 checks» vs [1]–[9] reales) | P3 | **ABIERTO** | `docs/ra-f6-003-gates-reconciliation` |
-| RA-F6-004 | Falta reporte/política de licencias transitivas (el SBOM existe; el análisis no) | P2 | **ABIERTO** | `feat/ra-f6-004-license-report` |
+| RA-F6-004 | Falta reporte/política de licencias transitivas (el SBOM existe; el análisis no) | P2 | **CERRADO** (check+política+reporte en CI; 2 restringidas esperan decisión del propietario — bloquean release) | `feat/ra-f6-004-license-report` |
 | RA-F6-005 | Lista de cuentas protegidas de [9] hardcodeada (falta meta-test chart↔SQL) | P3 | **ABIERTO** | `test/ra-f6-005-nonneg-chart-metatest` |
 
 ## Futuro (no planificar aún)

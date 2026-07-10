@@ -15,7 +15,9 @@
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,js,json,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,yml,yaml}\"",
-    "seed": "pnpm --filter @fluvia/seeds run seed"
+    "seed": "pnpm --filter @fluvia/seeds run seed",
+    "licenses:check": "node scripts/check-licenses.mjs",
+    "licenses:report": "node scripts/check-licenses.mjs --report"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
