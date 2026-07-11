@@ -72,6 +72,10 @@ Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §
 
 Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verificación legal de la matriz de jurisdicción), hardening (Fase 6), production readiness (Fase 7), disputas completas, billing (ver Lago), multi-país.
 
+### F5 preparation plan registered
+
+- **Estado: PLANIFICADO — pendiente de decisión humana** (opción B, decisión #29, 2026-07-11). Plan estratégico/documental versionado en `docs/phases/f5-preparation-plan.md`. **Ninguna tarea F5 pasa a «in progress»**: las etapas F5.0 (verificación legal/matriz, sin código) → F5.1 (proveedor) → F5.2 (infra/secret manager) → F5.3 (adaptador real) → F5.4 (exposición) requieren autorización humana explícita y separada por etapa. Primera inversión recomendada: solo F5.0. Fase 5 NO iniciada; freeze #24 / live / producción / sandbox compartido siguen bloqueados.
+
 ## DAG
 
 ```mermaid
