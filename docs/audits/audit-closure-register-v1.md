@@ -289,3 +289,32 @@ Delta audit externo sobre el baseline mergeado `claude/new-session-haeo7h` @ `e6
 ## Criterio de re-auditoría (adoptado del auditor)
 
 Criterio del auditor: cerrar P1-003, P1-004, P1-005, P1-006 y P1-007. **Estado: 5 de 5 CERRADOS** (~~P1-003~~ ✓ ~~P1-004~~ ✓ ~~P1-005~~ ✓ ~~P1-006~~ ✓ ~~P1-007~~ ✓) con evidencia individual y runs de CI registrados arriba. **El proyecto está LISTO para la re-auditoría externa** — este registro + el plan de integración son el paquete de entrada.
+
+## F6 Final Approval — closed sandbox / sandbox hardening
+
+**Estado: F6 APROBADA para el alcance `sandbox cerrado / hardening sandbox`** (APPROVED for closed sandbox / sandbox hardening scope). NO autoriza producción, Fase 5, live, proveedor real ni exposición pública.
+
+- **Baseline aprobado**: `claude/new-session-haeo7h` @ **`8f126c4049653b11e6a46903c68d9138e8c2a4ab`** (merge commit del PR #30).
+- **Fecha**: 2026-07-11.
+- **Fuente de aprobación**: **Hermes** — delta audit final (sobre `69a69ed`, ratificó RA-F6-002/003/005) + **ratificación corta de F6-DELTA-001** (sobre `8f126c4`). RA-F6-001 quedó cerrado por el delta parcial previo (PR #23).
+- **CI runs principales (todos verdes)**: **#327** (RA-F6-001 post-merge) · **#335** (RA-F6-002) · **#355** (RA-F6-004 licencias `--strict`) · **#360** (RA-F6-005) · **#365** (RA-F6-003 post-merge, baseline del delta final) · **#368** (F6-DELTA-001 post-merge, baseline aprobado).
+- **PRs relevantes**: **#23** (RA-F6-001) · **#25** (RA-F6-002) · **#26** + **#27** (RA-F6-004) · **#28** (RA-F6-005) · **#29** (RA-F6-003) · **#30** (F6-DELTA-001).
+
+### Tabla RA-F6 / F6-DELTA final
+
+| ID | Sev | Estado | Ratificación |
+| --- | --- | --- | --- |
+| RA-F6-001 | P1 | **CERRADO** | Delta parcial previo (PR #23, run #327) |
+| RA-F6-002 | P2 | **CERRADO** | Hermes delta final |
+| RA-F6-003 | P3 | **CERRADO** | Hermes delta final |
+| RA-F6-004 | P2 | **CERRADO** (tras F6-DELTA-001) | Hermes delta final + ratificación corta |
+| RA-F6-005 | P3 | **CERRADO** | Hermes delta final |
+| F6-DELTA-001 | P2 | **CERRADO** | Hermes ratificación corta (sobre `8f126c4`) |
+
+### Veredicto
+
+**0 P0 · 0 P1 · 0 P2 abiertos del delta F6.** F6 approved for sandbox/hardening scope.
+
+### Límites de la aprobación (siguen vigentes como bloqueos)
+
+La aprobación de F6 **NO** autoriza: **producción** · **Fase 5** · **credenciales `live`** · **proveedor real** · **dinero real** · **exposición pública** · **sandbox compartido** · **release público/comercial** · **levantar el freeze #24**. Bloqueos residuales que siguen en pie: **Fase 5 requiere decisión humana separada del propietario**; MockProvider sigue siendo el único proveedor; `live` bloqueado por código; sandbox compartido bloqueado por sus propios gates (PEND-006); **revisión legal LGPLv3 antes del primer release público/comercial**; matriz jurisdiccional/compliance antes de producción; secret manager real antes de producción/live. `docs/audits/independent-audit-v1/` permanece inmutable.
