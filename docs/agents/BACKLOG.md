@@ -76,6 +76,10 @@ Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verific
 
 - **Estado: PLANIFICADO — pendiente de decisión humana** (opción B, decisión #29, 2026-07-11). Plan estratégico/documental versionado en `docs/phases/f5-preparation-plan.md`. **Ninguna tarea F5 pasa a «in progress»**: las etapas F5.0 (verificación legal/matriz, sin código) → F5.1 (proveedor) → F5.2 (infra/secret manager) → F5.3 (adaptador real) → F5.4 (exposición) requieren autorización humana explícita y separada por etapa. Primera inversión recomendada: solo F5.0. Fase 5 NO iniciada; freeze #24 / live / producción / sandbox compartido siguen bloqueados.
 
+### F5.0 legal/compliance research (docs)
+
+- **Estado: EJECUTADO A NIVEL DOCUMENTAL** (decisión #30, 2026-07-11). Paquete `docs/compliance/f5-0-legal-research.md` + `legal-questions-checklist.md` con fuentes oficiales (fecha de consulta 2026-07-11) y estado epistémico por afirmación; `jurisdiction-matrix.md` con columna «Verificación» — **ninguna fila cerrada legalmente**. **Sin conclusiones legales.** Salida: llevar el checklist a un abogado colombiano (decisión humana). **F5.1–F5.4 siguen bloqueadas**; F5.0 no cambia runtime ni gates; sin proveedor real; producción/live/sandbox compartido bloqueados; freeze #24 vigente.
+
 ## DAG
 
 ```mermaid
