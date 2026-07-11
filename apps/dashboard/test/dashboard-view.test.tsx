@@ -59,6 +59,33 @@ describe('DashboardView', () => {
     expect(screen.getByText('dead')).toBeInTheDocument();
   });
 
+  it('links the nav and the section rows to the F6.5A payments surface pages', () => {
+    render(
+      <DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />
+    );
+    // Nav global hacia las nuevas páginas.
+    expect(screen.getByRole('link', { name: 'Pagos' }).getAttribute('href')).toBe('/o/o1/payments');
+    expect(screen.getByRole('link', { name: 'Reembolsos' }).getAttribute('href')).toBe(
+      '/o/o1/refunds'
+    );
+    expect(screen.getByRole('link', { name: 'Sesiones de checkout' }).getAttribute('href')).toBe(
+      '/o/o1/checkout-sessions'
+    );
+    expect(screen.getByRole('link', { name: 'Payment links' }).getAttribute('href')).toBe(
+      '/o/o1/payment-links'
+    );
+    // Cada fila enlaza al detalle de su recurso.
+    expect(screen.getByRole('link', { name: /pi_abcd/ }).getAttribute('href')).toBe(
+      '/o/o1/payments/pi_abcdef123456'
+    );
+    expect(screen.getByRole('link', { name: /cs_1/ }).getAttribute('href')).toBe(
+      '/o/o1/checkout-sessions/cs_1'
+    );
+    expect(screen.getByRole('link', { name: /pl_1/ }).getAttribute('href')).toBe(
+      '/o/o1/payment-links/pl_1'
+    );
+  });
+
   it('renders English section titles for locale=en', () => {
     render(<DashboardView data={DATA} locale="en" orgId="o1" orgName="Org A" signOutHref="/logout" />);
     expect(screen.getByRole('heading', { name: 'Operations dashboard' })).toBeInTheDocument();

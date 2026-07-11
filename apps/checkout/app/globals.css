@@ -131,6 +131,19 @@ legend {
   text-align: center;
 }
 
+/* --- F6.5A: badge global de entorno (dinero simulado) --- */
+.sandbox-badge {
+  margin: 0;
+  padding: 0.4rem 1rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: #5c3d00; /* 7:1 sobre #ffd75e */
+  background: #ffd75e;
+  border-bottom: 1px solid #8a5a00;
+}
+
 :focus-visible {
   outline: 3px solid var(--brand);
   outline-offset: 2px;

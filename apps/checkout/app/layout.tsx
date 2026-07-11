@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SandboxBadge } from './sandbox-badge';
 import './globals.css';
 
 export const metadata = {
@@ -10,7 +11,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // `lang` por defecto es (Colombia); la página lo ajusta al locale elegido.
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <SandboxBadge />
+        {children}
+      </body>
     </html>
   );
 }

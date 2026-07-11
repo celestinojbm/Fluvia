@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SandboxBadge } from './lib/sandbox-badge';
 import './globals.css';
 
 export const metadata = {
@@ -9,7 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <SandboxBadge />
+        {children}
+      </body>
     </html>
   );
 }
