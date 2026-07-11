@@ -1,6 +1,7 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { CheckoutSession, PaymentIntent, Refund, TimelineKind } from './api';
 import { paymentTimeline } from './api';
+import { CreateRefundForm } from './payment-actions';
 
 /**
  * Vistas de pagos (F6.5A) — presentación pura (server components, renderizables
@@ -94,6 +95,7 @@ export function PaymentDetail({
   orgId,
   locale,
   signOutHref,
+  canManage = false,
 }: {
   intent: PaymentIntent;
   /** Refunds YA filtrados por el API (`?payment_intent_id=`). */
@@ -103,6 +105,8 @@ export function PaymentDetail({
   orgId: string;
   locale: Locale;
   signOutHref: string;
+  /** El operador puede crear reembolsos (rol con reconciliation:manage). */
+  canManage?: boolean;
 }) {
   const t = MESSAGES[locale];
   const tlLabel: Record<TimelineKind, string> = {
@@ -207,7 +211,16 @@ export function PaymentDetail({
             </table>
           </div>
         )}
-        <p className="hint">{t.refundCreateUnavailable}</p>
+        {canManage ? (
+          <CreateRefundForm
+            orgId={orgId}
+            paymentIntentId={intent.id}
+            currency={intent.currency}
+            locale={locale}
+          />
+        ) : (
+          <p className="hint">{t.refundCreateNoRole}</p>
+        )}
       </section>
 
       <section className="card" aria-labelledby="payment-sessions-title">

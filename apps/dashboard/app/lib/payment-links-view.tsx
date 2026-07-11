@@ -1,14 +1,15 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
-import type { PaymentLink } from './api';
+import type { Merchant, PaymentLink } from './api';
 import { CopyUrlButton } from './copy-button';
+import { CreatePaymentLinkForm } from './payment-actions';
 
 /**
- * Vistas de payment links (F6.5A) — SOLO LECTURA por sesión (`payments:read`).
- * La única interacción es copiar la URL sandbox del link (no mutante). CREAR o
- * deshabilitar un link hoy solo existe en el plano de integración (API key,
- * `payments:write`); el panel lo dice en vez de simular la acción (gap
- * reportado en F6.5A). Las sesiones abiertas desde un link no son consultables
- * por link (la sesión no expone `payment_link_id`): también reportado.
+ * Vistas de payment links (F6.5A + F6.5A-bis). Lectura por sesión
+ * (`payments:read`) para todo rol; CREAR un link existe ahora también por
+ * sesión (`reconciliation:manage`, G2) y el formulario solo se muestra a esos
+ * roles (hint de UX — el API es la fuente de verdad). Las sesiones abiertas
+ * desde un link siguen sin ser consultables por link (la sesión no expone
+ * `payment_link_id`): gap G3, pendiente.
  */
 
 function shortId(v: string): string {
@@ -23,11 +24,17 @@ export function PaymentLinksList({
   orgId,
   locale,
   signOutHref,
+  canManage = false,
+  merchants = [],
 }: {
   links: PaymentLink[];
   orgId: string;
   locale: Locale;
   signOutHref: string;
+  /** El operador puede crear links (rol con reconciliation:manage). */
+  canManage?: boolean;
+  /** Comercios de la org (para el selector del formulario de creación). */
+  merchants?: Merchant[];
 }) {
   const t = MESSAGES[locale];
   return (
@@ -82,7 +89,11 @@ export function PaymentLinksList({
             </table>
           </div>
         )}
-        <p className="hint">{t.linkCreateUnavailable}</p>
+        {canManage ? (
+          <CreatePaymentLinkForm orgId={orgId} merchants={merchants} locale={locale} />
+        ) : (
+          <p className="hint">{t.linkCreateNoRole}</p>
+        )}
       </section>
       <p className="notice">{t.sandboxNotice}</p>
     </main>
@@ -148,7 +159,6 @@ export function PaymentLinkDetail({
             </tbody>
           </table>
         </div>
-        <p className="hint">{t.linkCreateUnavailable}</p>
       </section>
       <p className="notice">{t.sandboxNotice}</p>
     </main>

@@ -41,12 +41,34 @@ describe('PaymentLinksList', () => {
     expect(screen.getByText('Sin payment links.')).toBeInTheDocument();
   });
 
-  it('declares the create-link gap honestly and renders no mutating controls', () => {
+  it('renders no mutating controls for roles without reconciliation:manage', () => {
     render(<PaymentLinksList links={[LINK]} orgId="o1" locale="es" signOutHref="/logout" />);
-    expect(
-      screen.getByText(/Crear payment links desde el panel aún no está disponible/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Tu rol no permite crear payment links/)).toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toEqual([]);
+  });
+
+  it('offers the create-link form only to money-governing roles (canManage)', () => {
+    render(
+      <PaymentLinksList
+        links={[LINK]}
+        orgId="o1"
+        locale="es"
+        signOutHref="/logout"
+        canManage
+        merchants={[
+          {
+            id: 'mer_112233445566',
+            name: 'Tienda Norte',
+            country: 'CO',
+            defaultCurrency: 'COP',
+            status: 'active',
+            createdAt: '2026-07-01T00:00:00Z',
+          },
+        ]}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Crear link' })).toBeInTheDocument();
+    expect(screen.queryByText(/Tu rol no permite crear payment links/)).not.toBeInTheDocument();
   });
 });
 

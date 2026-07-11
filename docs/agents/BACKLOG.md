@@ -82,7 +82,7 @@ Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verific
 
 ### F6.5 — Product Sandbox Completion (plan)
 
-- **Estado: PLANIFICADA/DOCUMENTADA** (decisión #31, 2026-07-11). Plan en `docs/phases/f6-5-sandbox-product-plan.md`: completar la superficie de producto en **sandbox cerrado** consumiendo la API existente, sin tocar el núcleo auditado. Milestones **F6.5A (payments dashboard) → F6.5B (webhooks+API keys UI) → F6.5C (onboarding mock + demo data) → F6.5D (export+docs+cierre)** — cada uno en PRs separados con **autorización individual**; **ninguno pasa a «in progress» todavía**. **Próximo recomendado: F6.5A — AÚN NO AUTORIZADO.** Badge «SANDBOX — dinero simulado» obligatorio en UI nueva. F5.1–F5.4 bloqueadas; legal externo pendiente (no bloquea); producción/live/sandbox compartido bloqueados; freeze #24 vigente.
+- **Estado: PLANIFICADA/DOCUMENTADA** (decisión #31, 2026-07-11). Plan en `docs/phases/f6-5-sandbox-product-plan.md`: completar la superficie de producto en **sandbox cerrado** consumiendo la API existente, sin tocar el núcleo auditado. Milestones **F6.5A (payments dashboard) → F6.5B (webhooks+API keys UI) → F6.5C (onboarding mock + demo data) → F6.5D (export+docs+cierre)** — cada uno en PRs separados con **autorización individual**. **F6.5A: HECHA/MERGEADA** (PR #35 → `c3c01d2`, CI verde). **F6.5A-bis: EN CURSO (PR draft, sin merge)** — G1/G2 escrituras por sesión (refund/link) con RBAC+idempotencia+auditoría; G3 diferido (sin `payment_link_id`, sin migración). **F6.5B–D: AÚN NO AUTORIZADAS.** Badge «SANDBOX — dinero simulado» obligatorio en UI nueva. F5.1–F5.4 bloqueadas; legal externo pendiente (no bloquea); producción/live/sandbox compartido bloqueados; freeze #24 vigente.
 
 ## DAG
 

@@ -16,7 +16,9 @@ import type { Security } from '../security.js';
  * payment_intent + checkout_session frescos y devuelve la sesión para pagar.
  */
 
-const CreateSchema = z
+// Exportado: el plano de sesión (dashboard.ts) espeja este endpoint con la
+// MISMA validación — una sola forma de request, sin duplicar reglas.
+export const CreatePaymentLinkSchema = z
   .object({
     merchant_id: z.string().uuid(),
     // F6: cota de entero seguro (evita el `BigInt` de un double impreciso).
@@ -65,7 +67,7 @@ export function registerPaymentLinkRoutes(
     { preHandler: security.apiKey(['payments:write']) },
     async (req, reply) => {
       const key = idempotencyKeyOf(req);
-      const body = CreateSchema.parse(req.body);
+      const body = CreatePaymentLinkSchema.parse(req.body);
       const tenantId = req.apiKey!.tenantId;
       const result = await idempotencyService.execute({
         tenantId,

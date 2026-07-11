@@ -87,8 +87,24 @@ describe('PaymentDetail', () => {
     expect(refundLink.getAttribute('href')).toBe('/o/o1/refunds/re_abcdef123456');
     const sessionLink = screen.getByRole('link', { name: /cs_abcd/ });
     expect(sessionLink.getAttribute('href')).toBe('/o/o1/checkout-sessions/cs_abcdef123456');
-    // El gap honesto: crear reembolsos desde el panel no existe todavía.
-    expect(screen.getByText(/Crear reembolsos desde el panel aún no está disponible/)).toBeInTheDocument();
+    // Sin reconciliation:manage: hint honesto de rol, sin formulario.
+    expect(screen.getByText(/Tu rol no permite crear reembolsos/)).toBeInTheDocument();
+  });
+
+  it('offers the create-refund form only to money-governing roles (canManage)', () => {
+    render(
+      <PaymentDetail
+        intent={INTENT}
+        refunds={[REFUND]}
+        sessions={[SESSION]}
+        orgId="o1"
+        locale="es"
+        signOutHref="/logout"
+        canManage
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Crear reembolso' })).toBeInTheDocument();
+    expect(screen.queryByText(/Tu rol no permite crear reembolsos/)).not.toBeInTheDocument();
   });
 
   it('derives the timeline chronologically from persisted timestamps', () => {
@@ -112,7 +128,7 @@ describe('PaymentDetail', () => {
     ]);
   });
 
-  it('is read-only for every role: no mutating controls rendered', () => {
+  it('renders no mutating controls for roles without reconciliation:manage', () => {
     render(
       <PaymentDetail
         intent={INTENT}

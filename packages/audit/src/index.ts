@@ -33,6 +33,11 @@ export const AUDIT_ACTIONS = [
   'platform.technical_purge',
   'payment_attempt.swept_indeterminate',
   'webhook_event.resent',
+  // F6.5A-bis: escrituras del plano de sesión (dashboard) sobre pagos. El plano
+  // de API key no audita estas creaciones (actor máquina, rastro en idempotency
+  // keys); aquí el actor es un operador HUMANO y el acto queda auditado.
+  'refund.created',
+  'payment_link.created',
   'operational_case.acknowledged',
   'operational_case.resolved',
   'operational_case.adjustment_proposed',
