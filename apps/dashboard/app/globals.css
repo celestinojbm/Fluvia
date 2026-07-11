@@ -246,6 +246,7 @@ code {
 
 .dash-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1.25rem;
 }
@@ -540,6 +541,44 @@ code {
   color: var(--muted);
   font-size: 0.85rem;
   text-align: center;
+}
+
+/* --- F6.5A: badge global de entorno + línea de tiempo del pago --- */
+.sandbox-badge {
+  margin: 0;
+  padding: 0.4rem 1rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: #5c3d00; /* 7:1 sobre #ffd75e */
+  background: #ffd75e;
+  border-bottom: 1px solid var(--warn);
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.timeline li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.timeline li:last-child {
+  border-bottom: none;
+}
+.tl-when {
+  color: var(--muted);
+  font-size: 0.85rem;
+  min-width: 9.5rem;
+}
+.tl-label {
+  font-weight: 600;
 }
 
 :focus-visible {

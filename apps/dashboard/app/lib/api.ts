@@ -395,3 +395,184 @@ export async function fetchAuditEvents(
   );
   return { events: body?.audit_events ?? [], nextBefore: body?.next_before ?? null };
 }
+
+// --- superficie de pagos (F6.5A) — SOLO LECTURA por sesión ---
+// Consume exclusivamente los GET existentes del plano de lectura del dashboard
+// (`security.org('payments:read')`, permiso que tiene todo rol). Las acciones de
+// escritura (crear refund, crear payment link) viven HOY solo en el plano de
+// integración (API key, scope `payments:write`): no existen por sesión y este
+// cliente no las inventa — el gap se reporta, no se puentea.
+
+export interface PaymentIntent {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  capture_method: string;
+  amount_captured: number;
+  amount_refunded: number;
+  failure_code: string | null;
+  created_at: string;
+}
+
+export interface Refund {
+  id: string;
+  payment_intent_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  reason: string | null;
+  failure_code: string | null;
+  created_at: string;
+}
+
+export interface CheckoutSession {
+  id: string;
+  payment_intent_id: string;
+  customer_id: string | null;
+  status: string;
+  url: string;
+  success_url: string | null;
+  cancel_url: string | null;
+  expires_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface PaymentLink {
+  id: string;
+  merchant_id: string;
+  amount: number;
+  currency: string;
+  description: string | null;
+  status: string;
+  url: string;
+  created_at: string;
+  disabled_at: string | null;
+}
+
+export async function fetchPaymentIntents(
+  opts: ClientOptions & { orgId: string }
+): Promise<PaymentIntent[]> {
+  const body = await apiGet<{ data?: PaymentIntent[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payment_intents?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchPaymentIntent(
+  opts: ClientOptions & { orgId: string; paymentId: string }
+): Promise<PaymentIntent | null> {
+  return apiGet<PaymentIntent>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payment_intents/${encodeURIComponent(opts.paymentId)}`
+  );
+}
+
+export async function fetchRefunds(
+  opts: ClientOptions & { orgId: string; paymentIntentId?: string }
+): Promise<Refund[]> {
+  const params = new URLSearchParams({ limit: '100' });
+  if (opts.paymentIntentId) params.set('payment_intent_id', opts.paymentIntentId);
+  const body = await apiGet<{ data?: Refund[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/refunds?${params.toString()}`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchRefund(
+  opts: ClientOptions & { orgId: string; refundId: string }
+): Promise<Refund | null> {
+  return apiGet<Refund>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/refunds/${encodeURIComponent(opts.refundId)}`
+  );
+}
+
+export async function fetchCheckoutSessions(
+  opts: ClientOptions & { orgId: string }
+): Promise<CheckoutSession[]> {
+  const body = await apiGet<{ data?: CheckoutSession[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/checkout_sessions?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchCheckoutSession(
+  opts: ClientOptions & { orgId: string; sessionId: string }
+): Promise<CheckoutSession | null> {
+  return apiGet<CheckoutSession>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/checkout_sessions/${encodeURIComponent(opts.sessionId)}`
+  );
+}
+
+export async function fetchPaymentLinks(
+  opts: ClientOptions & { orgId: string }
+): Promise<PaymentLink[]> {
+  const body = await apiGet<{ data?: PaymentLink[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payment_links?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchPaymentLink(
+  opts: ClientOptions & { orgId: string; linkId: string }
+): Promise<PaymentLink | null> {
+  return apiGet<PaymentLink>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/payment_links/${encodeURIComponent(opts.linkId)}`
+  );
+}
+
+/** Sesiones de checkout de un pago: filtro puro sobre la lista ya traída (la
+ * sesión expone `payment_intent_id`; no existe endpoint por-intent). */
+export function sessionsForIntent(
+  sessions: CheckoutSession[],
+  paymentIntentId: string
+): CheckoutSession[] {
+  return sessions.filter((s) => s.payment_intent_id === paymentIntentId);
+}
+
+// Línea de tiempo del pago: DERIVADA de los timestamps persistidos del intent y
+// sus recursos relacionados (sesiones y refunds) — no existe un event-log por
+// pago en el API y esta vista no lo simula.
+export type TimelineKind =
+  'payment_created' | 'session_created' | 'session_completed' | 'refund_created';
+
+export interface TimelineEntry {
+  at: string;
+  kind: TimelineKind;
+  refId: string;
+  status: string;
+}
+
+export function paymentTimeline(
+  intent: PaymentIntent,
+  refunds: Refund[],
+  sessions: CheckoutSession[]
+): TimelineEntry[] {
+  const entries: TimelineEntry[] = [
+    { at: intent.created_at, kind: 'payment_created', refId: intent.id, status: intent.status },
+  ];
+  for (const s of sessions) {
+    entries.push({ at: s.created_at, kind: 'session_created', refId: s.id, status: s.status });
+    if (s.completed_at) {
+      entries.push({
+        at: s.completed_at,
+        kind: 'session_completed',
+        refId: s.id,
+        status: s.status,
+      });
+    }
+  }
+  for (const r of refunds) {
+    entries.push({ at: r.created_at, kind: 'refund_created', refId: r.id, status: r.status });
+  }
+  return entries.sort((a, b) => a.at.localeCompare(b.at));
+}

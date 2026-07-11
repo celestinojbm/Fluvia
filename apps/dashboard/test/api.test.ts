@@ -4,16 +4,29 @@ import {
   canReadAudit,
   canResendRole,
   fetchAuditEvents,
+  fetchCheckoutSession,
+  fetchCheckoutSessions,
   fetchDashboardData,
   fetchMerchants,
   fetchOperationalCase,
   fetchOperationalCases,
   fetchOrganizations,
+  fetchPaymentIntent,
+  fetchPaymentIntents,
+  fetchPaymentLink,
+  fetchPaymentLinks,
+  fetchRefund,
+  fetchRefunds,
   filterMerchants,
   liveAdjustment,
   login,
+  paymentTimeline,
+  sessionsForIntent,
   type CaseAdjustment,
+  type CheckoutSession,
   type Merchant,
+  type PaymentIntent,
+  type Refund,
 } from '../app/lib/api';
 
 /**
@@ -310,5 +323,192 @@ describe('fetchDashboardData', () => {
     });
     expect(data.intents).toHaveLength(1);
     expect(data.refunds).toEqual([]);
+  });
+});
+
+// ── F6.5A — superficie de pagos (solo lectura por sesión) ─────────────────────
+
+const INTENT: PaymentIntent = {
+  id: 'pi_abcdef123456',
+  merchant_id: 'mer_1',
+  amount: 90_000,
+  currency: 'COP',
+  status: 'succeeded',
+  capture_method: 'automatic',
+  amount_captured: 90_000,
+  amount_refunded: 40_000,
+  failure_code: null,
+  created_at: '2026-07-05T10:00:00Z',
+};
+
+const REFUND: Refund = {
+  id: 're_1',
+  payment_intent_id: 'pi_abcdef123456',
+  amount: 40_000,
+  currency: 'COP',
+  status: 'succeeded',
+  reason: null,
+  failure_code: null,
+  created_at: '2026-07-05T12:00:00Z',
+};
+
+function session(over: Partial<CheckoutSession>): CheckoutSession {
+  return {
+    id: 'cs_1',
+    payment_intent_id: 'pi_abcdef123456',
+    customer_id: null,
+    status: 'completed',
+    url: 'http://localhost:3100/c/cs_1',
+    success_url: null,
+    cancel_url: null,
+    expires_at: '2026-07-05T11:00:00Z',
+    completed_at: '2026-07-05T10:30:00Z',
+    created_at: '2026-07-05T10:05:00Z',
+    ...over,
+  };
+}
+
+describe('payments-surface fetchers (F6.5A)', () => {
+  it('scope every request to the organization path (tenant isolation client-side)', async () => {
+    for (const call of [
+      () =>
+        fetchPaymentIntents({
+          apiBase: 'http://api',
+          token: 't',
+          orgId: 'o/1',
+          fetchImpl: jsonFetch({}),
+        }),
+      () =>
+        fetchRefunds({ apiBase: 'http://api', token: 't', orgId: 'o/1', fetchImpl: jsonFetch({}) }),
+      () =>
+        fetchCheckoutSessions({
+          apiBase: 'http://api',
+          token: 't',
+          orgId: 'o/1',
+          fetchImpl: jsonFetch({}),
+        }),
+      () =>
+        fetchPaymentLinks({
+          apiBase: 'http://api',
+          token: 't',
+          orgId: 'o/1',
+          fetchImpl: jsonFetch({}),
+        }),
+    ]) {
+      await call();
+    }
+    // La URL SIEMPRE va bajo /v1/organizations/{orgId}/… con el orgId escapado:
+    // el navegador jamás elige el tenant — lo hace la membresía en el API.
+    const f = jsonFetch({});
+    await fetchPaymentIntents({ apiBase: 'http://api', token: 't', orgId: 'o/1', fetchImpl: f });
+    const url = (f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0];
+    expect(url).toContain('/v1/organizations/o%2F1/payment_intents');
+  });
+
+  it('fetchPaymentIntents returns the list and degrades to [] on 403 (RBAC lo decide el API)', async () => {
+    const ok = await fetchPaymentIntents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: jsonFetch({ payment_intents: { body: { data: [INTENT] } } }),
+    });
+    expect(ok).toHaveLength(1);
+    const denied = await fetchPaymentIntents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: jsonFetch({ payment_intents: { status: 403, body: {} } }),
+    });
+    expect(denied).toEqual([]);
+  });
+
+  it('fetchPaymentIntent returns the object, or null on not-found', async () => {
+    const ok = await fetchPaymentIntent({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      paymentId: 'pi_abcdef123456',
+      fetchImpl: jsonFetch({ 'payment_intents/pi_abcdef123456': { body: INTENT } }),
+    });
+    expect(ok?.id).toBe('pi_abcdef123456');
+    const missing = await fetchPaymentIntent({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      paymentId: 'nope',
+      fetchImpl: jsonFetch({}),
+    });
+    expect(missing).toBeNull();
+  });
+
+  it('fetchRefunds filters by payment intent via the API query param', async () => {
+    const f = jsonFetch({ refunds: { body: { data: [REFUND] } } });
+    const list = await fetchRefunds({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      paymentIntentId: 'pi_abcdef123456',
+      fetchImpl: f,
+    });
+    expect(list).toHaveLength(1);
+    const url = (f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0];
+    expect(url).toContain('payment_intent_id=pi_abcdef123456');
+  });
+
+  it('fetchRefund / fetchCheckoutSession / fetchPaymentLink return null on not-found', async () => {
+    const none = jsonFetch({});
+    expect(
+      await fetchRefund({
+        apiBase: 'http://api',
+        token: 't',
+        orgId: 'o1',
+        refundId: 'x',
+        fetchImpl: none,
+      })
+    ).toBeNull();
+    expect(
+      await fetchCheckoutSession({
+        apiBase: 'http://api',
+        token: 't',
+        orgId: 'o1',
+        sessionId: 'x',
+        fetchImpl: none,
+      })
+    ).toBeNull();
+    expect(
+      await fetchPaymentLink({
+        apiBase: 'http://api',
+        token: 't',
+        orgId: 'o1',
+        linkId: 'x',
+        fetchImpl: none,
+      })
+    ).toBeNull();
+  });
+});
+
+describe('sessionsForIntent', () => {
+  it('keeps only the sessions of the given payment intent', () => {
+    const mine = session({ id: 'cs_mine' });
+    const other = session({ id: 'cs_other', payment_intent_id: 'pi_other' });
+    expect(sessionsForIntent([mine, other], 'pi_abcdef123456')).toEqual([mine]);
+  });
+});
+
+describe('paymentTimeline', () => {
+  it('derives entries from persisted timestamps in chronological order', () => {
+    const entries = paymentTimeline(INTENT, [REFUND], [session({})]);
+    expect(entries.map((e) => e.kind)).toEqual([
+      'payment_created',
+      'session_created',
+      'session_completed',
+      'refund_created',
+    ]);
+    expect(entries.map((e) => e.at)).toEqual([...entries.map((e) => e.at)].sort());
+  });
+
+  it('does not invent a completion entry when the session never completed', () => {
+    const entries = paymentTimeline(INTENT, [], [session({ completed_at: null, status: 'open' })]);
+    expect(entries.map((e) => e.kind)).toEqual(['payment_created', 'session_created']);
   });
 });

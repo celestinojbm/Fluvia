@@ -153,6 +153,43 @@ interface Messages {
   resultSuccess: string;
   resultFailure: string;
   olderEvents: string;
+  // superficie de pagos (F6.5A) — solo lectura por sesión
+  payments: string;
+  paymentsTitle: string;
+  paymentsEmpty: string;
+  paymentDetailTitle: string;
+  fldCaptureMethod: string;
+  fldCaptured: string;
+  fldRefunded: string;
+  fldFailureCode: string;
+  timelineTitle: string;
+  tlPaymentCreated: string;
+  tlSessionCreated: string;
+  tlSessionCompleted: string;
+  tlRefundCreated: string;
+  relatedRefunds: string;
+  relatedSessions: string;
+  refundCreateUnavailable: string;
+  refundsTitle: string;
+  refundsEmpty: string;
+  refundDetailTitle: string;
+  colPayment: string;
+  sessionsTitle: string;
+  sessionsEmpty: string;
+  sessionDetailTitle: string;
+  fldCustomer: string;
+  fldExpires: string;
+  fldCompletedAt: string;
+  fldCheckoutUrl: string;
+  linksTitle: string;
+  linksEmpty: string;
+  linkDetailTitle: string;
+  fldDescription: string;
+  fldDisabledAt: string;
+  linkCreateUnavailable: string;
+  copyUrl: string;
+  copied: string;
+  copyError: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -300,6 +337,44 @@ export const MESSAGES: Record<Locale, Messages> = {
     resultSuccess: 'Éxito',
     resultFailure: 'Fallo',
     olderEvents: 'Ver más antiguos →',
+    payments: 'Pagos',
+    paymentsTitle: 'Pagos (payment intents)',
+    paymentsEmpty: 'Sin pagos.',
+    paymentDetailTitle: 'Detalle del pago',
+    fldCaptureMethod: 'Método de captura',
+    fldCaptured: 'Capturado',
+    fldRefunded: 'Reembolsado',
+    fldFailureCode: 'Código de fallo',
+    timelineTitle: 'Línea de tiempo',
+    tlPaymentCreated: 'Pago creado',
+    tlSessionCreated: 'Sesión de checkout creada',
+    tlSessionCompleted: 'Sesión de checkout completada',
+    tlRefundCreated: 'Reembolso creado',
+    relatedRefunds: 'Reembolsos de este pago',
+    relatedSessions: 'Sesiones de checkout de este pago',
+    refundCreateUnavailable:
+      'Crear reembolsos desde el panel aún no está disponible: hoy solo existe por la integración (API key).',
+    refundsTitle: 'Reembolsos',
+    refundsEmpty: 'Sin reembolsos.',
+    refundDetailTitle: 'Detalle del reembolso',
+    colPayment: 'Pago',
+    sessionsTitle: 'Sesiones de checkout',
+    sessionsEmpty: 'Sin sesiones de checkout.',
+    sessionDetailTitle: 'Detalle de la sesión',
+    fldCustomer: 'Cliente',
+    fldExpires: 'Expira',
+    fldCompletedAt: 'Completada',
+    fldCheckoutUrl: 'URL de pago (sandbox)',
+    linksTitle: 'Payment links',
+    linksEmpty: 'Sin payment links.',
+    linkDetailTitle: 'Detalle del payment link',
+    fldDescription: 'Descripción',
+    fldDisabledAt: 'Deshabilitado',
+    linkCreateUnavailable:
+      'Crear payment links desde el panel aún no está disponible: hoy solo existe por la integración (API key).',
+    copyUrl: 'Copiar URL',
+    copied: 'Copiada ✓',
+    copyError: 'No se pudo copiar.',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -446,6 +521,44 @@ export const MESSAGES: Record<Locale, Messages> = {
     resultSuccess: 'Success',
     resultFailure: 'Failure',
     olderEvents: 'Older →',
+    payments: 'Payments',
+    paymentsTitle: 'Payments (payment intents)',
+    paymentsEmpty: 'No payments.',
+    paymentDetailTitle: 'Payment detail',
+    fldCaptureMethod: 'Capture method',
+    fldCaptured: 'Captured',
+    fldRefunded: 'Refunded',
+    fldFailureCode: 'Failure code',
+    timelineTitle: 'Timeline',
+    tlPaymentCreated: 'Payment created',
+    tlSessionCreated: 'Checkout session created',
+    tlSessionCompleted: 'Checkout session completed',
+    tlRefundCreated: 'Refund created',
+    relatedRefunds: 'Refunds for this payment',
+    relatedSessions: 'Checkout sessions for this payment',
+    refundCreateUnavailable:
+      'Creating refunds from the panel is not available yet: today it only exists via the integration (API key).',
+    refundsTitle: 'Refunds',
+    refundsEmpty: 'No refunds.',
+    refundDetailTitle: 'Refund detail',
+    colPayment: 'Payment',
+    sessionsTitle: 'Checkout sessions',
+    sessionsEmpty: 'No checkout sessions.',
+    sessionDetailTitle: 'Session detail',
+    fldCustomer: 'Customer',
+    fldExpires: 'Expires',
+    fldCompletedAt: 'Completed',
+    fldCheckoutUrl: 'Payment URL (sandbox)',
+    linksTitle: 'Payment links',
+    linksEmpty: 'No payment links.',
+    linkDetailTitle: 'Payment link detail',
+    fldDescription: 'Description',
+    fldDisabledAt: 'Disabled',
+    linkCreateUnavailable:
+      'Creating payment links from the panel is not available yet: today it only exists via the integration (API key).',
+    copyUrl: 'Copy URL',
+    copied: 'Copied ✓',
+    copyError: 'Could not copy.',
   },
 };
 

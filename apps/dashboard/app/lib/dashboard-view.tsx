@@ -105,6 +105,10 @@ export function DashboardView({
           <p className="org">{orgName}</p>
         </div>
         <nav className="dash-nav">
+          <a href={`/o/${orgId}/payments`}>{t.payments}</a>
+          <a href={`/o/${orgId}/refunds`}>{t.sectionRefunds}</a>
+          <a href={`/o/${orgId}/checkout-sessions`}>{t.sectionSessions}</a>
+          <a href={`/o/${orgId}/payment-links`}>{t.sectionLinks}</a>
           <a href={`/o/${orgId}/merchants`}>{t.merchants}</a>
           <a href={`/o/${orgId}/cases`}>{t.cases}</a>
           <a href={`/o/${orgId}/reconciliation`}>{t.reconciliation}</a>
@@ -124,7 +128,9 @@ export function DashboardView({
         rows={data.intents.map((r) => ({
           key: String(r.id),
           cells: [
-            <code key="id">{shortId(r.id)}</code>,
+            <a key="id" href={`/o/${orgId}/payments/${String(r.id)}`}>
+              <code>{shortId(r.id)}</code>
+            </a>,
             statusBadge(r),
             money(r, locale),
             when(r.created_at),
@@ -139,7 +145,9 @@ export function DashboardView({
         rows={data.refunds.map((r) => ({
           key: String(r.id),
           cells: [
-            <code key="id">{shortId(r.id)}</code>,
+            <a key="id" href={`/o/${orgId}/refunds/${String(r.id)}`}>
+              <code>{shortId(r.id)}</code>
+            </a>,
             statusBadge(r),
             money(r, locale),
             when(r.created_at),
@@ -153,7 +161,13 @@ export function DashboardView({
         empty={t.empty}
         rows={data.sessions.map((r) => ({
           key: String(r.id),
-          cells: [<code key="id">{shortId(r.id)}</code>, statusBadge(r), when(r.created_at)],
+          cells: [
+            <a key="id" href={`/o/${orgId}/checkout-sessions/${String(r.id)}`}>
+              <code>{shortId(r.id)}</code>
+            </a>,
+            statusBadge(r),
+            when(r.created_at),
+          ],
         }))}
       />
 
@@ -164,7 +178,9 @@ export function DashboardView({
         rows={data.links.map((r) => ({
           key: String(r.id),
           cells: [
-            <code key="id">{shortId(r.id)}</code>,
+            <a key="id" href={`/o/${orgId}/payment-links/${String(r.id)}`}>
+              <code>{shortId(r.id)}</code>
+            </a>,
             statusBadge(r),
             money(r, locale),
             when(r.created_at),
