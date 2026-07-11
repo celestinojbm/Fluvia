@@ -57,7 +57,7 @@ Los demás hallazgos abiertos NO son ítems nuevos: viven dentro de F1-04b, F1-0
 
 ## RA-F6 — Re-auditoría F6 delta (2026-07-10, sobre `e6a185d`)
 
-Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta. Los P2 bloquean **producción/release público** (no el sandbox cerrado); ninguno bloquea F5 por sí solo. Un PR aislado por hallazgo — no mezclar.
+Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §Re-auditoría F6 delta / §F6 Final Approval. Los P2 bloquean **producción/release público** (no el sandbox cerrado); ninguno bloquea F5 por sí solo. Un PR aislado por hallazgo — no mezclar. **✅ TODOS CERRADOS y RATIFICADOS por Hermes (2026-07-11): F6 APROBADA para el alcance `sandbox cerrado / hardening sandbox`** (decisión #28; baseline `8f126c4`, CI run #368). NO autoriza producción/Fase 5/live/proveedor real/exposición pública/sandbox compartido; Fase 5 = decisión humana separada.
 
 | ID | Título | Sev | Estado | PR de cierre esperado |
 | --- | --- | --- | --- | --- |
@@ -66,7 +66,7 @@ Estado vivo y criterios de cierre: `docs/audits/audit-closure-register-v1.md` §
 | RA-F6-003 | Docs de gates desincronizadas (estadios mezclados; «6 checks» vs [1]–[9] reales) | P3 | **CERRADO** (reconciliación docs-only; **ratificado por Hermes 2026-07-10**) | `docs/ra-f6-003-gates-reconciliation` |
 | RA-F6-004 | Falta reporte/política de licencias transitivas (el SBOM existe; el análisis no) | P2 | **CERRADO tras F6-DELTA-001** (check `--strict` en CI; 2 excepciones aceptadas por el propietario 2026-07-10 — la LGPL con revisión legal antes del primer release; NO autoriza producción; el delta de Hermes halló el reporte incoherente → F6-DELTA-001, corregido) | `feat/ra-f6-004-license-report` + `docs/ra-f6-004-license-decisions` + `fix/f6-delta-001-license-report-decisions` |
 | RA-F6-005 | Lista de cuentas protegidas de [9] hardcodeada (falta meta-test chart↔SQL) | P3 | **CERRADO** (meta-test `chart-nonneg-sync.test.ts`, dientes probados; cobertura 12/12 exacta; **ratificado por Hermes 2026-07-10**) | `test/ra-f6-005-nonneg-chart-metatest` |
-| F6-DELTA-001 | `licenses:report` contradecía las decisiones humanas (2 restringidas aceptadas mostradas como «sin decisión registrada») — hallado por el delta final de Hermes | P2 | **CERRADO** (report consume la misma fuente de excepciones que el check; bloque de decisión completo por licencia; guard anti-regresión con dientes; `--strict` sigue PASS; **pendiente ratificación CORTA de Hermes**) | `fix/f6-delta-001-license-report-decisions` |
+| F6-DELTA-001 | `licenses:report` contradecía las decisiones humanas (2 restringidas aceptadas mostradas como «sin decisión registrada») — hallado por el delta final de Hermes | P2 | **CERRADO** (report consume la misma fuente de excepciones que el check; bloque de decisión completo por licencia; guard anti-regresión con dientes; `--strict` sigue PASS; **ratificado por Hermes 2026-07-11 sobre `8f126c4`**) | `fix/f6-delta-001-license-report-decisions` (mergeado, `8f126c4`) |
 
 ## Futuro (no planificar aún)
 

@@ -1,14 +1,15 @@
 # Production Gates
 
-Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlaza a su prueba cuando existe. **Reconciliado con el baseline post-F6 (RA-F6-003, 2026-07-10).**
+Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlaza a su prueba cuando existe. **Reconciliado con el baseline post-F6 (RA-F6-003, 2026-07-10). F6 APROBADA para el alcance `sandbox cerrado / hardening sandbox` por ratificación de Hermes (2026-07-11, decisión #28; baseline `8f126c4`, CI run #368) — la aprobación NO mueve ningún gate de producción ni de sandbox compartido.**
 
-## Estado global: 🔴 PRE-PRODUCCIÓN — SANDBOX CERRADO (F1–F4 + hardening F6 completos y auditados; Fase 5 NO iniciada; live keys bloqueadas por código; exposición pública CONGELADA por decisión #24)
+## Estado global: 🔴 PRE-PRODUCCIÓN — SANDBOX CERRADO (F1–F4 + hardening F6 completos, auditados y ✅ APROBADOS para el alcance sandbox/hardening por Hermes; Fase 5 NO iniciada; live keys bloqueadas por código; exposición pública CONGELADA por decisión #24; producción y sandbox compartido siguen 🔴 BLOQUEADOS)
 
 ## 0. Estadios — qué autoriza cada uno (separación RA-F6-003)
 
-### Estadio ACTUAL: sandbox cerrado ✅ (lo único autorizado hoy)
+### Estadio ACTUAL: sandbox cerrado ✅ APROBADO (F6 hardening ratificado por Hermes — lo único autorizado hoy)
 
-- Desarrollo y test controlado contra PostgreSQL 16 real; la evidencia del hardening es la CI por commit (suite + invariantes [1]–[9] + 3 drills + gitleaks/audit/licencias-strict/SBOM/grype) + las dos auditorías independientes integradas + la re-auditoría F6 delta (registro de cierre).
+- **F6 APROBADA para este alcance** (ratificación de Hermes 2026-07-11; baseline `8f126c4`, CI run #368; 0 P0/P1/P2 del delta F6). La aprobación es EXCLUSIVA de este estadio: NO habilita el siguiente ni el final.
+- Desarrollo y test controlado contra PostgreSQL 16 real; la evidencia del hardening es la CI por commit (suite + invariantes [1]–[9] + 3 drills + gitleaks/audit/licencias-strict/SBOM/grype) + las dos auditorías independientes integradas + la re-auditoría F6 delta + la ratificación corta F6-DELTA-001 (registro de cierre §F6 Final Approval).
 - **MockProvider es el ÚNICO proveedor** — no se mueve dinero real.
 - **Sin credenciales `live`** — emisión bloqueada por código (`LiveKeysDisabledError`) hasta gates + decisión humana (PEND-004).
 - **Sin exposición pública** (freeze decisión #24) · **Fase 5 NO iniciada**.
