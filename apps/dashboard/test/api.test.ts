@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canManageReconciliation,
   canReadAudit,
+  canReadKeys,
   canResendRole,
+  fetchApiKeys,
   fetchAuditEvents,
   fetchCheckoutSession,
   fetchCheckoutSessions,
@@ -17,6 +19,8 @@ import {
   fetchPaymentLinks,
   fetchRefund,
   fetchRefunds,
+  fetchWebhookEvent,
+  fetchWebhookEvents,
   filterMerchants,
   liveAdjustment,
   login,
@@ -510,5 +514,94 @@ describe('paymentTimeline', () => {
   it('does not invent a completion entry when the session never completed', () => {
     const entries = paymentTimeline(INTENT, [], [session({ completed_at: null, status: 'open' })]);
     expect(entries.map((e) => e.kind)).toEqual(['payment_created', 'session_created']);
+  });
+});
+
+// ── F6.5B — superficie de desarrollador (webhook events + API keys) ───────────
+
+describe('canReadKeys', () => {
+  it('allows keys:read roles (owner/admin/developer/finance) and rejects the rest', () => {
+    for (const r of ['owner', 'admin', 'developer', 'finance']) expect(canReadKeys(r)).toBe(true);
+    for (const r of ['support', 'analyst', 'read_only', undefined]) {
+      expect(canReadKeys(r)).toBe(false);
+    }
+  });
+});
+
+describe('developer-surface fetchers (F6.5B)', () => {
+  it('fetchWebhookEvents scopes to the org path and degrades to [] on 403', async () => {
+    const f = jsonFetch({ webhook_events: { body: { data: [{ id: 'whe_1' }] } } });
+    const ok = await fetchWebhookEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o/1',
+      fetchImpl: f,
+    });
+    expect(ok).toHaveLength(1);
+    const url = (f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0];
+    expect(url).toContain('/v1/organizations/o%2F1/webhook_events');
+    const denied = await fetchWebhookEvents({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: jsonFetch({ webhook_events: { status: 403, body: {} } }),
+    });
+    expect(denied).toEqual([]);
+  });
+
+  it('fetchWebhookEvent returns the detail (payload + attempts) or null on not-found', async () => {
+    const detail = {
+      id: 'whe_1',
+      endpoint_id: 'whep_1',
+      topic: 't',
+      status: 'dead',
+      attempts: 3,
+      next_attempt_at: null,
+      last_error: 'x',
+      delivered_at: null,
+      resent_from_event_id: null,
+      created_at: '2026-07-11T10:00:00Z',
+      payload: { a: 1 },
+      attempts_history: [],
+    };
+    const ok = await fetchWebhookEvent({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      eventId: 'whe_1',
+      fetchImpl: jsonFetch({ 'webhook_events/whe_1': { body: detail } }),
+    });
+    expect(ok?.payload).toEqual({ a: 1 });
+    const missing = await fetchWebhookEvent({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      eventId: 'nope',
+      fetchImpl: jsonFetch({}),
+    });
+    expect(missing).toBeNull();
+  });
+
+  it('fetchApiKeys reads the api-keys list, scopes to the org, and degrades to [] on 403', async () => {
+    const f = jsonFetch({
+      'api-keys': { body: { api_keys: [{ id: 'ak_1', label: 'k', key_prefix: 'p' }] } },
+    });
+    const ok = await fetchApiKeys({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o/1',
+      fetchImpl: f,
+    });
+    expect(ok).toHaveLength(1);
+    const url = (f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0];
+    expect(url).toContain('/v1/organizations/o%2F1/api-keys');
+    // Un rol sin keys:read recibe 403 → lista vacía (el API es la fuente de verdad).
+    const denied = await fetchApiKeys({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: jsonFetch({ 'api-keys': { status: 403, body: {} } }),
+    });
+    expect(denied).toEqual([]);
   });
 });

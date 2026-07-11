@@ -206,6 +206,39 @@ interface Messages {
   cancelAction: string;
   creating: string;
   refreshList: string;
+  // superficie de desarrollador (F6.5B): webhook events + API keys
+  webhooks: string;
+  webhookEventsTitle: string;
+  webhookEventsEmpty: string;
+  webhookEventDetailTitle: string;
+  colEvent: string;
+  colEndpoint: string;
+  fldTopic: string;
+  fldNextAttempt: string;
+  fldDeliveredAt: string;
+  fldLastError: string;
+  fldResentFrom: string;
+  payloadTitle: string;
+  attemptsTitle: string;
+  attemptsEmpty: string;
+  colAttempt: string;
+  colStatusCode: string;
+  colLatency: string;
+  colResolvedIp: string;
+  colError: string;
+  apiKeys: string;
+  apiKeysTitle: string;
+  apiKeysEmpty: string;
+  colLabel: string;
+  colPrefix: string;
+  colScopes: string;
+  colEnvironment: string;
+  colLastUsed: string;
+  colRevoked: string;
+  keyActive: string;
+  keyRevoked: string;
+  apiKeysReadOnlyNote: string;
+  secretNeverShownNote: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -406,6 +439,40 @@ export const MESSAGES: Record<Locale, Messages> = {
     cancelAction: 'Cancelar',
     creating: 'Creando…',
     refreshList: 'Actualizar lista',
+    webhooks: 'Webhooks',
+    webhookEventsTitle: 'Eventos de webhook',
+    webhookEventsEmpty: 'Sin eventos de webhook.',
+    webhookEventDetailTitle: 'Detalle del evento de webhook',
+    colEvent: 'Evento',
+    colEndpoint: 'Endpoint',
+    fldTopic: 'Topic',
+    fldNextAttempt: 'Próximo intento',
+    fldDeliveredAt: 'Entregado',
+    fldLastError: 'Último error',
+    fldResentFrom: 'Reenviado desde',
+    payloadTitle: 'Payload',
+    attemptsTitle: 'Intentos de entrega',
+    attemptsEmpty: 'Sin intentos registrados.',
+    colAttempt: 'Intento',
+    colStatusCode: 'Código HTTP',
+    colLatency: 'Latencia (ms)',
+    colResolvedIp: 'IP resuelta',
+    colError: 'Error',
+    apiKeys: 'API keys',
+    apiKeysTitle: 'API keys',
+    apiKeysEmpty: 'Sin API keys.',
+    colLabel: 'Etiqueta',
+    colPrefix: 'Prefijo',
+    colScopes: 'Scopes',
+    colEnvironment: 'Entorno',
+    colLastUsed: 'Último uso',
+    colRevoked: 'Revocada',
+    keyActive: 'Activa',
+    keyRevoked: 'Revocada',
+    apiKeysReadOnlyNote:
+      'Vista de solo lectura: crear/revocar una API key exige re-autenticación reciente (step-up MFA), aún no disponible desde el panel.',
+    secretNeverShownNote:
+      'El secreto de una API key jamás se muestra aquí: solo viaja una vez al crearla, por la integración.',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -604,6 +671,40 @@ export const MESSAGES: Record<Locale, Messages> = {
     cancelAction: 'Cancel',
     creating: 'Creating…',
     refreshList: 'Refresh list',
+    webhooks: 'Webhooks',
+    webhookEventsTitle: 'Webhook events',
+    webhookEventsEmpty: 'No webhook events.',
+    webhookEventDetailTitle: 'Webhook event detail',
+    colEvent: 'Event',
+    colEndpoint: 'Endpoint',
+    fldTopic: 'Topic',
+    fldNextAttempt: 'Next attempt',
+    fldDeliveredAt: 'Delivered',
+    fldLastError: 'Last error',
+    fldResentFrom: 'Resent from',
+    payloadTitle: 'Payload',
+    attemptsTitle: 'Delivery attempts',
+    attemptsEmpty: 'No attempts recorded.',
+    colAttempt: 'Attempt',
+    colStatusCode: 'HTTP code',
+    colLatency: 'Latency (ms)',
+    colResolvedIp: 'Resolved IP',
+    colError: 'Error',
+    apiKeys: 'API keys',
+    apiKeysTitle: 'API keys',
+    apiKeysEmpty: 'No API keys.',
+    colLabel: 'Label',
+    colPrefix: 'Prefix',
+    colScopes: 'Scopes',
+    colEnvironment: 'Environment',
+    colLastUsed: 'Last used',
+    colRevoked: 'Revoked',
+    keyActive: 'Active',
+    keyRevoked: 'Revoked',
+    apiKeysReadOnlyNote:
+      'Read-only view: creating/revoking an API key requires recent re-authentication (MFA step-up), not available from the panel yet.',
+    secretNeverShownNote:
+      'An API key secret is never shown here: it only travels once at creation, via the integration.',
   },
 };
 
