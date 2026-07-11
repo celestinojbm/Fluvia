@@ -78,7 +78,11 @@ Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verific
 
 ### F5.0 legal/compliance research (docs)
 
-- **Estado: EJECUTADO A NIVEL DOCUMENTAL** (decisión #30, 2026-07-11). Paquete `docs/compliance/f5-0-legal-research.md` + `legal-questions-checklist.md` con fuentes oficiales (fecha de consulta 2026-07-11) y estado epistémico por afirmación; `jurisdiction-matrix.md` con columna «Verificación» — **ninguna fila cerrada legalmente**. **Sin conclusiones legales.** Salida: llevar el checklist a un abogado colombiano (decisión humana). **F5.1–F5.4 siguen bloqueadas**; F5.0 no cambia runtime ni gates; sin proveedor real; producción/live/sandbox compartido bloqueados; freeze #24 vigente.
+- **Estado: EJECUTADO A NIVEL DOCUMENTAL** (decisión #30, 2026-07-11). Paquete `docs/compliance/f5-0-legal-research.md` + `legal-questions-checklist.md` con fuentes oficiales (fecha de consulta 2026-07-11) y estado epistémico por afirmación; `jurisdiction-matrix.md` con columna «Verificación» — **ninguna fila cerrada legalmente**. **Sin conclusiones legales.** Salida: llevar el checklist a un abogado colombiano (decisión humana — **pendiente y NO bloquea F6.5**). **F5.1–F5.4 siguen bloqueadas**; F5.0 no cambia runtime ni gates; sin proveedor real; producción/live/sandbox compartido bloqueados; freeze #24 vigente.
+
+### F6.5 — Product Sandbox Completion (plan)
+
+- **Estado: PLANIFICADA/DOCUMENTADA** (decisión #31, 2026-07-11). Plan en `docs/phases/f6-5-sandbox-product-plan.md`: completar la superficie de producto en **sandbox cerrado** consumiendo la API existente, sin tocar el núcleo auditado. Milestones **F6.5A (payments dashboard) → F6.5B (webhooks+API keys UI) → F6.5C (onboarding mock + demo data) → F6.5D (export+docs+cierre)** — cada uno en PRs separados con **autorización individual**; **ninguno pasa a «in progress» todavía**. **Próximo recomendado: F6.5A — AÚN NO AUTORIZADO.** Badge «SANDBOX — dinero simulado» obligatorio en UI nueva. F5.1–F5.4 bloqueadas; legal externo pendiente (no bloquea); producción/live/sandbox compartido bloqueados; freeze #24 vigente.
 
 ## DAG
 
