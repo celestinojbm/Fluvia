@@ -1,6 +1,6 @@
 # Production Gates
 
-Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlaza a su prueba cuando existe. **Reconciliado con el baseline post-F6 (RA-F6-003, 2026-07-10). F6 APROBADA para el alcance `sandbox cerrado / hardening sandbox` por ratificación de Hermes (2026-07-11, decisión #28; baseline `8f126c4`, CI run #368) — la aprobación NO mueve ningún gate de producción ni de sandbox compartido.**
+Estado: Activo · Ningún entorno de Fluvia puede declararse "producción" sin completar los gates aplicables (V4 §51). Este documento es el checklist de evidencia; cada ítem enlaza a su prueba cuando existe. **Reconciliado con el baseline post-F6 (RA-F6-003, 2026-07-10). F6 APROBADA para el alcance `sandbox cerrado / hardening sandbox` por ratificación de Hermes (2026-07-11, decisión #28; baseline `8f126c4`, CI run #368) — la aprobación NO mueve ningún gate de producción ni de sandbox compartido.** Plan de preparación de Fase 5 (planificación, sin iniciar F5) en `docs/phases/f5-preparation-plan.md` (decisión #29); no cambia ningún gate de este documento.
 
 ## Estado global: 🔴 PRE-PRODUCCIÓN — SANDBOX CERRADO (F1–F4 + hardening F6 completos, auditados y ✅ APROBADOS para el alcance sandbox/hardening por Hermes; Fase 5 NO iniciada; live keys bloqueadas por código; exposición pública CONGELADA por decisión #24; producción y sandbox compartido siguen 🔴 BLOQUEADOS)
 
