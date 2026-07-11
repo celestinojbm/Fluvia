@@ -82,6 +82,7 @@ export function DashboardView({
   canResend = false,
   canReadAudit = false,
   canReadKeys = false,
+  canManageWebhooks = false,
 }: {
   data: DashboardData;
   locale: Locale;
@@ -94,6 +95,8 @@ export function DashboardView({
   canReadAudit?: boolean;
   /** El operador puede leer las API keys (rol con keys:read). */
   canReadKeys?: boolean;
+  /** El operador puede gestionar webhook endpoints (rol con webhooks:manage). */
+  canManageWebhooks?: boolean;
 }) {
   const t = MESSAGES[locale];
   const statusBadge = (row: Record<string, unknown>) => (
@@ -118,6 +121,9 @@ export function DashboardView({
           <a href={`/o/${orgId}/payouts`}>{t.payouts}</a>
           <a href={`/o/${orgId}/disputes`}>{t.disputes}</a>
           <a href={`/o/${orgId}/webhook-events`}>{t.webhooks}</a>
+          {canManageWebhooks && (
+            <a href={`/o/${orgId}/webhook-endpoints`}>{t.webhookEndpoints}</a>
+          )}
           {canReadKeys && <a href={`/o/${orgId}/api-keys`}>{t.apiKeys}</a>}
           {canReadAudit && <a href={`/o/${orgId}/events`}>{t.events}</a>}
           <a className="signout" href={signOutHref}>

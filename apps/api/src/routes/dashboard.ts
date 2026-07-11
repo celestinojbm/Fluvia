@@ -14,7 +14,12 @@ import type {
   PayoutService,
   RefundService,
 } from '@fluvia/payments-core';
-import { WEBHOOK_EVENT_STATUSES, type WebhookEventService } from '@fluvia/webhooks';
+import {
+  WEBHOOK_EVENT_STATUSES,
+  type WebhookEndpointDto,
+  type WebhookEndpointService,
+  type WebhookEventService,
+} from '@fluvia/webhooks';
 import {
   ADJUSTMENT_DIRECTIONS,
   CASE_SEVERITIES,
@@ -32,6 +37,7 @@ import { publicPayout } from './payouts.js';
 import { publicDispute } from './disputes.js';
 import { publicSession } from './checkout-sessions.js';
 import { CreatePaymentLinkSchema, publicLink } from './payment-links.js';
+import { CreateEndpointSchema } from './webhook-endpoints.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
 import { publicEntry, publicReport } from './settlements.js';
 import { publicCase } from './cases.js';
@@ -98,6 +104,7 @@ export interface DashboardRoutesOptions {
   checkoutSessionService: CheckoutSessionService;
   paymentLinkService: PaymentLinkService;
   webhookEventService: WebhookEventService;
+  webhookEndpointService: WebhookEndpointService;
   reconciliationService: ReconciliationService;
   operationalCaseService: OperationalCaseService;
   caseAdjustmentService: CaseAdjustmentService;
@@ -137,12 +144,15 @@ export function registerDashboardRoutes(
     checkoutSessionService,
     paymentLinkService,
     webhookEventService,
+    webhookEndpointService,
     reconciliationService,
     operationalCaseService,
     caseAdjustmentService,
   }: DashboardRoutesOptions
 ): void {
   const guard = { preHandler: [security.session, security.org('payments:read')] };
+  // F6.5B1: gestión de endpoints de webhook por sesión (owner/admin/developer).
+  const manageWebhooks = { preHandler: [security.session, security.org('webhooks:manage')] };
   // F4-03c: operación de conciliación por sesión (trabajar casos + AUTORIZAR
   // ajustes con four-eyes). El aprobador != proponente se exige por identidad.
   const manage = { preHandler: [security.session, security.org('reconciliation:manage')] };
@@ -401,6 +411,73 @@ export function registerDashboardRoutes(
       const { id } = IdParams.parse(req.params);
       const created = await webhookEventService.resend(tenant(req), id, userAuditContext(req));
       return reply.code(201).send(publicEvent(created));
+    }
+  );
+
+  // ── Gestión de endpoints de webhook por sesión (F6.5B1) ─────────────────────
+  // Espeja el plano de API key (`/v1/webhook_endpoints`) reutilizando el MISMO
+  // servicio y schema; añade auditoría atómica actor `user` (el plano API-key no
+  // audita estas mutaciones) y detalle por id. El secreto `whsec_` viaja UNA vez
+  // en create/rotate y JAMÁS aparece en list/detail ni en la auditoría. No toca
+  // el runtime de entrega (deliverer/fanout/signing).
+  const publicEndpoint = (e: WebhookEndpointDto) => ({
+    id: e.id,
+    object: 'webhook_endpoint',
+    url: e.url,
+    events: e.events,
+    status: e.status,
+    description: e.description,
+    created_at: e.createdAt,
+    disabled_at: e.disabledAt,
+  });
+
+  app.get('/v1/organizations/:orgId/webhook_endpoints', manageWebhooks, async (req) => {
+    OrgParam.parse(req.params);
+    const endpoints = await webhookEndpointService.list(tenant(req));
+    return { object: 'list', data: endpoints.map(publicEndpoint) };
+  });
+
+  app.get('/v1/organizations/:orgId/webhook_endpoints/:id', manageWebhooks, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicEndpoint(await webhookEndpointService.get(tenant(req), id));
+  });
+
+  app.post('/v1/organizations/:orgId/webhook_endpoints', manageWebhooks, async (req, reply) => {
+    OrgParam.parse(req.params);
+    const body = CreateEndpointSchema.parse(req.body);
+    const created = await webhookEndpointService.create(
+      tenant(req),
+      {
+        url: body.url,
+        events: body.events,
+        description: body.description,
+        createdByUserId: req.identity!.userId,
+      },
+      userAuditContext(req)
+    );
+    // El secreto `whsec_` viaja UNA vez aquí; el cliente lo revela una sola vez.
+    return reply.code(201).send({ ...publicEndpoint(created), secret: created.secret });
+  });
+
+  app.post('/v1/organizations/:orgId/webhook_endpoints/:id/rotate', manageWebhooks, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const rotated = await webhookEndpointService.rotateSecret(
+      tenant(req),
+      id,
+      userAuditContext(req)
+    );
+    // El secreto anterior sigue firmando durante la ventana de gracia; el nuevo
+    // se revela UNA vez.
+    return { id: rotated.id, secret: rotated.secret, rotated: true };
+  });
+
+  app.post(
+    '/v1/organizations/:orgId/webhook_endpoints/:id/disable',
+    manageWebhooks,
+    async (req) => {
+      const { id } = IdParams.parse(req.params);
+      const disabled = await webhookEndpointService.disable(tenant(req), id, userAuditContext(req));
+      return publicEndpoint(disabled);
     }
   );
 

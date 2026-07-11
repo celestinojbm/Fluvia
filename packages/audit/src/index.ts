@@ -38,6 +38,12 @@ export const AUDIT_ACTIONS = [
   // keys); aquí el actor es un operador HUMANO y el acto queda auditado.
   'refund.created',
   'payment_link.created',
+  // F6.5B1: gestión de endpoints de webhook por SESIÓN (operador humano). El
+  // plano de API key no audita estas mutaciones; en el plano de sesión el acto
+  // queda auditado en la MISMA transacción de la mutación (rastro atómico).
+  'webhook_endpoint.created',
+  'webhook_endpoint.rotated',
+  'webhook_endpoint.disabled',
   'operational_case.acknowledged',
   'operational_case.resolved',
   'operational_case.adjustment_proposed',

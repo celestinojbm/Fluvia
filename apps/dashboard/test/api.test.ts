@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canManageReconciliation,
   canReadAudit,
+  canManageWebhooks,
   canReadKeys,
   canResendRole,
   fetchApiKeys,
@@ -19,6 +20,8 @@ import {
   fetchPaymentLinks,
   fetchRefund,
   fetchRefunds,
+  fetchWebhookEndpoint,
+  fetchWebhookEndpoints,
   fetchWebhookEvent,
   fetchWebhookEvents,
   filterMerchants,
@@ -603,5 +606,67 @@ describe('developer-surface fetchers (F6.5B)', () => {
       fetchImpl: jsonFetch({ 'api-keys': { status: 403, body: {} } }),
     });
     expect(denied).toEqual([]);
+  });
+});
+
+// ── F6.5B1 — webhook endpoints (gestión por sesión) ──────────────────────────
+
+describe('canManageWebhooks', () => {
+  it('allows webhooks:manage roles (owner/admin/developer) and rejects the rest', () => {
+    for (const r of ['owner', 'admin', 'developer']) expect(canManageWebhooks(r)).toBe(true);
+    for (const r of ['finance', 'support', 'analyst', 'read_only', undefined]) {
+      expect(canManageWebhooks(r)).toBe(false);
+    }
+  });
+});
+
+describe('webhook endpoints fetchers (F6.5B1)', () => {
+  it('fetchWebhookEndpoints scopes to the org path and degrades to [] on 403', async () => {
+    const f = jsonFetch({ webhook_endpoints: { body: { data: [{ id: 'whep_1' }] } } });
+    const ok = await fetchWebhookEndpoints({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o/1',
+      fetchImpl: f,
+    });
+    expect(ok).toHaveLength(1);
+    const url = (f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0];
+    expect(url).toContain('/v1/organizations/o%2F1/webhook_endpoints');
+    const denied = await fetchWebhookEndpoints({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      fetchImpl: jsonFetch({ webhook_endpoints: { status: 403, body: {} } }),
+    });
+    expect(denied).toEqual([]);
+  });
+
+  it('fetchWebhookEndpoint returns the endpoint or null on not-found; never carries a secret', async () => {
+    const ep = {
+      id: 'whep_1',
+      url: 'https://example.test/hook',
+      events: [],
+      status: 'active',
+      description: null,
+      created_at: '2026-07-11T09:00:00Z',
+      disabled_at: null,
+    };
+    const ok = await fetchWebhookEndpoint({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      endpointId: 'whep_1',
+      fetchImpl: jsonFetch({ 'webhook_endpoints/whep_1': { body: ep } }),
+    });
+    expect(ok?.url).toBe('https://example.test/hook');
+    expect((ok as unknown as { secret?: string })?.secret).toBeUndefined();
+    const missing = await fetchWebhookEndpoint({
+      apiBase: 'http://api',
+      token: 't',
+      orgId: 'o1',
+      endpointId: 'nope',
+      fetchImpl: jsonFetch({}),
+    });
+    expect(missing).toBeNull();
   });
 });

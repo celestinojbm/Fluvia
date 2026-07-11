@@ -239,6 +239,33 @@ interface Messages {
   keyRevoked: string;
   apiKeysReadOnlyNote: string;
   secretNeverShownNote: string;
+  // webhook endpoints (F6.5B1)
+  webhookEndpoints: string;
+  webhookEndpointsTitle: string;
+  webhookEndpointsEmpty: string;
+  webhookEndpointDetailTitle: string;
+  colUrl: string;
+  colEvents: string;
+  fldDescription2: string;
+  createEndpointTitle: string;
+  createEndpointAction: string;
+  endpointUrlLabel: string;
+  endpointUrlHint: string;
+  endpointEventsLabel: string;
+  endpointEventsHint: string;
+  rotateAction: string;
+  rotateConfirm: string;
+  disableAction: string;
+  disableConfirm: string;
+  disabledOk: string;
+  endpointCreated: string;
+  viewRelatedEvents: string;
+  endpointManageNoRole: string;
+  allEvents: string;
+  // secret reveal once (F6.5B1, reusable)
+  secretOnceTitle: string;
+  secretOnceWarning: string;
+  secretOnceDismiss: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -473,6 +500,31 @@ export const MESSAGES: Record<Locale, Messages> = {
       'Vista de solo lectura: crear/revocar una API key exige re-autenticación reciente (step-up MFA), aún no disponible desde el panel.',
     secretNeverShownNote:
       'El secreto de una API key jamás se muestra aquí: solo viaja una vez al crearla, por la integración.',
+    webhookEndpoints: 'Endpoints',
+    webhookEndpointsTitle: 'Endpoints de webhook',
+    webhookEndpointsEmpty: 'Sin endpoints de webhook.',
+    webhookEndpointDetailTitle: 'Detalle del endpoint',
+    colUrl: 'URL',
+    colEvents: 'Eventos',
+    fldDescription2: 'Descripción',
+    createEndpointTitle: 'Crear endpoint',
+    createEndpointAction: 'Crear endpoint',
+    endpointUrlLabel: 'URL de destino',
+    endpointUrlHint: 'HTTPS de tu servidor que recibirá los eventos (sandbox).',
+    endpointEventsLabel: 'Eventos (separados por coma; vacío = todos)',
+    endpointEventsHint: 'Ej.: payment_intent.succeeded, refund.succeeded',
+    rotateAction: 'Rotar secreto',
+    rotateConfirm: '¿Rotar el secreto? El anterior seguirá firmando durante la ventana de gracia.',
+    disableAction: 'Desactivar',
+    disableConfirm: '¿Desactivar este endpoint? Dejará de recibir eventos.',
+    disabledOk: 'Endpoint desactivado ✓',
+    endpointCreated: 'Endpoint creado ✓',
+    viewRelatedEvents: 'Ver eventos de webhook',
+    endpointManageNoRole: 'Tu rol no permite gestionar endpoints (requiere owner/admin/developer).',
+    allEvents: 'Todos los eventos',
+    secretOnceTitle: 'Secreto de firma',
+    secretOnceWarning: 'Copia este secreto ahora — no se volverá a mostrar.',
+    secretOnceDismiss: 'Ya lo copié',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -705,6 +757,31 @@ export const MESSAGES: Record<Locale, Messages> = {
       'Read-only view: creating/revoking an API key requires recent re-authentication (MFA step-up), not available from the panel yet.',
     secretNeverShownNote:
       'An API key secret is never shown here: it only travels once at creation, via the integration.',
+    webhookEndpoints: 'Endpoints',
+    webhookEndpointsTitle: 'Webhook endpoints',
+    webhookEndpointsEmpty: 'No webhook endpoints.',
+    webhookEndpointDetailTitle: 'Endpoint detail',
+    colUrl: 'URL',
+    colEvents: 'Events',
+    fldDescription2: 'Description',
+    createEndpointTitle: 'Create endpoint',
+    createEndpointAction: 'Create endpoint',
+    endpointUrlLabel: 'Destination URL',
+    endpointUrlHint: 'HTTPS on your server that will receive events (sandbox).',
+    endpointEventsLabel: 'Events (comma-separated; empty = all)',
+    endpointEventsHint: 'e.g. payment_intent.succeeded, refund.succeeded',
+    rotateAction: 'Rotate secret',
+    rotateConfirm: 'Rotate the secret? The old one keeps signing during the grace window.',
+    disableAction: 'Disable',
+    disableConfirm: 'Disable this endpoint? It will stop receiving events.',
+    disabledOk: 'Endpoint disabled ✓',
+    endpointCreated: 'Endpoint created ✓',
+    viewRelatedEvents: 'View webhook events',
+    endpointManageNoRole: 'Your role cannot manage endpoints (requires owner/admin/developer).',
+    allEvents: 'All events',
+    secretOnceTitle: 'Signing secret',
+    secretOnceWarning: 'Copy this secret now — it will not be shown again.',
+    secretOnceDismiss: 'I copied it',
   },
 };
 

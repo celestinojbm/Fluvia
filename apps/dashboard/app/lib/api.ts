@@ -663,3 +663,48 @@ export async function fetchApiKeys(opts: ClientOptions & { orgId: string }): Pro
   );
   return body?.api_keys ?? [];
 }
+
+// --- webhook endpoints (F6.5B1) — gestión por sesión (`webhooks:manage`) ---
+/**
+ * Roles que pueden GESTIONAR endpoints de webhook (`webhooks:manage`; espeja
+ * `ROLE_PERMISSIONS`: owner/admin/developer). Hint de UX — el API es la fuente
+ * de verdad (403). finance/support/analyst/read_only NO.
+ */
+const WEBHOOKS_MANAGE_ROLES = new Set(['owner', 'admin', 'developer']);
+export function canManageWebhooks(role: string | undefined): boolean {
+  return role !== undefined && WEBHOOKS_MANAGE_ROLES.has(role);
+}
+
+/**
+ * Endpoint de webhook — metadata de solo lectura en list/detail. El secreto
+ * `whsec_…` JAMÁS viaja aquí: solo una vez en la respuesta de create/rotate
+ * (`CreatedEndpoint.secret`) y el serializer del API lo omite en list/detail.
+ */
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  events: string[];
+  status: string;
+  description: string | null;
+  created_at: string;
+  disabled_at: string | null;
+}
+
+export async function fetchWebhookEndpoints(
+  opts: ClientOptions & { orgId: string }
+): Promise<WebhookEndpoint[]> {
+  const body = await apiGet<{ data?: WebhookEndpoint[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/webhook_endpoints`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchWebhookEndpoint(
+  opts: ClientOptions & { orgId: string; endpointId: string }
+): Promise<WebhookEndpoint | null> {
+  return apiGet<WebhookEndpoint>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/webhook_endpoints/${encodeURIComponent(opts.endpointId)}`
+  );
+}

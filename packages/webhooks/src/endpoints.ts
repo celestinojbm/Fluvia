@@ -1,3 +1,4 @@
+import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
 import { withTenantTransaction, type Pool } from '@fluvia/db';
 import {
   DEV_WEBHOOK_SECRET_ENC_KEY_HEX,
@@ -84,9 +85,18 @@ export class WebhookEndpointService {
     this.rotationGraceMs = options.rotationGraceMs ?? 24 * 3600 * 1000;
   }
 
+  /**
+   * Crea un endpoint. `context` OPCIONAL (F6.5B1): si viene (plano de SESIÓN,
+   * operador humano), el evento de auditoría `webhook_endpoint.created` se
+   * escribe en la MISMA transacción que el INSERT (rastro atómico, patrón de
+   * `WebhookEventService.resend`). El plano de API key NO lo pasa → sin
+   * auditoría, comportamiento idéntico al previo. El secreto en claro se
+   * devuelve UNA vez y JAMÁS entra en el resumen de auditoría.
+   */
   async create(
     tenantId: string,
-    input: { url: string; events?: string[]; description?: string; createdByUserId?: string }
+    input: { url: string; events?: string[]; description?: string; createdByUserId?: string },
+    context?: AuditContext
   ): Promise<CreatedWebhookEndpoint> {
     assertSafeWebhookUrl(input.url, { allowPrivateNetworks: this.allowPrivate });
     const events = input.events ?? [];
@@ -108,7 +118,20 @@ export class WebhookEndpointService {
           input.createdByUserId ?? null,
         ]
       );
-      return { ...toDto(res.rows[0]!), secret };
+      const dto = toDto(res.rows[0]!);
+      if (context) {
+        await insertAuditEvent(c, {
+          action: 'webhook_endpoint.created',
+          tenantId,
+          context,
+          resourceType: 'webhook_endpoint',
+          resourceId: dto.id,
+          riskLevel: 'medium',
+          // NUNCA el secreto: solo metadata segura.
+          after: { url: dto.url, events: dto.events, status: dto.status },
+        });
+      }
+      return { ...dto, secret };
     });
   }
 
@@ -122,12 +145,31 @@ export class WebhookEndpointService {
     });
   }
 
+  /** Detalle por id bajo RLS (F6.5B1): un endpoint ajeno/inexistente es
+   *  invisible → 404 limpio, sin oráculo de existencia cross-tenant. */
+  async get(tenantId: string, endpointId: string): Promise<WebhookEndpointDto> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const res = await c.query<EndpointRow>(
+        `SELECT id, url, events, status, description, created_at, disabled_at
+         FROM webhook_endpoints WHERE id = $1`,
+        [endpointId]
+      );
+      if (!res.rows[0]) throw new WebhookEndpointNotFoundError();
+      return toDto(res.rows[0]);
+    });
+  }
+
   /**
    * Rotacion (webhook-delivery.md §2): el secreto anterior sigue firmando
    * durante la ventana de gracia — cada entrega lleva `v1=nuevo,v1=viejo`
    * hasta que expire, y el comercio migra sin perder verificaciones.
+   * `context` OPCIONAL (F6.5B1): auditoría atómica `webhook_endpoint.rotated`.
    */
-  async rotateSecret(tenantId: string, endpointId: string): Promise<CreatedWebhookEndpoint> {
+  async rotateSecret(
+    tenantId: string,
+    endpointId: string,
+    context?: AuditContext
+  ): Promise<CreatedWebhookEndpoint> {
     const secret = generateEndpointSecret();
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<EndpointRow>(
@@ -141,11 +183,29 @@ export class WebhookEndpointService {
         [endpointId, encryptEndpointSecret(this.encKeyHex, secret), this.rotationGraceMs]
       );
       if (!res.rows[0]) throw new WebhookEndpointNotFoundError();
-      return { ...toDto(res.rows[0]), secret };
+      const dto = toDto(res.rows[0]);
+      if (context) {
+        await insertAuditEvent(c, {
+          action: 'webhook_endpoint.rotated',
+          tenantId,
+          context,
+          resourceType: 'webhook_endpoint',
+          resourceId: dto.id,
+          riskLevel: 'high',
+          // NUNCA el secreto (ni el nuevo ni el anterior).
+          after: { url: dto.url, status: dto.status },
+        });
+      }
+      return { ...dto, secret };
     });
   }
 
-  async disable(tenantId: string, endpointId: string): Promise<WebhookEndpointDto> {
+  /** `context` OPCIONAL (F6.5B1): auditoría atómica `webhook_endpoint.disabled`. */
+  async disable(
+    tenantId: string,
+    endpointId: string,
+    context?: AuditContext
+  ): Promise<WebhookEndpointDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<EndpointRow>(
         `UPDATE webhook_endpoints
@@ -155,7 +215,20 @@ export class WebhookEndpointService {
         [endpointId]
       );
       if (!res.rows[0]) throw new WebhookEndpointNotFoundError();
-      return toDto(res.rows[0]);
+      const dto = toDto(res.rows[0]);
+      if (context) {
+        await insertAuditEvent(c, {
+          action: 'webhook_endpoint.disabled',
+          tenantId,
+          context,
+          resourceType: 'webhook_endpoint',
+          resourceId: dto.id,
+          riskLevel: 'medium',
+          before: { url: dto.url },
+          after: { status: dto.status },
+        });
+      }
+      return dto;
     });
   }
 }

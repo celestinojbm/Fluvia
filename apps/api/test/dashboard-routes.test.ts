@@ -728,3 +728,155 @@ describe('crear payment link por sesión (F6.5A-bis G2, reconciliation:manage)',
     expect(foreign.length).toBe(0);
   });
 });
+
+// ── F6.5B1 — webhook endpoints por sesión (webhooks:manage) ───────────────────
+
+describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
+  const WHSEC_RE = /^whsec_/;
+
+  it('admin creates an endpoint; the secret travels ONCE and never in list/detail', async () => {
+    const admin = await sessionUser('admin', orgA);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: admin.headers,
+      payload: { url: 'https://example.test/hook-b1', events: ['payment_intent.succeeded'] },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().object).toBe('webhook_endpoint');
+    expect(created.json().secret).toMatch(WHSEC_RE);
+    const id = created.json().id;
+
+    // List: nunca el secreto.
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: admin.headers,
+    });
+    expect(list.statusCode).toBe(200);
+    const listed = (list.json().data as Array<{ id: string }>).find((e) => e.id === id);
+    expect(listed).toBeDefined();
+    expect(JSON.stringify(list.json())).not.toContain('whsec_');
+    expect(JSON.stringify(list.json())).not.toContain('secret_enc');
+
+    // Detail: nunca el secreto.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}`,
+      headers: admin.headers,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().url).toBe('https://example.test/hook-b1');
+    expect(JSON.stringify(detail.json())).not.toContain('whsec_');
+    expect(detail.json().secret).toBeUndefined();
+  });
+
+  it('rotate returns a fresh secret ONCE; disable flips status; both audited as actor user, no secret in audit', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: 'https://example.test/hook-rot', events: [] },
+    });
+    const id = created.json().id;
+
+    const rotated = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/rotate`,
+      headers: owner.headers,
+    });
+    expect(rotated.statusCode).toBe(200);
+    expect(rotated.json().secret).toMatch(WHSEC_RE);
+    expect(rotated.json().secret).not.toBe(created.json().secret);
+
+    const disabled = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable`,
+      headers: owner.headers,
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().status).toBe('disabled');
+
+    // Auditoría atómica: created + rotated + disabled, actor user, SIN secreto.
+    const audit = await adminPool.query(
+      `SELECT action, actor_type, auth_method, after_summary, before_summary FROM audit_events
+       WHERE tenant_id = $1 AND resource_id = $2 AND action LIKE 'webhook_endpoint.%'
+       ORDER BY created_at`,
+      [orgA, id]
+    );
+    expect(audit.rows.map((r) => r.action)).toEqual([
+      'webhook_endpoint.created',
+      'webhook_endpoint.rotated',
+      'webhook_endpoint.disabled',
+    ]);
+    for (const row of audit.rows) {
+      expect(row.actor_type).toBe('user');
+      expect(row.auth_method).toBe('session');
+      const blob = JSON.stringify(row.after_summary) + JSON.stringify(row.before_summary);
+      expect(blob).not.toContain('whsec_');
+      expect(blob).not.toContain('secret');
+    }
+  });
+
+  it('rejects roles without webhooks:manage (403) and 404s cross-tenant', async () => {
+    // read_only / finance / analyst / support NO tienen webhooks:manage.
+    for (const role of ['read_only', 'finance', 'analyst', 'support']) {
+      const user = await sessionUser(role, orgA);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/webhook_endpoints`,
+        headers: user.headers,
+        payload: { url: 'https://example.test/nope', events: [] },
+      });
+      expect(res.statusCode, role).toBe(403);
+      const listRes = await app.inject({
+        method: 'GET',
+        url: `/v1/organizations/${orgA}/webhook_endpoints`,
+        headers: user.headers,
+      });
+      expect(listRes.statusCode, role).toBe(403);
+    }
+    // Un endpoint de orgA es invisible para un miembro de orgB.
+    const outsider = await sessionUser('admin', orgB);
+    const foreign = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: outsider.headers,
+      payload: { url: 'https://example.test/x', events: [] },
+    });
+    expect(foreign.statusCode).toBe(404);
+  });
+
+  it('404s a non-existent endpoint id on detail', async () => {
+    const admin = await sessionUser('admin', orgA);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${randomUUID()}`,
+      headers: admin.headers,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('does NOT regress the API-key plane of webhook endpoints (create + list, secret only once)', async () => {
+    // El plano API-key de endpoints exige scope `webhooks:manage`.
+    const whKey = (
+      await apiKeyService.create(orgA, { label: 'wh-b1', scopes: ['webhooks:manage', 'read'] })
+    ).secret;
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/webhook_endpoints',
+      headers: apiAuth(whKey),
+      payload: { url: 'https://example.test/apikey-plane', events: [] },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().secret).toMatch(WHSEC_RE);
+    const list = await app.inject({
+      method: 'GET',
+      url: '/v1/webhook_endpoints',
+      headers: apiAuth(whKey),
+    });
+    expect(list.statusCode).toBe(200);
+    expect(JSON.stringify(list.json())).not.toContain(created.json().secret);
+  });
+});

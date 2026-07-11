@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
   apiBase,
+  canManageWebhooks,
   canReadAudit,
   canReadKeys,
   canResendRole,
@@ -50,6 +51,7 @@ export default async function OrgDashboardPage({
       canResend={canResendRole(org?.role)}
       canReadAudit={canReadAudit(org?.role)}
       canReadKeys={canReadKeys(org?.role)}
+      canManageWebhooks={canManageWebhooks(org?.role)}
     />
   );
 }
