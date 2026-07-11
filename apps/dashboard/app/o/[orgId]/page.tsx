@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import {
   apiBase,
   canReadAudit,
+  canReadKeys,
   canResendRole,
   fetchDashboardData,
   fetchOrganizations,
@@ -48,6 +49,7 @@ export default async function OrgDashboardPage({
       signOutHref="/logout"
       canResend={canResendRole(org?.role)}
       canReadAudit={canReadAudit(org?.role)}
+      canReadKeys={canReadKeys(org?.role)}
     />
   );
 }

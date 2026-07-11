@@ -581,6 +581,20 @@ code {
   font-weight: 600;
 }
 
+/* F6.5B: payload de un evento de webhook (solo lectura, sin secretos) */
+.payload {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  background: #f2f4f7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
 :focus-visible {
   outline: 3px solid var(--brand);
   outline-offset: 2px;

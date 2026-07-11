@@ -576,3 +576,90 @@ export function paymentTimeline(
   }
   return entries.sort((a, b) => a.at.localeCompare(b.at));
 }
+
+// --- superficie de desarrollador (F6.5B) — webhook events + API keys ---
+// Consume EXCLUSIVAMENTE endpoints de sesión existentes. Los serializers del
+// API (publicEvent/publicAttempt, api_keys) JAMÁS exponen secretos: los eventos
+// llevan payload de negocio + historial de intentos (sin firmas), y las API keys
+// solo metadata (label/prefix/scopes/estado) — nunca el secreto ni su hash.
+
+export interface WebhookEvent {
+  id: string;
+  endpoint_id: string;
+  topic: string;
+  status: string;
+  attempts: number;
+  next_attempt_at: string | null;
+  last_error: string | null;
+  delivered_at: string | null;
+  resent_from_event_id: string | null;
+  created_at: string;
+}
+
+export interface WebhookAttempt {
+  attempt_number: number;
+  status_code: number | null;
+  error: string | null;
+  latency_ms: number | null;
+  resolved_ip: string | null;
+  created_at: string;
+}
+
+export type WebhookEventDetail = WebhookEvent & {
+  payload: Record<string, unknown>;
+  attempts_history: WebhookAttempt[];
+};
+
+export async function fetchWebhookEvents(
+  opts: ClientOptions & { orgId: string }
+): Promise<WebhookEvent[]> {
+  const body = await apiGet<{ data?: WebhookEvent[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/webhook_events?limit=100`
+  );
+  return body?.data ?? [];
+}
+
+export async function fetchWebhookEvent(
+  opts: ClientOptions & { orgId: string; eventId: string }
+): Promise<WebhookEventDetail | null> {
+  return apiGet<WebhookEventDetail>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/webhook_events/${encodeURIComponent(opts.eventId)}`
+  );
+}
+
+/**
+ * Roles que pueden LEER las API keys (permiso RBAC `keys:read`; espeja
+ * `ROLE_PERMISSIONS`: owner/admin/developer/finance). Hint de UX para ocultar
+ * el enlace — el API es la fuente de verdad (403). support/analyst/read_only NO.
+ */
+const KEYS_READ_ROLES = new Set(['owner', 'admin', 'developer', 'finance']);
+export function canReadKeys(role: string | undefined): boolean {
+  return role !== undefined && KEYS_READ_ROLES.has(role);
+}
+
+/**
+ * API key — metadata de solo lectura. El serializer del API (`api-keys` list)
+ * NO devuelve `secret` ni `secret_hash`: solo estos campos. El secreto completo
+ * viaja UNA vez al crear (endpoint que exige `keys:manage` + step-up MFA — no
+ * consumible desde el dashboard actual: gap reportado en F6.5B).
+ */
+export interface ApiKey {
+  id: string;
+  label: string;
+  key_prefix: string;
+  scopes: string[];
+  environment: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export async function fetchApiKeys(opts: ClientOptions & { orgId: string }): Promise<ApiKey[]> {
+  const body = await apiGet<{ api_keys?: ApiKey[] }>(
+    opts,
+    `/v1/organizations/${encodeURIComponent(opts.orgId)}/api-keys`
+  );
+  return body?.api_keys ?? [];
+}

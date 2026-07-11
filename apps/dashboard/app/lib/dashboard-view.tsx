@@ -81,6 +81,7 @@ export function DashboardView({
   signOutHref,
   canResend = false,
   canReadAudit = false,
+  canReadKeys = false,
 }: {
   data: DashboardData;
   locale: Locale;
@@ -91,6 +92,8 @@ export function DashboardView({
   canResend?: boolean;
   /** El operador puede leer la auditoría (rol con audit:read). */
   canReadAudit?: boolean;
+  /** El operador puede leer las API keys (rol con keys:read). */
+  canReadKeys?: boolean;
 }) {
   const t = MESSAGES[locale];
   const statusBadge = (row: Record<string, unknown>) => (
@@ -114,6 +117,8 @@ export function DashboardView({
           <a href={`/o/${orgId}/reconciliation`}>{t.reconciliation}</a>
           <a href={`/o/${orgId}/payouts`}>{t.payouts}</a>
           <a href={`/o/${orgId}/disputes`}>{t.disputes}</a>
+          <a href={`/o/${orgId}/webhook-events`}>{t.webhooks}</a>
+          {canReadKeys && <a href={`/o/${orgId}/api-keys`}>{t.apiKeys}</a>}
           {canReadAudit && <a href={`/o/${orgId}/events`}>{t.events}</a>}
           <a className="signout" href={signOutHref}>
             {t.signOut}
