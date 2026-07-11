@@ -357,6 +357,7 @@ export function buildApp({
     // payments:read; operación de conciliación reconciliation:manage).
     registerDashboardRoutes(app, {
       security,
+      idempotencyService,
       paymentIntentService,
       refundService,
       payoutService,

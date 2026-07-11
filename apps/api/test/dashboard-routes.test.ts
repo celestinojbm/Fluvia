@@ -454,3 +454,277 @@ describe('conciliación por sesión (F4-01c)', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+// ── F6.5A-bis — escrituras del plano de sesión (G1 refunds, G2 payment links) ──
+
+/** Un intent REEMBOLSABLE: succeeded con todo capturado (insert directo, como
+ *  el seed de conciliación — el plano de API key no llega a succeeded sin
+ *  confirmación del comprador). */
+async function seedSucceededIntent(orgId: string, merchant: string, amount: number) {
+  const res = await adminPool.query<{ id: string }>(
+    `INSERT INTO payment_intents
+       (tenant_id, merchant_id, amount, currency, status, capture_method, amount_captured, succeeded_at)
+     VALUES ($1, $2, $3, 'COP', 'succeeded', 'automatic', $3, now()) RETURNING id`,
+    [orgId, merchant, amount]
+  );
+  return res.rows[0]!.id;
+}
+
+describe('crear refund por sesión (F6.5A-bis G1, reconciliation:manage)', () => {
+  it('finance creates a refund with an Idempotency-Key; replay returns the same refund without duplicating', async () => {
+    const merchant = await createMerchant(orgA);
+    const intent = await seedSucceededIntent(orgA, merchant, 50_000);
+    const finance = await sessionUser('finance', orgA);
+    const key = `dash-refund-${randomUUID()}`;
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: { ...finance.headers, 'idempotency-key': key },
+      payload: { payment_intent_id: intent, amount: 20_000, reason: 'requested by customer' },
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().object).toBe('refund');
+    expect(first.json().amount).toBe(20_000);
+    expect(first.headers['idempotency-replayed']).toBe('false');
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: { ...finance.headers, 'idempotency-key': key },
+      payload: { payment_intent_id: intent, amount: 20_000, reason: 'requested by customer' },
+    });
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json().id).toBe(first.json().id);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+
+    // Sin duplicado: un solo refund para el intent.
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/refunds?payment_intent_id=${intent}`,
+      headers: finance.headers,
+    });
+    expect((list.json().data as unknown[]).length).toBe(1);
+  });
+
+  it('audits the creation atomically as actor user (refund.created)', async () => {
+    const merchant = await createMerchant(orgA);
+    const intent = await seedSucceededIntent(orgA, merchant, 30_000);
+    const admin = await sessionUser('admin', orgA);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: { ...admin.headers, 'idempotency-key': `dash-refund-${randomUUID()}` },
+      payload: { payment_intent_id: intent },
+    });
+    expect(res.statusCode).toBe(201);
+    // Sin amount => reembolsa todo lo remanente.
+    expect(res.json().amount).toBe(30_000);
+
+    const audit = await adminPool.query(
+      `SELECT actor_type, auth_method, result FROM audit_events
+       WHERE tenant_id = $1 AND action = 'refund.created' AND resource_id = $2`,
+      [orgA, res.json().id]
+    );
+    expect(audit.rowCount).toBe(1);
+    expect(audit.rows[0]).toMatchObject({
+      actor_type: 'user',
+      auth_method: 'session',
+      result: 'success',
+    });
+  });
+
+  it('mirrors the API-key serializer exactly (same resource shape)', async () => {
+    const merchant = await createMerchant(orgA);
+    const viaSession = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: {
+        ...(await sessionUser('owner', orgA)).headers,
+        'idempotency-key': `dash-refund-${randomUUID()}`,
+      },
+      payload: {
+        payment_intent_id: await seedSucceededIntent(orgA, merchant, 10_000),
+      },
+    });
+    const viaApiKey = await app.inject({
+      method: 'POST',
+      url: '/v1/refunds',
+      headers: { ...apiAuth(keyA), 'idempotency-key': `key-refund-${randomUUID()}` },
+      payload: {
+        payment_intent_id: await seedSucceededIntent(orgA, merchant, 10_000),
+      },
+    });
+    expect(viaSession.statusCode).toBe(201);
+    expect(viaApiKey.statusCode).toBe(201);
+    expect(Object.keys(viaSession.json()).sort()).toEqual(Object.keys(viaApiKey.json()).sort());
+  });
+
+  it('requires the Idempotency-Key header (400 idempotency_key_required)', async () => {
+    const merchant = await createMerchant(orgA);
+    const intent = await seedSucceededIntent(orgA, merchant, 10_000);
+    const owner = await sessionUser('owner', orgA);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: owner.headers,
+      payload: { payment_intent_id: intent },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('idempotency_key_required');
+  });
+
+  it('rejects roles without reconciliation:manage (403) — the read plane stays readable for them', async () => {
+    const merchant = await createMerchant(orgA);
+    const intent = await seedSucceededIntent(orgA, merchant, 10_000);
+    for (const role of ['analyst', 'read_only', 'support', 'developer']) {
+      const user = await sessionUser(role, orgA);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/refunds`,
+        headers: { ...user.headers, 'idempotency-key': `dash-refund-${randomUUID()}` },
+        payload: { payment_intent_id: intent },
+      });
+      expect(res.statusCode, role).toBe(403);
+      // Y sigue pudiendo LEER (payments:read universal).
+      const read = await app.inject({
+        method: 'GET',
+        url: `/v1/organizations/${orgA}/refunds`,
+        headers: user.headers,
+      });
+      expect(read.statusCode, role).toBe(200);
+    }
+  });
+
+  it('404s for a non-member and cannot refund a foreign intent (cross-tenant)', async () => {
+    const merchant = await createMerchant(orgA);
+    const intent = await seedSucceededIntent(orgA, merchant, 10_000);
+    // No-miembro de orgA: la org es invisible.
+    const outsider = await sessionUser('owner', orgB);
+    const foreignOrg = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: { ...outsider.headers, 'idempotency-key': `dash-refund-${randomUUID()}` },
+      payload: { payment_intent_id: intent },
+    });
+    expect(foreignOrg.statusCode).toBe(404);
+    // Miembro de orgB apuntando a un intent de orgA: RLS lo hace invisible.
+    const crossIntent = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgB}/refunds`,
+      headers: { ...outsider.headers, 'idempotency-key': `dash-refund-${randomUUID()}` },
+      payload: { payment_intent_id: intent },
+    });
+    expect(crossIntent.statusCode).toBe(404);
+    // Nada se creó para ese intent.
+    const ownerA = await sessionUser('owner', orgA);
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/refunds?payment_intent_id=${intent}`,
+      headers: ownerA.headers,
+    });
+    expect((list.json().data as unknown[]).length).toBe(0);
+  });
+});
+
+describe('crear payment link por sesión (F6.5A-bis G2, reconciliation:manage)', () => {
+  it('owner creates a link idempotently, audited as actor user, mirroring the API-key serializer', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const key = `dash-link-${randomUUID()}`;
+    const payload = {
+      merchant_id: merchantA,
+      amount: 15_000,
+      currency: 'COP',
+      description: 'F6.5A-bis',
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: { ...owner.headers, 'idempotency-key': key },
+      payload,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().object).toBe('payment_link');
+    expect(first.json().status).toBe('active');
+    expect(first.json().url).toContain(first.json().id);
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: { ...owner.headers, 'idempotency-key': key },
+      payload,
+    });
+    expect(replay.json().id).toBe(first.json().id);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+
+    const audit = await adminPool.query(
+      `SELECT actor_type, auth_method FROM audit_events
+       WHERE tenant_id = $1 AND action = 'payment_link.created' AND resource_id = $2`,
+      [orgA, first.json().id]
+    );
+    expect(audit.rowCount).toBe(1);
+    expect(audit.rows[0]).toMatchObject({ actor_type: 'user', auth_method: 'session' });
+
+    // Mismo serializer que el plano de API key.
+    const viaApiKey = await app.inject({
+      method: 'POST',
+      url: '/v1/payment_links',
+      headers: { ...apiAuth(keyA), 'idempotency-key': `key-link-${randomUUID()}` },
+      payload: { merchant_id: merchantA, amount: 15_000, currency: 'COP' },
+    });
+    expect(Object.keys(first.json()).sort()).toEqual(Object.keys(viaApiKey.json()).sort());
+  });
+
+  it('rejects roles without reconciliation:manage (403) and requires the Idempotency-Key (400)', async () => {
+    for (const role of ['analyst', 'read_only', 'support', 'developer']) {
+      const user = await sessionUser(role, orgA);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/payment_links`,
+        headers: { ...user.headers, 'idempotency-key': `dash-link-${randomUUID()}` },
+        payload: { merchant_id: merchantA, amount: 9_000, currency: 'COP' },
+      });
+      expect(res.statusCode, role).toBe(403);
+    }
+    const finance = await sessionUser('finance', orgA);
+    const noKey = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: finance.headers,
+      payload: { merchant_id: merchantA, amount: 9_000, currency: 'COP' },
+    });
+    expect(noKey.statusCode).toBe(400);
+    expect(noKey.json().error.code).toBe('idempotency_key_required');
+  });
+
+  it('cannot create a link for a foreign merchant (cross-tenant) nor act on a foreign org', async () => {
+    const outsider = await sessionUser('owner', orgB);
+    const foreignOrg = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: { ...outsider.headers, 'idempotency-key': `dash-link-${randomUUID()}` },
+      payload: { merchant_id: merchantA, amount: 9_000, currency: 'COP' },
+    });
+    expect(foreignOrg.statusCode).toBe(404);
+    // Miembro de orgB usando un merchant de orgA: invisible bajo RLS => 4xx sin crear.
+    const crossMerchant = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgB}/payment_links`,
+      headers: { ...outsider.headers, 'idempotency-key': `dash-link-${randomUUID()}` },
+      payload: { merchant_id: merchantA, amount: 9_000, currency: 'COP' },
+    });
+    expect(crossMerchant.statusCode).toBeGreaterThanOrEqual(400);
+    expect(crossMerchant.statusCode).toBeLessThan(500);
+    const ownerA = await sessionUser('owner', orgA);
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_links?limit=100`,
+      headers: ownerA.headers,
+    });
+    const foreign = (list.json().data as Array<{ amount: number }>).filter(
+      (l) => l.amount === 9_000
+    );
+    expect(foreign.length).toBe(0);
+  });
+});

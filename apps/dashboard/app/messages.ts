@@ -186,10 +186,26 @@ interface Messages {
   linkDetailTitle: string;
   fldDescription: string;
   fldDisabledAt: string;
-  linkCreateUnavailable: string;
   copyUrl: string;
   copied: string;
   copyError: string;
+  // acciones de escritura por sesión (F6.5A-bis)
+  createRefundTitle: string;
+  createRefundAction: string;
+  refundAmountHint: string;
+  confirmRefundText: string;
+  amountFullRemaining: string;
+  refundCreated: string;
+  refundCreateNoRole: string;
+  createLinkTitle: string;
+  createLinkAction: string;
+  confirmLinkText: string;
+  linkCreated: string;
+  linkCreateNoRole: string;
+  confirmAction: string;
+  cancelAction: string;
+  creating: string;
+  refreshList: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -353,7 +369,7 @@ export const MESSAGES: Record<Locale, Messages> = {
     relatedRefunds: 'Reembolsos de este pago',
     relatedSessions: 'Sesiones de checkout de este pago',
     refundCreateUnavailable:
-      'Crear reembolsos desde el panel aún no está disponible: hoy solo existe por la integración (API key).',
+      'Los reembolsos se crean desde el detalle del pago (rol owner/admin/finance).',
     refundsTitle: 'Reembolsos',
     refundsEmpty: 'Sin reembolsos.',
     refundDetailTitle: 'Detalle del reembolso',
@@ -370,11 +386,26 @@ export const MESSAGES: Record<Locale, Messages> = {
     linkDetailTitle: 'Detalle del payment link',
     fldDescription: 'Descripción',
     fldDisabledAt: 'Deshabilitado',
-    linkCreateUnavailable:
-      'Crear payment links desde el panel aún no está disponible: hoy solo existe por la integración (API key).',
     copyUrl: 'Copiar URL',
     copied: 'Copiada ✓',
     copyError: 'No se pudo copiar.',
+    createRefundTitle: 'Crear reembolso',
+    createRefundAction: 'Crear reembolso',
+    refundAmountHint:
+      'En unidades menores (COP no tiene decimales). Déjalo vacío para reembolsar todo lo restante.',
+    confirmRefundText: '¿Confirmar el reembolso por',
+    amountFullRemaining: 'todo lo restante?',
+    refundCreated: 'Reembolso creado ✓',
+    refundCreateNoRole: 'Tu rol no permite crear reembolsos (requiere owner/admin/finance).',
+    createLinkTitle: 'Crear payment link',
+    createLinkAction: 'Crear link',
+    confirmLinkText: '¿Confirmar la creación del payment link por',
+    linkCreated: 'Payment link creado ✓',
+    linkCreateNoRole: 'Tu rol no permite crear payment links (requiere owner/admin/finance).',
+    confirmAction: 'Confirmar',
+    cancelAction: 'Cancelar',
+    creating: 'Creando…',
+    refreshList: 'Actualizar lista',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -537,7 +568,7 @@ export const MESSAGES: Record<Locale, Messages> = {
     relatedRefunds: 'Refunds for this payment',
     relatedSessions: 'Checkout sessions for this payment',
     refundCreateUnavailable:
-      'Creating refunds from the panel is not available yet: today it only exists via the integration (API key).',
+      'Refunds are created from the payment detail (owner/admin/finance role).',
     refundsTitle: 'Refunds',
     refundsEmpty: 'No refunds.',
     refundDetailTitle: 'Refund detail',
@@ -554,11 +585,25 @@ export const MESSAGES: Record<Locale, Messages> = {
     linkDetailTitle: 'Payment link detail',
     fldDescription: 'Description',
     fldDisabledAt: 'Disabled',
-    linkCreateUnavailable:
-      'Creating payment links from the panel is not available yet: today it only exists via the integration (API key).',
     copyUrl: 'Copy URL',
     copied: 'Copied ✓',
     copyError: 'Could not copy.',
+    createRefundTitle: 'Create refund',
+    createRefundAction: 'Create refund',
+    refundAmountHint: 'In minor units (COP has no decimals). Leave empty to refund all remaining.',
+    confirmRefundText: 'Confirm the refund for',
+    amountFullRemaining: 'all remaining?',
+    refundCreated: 'Refund created ✓',
+    refundCreateNoRole: 'Your role cannot create refunds (requires owner/admin/finance).',
+    createLinkTitle: 'Create payment link',
+    createLinkAction: 'Create link',
+    confirmLinkText: 'Confirm creating the payment link for',
+    linkCreated: 'Payment link created ✓',
+    linkCreateNoRole: 'Your role cannot create payment links (requires owner/admin/finance).',
+    confirmAction: 'Confirm',
+    cancelAction: 'Cancel',
+    creating: 'Creating…',
+    refreshList: 'Refresh list',
   },
 };
 

@@ -2,10 +2,9 @@ import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Refund } from './api';
 
 /**
- * Vistas de reembolsos (F6.5A) — presentación pura, SOLO LECTURA por sesión
- * (`payments:read`). CREAR un reembolso hoy solo existe en el plano de
- * integración (API key, `payments:write`); este panel lo dice explícitamente
- * en vez de simular la acción (gap reportado en F6.5A, pendiente de decisión).
+ * Vistas de reembolsos (F6.5A) — presentación pura, lectura por sesión
+ * (`payments:read`). CREAR un reembolso vive en el DETALLE del pago
+ * (F6.5A-bis, `reconciliation:manage`): aquí solo se lista y se enlaza.
  */
 
 function shortId(v: string): string {

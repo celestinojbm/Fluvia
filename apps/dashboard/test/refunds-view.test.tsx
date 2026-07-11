@@ -36,9 +36,11 @@ describe('RefundsList', () => {
     expect(screen.getByText('Sin reembolsos.')).toBeInTheDocument();
   });
 
-  it('declares the create-refund gap honestly and renders no mutating controls', () => {
+  it('points to the payment detail for creation and renders no mutating controls', () => {
     render(<RefundsList refunds={[REFUND]} orgId="o1" locale="es" signOutHref="/logout" />);
-    expect(screen.getByText(/Crear reembolsos desde el panel aún no está disponible/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Los reembolsos se crean desde el detalle del pago/)
+    ).toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toEqual([]);
   });
 });

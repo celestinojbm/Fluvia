@@ -20,7 +20,9 @@ import type { Security } from '../security.js';
  *    topics refund.*). Monto ausente = todo lo remanente.
  */
 
-const CreateRefundSchema = z
+// Exportado: el plano de sesión (dashboard.ts) espeja este endpoint con la
+// MISMA validación — una sola forma de request, sin duplicar reglas.
+export const CreateRefundSchema = z
   .object({
     payment_intent_id: z.string().uuid(),
     /** Unidades MENORES; ausente = reembolso total de lo remanente. F6: cota de

@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AuditContext } from '@fluvia/audit';
+import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
+import {
+  IdempotencyService,
+  assertValidIdempotencyKey,
+  computeRequestHash,
+} from '@fluvia/idempotency';
 import type {
   CheckoutSessionService,
   DisputeService,
@@ -22,11 +27,11 @@ import {
 } from '@fluvia/reconciliation';
 import type { Security } from '../security.js';
 import { publicIntent } from './payment-intents.js';
-import { publicRefund } from './refunds.js';
+import { CreateRefundSchema, publicRefund } from './refunds.js';
 import { publicPayout } from './payouts.js';
 import { publicDispute } from './disputes.js';
 import { publicSession } from './checkout-sessions.js';
-import { publicLink } from './payment-links.js';
+import { CreatePaymentLinkSchema, publicLink } from './payment-links.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
 import { publicEntry, publicReport } from './settlements.js';
 import { publicCase } from './cases.js';
@@ -83,6 +88,9 @@ const RejectBody = z.object({ reason: z.string().trim().min(1).max(2000) }).stri
 
 export interface DashboardRoutesOptions {
   security: Security;
+  /** F6.5A-bis: las escrituras del plano de sesión son idempotentes como las
+   *  del plano de API key (mismo servicio; este paquete solo se CONSUME). */
+  idempotencyService: IdempotencyService;
   paymentIntentService: PaymentIntentService;
   refundService: RefundService;
   payoutService: PayoutService;
@@ -121,6 +129,7 @@ export function registerDashboardRoutes(
   app: FastifyInstance,
   {
     security,
+    idempotencyService,
     paymentIntentService,
     refundService,
     payoutService,
@@ -169,6 +178,66 @@ export function registerDashboardRoutes(
   app.get('/v1/organizations/:orgId/refunds/:id', guard, async (req) => {
     const { id } = IdParams.parse(req.params);
     return publicRefund(await refundService.get(tenant(req), id));
+  });
+  // Acción de OPERACIÓN por sesión (F6.5A-bis, G1): CREAR un reembolso. Espeja
+  // `POST /v1/refunds` del plano de API key — misma validación (schema
+  // compartido), mismo serializer, misma semántica en dos fases (fase 1 dentro
+  // de la tx de la idempotency key; fase 2 fuera de toda tx, Nivel A). Exige
+  // `reconciliation:manage` (owner/admin/finance — los roles que gobiernan el
+  // dinero) y queda auditado como actor `user` EN LA MISMA transacción de la
+  // fase 1 (rastro atómico; el replay no duplica ni el refund ni el evento).
+  app.post('/v1/organizations/:orgId/refunds', manage, async (req, reply) => {
+    OrgParam.parse(req.params);
+    const key = assertValidIdempotencyKey(req.headers['idempotency-key']);
+    const body = CreateRefundSchema.parse(req.body);
+    const tenantId = tenant(req);
+    const context = userAuditContext(req);
+
+    const result = await idempotencyService.execute({
+      tenantId,
+      endpoint: 'POST /v1/organizations/:orgId/refunds',
+      key,
+      requestHash: computeRequestHash(body),
+      handler: async (client) => {
+        const refund = await refundService.beginIn(client, tenantId, {
+          paymentIntentId: body.payment_intent_id,
+          amount: body.amount === undefined ? undefined : BigInt(body.amount),
+          reason: body.reason,
+        });
+        const serialized = publicRefund(refund);
+        await insertAuditEvent(client, {
+          action: 'refund.created',
+          tenantId,
+          context,
+          resourceType: 'refund',
+          resourceId: refund.id,
+          riskLevel: 'medium',
+          reason: 'refund created from the operations dashboard (session plane)',
+          after: {
+            payment_intent_id: serialized.payment_intent_id,
+            amount: serialized.amount,
+            currency: serialized.currency,
+            status: serialized.status,
+          },
+        });
+        return { status: 201, body: serialized };
+      },
+    });
+
+    if (!result.replayed) {
+      const refundId = (result.body as { id: string }).id;
+      // Fase 2 fuera de toda tx (Nivel A), igual que el plano de API key: un
+      // fallo deja el refund en `created` (re-ejecutable) sin cambiar la
+      // respuesta contractual.
+      await refundService.execute(tenantId, refundId).catch((err: unknown) => {
+        req.log.error(
+          { err: String(err), refundId },
+          'refund execution failed; refund remains resolvable'
+        );
+      });
+    }
+    reply.header('idempotency-replayed', String(result.replayed));
+    return reply.code(result.status).send(result.body);
   });
 
   // --- payouts (F4-07d: lectura por sesión del recurso money-out) ---
@@ -227,6 +296,53 @@ export function registerDashboardRoutes(
   app.get('/v1/organizations/:orgId/payment_links/:id', guard, async (req) => {
     const { id } = IdParams.parse(req.params);
     return publicLink(await paymentLinkService.get(tenant(req), id));
+  });
+  // Acción de OPERACIÓN por sesión (F6.5A-bis, G2): CREAR un payment link.
+  // Espeja `POST /v1/payment_links` del plano de API key — misma validación
+  // (schema compartido), mismo serializer, misma creación idempotente. Un link
+  // inicia cobros: exige `reconciliation:manage` (owner/admin/finance) y queda
+  // auditado como actor `user` en la MISMA transacción de la creación.
+  app.post('/v1/organizations/:orgId/payment_links', manage, async (req, reply) => {
+    OrgParam.parse(req.params);
+    const key = assertValidIdempotencyKey(req.headers['idempotency-key']);
+    const body = CreatePaymentLinkSchema.parse(req.body);
+    const tenantId = tenant(req);
+    const context = userAuditContext(req);
+
+    const result = await idempotencyService.execute({
+      tenantId,
+      endpoint: 'POST /v1/organizations/:orgId/payment_links',
+      key,
+      requestHash: computeRequestHash(body),
+      handler: async (client) => {
+        const link = await paymentLinkService.createIn(client, tenantId, {
+          merchantId: body.merchant_id,
+          amount: BigInt(body.amount),
+          currency: body.currency,
+          description: body.description,
+          metadata: body.metadata,
+        });
+        const serialized = publicLink(link);
+        await insertAuditEvent(client, {
+          action: 'payment_link.created',
+          tenantId,
+          context,
+          resourceType: 'payment_link',
+          resourceId: link.id,
+          riskLevel: 'medium',
+          reason: 'payment link created from the operations dashboard (session plane)',
+          after: {
+            merchant_id: serialized.merchant_id,
+            amount: serialized.amount,
+            currency: serialized.currency,
+            status: serialized.status,
+          },
+        });
+        return { status: 201, body: serialized };
+      },
+    });
+    reply.header('idempotency-replayed', String(result.replayed));
+    return reply.code(result.status).send(result.body);
   });
 
   // --- cola de webhooks (visibilidad; el reenvío es del plano de API key) ---
