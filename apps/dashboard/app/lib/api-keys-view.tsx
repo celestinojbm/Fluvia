@@ -1,14 +1,15 @@
 import { MESSAGES, type Locale } from '../messages';
 import type { ApiKey } from './api';
+import { CreateApiKeyForm, RevokeKeyButton } from './api-key-actions';
 
 /**
- * Superficie de desarrollador (F6.5B) — API keys, SOLO LECTURA por sesión
- * (`keys:read`). El serializer del API devuelve únicamente metadata
- * (label/prefix/scopes/entorno/estado) — NUNCA el secreto ni su hash. Crear o
- * revocar una key exige `keys:manage` + step-up MFA (re-autenticación reciente),
- * flujo que el dashboard actual no soporta: la vista queda de solo lectura y lo
- * declara. Esta vista jamás renderiza un campo secreto (garantía verificada por
- * tests estructurales que fallan si `secret`/`secret_hash` aparece).
+ * Superficie de desarrollador (F6.5B + F6.5B2) — API keys. Lectura por sesión
+ * (`keys:read`): el serializer del API devuelve solo metadata — NUNCA el secreto
+ * ni su hash. Crear/revocar (F6.5B2) existe ahora también por sesión
+ * (`keys:manage` + step-up MFA); los controles solo se muestran a esos roles
+ * (hint UX — el API es la fuente de verdad). El secreto de una key creada se
+ * revela UNA vez (SecretRevealOnce). Esta vista jamás renderiza un campo secreto
+ * persistido (garantía verificada por tests estructurales).
  */
 
 function when(v: string | null): string {
@@ -20,11 +21,14 @@ export function ApiKeysList({
   orgId,
   locale,
   signOutHref,
+  canManage = false,
 }: {
   keys: ApiKey[];
   orgId: string;
   locale: Locale;
   signOutHref: string;
+  /** El operador puede crear/revocar keys (rol con keys:manage). */
+  canManage?: boolean;
 }) {
   const t = MESSAGES[locale];
   return (
@@ -42,7 +46,7 @@ export function ApiKeysList({
       </header>
 
       <section className="card">
-        <p className="hint">{t.apiKeysReadOnlyNote}</p>
+        {!canManage && <p className="hint">{t.apiKeysReadOnlyNote}</p>}
         {keys.length === 0 ? (
           <p className="empty">{t.apiKeysEmpty}</p>
         ) : (
@@ -58,6 +62,7 @@ export function ApiKeysList({
                   <th scope="col">{t.colStatus}</th>
                   <th scope="col">{t.colCreated}</th>
                   <th scope="col">{t.colLastUsed}</th>
+                  {canManage && <th scope="col">{t.colAction}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -78,11 +83,25 @@ export function ApiKeysList({
                     </td>
                     <td>{when(k.created_at)}</td>
                     <td>{when(k.last_used_at)}</td>
+                    {canManage && (
+                      <td>
+                        {k.revoked_at ? (
+                          <span>—</span>
+                        ) : (
+                          <RevokeKeyButton orgId={orgId} keyId={k.id} locale={locale} />
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+        {canManage ? (
+          <CreateApiKeyForm orgId={orgId} locale={locale} />
+        ) : (
+          <p className="hint">{t.keysManageNoRole}</p>
         )}
         <p className="hint">{t.secretNeverShownNote}</p>
       </section>

@@ -53,6 +53,22 @@ describe('ApiKeysList', () => {
     expect(screen.queryAllByRole('button')).toEqual([]);
   });
 
+  it('offers create + revoke controls only with canManage (keys:manage)', () => {
+    const { rerender } = render(
+      <ApiKeysList keys={[ACTIVE, REVOKED]} orgId="o1" locale="es" signOutHref="/logout" />
+    );
+    expect(screen.queryByRole('button', { name: 'Crear API key' })).toBeNull();
+    expect(screen.getByText(/Tu rol no permite crear ni revocar/)).toBeInTheDocument();
+
+    rerender(
+      <ApiKeysList keys={[ACTIVE, REVOKED]} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    expect(screen.getByRole('button', { name: 'Crear API key' })).toBeInTheDocument();
+    // Revocar visible solo para la key activa (la revocada muestra '—').
+    expect(screen.getAllByRole('button', { name: 'Revocar' })).toHaveLength(1);
+    expect(screen.queryByText(/Vista de solo lectura/)).not.toBeInTheDocument();
+  });
+
   it('SECURITY: a secret-like field injected into a key never reaches the DOM', () => {
     const poisoned = {
       ...ACTIVE,
