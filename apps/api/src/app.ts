@@ -327,14 +327,14 @@ export function buildApp({
       limiter: rateLimiter,
     });
     // F3-07: gestion de endpoints de webhooks salientes (scope webhooks:manage).
-    registerWebhookEndpointRoutes(app, {
-      security,
-      endpointService: new WebhookEndpointService(appPool, {
-        encKeyHex: config.webhookSecretEncKey,
-        // Redes privadas SOLO local/test (guard por entorno, no configurable).
-        allowPrivateNetworks: config.env === 'local' || config.env === 'test',
-      }),
+    // Instancia compartida: el plano de API key y el de sesión (F6.5B1) usan el
+    // MISMO servicio (una sola fuente de lógica y de secretos).
+    const webhookEndpointService = new WebhookEndpointService(appPool, {
+      encKeyHex: config.webhookSecretEncKey,
+      // Redes privadas SOLO local/test (guard por entorno, no configurable).
+      allowPrivateNetworks: config.env === 'local' || config.env === 'test',
     });
+    registerWebhookEndpointRoutes(app, { security, endpointService: webhookEndpointService });
     // F3-09a: visibilidad de la cola de webhooks + reenvío manual auditado de
     // eventos `dead` (plano de operación; primera acción del futuro dashboard).
     const webhookEventService = new WebhookEventService(appPool);
@@ -365,6 +365,7 @@ export function buildApp({
       checkoutSessionService,
       paymentLinkService,
       webhookEventService,
+      webhookEndpointService,
       reconciliationService,
       operationalCaseService,
       caseAdjustmentService,

@@ -9,7 +9,9 @@ import type { Security } from '../security.js';
  * crear y al rotar; jamas vuelve a ser recuperable por la API.
  */
 
-const CreateEndpointSchema = z
+// Exportado: el plano de sesión (dashboard.ts, F6.5B1) espeja este endpoint con
+// la MISMA validación — una sola forma de request, sin duplicar reglas.
+export const CreateEndpointSchema = z
   .object({
     url: z.string().min(1).max(2000),
     events: z

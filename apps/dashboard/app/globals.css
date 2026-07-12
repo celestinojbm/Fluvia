@@ -581,6 +581,26 @@ code {
   font-weight: 600;
 }
 
+/* F6.5B1: revelado del secreto de firma una sola vez (estado efímero) */
+.secret-reveal {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: #fdf3e4;
+}
+.secret-warning {
+  margin: 0 0 0.5rem;
+  color: #5c3d00; /* 7:1 sobre #fdf3e4 */
+}
+.secret-value {
+  word-break: break-all;
+  padding: 0.3rem 0.5rem;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
 /* F6.5B: payload de un evento de webhook (solo lectura, sin secretos) */
 .payload {
   margin: 0;

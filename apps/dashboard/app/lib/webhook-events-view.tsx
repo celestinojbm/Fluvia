@@ -113,9 +113,14 @@ export function WebhookEventDetailView({
   canResend?: boolean;
 }) {
   const t = MESSAGES[locale];
-  const rows: Array<{ label: string; value: string }> = [
+  const rows: Array<{ label: string; value: string; href?: string }> = [
     { label: t.colEvent, value: event.id },
-    { label: t.colEndpoint, value: event.endpoint_id },
+    {
+      label: t.colEndpoint,
+      value: event.endpoint_id,
+      // F6.5B1: enlaza al detalle del endpoint (misma org; RLS decide 404).
+      href: `/o/${orgId}/webhook-endpoints/${event.endpoint_id}`,
+    },
     { label: t.fldTopic, value: event.topic },
     { label: t.colAttempts, value: String(event.attempts) },
     { label: t.fldNextAttempt, value: when(event.next_attempt_at) },
@@ -148,7 +153,13 @@ export function WebhookEventDetailView({
                 <tr key={r.label}>
                   <th scope="row">{r.label}</th>
                   <td>
-                    <code>{r.value}</code>
+                    {r.href ? (
+                      <a href={r.href}>
+                        <code>{r.value}</code>
+                      </a>
+                    ) : (
+                      <code>{r.value}</code>
+                    )}
                   </td>
                 </tr>
               ))}
