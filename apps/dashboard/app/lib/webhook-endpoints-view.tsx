@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { MESSAGES, type Locale } from '../messages';
 import type { WebhookEndpoint } from './api';
 import { SecretRevealOnce } from './secret-reveal-once';
+import { StepUpModal } from './step-up-modal';
 
 /**
  * F6.5B1 — vistas de webhook endpoints. Lista/detalle son SOLO LECTURA (el
@@ -12,6 +13,11 @@ import { SecretRevealOnce } from './secret-reveal-once';
  * secreto `whsec_` de create/rotate se muestra UNA vez con `SecretRevealOnce`
  * (estado efímero, sin storage, limpieza al cerrar). Solo se renderiza a roles
  * con `webhooks:manage` (hint UX; el API es la fuente de verdad).
+ *
+ * RA-F65B-001: las mutaciones exigen step-up fresco en el API. Si responde
+ * 403 `mfa_step_up_required` se abre `StepUpModal` (password, patrón F6.5B2) y
+ * la acción se REINTENTA una sola vez. Sin bucles; cuentas con MFA reciben el
+ * mensaje honesto (el password no sustituye al TOTP; sin bypass).
  */
 
 function shortId(v: string): string {
@@ -21,7 +27,14 @@ function when(v: string | null): string {
   return v ? v.replace('T', ' ').slice(0, 16) : '—';
 }
 
-async function postAction(url: string, body?: unknown) {
+interface ActionResult {
+  ok: boolean;
+  status: number;
+  code?: string;
+  body?: unknown;
+}
+
+async function postAction(url: string, body?: unknown): Promise<ActionResult> {
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -30,16 +43,20 @@ async function postAction(url: string, body?: unknown) {
         : {}),
     });
     let parsed: unknown;
+    let code: string | undefined;
     try {
       parsed = await res.clone().json();
+      code = (parsed as { error?: { code?: string } }).error?.code;
     } catch {
       /* sin cuerpo JSON */
     }
-    return { ok: res.ok, status: res.status, body: parsed };
+    return { ok: res.ok, status: res.status, code, body: parsed };
   } catch {
     return { ok: false, status: 0, body: undefined };
   }
 }
+
+const needsStepUp = (r: ActionResult) => r.status === 403 && r.code === 'mfa_step_up_required';
 
 export function WebhookEndpointsList({
   endpoints,
@@ -122,13 +139,13 @@ function CreateEndpointForm({ orgId, locale }: { orgId: string; locale: Locale }
   const t = MESSAGES[locale];
   const [url, setUrl] = useState('');
   const [events, setEvents] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'busy' | 'error'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'busy' | 'stepup' | 'error'>('idle');
   const [secret, setSecret] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!url.trim()) return;
+  async function attempt(isRetryAfterStepUp: boolean) {
     setPhase('busy');
+    setErrorMsg(null);
     const eventList = events
       .split(',')
       .map((s) => s.trim())
@@ -141,9 +158,21 @@ function CreateEndpointForm({ orgId, locale }: { orgId: string; locale: Locale }
       // El secreto vive SOLO aquí, en state efímero; se revela una vez.
       setSecret(String((r.body as { secret?: string })?.secret ?? ''));
       setPhase('idle');
-    } else {
-      setPhase('error');
+      return;
     }
+    if (needsStepUp(r) && !isRetryAfterStepUp) {
+      setPhase('stepup'); // abrir modal; reintento UNA vez tras el step-up
+      return;
+    }
+    // 403 tras step-up (p. ej. usuario MFA) o cualquier otro error: sin bucle.
+    setErrorMsg(needsStepUp(r) ? t.stepUpMfaRequired : t.actionError);
+    setPhase('error');
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!url.trim()) return;
+    attempt(false);
   }
 
   if (secret) {
@@ -163,43 +192,52 @@ function CreateEndpointForm({ orgId, locale }: { orgId: string; locale: Locale }
   }
 
   return (
-    <form className="action-form" onSubmit={submit}>
-      <fieldset>
-        <legend>{t.createEndpointTitle}</legend>
-        <label htmlFor="ep-url">{t.endpointUrlLabel}</label>
-        <input
-          id="ep-url"
-          name="url"
-          type="url"
-          required
-          value={url}
-          onChange={(ev) => setUrl(ev.target.value)}
-          aria-describedby="ep-url-hint"
+    <>
+      <form className="action-form" onSubmit={submit}>
+        <fieldset>
+          <legend>{t.createEndpointTitle}</legend>
+          <label htmlFor="ep-url">{t.endpointUrlLabel}</label>
+          <input
+            id="ep-url"
+            name="url"
+            type="url"
+            required
+            value={url}
+            onChange={(ev) => setUrl(ev.target.value)}
+            aria-describedby="ep-url-hint"
+          />
+          <p id="ep-url-hint" className="hint">
+            {t.endpointUrlHint}
+          </p>
+          <label htmlFor="ep-events">{t.endpointEventsLabel}</label>
+          <input
+            id="ep-events"
+            name="events"
+            value={events}
+            onChange={(ev) => setEvents(ev.target.value)}
+            aria-describedby="ep-events-hint"
+          />
+          <p id="ep-events-hint" className="hint">
+            {t.endpointEventsHint}
+          </p>
+          <button type="submit" className="btn" disabled={phase === 'busy' || phase === 'stepup'}>
+            {phase === 'busy' ? t.creating : t.createEndpointAction}
+          </button>
+          {phase === 'error' && errorMsg && (
+            <span className="error" role="alert">
+              {errorMsg}
+            </span>
+          )}
+        </fieldset>
+      </form>
+      {phase === 'stepup' && (
+        <StepUpModal
+          locale={locale}
+          onSuccess={() => attempt(true)}
+          onCancel={() => setPhase('idle')}
         />
-        <p id="ep-url-hint" className="hint">
-          {t.endpointUrlHint}
-        </p>
-        <label htmlFor="ep-events">{t.endpointEventsLabel}</label>
-        <input
-          id="ep-events"
-          name="events"
-          value={events}
-          onChange={(ev) => setEvents(ev.target.value)}
-          aria-describedby="ep-events-hint"
-        />
-        <p id="ep-events-hint" className="hint">
-          {t.endpointEventsHint}
-        </p>
-        <button type="submit" className="btn" disabled={phase === 'busy'}>
-          {phase === 'busy' ? t.creating : t.createEndpointAction}
-        </button>
-        {phase === 'error' && (
-          <span className="error" role="alert">
-            {t.actionError}
-          </span>
-        )}
-      </fieldset>
-    </form>
+      )}
+    </>
   );
 }
 
@@ -279,27 +317,38 @@ function EndpointActions({
   locale: Locale;
 }) {
   const t = MESSAGES[locale];
-  const [phase, setPhase] = useState<'idle' | 'rotating' | 'disabling' | 'error'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'rotating' | 'disabling' | 'stepup' | 'error'>(
+    'idle'
+  );
+  // Qué acción reintentar UNA vez tras el step-up (RA-F65B-001).
+  const [stepUpFor, setStepUpFor] = useState<'rotate' | 'disable' | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [disabled, setDisabled] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function rotate() {
-    if (!window.confirm(t.rotateConfirm)) return;
+  async function attemptRotate(isRetryAfterStepUp: boolean) {
     setPhase('rotating');
+    setErrorMsg(null);
     const r = await postAction(
       `/api/orgs/${encodeURIComponent(orgId)}/webhook-endpoints/${encodeURIComponent(endpointId)}/rotate`
     );
     if (r.ok) {
       setSecret(String((r.body as { secret?: string })?.secret ?? ''));
       setPhase('idle');
-    } else {
-      setPhase('error');
+      return;
     }
+    if (needsStepUp(r) && !isRetryAfterStepUp) {
+      setStepUpFor('rotate');
+      setPhase('stepup');
+      return;
+    }
+    setErrorMsg(needsStepUp(r) ? t.stepUpMfaRequired : t.actionError);
+    setPhase('error');
   }
 
-  async function disable() {
-    if (!window.confirm(t.disableConfirm)) return;
+  async function attemptDisable(isRetryAfterStepUp: boolean) {
     setPhase('disabling');
+    setErrorMsg(null);
     const r = await postAction(
       `/api/orgs/${encodeURIComponent(orgId)}/webhook-endpoints/${encodeURIComponent(endpointId)}/disable`
     );
@@ -307,9 +356,25 @@ function EndpointActions({
       setDisabled(true);
       setPhase('idle');
       setTimeout(() => window.location.reload(), 600);
-    } else {
-      setPhase('error');
+      return;
     }
+    if (needsStepUp(r) && !isRetryAfterStepUp) {
+      setStepUpFor('disable');
+      setPhase('stepup');
+      return;
+    }
+    setErrorMsg(needsStepUp(r) ? t.stepUpMfaRequired : t.actionError);
+    setPhase('error');
+  }
+
+  function rotate() {
+    if (!window.confirm(t.rotateConfirm)) return;
+    attemptRotate(false);
+  }
+
+  function disable() {
+    if (!window.confirm(t.disableConfirm)) return;
+    attemptDisable(false);
   }
 
   if (secret) {
@@ -339,10 +404,25 @@ function EndpointActions({
       >
         {phase === 'disabling' ? t.creating : t.disableAction}
       </button>
-      {phase === 'error' && (
+      {phase === 'error' && errorMsg && (
         <span className="error" role="alert">
-          {t.actionError}
+          {errorMsg}
         </span>
+      )}
+      {phase === 'stepup' && stepUpFor && (
+        <StepUpModal
+          locale={locale}
+          onSuccess={() => {
+            const action = stepUpFor;
+            setStepUpFor(null);
+            if (action === 'rotate') attemptRotate(true);
+            else attemptDisable(true);
+          }}
+          onCancel={() => {
+            setStepUpFor(null);
+            setPhase('idle');
+          }}
+        />
       )}
     </div>
   );

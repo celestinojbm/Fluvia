@@ -8,6 +8,7 @@ import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { Money } from '@fluvia/money';
 import { DisputeService } from '@fluvia/payments-core';
+import { WebhookEndpointService } from '@fluvia/webhooks';
 import { buildApp } from '../src/app.js';
 
 /**
@@ -58,7 +59,10 @@ async function sessionUser(role?: string, orgId?: string) {
     url: '/v1/auth/login',
     payload: { email, password: PASSWORD },
   });
-  return { headers: { authorization: `Bearer ${login.json().session_token as string}` } };
+  return {
+    userId: user_id as string,
+    headers: { authorization: `Bearer ${login.json().session_token as string}` },
+  };
 }
 
 async function createOrg(name: string): Promise<string> {
@@ -734,8 +738,21 @@ describe('crear payment link por sesión (F6.5A-bis G2, reconciliation:manage)',
 describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
   const WHSEC_RE = /^whsec_/;
 
+  // RA-F65B-001: las mutaciones exigen re-autenticación FRESCA (como
+  // keys:manage). El operador se step-up-ea con su password antes de mutar.
+  async function stepUp(headers: Record<string, string>) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/step-up/password',
+      headers,
+      payload: { password: PASSWORD },
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
   it('admin creates an endpoint; the secret travels ONCE and never in list/detail', async () => {
     const admin = await sessionUser('admin', orgA);
+    await stepUp(admin.headers);
     const created = await app.inject({
       method: 'POST',
       url: `/v1/organizations/${orgA}/webhook_endpoints`,
@@ -773,6 +790,7 @@ describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
 
   it('rotate returns a fresh secret ONCE; disable flips status; both audited as actor user, no secret in audit', async () => {
     const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
     const created = await app.inject({
       method: 'POST',
       url: `/v1/organizations/${orgA}/webhook_endpoints`,
@@ -878,5 +896,238 @@ describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
     });
     expect(list.statusCode).toBe(200);
     expect(JSON.stringify(list.json())).not.toContain(created.json().secret);
+  });
+
+  // ── RA-F65B-001: step-up en mutaciones (create/rotate/disable) ──────────────
+
+  it('create/rotate/disable require FRESH step-up (403 mfa_step_up_required); reads do NOT', async () => {
+    const admin = await sessionUser('admin', orgA); // sesión SIN step-up fresco
+
+    // Lectura: permitida sin step-up.
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: admin.headers,
+    });
+    expect(list.statusCode).toBe(200);
+
+    // Creamos un endpoint con OTRA sesión ya step-up-eada para tener un id que
+    // rotar/deshabilitar.
+    const seeder = await sessionUser('owner', orgA);
+    await stepUp(seeder.headers);
+    const seeded = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: seeder.headers,
+      payload: { url: 'https://example.test/needs-stepup', events: [] },
+    });
+    expect(seeded.statusCode).toBe(201);
+    const id = seeded.json().id;
+
+    // Detail: permitido sin step-up.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}`,
+      headers: admin.headers,
+    });
+    expect(detail.statusCode).toBe(200);
+
+    // Mutaciones SIN step-up fresco → 403 mfa_step_up_required.
+    for (const req of [
+      {
+        method: 'POST' as const,
+        url: `/v1/organizations/${orgA}/webhook_endpoints`,
+        payload: { url: 'https://example.test/x', events: [] },
+      },
+      { method: 'POST' as const, url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/rotate` },
+      { method: 'POST' as const, url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable` },
+    ]) {
+      const res = await app.inject({ ...req, headers: admin.headers });
+      expect(res.statusCode, req.url).toBe(403);
+      expect(res.json().error.code, req.url).toBe('mfa_step_up_required');
+    }
+
+    // Auditoría: ninguna mutación ocurrió (solo el .created del seeder).
+    const audit = await adminPool.query(
+      `SELECT action FROM audit_events WHERE tenant_id = $1 AND resource_id = $2 AND action LIKE 'webhook_endpoint.%'`,
+      [orgA, id]
+    );
+    expect(audit.rows.map((r) => r.action)).toEqual(['webhook_endpoint.created']);
+  });
+
+  it('mutations SUCCEED after a valid password step-up', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: 'https://example.test/after-stepup', events: [] },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id;
+    const rotated = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/rotate`,
+      headers: owner.headers,
+    });
+    expect(rotated.statusCode).toBe(200);
+    const disabled = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable`,
+      headers: owner.headers,
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().status).toBe('disabled');
+  });
+
+  it('a role without webhooks:manage stays 403 EVEN with a fresh step-up (RBAC before step-up)', async () => {
+    const support = await sessionUser('support', orgA);
+    await stepUp(support.headers);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: support.headers,
+      payload: { url: 'https://example.test/nope', events: [] },
+    });
+    expect(res.statusCode).toBe(403);
+    // Es un fallo de PERMISO, no de step-up.
+    expect(res.json().error.code).toBe('insufficient_permissions');
+  });
+
+  // ── RA-F65B-002: disable idempotente + auditoría fiel ───────────────────────
+
+  it('double-disable is idempotent: same disabled_at, no second audit event', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: 'https://example.test/idem-disable', events: [] },
+    });
+    const id = created.json().id;
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable`,
+      headers: owner.headers,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().status).toBe('disabled');
+    const firstDisabledAt = first.json().disabled_at as string;
+    expect(firstDisabledAt).toBeTruthy();
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable`,
+      headers: owner.headers,
+    });
+    expect(second.statusCode).toBe(200);
+    // disabled_at PRESERVADO (no se pisa con un now() nuevo).
+    expect(second.json().disabled_at).toBe(firstDisabledAt);
+
+    // Exactamente UN evento .disabled (la segunda invocación no audita).
+    const disabledEvents = await adminPool.query(
+      `SELECT id FROM audit_events WHERE tenant_id = $1 AND resource_id = $2 AND action = 'webhook_endpoint.disabled'`,
+      [orgA, id]
+    );
+    expect(disabledEvents.rowCount).toBe(1);
+
+    // Y el timestamp en BD tampoco cambió.
+    const row = await adminPool.query<{ disabled_at: Date }>(
+      `SELECT disabled_at FROM webhook_endpoints WHERE id = $1`,
+      [id]
+    );
+    expect(row.rows[0]!.disabled_at.toISOString()).toBe(firstDisabledAt);
+  });
+
+  it('rotate on a disabled endpoint stays rejected (404) and audits nothing', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: 'https://example.test/rot-disabled', events: [] },
+    });
+    const id = created.json().id;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/disable`,
+      headers: owner.headers,
+    });
+    const rotate = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}/rotate`,
+      headers: owner.headers,
+    });
+    expect(rotate.statusCode).toBe(404);
+    const rotated = await adminPool.query(
+      `SELECT id FROM audit_events WHERE tenant_id = $1 AND resource_id = $2 AND action = 'webhook_endpoint.rotated'`,
+      [orgA, id]
+    );
+    expect(rotated.rowCount).toBe(0);
+  });
+
+  it('disable is tenant-isolated: orgB cannot disable an orgA endpoint (404)', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: 'https://example.test/tenant-iso', events: [] },
+    });
+    const id = created.json().id;
+
+    const outsider = await sessionUser('owner', orgB);
+    await stepUp(outsider.headers);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgB}/webhook_endpoints/${id}/disable`,
+      headers: outsider.headers,
+    });
+    expect(res.statusCode).toBe(404);
+    // El endpoint de orgA sigue activo.
+    const row = await adminPool.query<{ status: string }>(
+      `SELECT status FROM webhook_endpoints WHERE id = $1`,
+      [id]
+    );
+    expect(row.rows[0]!.status).toBe('active');
+  });
+
+  // ── RA-F65B-003: contrato de auditoría atómico bajo fallo (rollback) ────────
+
+  it('atomicity: if the audit insert fails, the mutation is rolled back (no partial commit)', async () => {
+    // Un WebhookEndpointService directo sobre el appPool (RLS forzado). Forzamos
+    // un fallo de auditoría inyectando un actorType inválido: el CHECK de
+    // audit_events (actor_type IN (...)) rechaza el INSERT del evento DENTRO de
+    // la MISMA transacción del create → toda la transacción revierte.
+    const service = new WebhookEndpointService(appPool);
+    const before = await adminPool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM webhook_endpoints WHERE tenant_id = $1`,
+      [orgA]
+    );
+    await expect(
+      service.create(
+        orgA,
+        { url: 'https://example.test/rollback', events: [] },
+        // actorType fuera del CHECK → insertAuditEvent lanza dentro de la tx.
+        { audit: { actorType: 'bogus' as never, actorId: randomUUID(), authMethod: 'session' } }
+      )
+    ).rejects.toThrow();
+    const after = await adminPool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM webhook_endpoints WHERE tenant_id = $1`,
+      [orgA]
+    );
+    // Ninguna fila nueva: la mutación se revirtió junto con la auditoría fallida.
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
+    // Y no quedó rastro de esa URL.
+    const leaked = await adminPool.query(
+      `SELECT id FROM webhook_endpoints WHERE tenant_id = $1 AND url = 'https://example.test/rollback'`,
+      [orgA]
+    );
+    expect(leaked.rowCount).toBe(0);
   });
 });
