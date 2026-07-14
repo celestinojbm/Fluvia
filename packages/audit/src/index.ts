@@ -86,10 +86,11 @@ const SENSITIVE_KEY_RE = /secret|token|password|key_hash|authorization|cvv|pan/i
 /**
  * Defensa en profundidad RA-F65B-EXT-001: la redaccion por NOMBRE de clave no
  * ve secretos EMBEBIDOS dentro de strings (p. ej. una URL con `?token=…`,
- * `user:pass@` o `#fragment`). Toda URL absoluta dentro de un string de resumen
- * pierde userinfo/query/fragment; el scheme+host+path se conservan (utiles para
- * auditar el destino). Un match que ni siquiera parsea como URL se redacta
- * entero (fail-closed).
+ * `user:pass@`, `#fragment` o un token OPACO en el path). Toda URL absoluta
+ * dentro de un string de resumen conserva como maximo scheme+host(+puerto);
+ * el PATH se redacta ENTERO (no hay forma fiable de distinguir un segmento
+ * benigno de un token opaco) y query/fragment/userinfo se marcan redactados.
+ * Un match que ni siquiera parsea como URL se redacta entero (fail-closed).
  */
 const URL_IN_STRING_RE = /[a-z][a-z0-9+.-]*:\/\/[^\s"'<>\\]+/gi;
 function redactEmbeddedUrls(s: string): string {
@@ -101,10 +102,11 @@ function redactEmbeddedUrls(s: string): string {
       return '[REDACTED_URL]';
     }
     const cred = url.username !== '' || url.password !== '' ? '[REDACTED]@' : '';
+    const path = url.pathname !== '' && url.pathname !== '/' ? '/[REDACTED_PATH]' : '';
     const query = url.search !== '' ? '?[REDACTED]' : '';
     const fragment = url.hash !== '' ? '#[REDACTED]' : '';
-    if (!cred && !query && !fragment) return match;
-    return `${url.protocol}//${cred}${url.host}${url.pathname}${query}${fragment}`;
+    if (!cred && !path && !query && !fragment) return match;
+    return `${url.protocol}//${cred}${url.host}${path}${query}${fragment}`;
   });
 }
 

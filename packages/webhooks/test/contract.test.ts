@@ -264,6 +264,14 @@ describe('guard SSRF (§4)', () => {
     } catch (err) {
       expect(String(err)).not.toContain('SUPERSECRETVALUE');
     }
+    // path secreto + fragment rechazado: el error NO refleja el path.
+    try {
+      assertSafeWebhookUrl('https://example.test/hooks/EXT1_PATH_SECRET_DO_NOT_LEAK#x');
+      expect.unreachable('debe lanzar');
+    } catch (err) {
+      expect(String(err)).toMatch(/fragment/);
+      expect(String(err)).not.toContain('EXT1_PATH_SECRET_DO_NOT_LEAK');
+    }
     // una URL válida (incluso con query benigna) sigue aceptándose.
     expect(() => assertSafeWebhookUrl('https://example.test/hook')).not.toThrow();
     expect(() => assertSafeWebhookUrl('https://example.test/hook?ref=orders&v=2')).not.toThrow();
@@ -273,11 +281,20 @@ describe('guard SSRF (§4)', () => {
     ).not.toThrow();
   });
 
-  it('sanitizeUrlForDisplay strips userinfo/query/fragment; audit metadata is host + irreversible fingerprint', () => {
+  it('sanitizeUrlForDisplay strips userinfo/PATH/query/fragment; audit metadata is host + irreversible fingerprint', () => {
     expect(sanitizeUrlForDisplay('https://u:p@example.test/hook?token=S#frag')).toBe(
-      'https://[REDACTED]@example.test/hook?[REDACTED]#[REDACTED]'
+      'https://[REDACTED]@example.test/[REDACTED_PATH]?[REDACTED]#[REDACTED]'
     );
-    expect(sanitizeUrlForDisplay('https://example.test/hook')).toBe('https://example.test/hook');
+    // El PATH se redacta ENTERO: un token opaco colocado SOLO en el path jamás
+    // sobrevive a la representación segura (no hay forma fiable de distinguir
+    // un segmento benigno de un token).
+    const pathOnly = sanitizeUrlForDisplay(
+      'https://example.test/hooks/EXT1_PATH_SECRET_DO_NOT_LEAK'
+    );
+    expect(pathOnly).toBe('https://example.test/[REDACTED_PATH]');
+    expect(pathOnly).not.toContain('EXT1_PATH_SECRET_DO_NOT_LEAK');
+    // Host raíz sin path: se conserva scheme+host (nada que redactar).
+    expect(sanitizeUrlForDisplay('https://example.test/')).toBe('https://example.test');
     expect(sanitizeUrlForDisplay('no es una url')).toBe('[unparseable URL]');
 
     const meta = webhookUrlAuditMetadata('https://example.test/hook?token=SECRET');
@@ -290,6 +307,21 @@ describe('guard SSRF (§4)', () => {
     expect(webhookUrlAuditMetadata('https://example.test/hook').url_fingerprint).not.toBe(
       meta.url_fingerprint
     );
+  });
+
+  it('SSRF rejection of a secret-path URL never reflects the path in the error', async () => {
+    // Destino rechazado por resolver a dirección privada, con token en el PATH:
+    // el error lleva la razón y la URL saneada — jamás el segmento secreto.
+    try {
+      await resolveSafeWebhookTarget('https://evil.example/hooks/EXT1_PATH_SECRET_DO_NOT_LEAK', {
+        resolve: () => Promise.resolve(['169.254.169.254']),
+      });
+      expect.unreachable('debe lanzar');
+    } catch (err) {
+      expect(String(err)).toMatch(/non-public address/);
+      expect(String(err)).not.toContain('EXT1_PATH_SECRET_DO_NOT_LEAK');
+      expect(String(err)).toContain('[REDACTED_PATH]');
+    }
   });
 
   it('rejects hostnames resolving to ANY private address (rebinding bait)', async () => {

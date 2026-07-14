@@ -25,8 +25,10 @@ export class UnsafeWebhookUrlError extends Error {
 
 /**
  * Representación de una URL segura para logs/errores/UI (RA-F65B-EXT-001):
- * conserva scheme+host+path (necesarios para diagnosticar) y REDACTA userinfo,
- * query y fragment, que pueden portar credenciales.
+ * conserva SOLO scheme+host(+puerto) y sustituye el resto por marcadores.
+ * El PATH se redacta ENTERO — no hay forma fiable de distinguir un segmento
+ * benigno de un token opaco (URLs estilo Slack), así que ningún segmento
+ * individual sobrevive; query, fragment y userinfo se marcan redactados.
  */
 export function sanitizeUrlForDisplay(rawUrl: string): string {
   let url: URL;
@@ -36,9 +38,10 @@ export function sanitizeUrlForDisplay(rawUrl: string): string {
     return '[unparseable URL]';
   }
   const cred = url.username !== '' || url.password !== '' ? '[REDACTED]@' : '';
+  const path = url.pathname !== '' && url.pathname !== '/' ? '/[REDACTED_PATH]' : '';
   const query = url.search !== '' ? '?[REDACTED]' : '';
   const fragment = url.hash !== '' ? '#[REDACTED]' : '';
-  return `${url.protocol}//${cred}${url.host}${url.pathname}${query}${fragment}`;
+  return `${url.protocol}//${cred}${url.host}${path}${query}${fragment}`;
 }
 
 /**

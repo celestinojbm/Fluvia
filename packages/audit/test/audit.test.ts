@@ -37,26 +37,37 @@ describe('redactSummary', () => {
   });
 
   // RA-F65B-EXT-001: los secretos EMBEBIDOS en strings (URLs con query/userinfo/
-  // fragment) no los ve la redacción por nombre de clave — se redactan aparte.
-  it('redacts credential-bearing URL parts embedded inside string values', () => {
+  // fragment o token opaco en el PATH) no los ve la redacción por nombre de
+  // clave — se redactan aparte. El path se redacta ENTERO.
+  it('redacts credential-bearing URL parts (including the whole PATH) embedded inside string values', () => {
     expect(
       redactSummary({
         url: 'https://example.test/hook?token=SECRETVALUE',
         note: 'destino https://u:p@example.test/x#frag registrado',
-        clean: 'https://example.test/hook',
+        bare: 'https://example.test',
         plain: 'sin url aquí',
       })
     ).toEqual({
-      url: 'https://example.test/hook?[REDACTED]',
-      note: 'destino https://[REDACTED]@example.test/x#[REDACTED] registrado',
-      clean: 'https://example.test/hook',
+      url: 'https://example.test/[REDACTED_PATH]?[REDACTED]',
+      note: 'destino https://[REDACTED]@example.test/[REDACTED_PATH]#[REDACTED] registrado',
+      bare: 'https://example.test',
       plain: 'sin url aquí',
     });
+    // Token opaco SOLO en el path: eliminado; la forma redactada tampoco
+    // contiene query, fragment ni userinfo.
+    const redacted = JSON.stringify(
+      redactSummary({
+        note: 'endpoint https://hooks.example.test/services/EXT1_PATH_SECRET_DO_NOT_LEAK creado',
+      })
+    );
+    expect(redacted).not.toContain('EXT1_PATH_SECRET_DO_NOT_LEAK');
+    expect(redacted).toContain('https://hooks.example.test/[REDACTED_PATH]');
     const blob = JSON.stringify(
       redactSummary({ after: { u: 'postgres://user:pass@db.internal/x?sslmode=1' } })
     );
     expect(blob).not.toContain('pass');
     expect(blob).not.toContain('sslmode');
+    expect(blob).not.toContain('/x');
   });
 });
 
