@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { apiBase } from '../../../lib/api';
+import { assertTrustedMutationRequest } from '../../../lib/csrf';
 
 /**
  * Step-up por password (F6.5B2). Reenvía la cookie httpOnly como Bearer al
@@ -12,6 +13,9 @@ import { apiBase } from '../../../lib/api';
  * password NO sustituye al factor fuerte. `cache: 'no-store'`.
  */
 export async function POST(req: Request) {
+  // RA-F65B-EXT-002: procedencia same-origin ANTES de tocar cookie o body.
+  const rejected = assertTrustedMutationRequest(req);
+  if (rejected) return rejected;
   const token = (await cookies()).get('fluvia_session')?.value;
   if (!token) return NextResponse.json({ ok: false }, { status: 401 });
 

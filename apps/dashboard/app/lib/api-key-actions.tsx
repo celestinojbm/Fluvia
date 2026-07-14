@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { API_KEY_SCOPES } from './api';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
 import { MESSAGES, type Locale } from '../messages';
 import { SecretRevealOnce } from './secret-reveal-once';
 import { StepUpModal } from './step-up-modal';
@@ -28,9 +29,12 @@ async function post(url: string, body?: unknown): Promise<ActionResult> {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      ...(body !== undefined
-        ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
-        : {}),
+      // RA-F65B-EXT-002: header anti-CSRF exigido por los route handlers mutantes.
+      headers: {
+        [CSRF_HEADER]: CSRF_HEADER_VALUE,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
     let parsed: unknown;
     let code: string | undefined;

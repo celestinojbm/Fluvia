@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { MESSAGES, type Locale } from '../messages';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
 
 /**
  * F6.5B2 — modal de step-up por password. Pide la contraseña y la reenvía UNA
@@ -46,7 +47,8 @@ export function StepUpModal({
     try {
       const res = await fetch('/api/step-up/password', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        // RA-F65B-EXT-002: header anti-CSRF exigido por el route handler mutante.
+        headers: { 'content-type': 'application/json', [CSRF_HEADER]: CSRF_HEADER_VALUE },
         body: JSON.stringify({ password }),
       });
       // No reintentar en bucle: un único intento por envío del usuario.

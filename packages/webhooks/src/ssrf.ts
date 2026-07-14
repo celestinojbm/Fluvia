@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
@@ -14,9 +15,124 @@ import { isIP } from 'node:net';
 
 export class UnsafeWebhookUrlError extends Error {
   constructor(url: string, reason: string) {
-    super(`Webhook URL rejected (${reason}): ${url}`);
+    // RA-F65B-EXT-001: el mensaje viaja a logs y a webhook_events.last_error /
+    // webhook_attempts.error (serializados en list/detail), así que JAMÁS debe
+    // contener userinfo, query ni fragment de la URL rechazada.
+    super(`Webhook URL rejected (${reason}): ${sanitizeUrlForDisplay(url)}`);
     this.name = 'UnsafeWebhookUrlError';
   }
+}
+
+/**
+ * Representación de una URL segura para logs/errores/UI (RA-F65B-EXT-001):
+ * conserva scheme+host+path (necesarios para diagnosticar) y REDACTA userinfo,
+ * query y fragment, que pueden portar credenciales.
+ */
+export function sanitizeUrlForDisplay(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return '[unparseable URL]';
+  }
+  const cred = url.username !== '' || url.password !== '' ? '[REDACTED]@' : '';
+  const query = url.search !== '' ? '?[REDACTED]' : '';
+  const fragment = url.hash !== '' ? '#[REDACTED]' : '';
+  return `${url.protocol}//${cred}${url.host}${url.pathname}${query}${fragment}`;
+}
+
+/**
+ * Metadata SEGURA de una URL de webhook para resúmenes de auditoría
+ * (RA-F65B-EXT-001): la auditoría jamás copia la URL cruda (podría funcionar
+ * como credencial). `url_host` permite revisar el destino; `url_fingerprint`
+ * (SHA-256 de la URL exacta, irreversible) permite correlacionar/verificar un
+ * destino conocido sin revelarlo.
+ */
+export function webhookUrlAuditMetadata(rawUrl: string): {
+  url_host: string;
+  url_fingerprint: string;
+} {
+  const fingerprint = createHash('sha256').update(rawUrl, 'utf8').digest('hex');
+  let host = '[unparseable]';
+  try {
+    host = new URL(rawUrl).host;
+  } catch {
+    /* URL no parseable: host placeholder, fingerprint sigue siendo útil */
+  }
+  return { url_host: host, url_fingerprint: `sha256:${fingerprint}` };
+}
+
+/**
+ * Denylist de NOMBRES de parámetro de query que portan credenciales
+ * (RA-F65B-EXT-001). Se compara por SEGMENTOS del nombre (separadores `-_.` y
+ * camelCase), no por regex sobre la URL cruda: `api_key`, `apiKey`, `API-KEY`
+ * y `access_token` caen igual; `keyword`/`author`/`signal` NO dan falso
+ * positivo. Complementada con substrings fuertes sobre el nombre colapsado
+ * (p. ej. `accesstoken`, `clientsecret` sin separadores).
+ */
+const SENSITIVE_QUERY_SEGMENTS = new Set([
+  'token',
+  'secret',
+  'secrets',
+  'password',
+  'passwd',
+  'pwd',
+  'auth',
+  'authorization',
+  'signature',
+  'sig',
+  'key',
+  'keys',
+  'apikey',
+  'credential',
+  'credentials',
+  'bearer',
+]);
+const SENSITIVE_COLLAPSED_SUBSTRINGS = [
+  'token',
+  'secret',
+  'password',
+  'passwd',
+  'credential',
+  'signature',
+  'apikey',
+  'accesskey',
+];
+
+function isSensitiveParamName(name: string): boolean {
+  const segments = name
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2') // camelCase → palabras
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(Boolean);
+  if (segments.some((s) => SENSITIVE_QUERY_SEGMENTS.has(s))) return true;
+  const collapsed = segments.join('');
+  return SENSITIVE_COLLAPSED_SUBSTRINGS.some((s) => collapsed.includes(s));
+}
+
+/**
+ * Busca material de credencial en la query string. Doble parseo estructurado
+ * (no una regex débil): `URLSearchParams` (decodifica percent-encoding y
+ * recorre TODOS los duplicados) + split manual por `&`/`;` (separador legado
+ * que URLSearchParams no divide). Un nombre indecodificable se trata como
+ * sensible (fail-closed). Devuelve el NOMBRE ofensor (nunca el valor).
+ */
+function findSensitiveQueryParam(url: URL): string | null {
+  for (const [name] of url.searchParams) {
+    if (isSensitiveParamName(name)) return name;
+  }
+  for (const part of url.search.replace(/^\?/u, '').split(/[&;]/u)) {
+    if (!part) continue;
+    const rawName = part.split('=')[0]!;
+    let name: string;
+    try {
+      name = decodeURIComponent(rawName.replace(/\+/gu, ' '));
+    } catch {
+      return rawName; // percent-encoding roto: sospechoso, fail-closed
+    }
+    if (isSensitiveParamName(name)) return name;
+  }
+  return null;
 }
 
 /**
@@ -137,6 +253,21 @@ export function assertSafeWebhookUrl(rawUrl: string, opts: SsrfGuardOptions = {}
   }
   if (url.username || url.password) {
     throw new UnsafeWebhookUrlError(rawUrl, 'credentials in URL');
+  }
+  // RA-F65B-EXT-001: una URL con material de credencial NO se acepta (ni se
+  // "sanitiza" en silencio: cambiar el destino que el usuario escribió está
+  // prohibido). Aplica en el registro Y en cada intento de entrega (este guard
+  // corre en ambos): una fila legada con `?token=…` deja de entregarse
+  // (fail-closed) con un error que no revela el secreto.
+  if (url.hash !== '') {
+    throw new UnsafeWebhookUrlError(rawUrl, 'fragment not allowed');
+  }
+  const sensitiveParam = findSensitiveQueryParam(url);
+  if (sensitiveParam !== null) {
+    throw new UnsafeWebhookUrlError(
+      rawUrl,
+      `credential-bearing query parameter "${sensitiveParam}" not allowed`
+    );
   }
   const port = url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
   const allowedPorts = allowPrivate ? null : new Set([443]);

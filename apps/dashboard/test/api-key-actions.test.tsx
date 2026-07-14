@@ -77,6 +77,33 @@ describe('CreateApiKeyForm', () => {
     });
   });
 
+  it('RA-F65B-EXT-002: every mutating call (create, step-up, retry) carries the anti-CSRF header', async () => {
+    const { fn } = queuedFetch([
+      {
+        match: '/api/orgs/o1/api-keys',
+        status: 403,
+        body: { error: { code: 'mfa_step_up_required' } },
+      },
+      { match: '/api/step-up/password', status: 200, body: { password_verified_at: 'now' } },
+      {
+        match: '/api/orgs/o1/api-keys',
+        status: 201,
+        body: { id: 'ak_1', secret: 'fluvia_sk_test_CSRF' },
+      },
+    ]);
+    render(<CreateApiKeyForm orgId="o1" locale="es" />);
+    await userEvent.type(screen.getByLabelText('Etiqueta'), 'backend');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear API key' }));
+    await userEvent.type(await screen.findByLabelText('Contraseña'), 'demo-owner-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await waitFor(() => expect(screen.getByText('fluvia_sk_test_CSRF')).toBeInTheDocument());
+
+    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(3);
+    for (const [, init] of fn.mock.calls as Array<[string, RequestInit | undefined]>) {
+      expect((init?.headers as Record<string, string>)['x-fluvia-csrf']).toBe('1');
+    }
+  });
+
   it('MFA users get no bypass: step-up itself returns 403 mfa → honest message, no retry loop', async () => {
     const { calls } = queuedFetch([
       {

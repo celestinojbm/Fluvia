@@ -10,9 +10,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import { buildEnvelope } from '@fluvia/events';
 import {
+  DEV_WEBHOOK_SECRET_ENC_KEY_HEX,
   WebhookDeliverer,
   WebhookEndpointService,
   createWebhookFanoutPublisher,
+  encryptEndpointSecret,
+  generateEndpointSecret,
   verifyWebhookDelivery,
 } from '../src/index.js';
 
@@ -347,6 +350,61 @@ describe('entrega (rol webhook)', () => {
       [endpoint.id]
     );
     expect(attempt.rows[0]!.error).toMatch(/https required|non-public/);
+  });
+});
+
+describe('RA-F65B-EXT-001: URLs con credenciales y el runtime de entrega', () => {
+  it('a valid URL with a benign query still delivers to the EXACT destination (path+query)', async () => {
+    received.length = 0;
+    respondWith = 200;
+    await service.create(
+      org,
+      { url: `${baseUrl}/benign?ref=orders&v=2`, events: ['payment_intent.created'] },
+      UNAUDITED
+    );
+    await fanout(org, 'payment_intent.created');
+    const stats = await deliverer.runOnce();
+    expect(stats.delivered).toBeGreaterThanOrEqual(1);
+    // El destino NO se altera: la query benigna llega tal cual al receptor.
+    expect(received.some((r) => r.url === '/benign?ref=orders&v=2')).toBe(true);
+  });
+
+  it('a LEGACY row with a credential-bearing URL fails closed WITHOUT leaking the secret', async () => {
+    received.length = 0;
+    respondWith = 200;
+    // Fila legada anterior al endurecimiento: se inserta directo en la BD
+    // (el servicio ya no acepta esta URL en el registro).
+    const legacy = await ctx.admin.query<{ id: string }>(
+      `INSERT INTO webhook_endpoints (tenant_id, url, secret_enc, events)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [
+        org,
+        `${baseUrl}/legacy?token=LEGACYSECRETVALUE`,
+        encryptEndpointSecret(DEV_WEBHOOK_SECRET_ENC_KEY_HEX, generateEndpointSecret()),
+        ['dispute.open'],
+      ]
+    );
+    await fanout(org, 'dispute.open');
+    const stats = await deliverer.runOnce();
+    expect(stats.delivered).toBe(0);
+    // Ni un byte salió hacia el destino con credencial.
+    expect(received.some((r) => r.url.startsWith('/legacy'))).toBe(false);
+    // El guard rechaza en el intento y el rastro (last_error + attempt.error)
+    // NO copia el secreto ni la query cruda.
+    const row = await ctx.admin.query<{ status: string; last_error: string | null }>(
+      `SELECT status, last_error FROM webhook_events WHERE endpoint_id = $1`,
+      [legacy.rows[0]!.id]
+    );
+    expect(row.rows[0]!.status).toBe('pending'); // reintento programado (fail-closed)
+    expect(row.rows[0]!.last_error).toMatch(/credential-bearing query parameter/);
+    expect(row.rows[0]!.last_error).not.toContain('LEGACYSECRETVALUE');
+    const attempt = await ctx.admin.query<{ error: string | null }>(
+      `SELECT a.error FROM webhook_attempts a
+       JOIN webhook_events w ON w.id = a.webhook_event_id
+       WHERE w.endpoint_id = $1`,
+      [legacy.rows[0]!.id]
+    );
+    expect(attempt.rows[0]!.error).not.toContain('LEGACYSECRETVALUE');
   });
 });
 

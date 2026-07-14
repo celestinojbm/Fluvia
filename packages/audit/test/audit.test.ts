@@ -35,6 +35,29 @@ describe('redactSummary', () => {
       list: [{ key_hash: '[REDACTED]' }],
     });
   });
+
+  // RA-F65B-EXT-001: los secretos EMBEBIDOS en strings (URLs con query/userinfo/
+  // fragment) no los ve la redacción por nombre de clave — se redactan aparte.
+  it('redacts credential-bearing URL parts embedded inside string values', () => {
+    expect(
+      redactSummary({
+        url: 'https://example.test/hook?token=SECRETVALUE',
+        note: 'destino https://u:p@example.test/x#frag registrado',
+        clean: 'https://example.test/hook',
+        plain: 'sin url aquí',
+      })
+    ).toEqual({
+      url: 'https://example.test/hook?[REDACTED]',
+      note: 'destino https://[REDACTED]@example.test/x#[REDACTED] registrado',
+      clean: 'https://example.test/hook',
+      plain: 'sin url aquí',
+    });
+    const blob = JSON.stringify(
+      redactSummary({ after: { u: 'postgres://user:pass@db.internal/x?sslmode=1' } })
+    );
+    expect(blob).not.toContain('pass');
+    expect(blob).not.toContain('sslmode');
+  });
 });
 
 describe('audit_events bajo RLS (F1-05)', () => {

@@ -13,8 +13,10 @@ import {
   generateEndpointSecret,
   isPrivateIp,
   resolveSafeWebhookTarget,
+  sanitizeUrlForDisplay,
   signWebhookDelivery,
   verifyWebhookDelivery,
+  webhookUrlAuditMetadata,
 } from '../src/index.js';
 
 const DOC_PATH = join(
@@ -207,6 +209,87 @@ describe('guard SSRF (§4)', () => {
     expect(() =>
       assertSafeWebhookUrl('http://127.0.0.1:8099/hook', { allowPrivateNetworks: true })
     ).not.toThrow();
+  });
+
+  // ── RA-F65B-EXT-001: material de credencial en la URL ──────────────────────
+  it('rejects credential material in userinfo, query and fragment (never sanitizes silently)', () => {
+    // userinfo (ya existente, se conserva).
+    expect(() => assertSafeWebhookUrl('https://user:pass@example.test/hook')).toThrow(
+      /credentials/
+    );
+    // query params con nombre sensible — exigidos por el finding.
+    for (const q of [
+      'token=SECRET',
+      'secret=SECRET',
+      'api_key=SECRET',
+      'apiKey=SECRET',
+      'access_token=SECRET',
+      'signature=SECRET',
+      'sig=SECRET',
+      'key=SECRET',
+      'password=SECRET',
+      'auth=SECRET',
+      'authorization=SECRET',
+    ]) {
+      expect(() => assertSafeWebhookUrl(`https://example.test/hook?${q}`), q).toThrow(
+        /credential-bearing query parameter/
+      );
+    }
+    // variantes case-insensitive.
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?TOKEN=x')).toThrow(
+      /credential-bearing/
+    );
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?Api-Key=x')).toThrow(
+      /credential-bearing/
+    );
+    // nombre percent-encoded (%74oken → token) y separador legado `;`.
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?%74oken=x')).toThrow(
+      /credential-bearing/
+    );
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?ok=1;token=x')).toThrow(
+      /credential-bearing/
+    );
+    // parámetros duplicados: basta con que UNO sea sensible.
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?a=1&a=2&client_secret=x')).toThrow(
+      /credential-bearing/
+    );
+    // fragment.
+    expect(() => assertSafeWebhookUrl('https://example.test/hook#access_token=x')).toThrow(
+      /fragment/
+    );
+    // el error jamás copia el VALOR del secreto ni la query cruda.
+    try {
+      assertSafeWebhookUrl('https://example.test/hook?token=SUPERSECRETVALUE');
+      expect.unreachable('debe lanzar');
+    } catch (err) {
+      expect(String(err)).not.toContain('SUPERSECRETVALUE');
+    }
+    // una URL válida (incluso con query benigna) sigue aceptándose.
+    expect(() => assertSafeWebhookUrl('https://example.test/hook')).not.toThrow();
+    expect(() => assertSafeWebhookUrl('https://example.test/hook?ref=orders&v=2')).not.toThrow();
+    // nombres benignos que comparten letras con la denylist: sin falso positivo.
+    expect(() =>
+      assertSafeWebhookUrl('https://example.test/hook?keyword=a&author=b')
+    ).not.toThrow();
+  });
+
+  it('sanitizeUrlForDisplay strips userinfo/query/fragment; audit metadata is host + irreversible fingerprint', () => {
+    expect(sanitizeUrlForDisplay('https://u:p@example.test/hook?token=S#frag')).toBe(
+      'https://[REDACTED]@example.test/hook?[REDACTED]#[REDACTED]'
+    );
+    expect(sanitizeUrlForDisplay('https://example.test/hook')).toBe('https://example.test/hook');
+    expect(sanitizeUrlForDisplay('no es una url')).toBe('[unparseable URL]');
+
+    const meta = webhookUrlAuditMetadata('https://example.test/hook?token=SECRET');
+    expect(meta.url_host).toBe('example.test');
+    expect(meta.url_fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(JSON.stringify(meta)).not.toContain('SECRET');
+    expect(JSON.stringify(meta)).not.toContain('?');
+    // misma URL → misma huella; URL distinta → huella distinta.
+    expect(webhookUrlAuditMetadata('https://example.test/hook?token=SECRET')).toEqual(meta);
+    expect(webhookUrlAuditMetadata('https://example.test/hook').url_fingerprint).not.toBe(
+      meta.url_fingerprint
+    );
   });
 
   it('rejects hostnames resolving to ANY private address (rebinding bait)', async () => {

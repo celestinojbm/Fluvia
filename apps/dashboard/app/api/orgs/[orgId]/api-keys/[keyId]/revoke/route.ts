@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { apiBase } from '../../../../../../lib/api';
+import { assertTrustedMutationRequest } from '../../../../../../lib/csrf';
 
 /**
  * Revocar una API key por sesión (F6.5B2). Reenvía la cookie httpOnly como
@@ -9,9 +10,12 @@ import { apiBase } from '../../../../../../lib/api';
  * servicio (`COALESCE(revoked_at, now())`). `cache: 'no-store'`, sin log.
  */
 export async function POST(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ orgId: string; keyId: string }> }
 ) {
+  // RA-F65B-EXT-002: procedencia same-origin ANTES de tocar la cookie.
+  const rejected = assertTrustedMutationRequest(req);
+  if (rejected) return rejected;
   const { orgId, keyId } = await ctx.params;
   const token = (await cookies()).get('fluvia_session')?.value;
   if (!token) return NextResponse.json({ ok: false }, { status: 401 });

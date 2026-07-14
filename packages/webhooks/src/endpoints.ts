@@ -7,7 +7,7 @@ import {
   parseWebhookEncKey,
 } from './crypto.js';
 import { WEBHOOK_TOPICS, isWebhookTopic } from './events.js';
-import { assertSafeWebhookUrl } from './ssrf.js';
+import { assertSafeWebhookUrl, webhookUrlAuditMetadata } from './ssrf.js';
 
 export class WebhookEndpointNotFoundError extends Error {
   constructor() {
@@ -138,8 +138,9 @@ export class WebhookEndpointService {
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'medium',
-          // NUNCA el secreto: solo metadata segura.
-          after: { url: dto.url, events: dto.events, status: dto.status },
+          // NUNCA el secreto NI la URL cruda (RA-F65B-EXT-001: la query/path
+          // puede portar credenciales): solo metadata segura (host + huella).
+          after: { ...webhookUrlAuditMetadata(dto.url), events: dto.events, status: dto.status },
         });
       }
       return { ...dto, secret };
@@ -205,8 +206,9 @@ export class WebhookEndpointService {
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'high',
-          // NUNCA el secreto (ni el nuevo ni el anterior).
-          after: { url: dto.url, status: dto.status },
+          // NUNCA el secreto (ni el nuevo ni el anterior) NI la URL cruda
+          // (RA-F65B-EXT-001): solo metadata segura (host + huella).
+          after: { ...webhookUrlAuditMetadata(dto.url), status: dto.status },
         });
       }
       return { ...dto, secret };
@@ -256,7 +258,8 @@ export class WebhookEndpointService {
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'medium',
-          before: { url: dto.url },
+          // RA-F65B-EXT-001: metadata segura, jamás la URL cruda.
+          before: webhookUrlAuditMetadata(dto.url),
           after: { status: dto.status },
         });
       }

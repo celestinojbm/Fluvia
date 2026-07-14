@@ -83,8 +83,34 @@ export interface AuditEventInput {
 
 const SENSITIVE_KEY_RE = /secret|token|password|key_hash|authorization|cvv|pan/i;
 
+/**
+ * Defensa en profundidad RA-F65B-EXT-001: la redaccion por NOMBRE de clave no
+ * ve secretos EMBEBIDOS dentro de strings (p. ej. una URL con `?token=…`,
+ * `user:pass@` o `#fragment`). Toda URL absoluta dentro de un string de resumen
+ * pierde userinfo/query/fragment; el scheme+host+path se conservan (utiles para
+ * auditar el destino). Un match que ni siquiera parsea como URL se redacta
+ * entero (fail-closed).
+ */
+const URL_IN_STRING_RE = /[a-z][a-z0-9+.-]*:\/\/[^\s"'<>\\]+/gi;
+function redactEmbeddedUrls(s: string): string {
+  return s.replace(URL_IN_STRING_RE, (match) => {
+    let url: URL;
+    try {
+      url = new URL(match);
+    } catch {
+      return '[REDACTED_URL]';
+    }
+    const cred = url.username !== '' || url.password !== '' ? '[REDACTED]@' : '';
+    const query = url.search !== '' ? '?[REDACTED]' : '';
+    const fragment = url.hash !== '' ? '#[REDACTED]' : '';
+    if (!cred && !query && !fragment) return match;
+    return `${url.protocol}//${cred}${url.host}${url.pathname}${query}${fragment}`;
+  });
+}
+
 /** Redaccion superficial-recursiva de claves sensibles en los resumenes. */
 export function redactSummary(value: unknown): unknown {
+  if (typeof value === 'string') return redactEmbeddedUrls(value);
   if (Array.isArray(value)) return value.map(redactSummary);
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
