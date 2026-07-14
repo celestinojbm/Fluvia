@@ -36,6 +36,30 @@ function mockFetch(status: number, body: unknown) {
   return fn;
 }
 
+/**
+ * Secuencia de respuestas (RA-F65B-001): cada llamada a fetch consume la
+ * siguiente entrada. Permite simular 403 mfa_step_up_required → step-up 200 →
+ * reintento 200/201.
+ */
+function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) {
+  let i = 0;
+  const fn = vi.fn((url: string, _init?: unknown) => {
+    void url;
+    const r = responses[Math.min(i, responses.length - 1)]!;
+    i += 1;
+    return Promise.resolve({
+      ok: r.status < 400,
+      status: r.status,
+      clone: () => ({ json: () => Promise.resolve(r.body) }),
+      json: () => Promise.resolve(r.body),
+    });
+  });
+  vi.stubGlobal('fetch', fn);
+  return fn;
+}
+
+const STEP_UP_REQUIRED = { status: 403, body: { error: { code: 'mfa_step_up_required' } } };
+
 afterEach(() => {
   vi.unstubAllGlobals();
   delete (navigator as unknown as Record<string, unknown>).clipboard;
@@ -200,5 +224,111 @@ describe('SecretRevealOnce', () => {
       expect(String(call[1])).not.toContain('whsec_NOSTORE');
     }
     setLocal.mockRestore();
+  });
+});
+
+// ── RA-F65B-001: step-up en las acciones de mutación del dashboard ────────────
+
+describe('webhook endpoint mutations — step-up flow (RA-F65B-001)', () => {
+  it('create opens the step-up modal on 403 and retries EXACTLY once after password', async () => {
+    // 1) create → 403 step-up ; 2) /api/step-up/password → 200 ; 3) retry → 201.
+    const fn = mockFetchSequence([
+      STEP_UP_REQUIRED,
+      { status: 200, body: { ok: true } },
+      {
+        status: 201,
+        body: { id: 'whep_new', url: 'https://example.test/new', secret: 'whsec_AFTERSTEPUP' },
+      },
+    ]);
+    render(
+      <WebhookEndpointsList endpoints={[]} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    await userEvent.type(screen.getByLabelText('URL de destino'), 'https://example.test/new');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear endpoint' }));
+
+    // Aparece el modal de step-up.
+    const modal = await screen.findByRole('dialog');
+    expect(modal).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'my password');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    // El secreto se revela tras el reintento único.
+    await waitFor(() => expect(screen.getByText('whsec_AFTERSTEPUP')).toBeInTheDocument());
+
+    // Exactamente 3 fetch: create + step-up + retry. Sin bucle.
+    expect(fn).toHaveBeenCalledTimes(3);
+    const urls = fn.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual([
+      '/api/orgs/o1/webhook-endpoints',
+      '/api/step-up/password',
+      '/api/orgs/o1/webhook-endpoints',
+    ]);
+  });
+
+  it('create with an MFA account: honest message, no bypass, no loop', async () => {
+    // create → 403 ; step-up password → 403 mfa (cuenta con MFA) : NO reintenta.
+    const fn = mockFetchSequence([STEP_UP_REQUIRED, STEP_UP_REQUIRED]);
+    render(
+      <WebhookEndpointsList endpoints={[]} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    await userEvent.type(screen.getByLabelText('URL de destino'), 'https://example.test/mfa');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear endpoint' }));
+    await screen.findByRole('dialog');
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'my password');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    // Mensaje honesto de MFA dentro del modal; el secreto jamás se revela.
+    await waitFor(() =>
+      expect(screen.getByText(/MFA step-up aún no está disponible/)).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/^whsec_/)).toBeNull();
+    // create + step-up (fallido). Sin tercer intento: no hay bypass ni bucle.
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('rotate opens step-up and retries once, revealing the new secret', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fn = mockFetchSequence([
+      STEP_UP_REQUIRED,
+      { status: 200, body: { ok: true } },
+      { status: 200, body: { id: 'whep_abcdef123456', secret: 'whsec_ROTATED', rotated: true } },
+    ]);
+    render(
+      <WebhookEndpointDetailView
+        endpoint={ACTIVE}
+        orgId="o1"
+        locale="es"
+        signOutHref="/logout"
+        canManage
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Rotar secreto' }));
+    await screen.findByRole('dialog');
+    await userEvent.type(screen.getByLabelText('Contraseña'), 'my password');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+
+    await waitFor(() => expect(screen.getByText('whsec_ROTATED')).toBeInTheDocument());
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(fn.mock.calls.map((c) => c[0])).toEqual([
+      '/api/orgs/o1/webhook-endpoints/whep_abcdef123456/rotate',
+      '/api/step-up/password',
+      '/api/orgs/o1/webhook-endpoints/whep_abcdef123456/rotate',
+    ]);
+    vi.restoreAllMocks();
+  });
+
+  it('cancelling the step-up modal aborts the action without a retry', async () => {
+    const fn = mockFetchSequence([STEP_UP_REQUIRED]);
+    render(
+      <WebhookEndpointsList endpoints={[]} orgId="o1" locale="es" signOutHref="/logout" canManage />
+    );
+    await userEvent.type(screen.getByLabelText('URL de destino'), 'https://example.test/cancel');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear endpoint' }));
+    await screen.findByRole('dialog');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    // Modal cerrado; solo el intento inicial ocurrió (sin step-up, sin retry).
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

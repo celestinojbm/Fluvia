@@ -38,6 +38,15 @@ export interface CreatedWebhookEndpoint extends WebhookEndpointDto {
   secret: string;
 }
 
+/**
+ * Modo de auditoría de las MUTACIONES (RA-F65B-003). Obligatorio y discriminado:
+ * cada caller declara EXPLÍCITAMENTE si la mutación se audita (plano de sesión,
+ * operador humano → `{ audit: userAuditContext(req) }`) o si intencionalmente no
+ * se audita (plano de API key histórico → `{ audit: false }`). No existe un
+ * tercer estado implícito por omisión: olvidar el argumento no compila.
+ */
+export type WebhookEndpointAuditMode = { audit: AuditContext } | { audit: false };
+
 export interface WebhookEndpointServiceOptions {
   /** Clave AES (64 hex). Default SOLO local; en cloud viene de config. */
   encKeyHex?: string;
@@ -86,17 +95,19 @@ export class WebhookEndpointService {
   }
 
   /**
-   * Crea un endpoint. `context` OPCIONAL (F6.5B1): si viene (plano de SESIÓN,
-   * operador humano), el evento de auditoría `webhook_endpoint.created` se
-   * escribe en la MISMA transacción que el INSERT (rastro atómico, patrón de
-   * `WebhookEventService.resend`). El plano de API key NO lo pasa → sin
-   * auditoría, comportamiento idéntico al previo. El secreto en claro se
-   * devuelve UNA vez y JAMÁS entra en el resumen de auditoría.
+   * Crea un endpoint. `auditMode` OBLIGATORIO (RA-F65B-003): con
+   * `{ audit: AuditContext }` (plano de SESIÓN, operador humano) el evento
+   * `webhook_endpoint.created` se escribe en la MISMA transacción que el INSERT
+   * (rastro atómico, patrón de `WebhookEventService.resend`); con
+   * `{ audit: false }` (plano de API key histórico) la mutación es
+   * intencionalmente no auditada — idéntico al comportamiento previo, pero
+   * declarado. El secreto en claro se devuelve UNA vez y JAMÁS entra en el
+   * resumen de auditoría.
    */
   async create(
     tenantId: string,
     input: { url: string; events?: string[]; description?: string; createdByUserId?: string },
-    context?: AuditContext
+    auditMode: WebhookEndpointAuditMode
   ): Promise<CreatedWebhookEndpoint> {
     assertSafeWebhookUrl(input.url, { allowPrivateNetworks: this.allowPrivate });
     const events = input.events ?? [];
@@ -119,11 +130,11 @@ export class WebhookEndpointService {
         ]
       );
       const dto = toDto(res.rows[0]!);
-      if (context) {
+      if (auditMode.audit) {
         await insertAuditEvent(c, {
           action: 'webhook_endpoint.created',
           tenantId,
-          context,
+          context: auditMode.audit,
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'medium',
@@ -163,12 +174,14 @@ export class WebhookEndpointService {
    * Rotacion (webhook-delivery.md §2): el secreto anterior sigue firmando
    * durante la ventana de gracia — cada entrega lleva `v1=nuevo,v1=viejo`
    * hasta que expire, y el comercio migra sin perder verificaciones.
-   * `context` OPCIONAL (F6.5B1): auditoría atómica `webhook_endpoint.rotated`.
+   * `auditMode` OBLIGATORIO (RA-F65B-003): `{ audit: ctx }` audita
+   * `webhook_endpoint.rotated` atómicamente; `{ audit: false }` declara la
+   * mutación no auditada (plano API-key histórico).
    */
   async rotateSecret(
     tenantId: string,
     endpointId: string,
-    context?: AuditContext
+    auditMode: WebhookEndpointAuditMode
   ): Promise<CreatedWebhookEndpoint> {
     const secret = generateEndpointSecret();
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
@@ -184,11 +197,11 @@ export class WebhookEndpointService {
       );
       if (!res.rows[0]) throw new WebhookEndpointNotFoundError();
       const dto = toDto(res.rows[0]);
-      if (context) {
+      if (auditMode.audit) {
         await insertAuditEvent(c, {
           action: 'webhook_endpoint.rotated',
           tenantId,
-          context,
+          context: auditMode.audit,
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'high',
@@ -200,27 +213,46 @@ export class WebhookEndpointService {
     });
   }
 
-  /** `context` OPCIONAL (F6.5B1): auditoría atómica `webhook_endpoint.disabled`. */
+  /**
+   * Desactivación IDEMPOTENTE (RA-F65B-002): solo la transición real
+   * `active → disabled` establece `disabled_at` y (con `{ audit: ctx }`) emite
+   * UN único evento `webhook_endpoint.disabled` en la misma transacción. Un
+   * disable repetido es un no-op: devuelve el DTO ya disabled preservando el
+   * `disabled_at` original y SIN evento adicional. Seguro frente a carreras:
+   * el predicado `status = 'active'` se re-evalúa tras el lock de fila, así
+   * que de dos disables concurrentes solo uno transiciona (y audita).
+   * `auditMode` OBLIGATORIO (RA-F65B-003).
+   */
   async disable(
     tenantId: string,
     endpointId: string,
-    context?: AuditContext
+    auditMode: WebhookEndpointAuditMode
   ): Promise<WebhookEndpointDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<EndpointRow>(
         `UPDATE webhook_endpoints
          SET status = 'disabled', disabled_at = now(), updated_at = now()
-         WHERE id = $1
+         WHERE id = $1 AND status = 'active'
          RETURNING id, url, events, status, description, created_at, disabled_at`,
         [endpointId]
       );
-      if (!res.rows[0]) throw new WebhookEndpointNotFoundError();
+      if (!res.rows[0]) {
+        // Sin transición: inexistente/ajeno (RLS lo hace invisible → 404) o ya
+        // disabled (no-op idempotente: mismo `disabled_at`, cero auditoría).
+        const existing = await c.query<EndpointRow>(
+          `SELECT id, url, events, status, description, created_at, disabled_at
+           FROM webhook_endpoints WHERE id = $1`,
+          [endpointId]
+        );
+        if (!existing.rows[0]) throw new WebhookEndpointNotFoundError();
+        return toDto(existing.rows[0]);
+      }
       const dto = toDto(res.rows[0]);
-      if (context) {
+      if (auditMode.audit) {
         await insertAuditEvent(c, {
           action: 'webhook_endpoint.disabled',
           tenantId,
-          context,
+          context: auditMode.audit,
           resourceType: 'webhook_endpoint',
           resourceId: dto.id,
           riskLevel: 'medium',

@@ -23,6 +23,10 @@ import {
  */
 
 let ctx: TestContext;
+
+// RA-F65B-003: en estos tests de runtime la mutación se declara NO auditada
+// explícitamente (el contrato ya no admite omitir el modo de auditoría).
+const UNAUDITED = { audit: false } as const;
 let service: WebhookEndpointService;
 let deliverer: WebhookDeliverer;
 let org: string;
@@ -99,17 +103,29 @@ describe('fan-out (rol relay, ventanas 0019)', () => {
   it('materializes queue rows ONLY for active, subscribed endpoints of THAT tenant', async () => {
     // Cada endpoint del archivo se suscribe a topics DISJUNTOS: el fan-out
     // de un test jamas encola trabajo para los endpoints de otro.
-    const all = await service.create(org, { url: `${baseUrl}/all`, events: ['merchant.updated'] });
-    const filtered = await service.create(org, {
-      url: `${baseUrl}/filtered`,
-      events: ['refund.failed'],
-    });
-    const disabled = await service.create(org, {
-      url: `${baseUrl}/disabled`,
-      events: ['merchant.updated'],
-    });
-    await service.disable(org, disabled.id);
-    const foreign = await service.create(orgB, { url: `${baseUrl}/foreign` });
+    const all = await service.create(
+      org,
+      { url: `${baseUrl}/all`, events: ['merchant.updated'] },
+      UNAUDITED
+    );
+    const filtered = await service.create(
+      org,
+      {
+        url: `${baseUrl}/filtered`,
+        events: ['refund.failed'],
+      },
+      UNAUDITED
+    );
+    const disabled = await service.create(
+      org,
+      {
+        url: `${baseUrl}/disabled`,
+        events: ['merchant.updated'],
+      },
+      UNAUDITED
+    );
+    await service.disable(org, disabled.id, UNAUDITED);
+    const foreign = await service.create(orgB, { url: `${baseUrl}/foreign` }, UNAUDITED);
 
     await fanout(org, 'merchant.updated');
 
@@ -139,10 +155,14 @@ describe('fan-out (rol relay, ventanas 0019)', () => {
   it('graduates payout.* and dispute.* to deliverable topics (F4-09)', async () => {
     // Suscribirse a los topics de dinero PRUEBA que el catalogo los acepta
     // (createEndpoint valida cada topic; un topic desconocido -> error).
-    const money = await service.create(org, {
-      url: `${baseUrl}/money`,
-      events: ['payout.paid', 'dispute.won'],
-    });
+    const money = await service.create(
+      org,
+      {
+        url: `${baseUrl}/money`,
+        events: ['payout.paid', 'dispute.won'],
+      },
+      UNAUDITED
+    );
     // Antes de F4-09 estos eventos del outbox no generaban fan-out alguno.
     await fanout(org, 'payout.paid');
     await fanout(org, 'dispute.won');
@@ -159,10 +179,14 @@ describe('entrega (rol webhook)', () => {
   it('delivers with a verifiable signature, records the attempt with the pinned IP', async () => {
     received.length = 0;
     respondWith = 200;
-    const endpoint = await service.create(org, {
-      url: `${baseUrl}/ok`,
-      events: ['payment_intent.succeeded'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${baseUrl}/ok`,
+        events: ['payment_intent.succeeded'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'payment_intent.succeeded');
 
     const stats = await deliverer.runOnce();
@@ -208,11 +232,15 @@ describe('entrega (rol webhook)', () => {
   it('rotation: deliveries carry BOTH signatures during the grace window', async () => {
     received.length = 0;
     respondWith = 200;
-    const endpoint = await service.create(org, {
-      url: `${baseUrl}/rotate`,
-      events: ['payment_intent.processing'],
-    });
-    const rotated = await service.rotateSecret(org, endpoint.id);
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${baseUrl}/rotate`,
+        events: ['payment_intent.processing'],
+      },
+      UNAUDITED
+    );
+    const rotated = await service.rotateSecret(org, endpoint.id, UNAUDITED);
     expect(rotated.secret).not.toBe(endpoint.secret);
 
     await fanout(org, 'payment_intent.processing');
@@ -236,10 +264,14 @@ describe('entrega (rol webhook)', () => {
 
   it('non-2xx schedules a retry per the contract; exhausted attempts go dead', async () => {
     respondWith = 500;
-    const endpoint = await service.create(org, {
-      url: `${baseUrl}/failing`,
-      events: ['payment_intent.failed'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${baseUrl}/failing`,
+        events: ['payment_intent.failed'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'payment_intent.failed');
 
     const stats = await deliverer.runOnce();
@@ -270,12 +302,16 @@ describe('entrega (rol webhook)', () => {
 
   it('a disabled endpoint kills its pending queue WITHOUT network attempts', async () => {
     received.length = 0;
-    const endpoint = await service.create(org, {
-      url: `${baseUrl}/late-disable`,
-      events: ['payment_intent.canceled'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${baseUrl}/late-disable`,
+        events: ['payment_intent.canceled'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'payment_intent.canceled');
-    await service.disable(org, endpoint.id);
+    await service.disable(org, endpoint.id, UNAUDITED);
 
     await deliverer.runOnce();
     const row = await ctx.admin.query<{ status: string; last_error: string }>(
@@ -291,10 +327,14 @@ describe('entrega (rol webhook)', () => {
   it('SSRF: a queue row pointing at a private address never gets a request (strict mode)', async () => {
     const strict = new WebhookDeliverer(ctx.webhook, { requestTimeoutMs: 1000 });
     received.length = 0;
-    const endpoint = await service.create(org, {
-      url: `${baseUrl}/ssrf-block`,
-      events: ['refund.created'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${baseUrl}/ssrf-block`,
+        events: ['refund.created'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'refund.created');
 
     const stats = await strict.runOnce();
@@ -326,10 +366,14 @@ describe('failover de conexion entre IPs validadas (V2-N2)', () => {
         resolve: async () => ['127.0.0.99', '127.0.0.1'],
       },
     });
-    const endpoint = await service.create(org, {
-      url: `http://failover.fluvia.test:${port}/failover`,
-      events: ['payout.in_transit'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `http://failover.fluvia.test:${port}/failover`,
+        events: ['payout.in_transit'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'payout.in_transit');
 
     const stats = await failover.runOnce();
@@ -365,10 +409,14 @@ describe('failover de conexion entre IPs validadas (V2-N2)', () => {
           resolve: async () => ['127.0.0.1', '127.0.0.2'],
         },
       });
-      const endpoint = await service.create(org, {
-        url: `http://no-failover.fluvia.test:${port}/no-failover`,
-        events: ['refund.processing'],
-      });
+      const endpoint = await service.create(
+        org,
+        {
+          url: `http://no-failover.fluvia.test:${port}/no-failover`,
+          events: ['refund.processing'],
+        },
+        UNAUDITED
+      );
       await fanout(org, 'refund.processing');
 
       const stats = await failover.runOnce();
@@ -404,10 +452,14 @@ describe('failover de conexion entre IPs validadas (V2-N2)', () => {
           resolve: async () => ['127.0.0.1', '127.0.0.2'],
         },
       });
-      const endpoint = await service.create(org, {
-        url: `http://silent.fluvia.test:${port}/silent`,
-        events: ['payout.requested'],
-      });
+      const endpoint = await service.create(
+        org,
+        {
+          url: `http://silent.fluvia.test:${port}/silent`,
+          events: ['payout.requested'],
+        },
+        UNAUDITED
+      );
       await fanout(org, 'payout.requested');
 
       const stats = await failover.runOnce();
@@ -481,10 +533,14 @@ describe('TLS del deliverer: rejectUnauthorized explicito (threat model §5)', (
 
   it('a receiver with an untrusted cert NEVER gets the signed payload', async (ctx2) => {
     if (!available) return ctx2.skip();
-    const endpoint = await service.create(org, {
-      url: `${tlsUrl}/tls-selfsigned`,
-      events: ['refund.succeeded'],
-    });
+    const endpoint = await service.create(
+      org,
+      {
+        url: `${tlsUrl}/tls-selfsigned`,
+        events: ['refund.succeeded'],
+      },
+      UNAUDITED
+    );
     await fanout(org, 'refund.succeeded');
 
     // NODE_TLS_REJECT_UNAUTHORIZED=0 es el footgun clasico de "arreglar" TLS

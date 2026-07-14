@@ -38,7 +38,9 @@ export function registerWebhookEndpointRoutes(
     { preHandler: security.apiKey(['webhooks:manage']) },
     async (req, reply) => {
       const body = CreateEndpointSchema.parse(req.body);
-      const created = await endpointService.create(req.apiKey!.tenantId, body);
+      // RA-F65B-003: el plano de API key es INTENCIONALMENTE no auditado
+      // (deuda histórica declarada) — la elección es explícita, no por omisión.
+      const created = await endpointService.create(req.apiKey!.tenantId, body, { audit: false });
       return reply.code(201).send({
         id: created.id,
         object: 'webhook_endpoint',
@@ -79,7 +81,9 @@ export function registerWebhookEndpointRoutes(
     { preHandler: security.apiKey(['webhooks:manage']) },
     async (req) => {
       const { id } = IdParam.parse(req.params);
-      const rotated = await endpointService.rotateSecret(req.apiKey!.tenantId, id);
+      const rotated = await endpointService.rotateSecret(req.apiKey!.tenantId, id, {
+        audit: false,
+      });
       // El secreto anterior sigue firmando durante la ventana de gracia.
       return { id: rotated.id, secret: rotated.secret, rotated: true };
     }
@@ -90,7 +94,7 @@ export function registerWebhookEndpointRoutes(
     { preHandler: security.apiKey(['webhooks:manage']) },
     async (req) => {
       const { id } = IdParam.parse(req.params);
-      const disabled = await endpointService.disable(req.apiKey!.tenantId, id);
+      const disabled = await endpointService.disable(req.apiKey!.tenantId, id, { audit: false });
       return { id: disabled.id, status: disabled.status, disabled_at: disabled.disabledAt };
     }
   );

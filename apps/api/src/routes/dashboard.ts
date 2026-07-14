@@ -152,7 +152,15 @@ export function registerDashboardRoutes(
 ): void {
   const guard = { preHandler: [security.session, security.org('payments:read')] };
   // F6.5B1: gestión de endpoints de webhook por sesión (owner/admin/developer).
+  // Lectura (list/detail): sesión + permiso, sin step-up.
   const manageWebhooks = { preHandler: [security.session, security.org('webhooks:manage')] };
+  // RA-F65B-001: las MUTACIONES (create/rotate/disable) son acciones sensibles
+  // — revelan un secreto whsec_ o redirigen tráfico de entrega — y exigen
+  // re-autenticación FRESCA (step-up), homologando con keys:manage (TM-02):
+  // una sesión secuestrada sin prueba fresca no crea destinos ni rota secretos.
+  const mutateWebhooks = {
+    preHandler: [security.session, security.org('webhooks:manage'), security.stepUp],
+  };
   // F4-03c: operación de conciliación por sesión (trabajar casos + AUTORIZAR
   // ajustes con four-eyes). El aprobador != proponente se exige por identidad.
   const manage = { preHandler: [security.session, security.org('reconciliation:manage')] };
@@ -442,7 +450,7 @@ export function registerDashboardRoutes(
     return publicEndpoint(await webhookEndpointService.get(tenant(req), id));
   });
 
-  app.post('/v1/organizations/:orgId/webhook_endpoints', manageWebhooks, async (req, reply) => {
+  app.post('/v1/organizations/:orgId/webhook_endpoints', mutateWebhooks, async (req, reply) => {
     OrgParam.parse(req.params);
     const body = CreateEndpointSchema.parse(req.body);
     const created = await webhookEndpointService.create(
@@ -453,19 +461,17 @@ export function registerDashboardRoutes(
         description: body.description,
         createdByUserId: req.identity!.userId,
       },
-      userAuditContext(req)
+      { audit: userAuditContext(req) }
     );
     // El secreto `whsec_` viaja UNA vez aquí; el cliente lo revela una sola vez.
     return reply.code(201).send({ ...publicEndpoint(created), secret: created.secret });
   });
 
-  app.post('/v1/organizations/:orgId/webhook_endpoints/:id/rotate', manageWebhooks, async (req) => {
+  app.post('/v1/organizations/:orgId/webhook_endpoints/:id/rotate', mutateWebhooks, async (req) => {
     const { id } = IdParams.parse(req.params);
-    const rotated = await webhookEndpointService.rotateSecret(
-      tenant(req),
-      id,
-      userAuditContext(req)
-    );
+    const rotated = await webhookEndpointService.rotateSecret(tenant(req), id, {
+      audit: userAuditContext(req),
+    });
     // El secreto anterior sigue firmando durante la ventana de gracia; el nuevo
     // se revela UNA vez.
     return { id: rotated.id, secret: rotated.secret, rotated: true };
@@ -473,10 +479,12 @@ export function registerDashboardRoutes(
 
   app.post(
     '/v1/organizations/:orgId/webhook_endpoints/:id/disable',
-    manageWebhooks,
+    mutateWebhooks,
     async (req) => {
       const { id } = IdParams.parse(req.params);
-      const disabled = await webhookEndpointService.disable(tenant(req), id, userAuditContext(req));
+      const disabled = await webhookEndpointService.disable(tenant(req), id, {
+        audit: userAuditContext(req),
+      });
       return publicEndpoint(disabled);
     }
   );
