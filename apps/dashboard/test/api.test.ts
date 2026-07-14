@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canManageReconciliation,
   canReadAudit,
+  canManageKeys,
   canManageWebhooks,
   canReadKeys,
   canResendRole,
@@ -668,5 +669,15 @@ describe('webhook endpoints fetchers (F6.5B1)', () => {
       fetchImpl: jsonFetch({}),
     });
     expect(missing).toBeNull();
+  });
+});
+
+describe('canManageKeys (F6.5B2)', () => {
+  it('allows keys:manage roles (owner/admin/developer) and rejects the rest', () => {
+    for (const r of ['owner', 'admin', 'developer']) expect(canManageKeys(r)).toBe(true);
+    // finance tiene keys:read pero NO keys:manage.
+    for (const r of ['finance', 'support', 'analyst', 'read_only', undefined]) {
+      expect(canManageKeys(r)).toBe(false);
+    }
   });
 });

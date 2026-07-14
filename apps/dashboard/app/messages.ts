@@ -266,6 +266,28 @@ interface Messages {
   secretOnceTitle: string;
   secretOnceWarning: string;
   secretOnceDismiss: string;
+  // API key create/revoke + step-up (F6.5B2)
+  createApiKeyTitle: string;
+  createApiKeyAction: string;
+  apiKeyLabelField: string;
+  apiKeyScopesField: string;
+  apiKeyScopesHint: string;
+  apiKeyEnvNote: string;
+  apiKeyCreated: string;
+  revokeAction: string;
+  revokeConfirm: string;
+  keyRevokedOk: string;
+  keysManageNoRole: string;
+  selectAtLeastOneScope: string;
+  stepUpTitle: string;
+  stepUpPrompt: string;
+  stepUpPasswordLabel: string;
+  stepUpSubmit: string;
+  stepUpVerifying: string;
+  stepUpWrongPassword: string;
+  stepUpLocked: string;
+  stepUpMfaRequired: string;
+  stepUpCancel: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -525,6 +547,29 @@ export const MESSAGES: Record<Locale, Messages> = {
     secretOnceTitle: 'Secreto de firma',
     secretOnceWarning: 'Copia este secreto ahora — no se volverá a mostrar.',
     secretOnceDismiss: 'Ya lo copié',
+    createApiKeyTitle: 'Crear API key',
+    createApiKeyAction: 'Crear API key',
+    apiKeyLabelField: 'Etiqueta',
+    apiKeyScopesField: 'Scopes',
+    apiKeyScopesHint: 'Selecciona al menos uno. El API valida los permitidos.',
+    apiKeyEnvNote: 'Entorno: test (sandbox). Las keys live no están disponibles.',
+    apiKeyCreated: 'API key creada ✓',
+    revokeAction: 'Revocar',
+    revokeConfirm: '¿Revocar esta API key? Dejará de funcionar de inmediato.',
+    keyRevokedOk: 'API key revocada ✓',
+    keysManageNoRole:
+      'Tu rol no permite crear ni revocar API keys (requiere owner/admin/developer).',
+    selectAtLeastOneScope: 'Selecciona al menos un scope.',
+    stepUpTitle: 'Confirma tu identidad',
+    stepUpPrompt: 'Esta acción sensible requiere re-autenticación reciente. Ingresa tu contraseña.',
+    stepUpPasswordLabel: 'Contraseña',
+    stepUpSubmit: 'Confirmar',
+    stepUpVerifying: 'Verificando…',
+    stepUpWrongPassword: 'Contraseña incorrecta.',
+    stepUpLocked: 'Demasiados intentos: la cuenta quedó bloqueada temporalmente.',
+    stepUpMfaRequired:
+      'Esta cuenta requiere un segundo factor para completar esta acción. El flujo de MFA step-up aún no está disponible en este dashboard sandbox.',
+    stepUpCancel: 'Cancelar',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -782,6 +827,29 @@ export const MESSAGES: Record<Locale, Messages> = {
     secretOnceTitle: 'Signing secret',
     secretOnceWarning: 'Copy this secret now — it will not be shown again.',
     secretOnceDismiss: 'I copied it',
+    createApiKeyTitle: 'Create API key',
+    createApiKeyAction: 'Create API key',
+    apiKeyLabelField: 'Label',
+    apiKeyScopesField: 'Scopes',
+    apiKeyScopesHint: 'Select at least one. The API validates the allowed set.',
+    apiKeyEnvNote: 'Environment: test (sandbox). Live keys are not available.',
+    apiKeyCreated: 'API key created ✓',
+    revokeAction: 'Revoke',
+    revokeConfirm: 'Revoke this API key? It will stop working immediately.',
+    keyRevokedOk: 'API key revoked ✓',
+    keysManageNoRole:
+      'Your role cannot create or revoke API keys (requires owner/admin/developer).',
+    selectAtLeastOneScope: 'Select at least one scope.',
+    stepUpTitle: 'Confirm your identity',
+    stepUpPrompt: 'This sensitive action requires recent re-authentication. Enter your password.',
+    stepUpPasswordLabel: 'Password',
+    stepUpSubmit: 'Confirm',
+    stepUpVerifying: 'Verifying…',
+    stepUpWrongPassword: 'Incorrect password.',
+    stepUpLocked: 'Too many attempts: the account is temporarily locked.',
+    stepUpMfaRequired:
+      'This account requires a second factor to complete this action. The MFA step-up flow is not available in this sandbox dashboard yet.',
+    stepUpCancel: 'Cancel',
   },
 };
 

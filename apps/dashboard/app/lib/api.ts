@@ -640,6 +640,29 @@ export function canReadKeys(role: string | undefined): boolean {
 }
 
 /**
+ * Roles que pueden GESTIONAR API keys (crear/revocar; permiso RBAC `keys:manage`;
+ * espeja `ROLE_PERMISSIONS`: owner/admin/developer). Hint de UX — el API es la
+ * fuente de verdad (403 + step-up MFA). finance tiene `keys:read` pero NO manage.
+ */
+const KEYS_MANAGE_ROLES = new Set(['owner', 'admin', 'developer']);
+export function canManageKeys(role: string | undefined): boolean {
+  return role !== undefined && KEYS_MANAGE_ROLES.has(role);
+}
+
+/**
+ * Scopes válidos de una API key (F6.5B2) — espeja `API_KEY_SCOPES` de
+ * @fluvia/identity. El backend es la fuente de verdad y rechaza scopes ajenos;
+ * la UI solo ofrece estos. (El dashboard no depende de @fluvia/identity, así que
+ * la lista se declara aquí con esta nota de sincronía.)
+ */
+export const API_KEY_SCOPES = [
+  'read',
+  'payments:write',
+  'customers:write',
+  'webhooks:manage',
+] as const;
+
+/**
  * API key — metadata de solo lectura. El serializer del API (`api-keys` list)
  * NO devuelve `secret` ni `secret_hash`: solo estos campos. El secreto completo
  * viaja UNA vez al crear (endpoint que exige `keys:manage` + step-up MFA — no

@@ -601,6 +601,42 @@ code {
   border-radius: 6px;
 }
 
+/* F6.5B2: modal de step-up por password + selector de scopes */
+.stepup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+.stepup-modal {
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  padding: 1.5rem;
+  max-width: 24rem;
+  width: 100%;
+}
+.stepup-modal h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+.scopes {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+}
+.scope-option {
+  display: block;
+  margin: 0.25rem 0;
+  color: var(--fg);
+  font-weight: 400;
+}
+
 /* F6.5B: payload de un evento de webhook (solo lectura, sin secretos) */
 .payload {
   margin: 0;
