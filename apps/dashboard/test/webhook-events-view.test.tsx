@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { WebhookEventDetailView, WebhookEventsList } from '../app/lib/webhook-events-view';
+import { ResendButton } from '../app/lib/resend-button';
 import type { WebhookEvent, WebhookEventDetail } from '../app/lib/api';
 
 /**
@@ -67,9 +69,7 @@ describe('WebhookEventsList', () => {
 
 describe('WebhookEventDetailView', () => {
   it('renders the fields, the payload and the attempts history', () => {
-    render(
-      <WebhookEventDetailView event={DETAIL} orgId="o1" locale="es" signOutHref="/logout" />
-    );
+    render(<WebhookEventDetailView event={DETAIL} orgId="o1" locale="es" signOutHref="/logout" />);
     expect(screen.getByText('whe_abcdef123456')).toBeInTheDocument();
     expect(screen.getByText('whep_112233445566')).toBeInTheDocument();
     expect(screen.getByText('connect ETIMEDOUT')).toBeInTheDocument();
@@ -135,5 +135,20 @@ describe('webhook events — tenant scoping in links', () => {
       .getAllByRole('link')
       .map((a) => a.getAttribute('href'));
     for (const href of links) expect(href).toMatch(/^\/o\/o1\/webhook-events\//);
+  });
+});
+
+describe('ResendButton (RA-F65B-DELTA2-001: header anti-CSRF en el cliente)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('POSTea al route handler de resend con el header X-Fluvia-CSRF', async () => {
+    const fn = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
+    vi.stubGlobal('fetch', fn);
+    render(<ResendButton orgId="o1" eventId="whe_x" locale="es" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Reenviar' }));
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+    const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/orgs/o1/webhook-events/whe_x/resend');
+    expect((init.headers as Record<string, string>)['x-fluvia-csrf']).toBe('1');
   });
 });

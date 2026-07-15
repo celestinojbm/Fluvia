@@ -115,6 +115,8 @@ describe('WebhookEndpointsList', () => {
     const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/orgs/o1/webhook-endpoints');
     expect(JSON.parse(String(init.body))).toEqual({ url: 'https://example.test/new' });
+    // RA-F65B-EXT-002: la mutación legítima porta el header anti-CSRF.
+    expect((init.headers as Record<string, string>)['x-fluvia-csrf']).toBe('1');
   });
 
   it('SECURITY: a secret injected into a list endpoint never reaches the DOM', () => {

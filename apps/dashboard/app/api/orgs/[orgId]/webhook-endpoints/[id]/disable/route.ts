@@ -1,12 +1,16 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { apiBase } from '../../../../../../lib/api';
+import { assertTrustedMutationRequest } from '../../../../../../lib/csrf';
 
 /**
  * Desactivar un webhook endpoint por sesión (F6.5B1). No revela ni borra
  * secreto; solo cambia el estado a `disabled`. `cache: 'no-store'`.
  */
-export async function POST(_req: Request, ctx: { params: Promise<{ orgId: string; id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ orgId: string; id: string }> }) {
+  // RA-F65B-EXT-002: procedencia same-origin ANTES de tocar la cookie.
+  const rejected = assertTrustedMutationRequest(req);
+  if (rejected) return rejected;
   const { orgId, id } = await ctx.params;
   const token = (await cookies()).get('fluvia_session')?.value;
   if (!token) return NextResponse.json({ ok: false }, { status: 401 });

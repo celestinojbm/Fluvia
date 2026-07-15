@@ -117,6 +117,24 @@ describe('POST /v1/webhook_endpoints', () => {
     });
     expect(badUrl.statusCode).toBe(400);
     expect(badUrl.json().error.code).toBe('validation_error');
+
+    // RA-F65B-EXT-001: query/fragment portadores de credenciales — mismo
+    // rechazo en el plano de API key, sin reflejar el secreto en el error.
+    for (const url of [
+      'http://127.0.0.1:9099/hook?token=EXTKEYSECRET',
+      'http://127.0.0.1:9099/hook?access_token=EXTKEYSECRET',
+      'http://127.0.0.1:9099/hook#EXTKEYSECRET',
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/webhook_endpoints',
+        headers: auth(keyA),
+        payload: { url },
+      });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.json().error.code, url).toBe('validation_error');
+      expect(res.body, url).not.toContain('EXTKEYSECRET');
+    }
   });
 
   it('requires the webhooks:manage scope (403 insufficient_scope)', async () => {

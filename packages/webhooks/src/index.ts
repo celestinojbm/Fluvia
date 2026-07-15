@@ -26,6 +26,8 @@ export {
   assertSafeWebhookUrl,
   isPrivateIp,
   resolveSafeWebhookTarget,
+  sanitizeUrlForDisplay,
+  webhookUrlAuditMetadata,
   type SafeWebhookTarget,
   type SsrfGuardOptions,
 } from './ssrf.js';

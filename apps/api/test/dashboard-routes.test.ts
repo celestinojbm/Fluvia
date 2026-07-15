@@ -834,7 +834,99 @@ describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
       const blob = JSON.stringify(row.after_summary) + JSON.stringify(row.before_summary);
       expect(blob).not.toContain('whsec_');
       expect(blob).not.toContain('secret');
+      // RA-F65B-EXT-001: la auditoría JAMÁS copia la URL cruda — solo
+      // metadata segura (host + huella irreversible).
+      expect(blob).not.toContain('hook-rot');
+      expect(blob).not.toContain('https://');
     }
+  });
+
+  // ── RA-F65B-EXT-001: credenciales en la URL del endpoint ────────────────────
+
+  it('EXT-001: a credential-bearing URL is rejected (400) and nothing is persisted or audited', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    for (const url of [
+      'https://example.test/hook?token=EXT1SECRET',
+      'https://example.test/hook?Api-Key=EXT1SECRET',
+      'https://u:p@example.test/hook',
+      'https://example.test/hook#access_token=EXT1SECRET',
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/webhook_endpoints`,
+        headers: owner.headers,
+        payload: { url, events: [] },
+      });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.json().error.code, url).toBe('validation_error');
+      // El sobre de error no refleja el secreto.
+      expect(res.body, url).not.toContain('EXT1SECRET');
+    }
+    // Nada persistido ni auditado con ese material.
+    const rows = await adminPool.query(
+      `SELECT id FROM webhook_endpoints WHERE tenant_id = $1 AND url LIKE '%EXT1SECRET%'`,
+      [orgA]
+    );
+    expect(rows.rowCount).toBe(0);
+    const audit = await adminPool.query(
+      `SELECT id FROM audit_events
+       WHERE tenant_id = $1
+         AND (after_summary::text LIKE '%EXT1SECRET%' OR before_summary::text LIKE '%EXT1SECRET%')`,
+      [orgA]
+    );
+    expect(audit.rowCount).toBe(0);
+  });
+
+  it('EXT-001: audit carries host+fingerprint (no raw URL, no query); list/detail keep the valid URL; audit read exposes no URL', async () => {
+    const owner = await sessionUser('owner', orgA);
+    await stepUp(owner.headers);
+    const validUrl = 'https://example.test/hook-ext1?ref=orders';
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/webhook_endpoints`,
+      headers: owner.headers,
+      payload: { url: validUrl, events: [] },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id;
+
+    // Resumen de auditoría: metadata segura, jamás la URL cruda ni su query.
+    const audit = await adminPool.query<{
+      after_summary: { url_host?: string; url_fingerprint?: string };
+    }>(
+      `SELECT after_summary FROM audit_events
+       WHERE tenant_id = $1 AND resource_id = $2 AND action = 'webhook_endpoint.created'`,
+      [orgA, id]
+    );
+    expect(audit.rowCount).toBe(1);
+    const summary = audit.rows[0]!.after_summary;
+    expect(summary.url_host).toBe('example.test');
+    expect(summary.url_fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const blob = JSON.stringify(summary);
+    expect(blob).not.toContain('hook-ext1');
+    expect(blob).not.toContain('ref=orders');
+    expect(blob).not.toContain('https://');
+
+    // List/detail del TENANT siguen mostrando la URL válida (gestionabilidad):
+    // el material tratado como secreto (whsec_, credenciales) jamás viaja.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/webhook_endpoints/${id}`,
+      headers: owner.headers,
+    });
+    expect(detail.json().url).toBe(validUrl);
+
+    // La LECTURA de auditoría por sesión no recupera URL ni secreto: el
+    // serializer no expone before/after summaries.
+    const auditRead = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/audit-events?limit=50`,
+      headers: owner.headers,
+    });
+    expect(auditRead.statusCode).toBe(200);
+    expect(auditRead.body).not.toContain('hook-ext1');
+    expect(auditRead.body).not.toContain('url_fingerprint');
   });
 
   it('rejects roles without webhooks:manage (403) and 404s cross-tenant', async () => {
