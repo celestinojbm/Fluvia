@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { MESSAGES, type Locale } from '../messages';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
 
 /**
  * Botón de reenvío de un evento de webhook `dead` (F3-09b-iii). POSTea al route
@@ -27,7 +28,8 @@ export function ResendButton({
     try {
       const res = await fetch(
         `/api/orgs/${encodeURIComponent(orgId)}/webhook-events/${encodeURIComponent(eventId)}/resend`,
-        { method: 'POST' }
+        // RA-F65B-DELTA2-001: header anti-CSRF exigido por el route handler.
+        { method: 'POST', headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE } }
       );
       if (res.status === 201) {
         setPhase('done');
