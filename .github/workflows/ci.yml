@@ -146,8 +146,17 @@ jobs:
       - name: Install (reproducible)
         run: pnpm install --frozen-lockfile
 
+      # El registro npm retiró (HTTP 410) los endpoints legacy de audit que usa
+      # pnpm 10 (/-/npm/v1/security/audits/quick y /-/npm/v1/security/audits);
+      # pnpm 11 consulta el bulk advisory endpoint activo
+      # (/-/npm/v1/security/advisories/bulk). Se ejecuta pnpm 11 en versión
+      # EXACTA y aislada vía npm exec (reproducibilidad) SOLO para el audit; la
+      # instalación del proyecto sigue en pnpm 10.33.0 (packageManager).
+      # --pm-on-fail=ignore evita que pnpm 11 delegue en el pnpm 10.33.0 fijado
+      # por packageManager (volvería a los endpoints retirados). El gate no
+      # cambia: exit != 0 ante vulnerabilidades High/Critical.
       - name: Dependency audit (falla en High/Critical — Gate Seguridad)
-        run: pnpm audit --audit-level high
+        run: npm exec --yes --package=pnpm@11.13.0 -- pnpm --pm-on-fail=ignore audit --audit-level high
 
       - name: Licencias transitivas (política RA-F6-004, modo estricto)
         # Gate de docs/compliance/license-policy.md en --strict: falla ante
