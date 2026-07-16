@@ -78,6 +78,9 @@ export function LoginForm({ locale }: { locale: Locale }) {
         </button>
       </form>
       <p className="notice">{t.sandboxNotice}</p>
+      <p>
+        <a href={locale === 'en' ? '/signup?lang=en' : '/signup'}>{t.signupLink}</a>
+      </p>
     </main>
   );
 }

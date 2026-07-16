@@ -288,6 +288,23 @@ interface Messages {
   stepUpLocked: string;
   stepUpMfaRequired: string;
   stepUpCancel: string;
+  // signup sandbox (F6.5C1)
+  signupTitle: string;
+  signupLink: string;
+  backToLogin: string;
+  confirmPasswordLabel: string;
+  createAccount: string;
+  creatingAccount: string;
+  signupSandboxVerification: string;
+  signupNoRealEmail: string;
+  signupPasswordMismatch: string;
+  signupEmailTaken: string;
+  signupInvalidInput: string;
+  signupGenericError: string;
+  signupSuccess: string;
+  // usuario sin organización (F6.5C1)
+  noOrgCtaTitle: string;
+  noOrgCtaBody: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -570,6 +587,24 @@ export const MESSAGES: Record<Locale, Messages> = {
     stepUpMfaRequired:
       'Esta cuenta requiere un segundo factor para completar esta acción. El flujo de MFA step-up aún no está disponible en este dashboard sandbox.',
     stepUpCancel: 'Cancelar',
+    signupTitle: 'Crear cuenta',
+    signupLink: '¿No tienes cuenta? Crear cuenta',
+    backToLogin: '← Volver a iniciar sesión',
+    confirmPasswordLabel: 'Confirmar contraseña',
+    createAccount: 'Crear cuenta',
+    creatingAccount: 'Creando cuenta…',
+    signupSandboxVerification: 'Verificación de email simulada — SANDBOX',
+    signupNoRealEmail:
+      'No se envía ningún correo real: tu email queda verificado automáticamente en este sandbox.',
+    signupPasswordMismatch: 'Las contraseñas no coinciden.',
+    signupEmailTaken: 'Ya existe una cuenta con este correo.',
+    signupInvalidInput:
+      'Datos inválidos: revisa el correo y usa una contraseña de al menos 10 caracteres.',
+    signupGenericError: 'No se pudo crear la cuenta. Inténtalo de nuevo.',
+    signupSuccess: 'Cuenta creada ✓ — redirigiendo a iniciar sesión…',
+    noOrgCtaTitle: 'Tu cuenta está lista',
+    noOrgCtaBody:
+      'Aún no perteneces a ninguna organización. El siguiente paso — crear tu organización — pertenece al onboarding sandbox, que todavía no está disponible en este panel.',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -850,6 +885,24 @@ export const MESSAGES: Record<Locale, Messages> = {
     stepUpMfaRequired:
       'This account requires a second factor to complete this action. The MFA step-up flow is not available in this sandbox dashboard yet.',
     stepUpCancel: 'Cancel',
+    signupTitle: 'Create account',
+    signupLink: "Don't have an account? Create one",
+    backToLogin: '← Back to sign in',
+    confirmPasswordLabel: 'Confirm password',
+    createAccount: 'Create account',
+    creatingAccount: 'Creating account…',
+    signupSandboxVerification: 'Email verification simulated — SANDBOX',
+    signupNoRealEmail:
+      'No real email is sent: your email is verified automatically in this sandbox.',
+    signupPasswordMismatch: 'Passwords do not match.',
+    signupEmailTaken: 'An account with this email already exists.',
+    signupInvalidInput:
+      'Invalid input: check the email and use a password of at least 10 characters.',
+    signupGenericError: 'Could not create the account. Try again.',
+    signupSuccess: 'Account created ✓ — redirecting to sign in…',
+    noOrgCtaTitle: 'Your account is ready',
+    noOrgCtaBody:
+      'You do not belong to any organization yet. The next step — creating your organization — belongs to the sandbox onboarding, which is not available in this panel yet.',
   },
 };
 
