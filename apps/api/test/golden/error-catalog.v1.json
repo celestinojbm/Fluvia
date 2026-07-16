@@ -205,6 +205,7 @@
     "AccountLockedError": "account_locked",
     "InvalidSessionError": "invalid_session",
     "InvalidVerificationTokenError": "invalid_verification_token",
+    "SandboxRegistrationDisabledError": "not_found",
     "OrganizationNotFoundError": "not_found",
     "MerchantNotFoundError": "not_found",
     "CustomerNotFoundError": "not_found",

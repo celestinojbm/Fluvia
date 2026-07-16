@@ -229,9 +229,15 @@ export function buildApp({
   });
 
   if (authService) {
+    // F6.5C1 (B6): la fuente normativa de entorno es config.env (@fluvia/config,
+    // ya validada anti-mezcla) — la MISMA condicion exacta que gobierna
+    // exposeVerificationToken. Fuera de local/test la ruta register-sandbox NO
+    // se registra (404 del not-found handler), sin fallback a register.
+    const isLocalOrTest = config.env === 'local' || config.env === 'test';
     registerAuthRoutes(app, {
       authService,
-      exposeVerificationToken: config.env === 'local' || config.env === 'test',
+      exposeVerificationToken: isLocalOrTest,
+      enableSandboxRegistration: isLocalOrTest,
       rateLimits: authRateLimits,
       limiter: rateLimiter,
     });

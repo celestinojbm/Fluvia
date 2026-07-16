@@ -66,6 +66,7 @@ export {
   InvalidMfaChallengeError,
   MfaAlreadyEnabledError,
   MfaNotEnabledError,
+  SandboxRegistrationDisabledError,
   StepUpRequiredError,
   RateLimitedError,
 } from './errors.js';

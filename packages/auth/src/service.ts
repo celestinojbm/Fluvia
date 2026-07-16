@@ -12,6 +12,7 @@ import {
   InvalidVerificationTokenError,
   MfaAlreadyEnabledError,
   MfaNotEnabledError,
+  SandboxRegistrationDisabledError,
   StepUpRequiredError,
 } from './errors.js';
 import { dummyPasswordHash, hashPassword, verifyPassword } from './passwords.js';
@@ -66,6 +67,15 @@ export interface AuthServiceOptions {
   mfaChallengeTtlMs?: number;
   /** Frescura maxima de la verificacion MFA para step-up (default 15 min). */
   stepUpMaxAgeMs?: number;
+  /**
+   * F6.5C1 (B6): habilita `registerAndVerifySandbox` (registro + verificacion
+   * de email ATOMICOS, sin canal de correo). Default `false` — fail-closed:
+   * el API la activa UNICAMENTE cuando el entorno normativo (`config.env` de
+   * @fluvia/config) es exactamente `local` o `test`. La opcion es defensa en
+   * profundidad ADEMAS del gating de la ruta: aunque la ruta se registrara
+   * por error, el servicio rechaza sin tocar la base de datos.
+   */
+  allowSandboxRegistration?: boolean;
 }
 
 export interface RegisteredUser {
@@ -183,6 +193,8 @@ export class AuthService {
   private readonly mfaChallengeTtlMs: number;
   /** Publica: el guard de step-up (apps/api) la usa como unica fuente. */
   readonly stepUpMaxAgeMs: number;
+  /** F6.5C1 (B6): capacidad de registro sandbox atomico. Default false. */
+  private readonly allowSandboxRegistration: boolean;
 
   constructor(
     private readonly authPool: Pool,
@@ -198,6 +210,7 @@ export class AuthService {
     this.mfaKeyring = { current: mfaCurrentKeyHex, retired: options.retiredMfaKeyHexes ?? [] };
     this.mfaChallengeTtlMs = options.mfaChallengeTtlMs ?? 5 * 60 * 1000;
     this.stepUpMaxAgeMs = options.stepUpMaxAgeMs ?? 15 * 60 * 1000;
+    this.allowSandboxRegistration = options.allowSandboxRegistration ?? false;
   }
 
   private async withTx<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -215,6 +228,79 @@ export class AuthService {
     }
   }
 
+  /**
+   * Primitiva client-bound (F6.5C1/B6): inserta el usuario + su token de
+   * verificacion de un solo uso + audit `user.registered`, TODO sobre el client
+   * de la transaccion del llamador. Extraida de `register` para que el flujo
+   * sandbox componga registro y verificacion en UNA sola transaccion sin
+   * duplicar el modelo de auth. Recibe SOLO el hash del token: el plaintext
+   * jamas entra aqui.
+   */
+  private async insertUserWithVerificationToken(
+    c: PoolClient,
+    email: string,
+    passwordHash: string,
+    tokenHash: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<string> {
+    let userId: string;
+    try {
+      const res = await c.query<{ id: string }>(
+        'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
+        [email, passwordHash]
+      );
+      userId = res.rows[0]!.id;
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') throw new EmailTakenError();
+      throw err;
+    }
+    await c.query(
+      `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, now() + make_interval(secs => $3))`,
+      [userId, tokenHash, this.verificationTtlMs / 1000]
+    );
+    await insertAuditEvent(c, {
+      action: 'user.registered',
+      context: { actorType: 'user', actorId: userId, authMethod: 'none', ...meta },
+      resourceType: 'user',
+      resourceId: userId,
+    });
+    return userId;
+  }
+
+  /**
+   * Primitiva client-bound (F6.5C1/B6): consume el token de verificacion (un
+   * solo uso, no expirado), sella `email_verified_at` y emite el audit
+   * `user.email_verified`, sobre el client del llamador. Extraida de
+   * `verifyEmail` para el flujo sandbox atomico.
+   */
+  private async consumeVerificationTokenAndSeal(
+    c: PoolClient,
+    tokenHash: string,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<string> {
+    const consumed = await c.query<{ user_id: string }>(
+      `UPDATE email_verification_tokens
+       SET consumed_at = now()
+       WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+       RETURNING user_id`,
+      [tokenHash]
+    );
+    const row = consumed.rows[0];
+    if (!row) throw new InvalidVerificationTokenError();
+    await c.query(
+      'UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1',
+      [row.user_id]
+    );
+    await insertAuditEvent(c, {
+      action: 'user.email_verified',
+      context: { actorType: 'user', actorId: row.user_id, authMethod: 'none', ...meta },
+      resourceType: 'user',
+      resourceId: row.user_id,
+    });
+    return row.user_id;
+  }
+
   async register(rawInput: RegisterInput): Promise<RegisteredUser> {
     const input = RegisterSchema.parse(rawInput);
     const email = input.email.toLowerCase();
@@ -222,28 +308,7 @@ export class AuthService {
     const token = generateToken('fluvia_verify');
 
     return this.withTx(async (c) => {
-      let userId: string;
-      try {
-        const res = await c.query<{ id: string }>(
-          'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
-          [email, passwordHash]
-        );
-        userId = res.rows[0]!.id;
-      } catch (err) {
-        if ((err as { code?: string }).code === '23505') throw new EmailTakenError();
-        throw err;
-      }
-      await c.query(
-        `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
-         VALUES ($1, $2, now() + make_interval(secs => $3))`,
-        [userId, token.hash, this.verificationTtlMs / 1000]
-      );
-      await insertAuditEvent(c, {
-        action: 'user.registered',
-        context: { actorType: 'user', actorId: userId, authMethod: 'none' },
-        resourceType: 'user',
-        resourceId: userId,
-      });
+      const userId = await this.insertUserWithVerificationToken(c, email, passwordHash, token.hash);
       return { userId, verificationToken: token.plaintext };
     });
   }
@@ -251,26 +316,47 @@ export class AuthService {
   async verifyEmail(rawInput: VerifyEmailInput): Promise<{ userId: string }> {
     const input = VerifyEmailSchema.parse(rawInput);
     return this.withTx(async (c) => {
-      const consumed = await c.query<{ user_id: string }>(
-        `UPDATE email_verification_tokens
-         SET consumed_at = now()
-         WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
-         RETURNING user_id`,
-        [hashToken(input.token)]
+      const userId = await this.consumeVerificationTokenAndSeal(c, hashToken(input.token));
+      return { userId };
+    });
+  }
+
+  /**
+   * F6.5C1 (B6) — registro sandbox ATOMICO, SOLO local/test. Compone las
+   * primitivas reales de `register` y `verifyEmail` en UNA sola transaccion:
+   * crea el usuario + genera e inserta el token con hash + consume ESE mismo
+   * token + sella `email_verified_at` + emite `user.registered` y
+   * `user.email_verified`. Cualquier fallo (verificacion o cualquiera de los
+   * dos audits) revierte TODO: jamas queda un usuario sin verificar.
+   *
+   * El token en claro NUNCA sale de este metodo: no se devuelve, no se loguea,
+   * no entra en auditoria ni en errores — se consume dentro de la misma
+   * transaccion (por eso no existe "recuperacion de token": no hace falta).
+   * NO crea sesion (el flujo sigue en /login) y NO toca login/MFA/lockout/
+   * step-up. Fail-closed: sin `allowSandboxRegistration` rechaza ANTES de
+   * tocar la base de datos.
+   */
+  async registerAndVerifySandbox(
+    rawInput: RegisterInput,
+    meta: { ip?: string; userAgent?: string; requestId?: string } = {}
+  ): Promise<{ userId: string }> {
+    if (!this.allowSandboxRegistration) throw new SandboxRegistrationDisabledError();
+    const input = RegisterSchema.parse(rawInput);
+    const email = input.email.toLowerCase();
+    const passwordHash = await hashPassword(input.password);
+    const token = generateToken('fluvia_verify');
+
+    return this.withTx(async (c) => {
+      const userId = await this.insertUserWithVerificationToken(
+        c,
+        email,
+        passwordHash,
+        token.hash,
+        meta
       );
-      const row = consumed.rows[0];
-      if (!row) throw new InvalidVerificationTokenError();
-      await c.query(
-        'UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id = $1',
-        [row.user_id]
-      );
-      await insertAuditEvent(c, {
-        action: 'user.email_verified',
-        context: { actorType: 'user', actorId: row.user_id, authMethod: 'none' },
-        resourceType: 'user',
-        resourceId: row.user_id,
-      });
-      return { userId: row.user_id };
+      const verifiedUserId = await this.consumeVerificationTokenAndSeal(c, token.hash, meta);
+      if (verifiedUserId !== userId) throw new InvalidVerificationTokenError();
+      return { userId };
     });
   }
 
