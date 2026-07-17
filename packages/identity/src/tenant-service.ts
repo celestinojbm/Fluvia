@@ -1,8 +1,9 @@
-import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
 import {
   MerchantNameTakenError,
   MerchantNotFoundError,
+  MerchantOnboardingAlreadyCompletedError,
   OrganizationNotFoundError,
   isUniqueViolation,
 } from './errors.js';
@@ -63,6 +64,35 @@ const toMerchantDto = (r: MerchantRow): MerchantDto => ({
   createdAt: r.created_at.toISOString(),
 });
 
+export interface MerchantOnboardingResult {
+  merchant: MerchantDto;
+  /** true si la operacion recupero un merchant ya creado (replay natural). */
+  replayed: boolean;
+}
+
+/**
+ * F6.5C2 Paso B — namespace del advisory lock transaccional del merchant de
+ * onboarding. La clave se calcula EN PostgreSQL (`hashtextextended` ⇒ bigint,
+ * sin perdida de precision en JavaScript), es estable, va namespaced por
+ * `tenant_id` y NO depende del nombre del merchant: serializa TODO onboarding
+ * de merchant concurrente de una organizacion, y organizaciones distintas no
+ * se bloquean entre si. (El lock de fila `SELECT organizations … FOR UPDATE`
+ * es inviable bajo la RLS actual: politica SELECT-only con FORCE RLS.)
+ */
+const MERCHANT_ONBOARDING_LOCK_NS = 'fluvia:onboarding:merchant:';
+
+/** Clave (bigint como texto) del advisory lock — expuesta para los tests. */
+export async function merchantOnboardingLockKey(
+  client: PoolClient | Pool,
+  tenantId: string
+): Promise<string> {
+  const res = await client.query<{ key: string }>(
+    'SELECT hashtextextended($1 || $2, 0)::text AS key',
+    [MERCHANT_ONBOARDING_LOCK_NS, tenantId]
+  );
+  return res.rows[0]!.key;
+}
+
 /**
  * PLANO DE TENANT: todas las operaciones corren con el rol fluvia_app dentro
  * de withTenantTransaction — RLS es la segunda linea de defensa en cada query.
@@ -118,6 +148,74 @@ export class IdentityService {
         }
         throw err;
       }
+    });
+  }
+
+  /**
+   * F6.5C2 Paso B — merchant de ONBOARDING (exactamente UNO por organizacion),
+   * en una sola transaccion tenant-scoped serializada por advisory lock.
+   * NO sustituye a `createMerchant` (merchants adicionales siguen usando la
+   * ruta general despues del onboarding); su contrato queda intacto.
+   *
+   * Bajo el lock (tomado ANTES de contar):
+   *  - cero merchants activos ⇒ crea + `merchant.created` UNA vez (misma tx);
+   *  - exactamente uno y el payload normalizado coincide ⇒ replay natural
+   *    (devuelve el existente, cero auditoria duplicada);
+   *  - exactamente uno y difiere ⇒ MerchantOnboardingAlreadyCompletedError;
+   *  - dos o mas ⇒ MerchantOnboardingAlreadyCompletedError (jamas eleccion
+   *    arbitraria).
+   *
+   * El chart (`PostingService.ensureChart`) es un paso POSTERIOR idempotente
+   * del llamador — nunca dentro de esta transaccion (sin tx distribuida).
+   */
+  async ensureMerchantForOnboarding(
+    tenantId: string,
+    rawInput: CreateMerchantInput,
+    audit: AuditContext
+  ): Promise<MerchantOnboardingResult> {
+    const input = CreateMerchantSchema.parse(rawInput);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      // Serializacion por tenant, independiente del nombre: el UNIQUE
+      // (tenant_id, name) NO basta — dos nombres distintos concurrentes
+      // insertarian dos merchants sin conflicto de indice.
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1 || $2, 0))', [
+        MERCHANT_ONBOARDING_LOCK_NS,
+        tenantId,
+      ]);
+
+      const existing = await c.query<MerchantRow>(
+        `SELECT id, name, country, default_currency, status, created_at
+         FROM merchants WHERE deleted_at IS NULL ORDER BY created_at`
+      );
+      if (existing.rows.length === 1) {
+        const row = existing.rows[0]!;
+        if (
+          row.name === input.name &&
+          row.country === input.country &&
+          row.default_currency === input.defaultCurrency
+        ) {
+          return { merchant: toMerchantDto(row), replayed: true };
+        }
+        throw new MerchantOnboardingAlreadyCompletedError();
+      }
+      if (existing.rows.length > 1) throw new MerchantOnboardingAlreadyCompletedError();
+
+      const res = await c.query<MerchantRow>(
+        `INSERT INTO merchants (tenant_id, name, country, default_currency)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, country, default_currency, status, created_at`,
+        [tenantId, input.name, input.country, input.defaultCurrency]
+      );
+      const dto = toMerchantDto(res.rows[0]!);
+      await insertAuditEvent(c, {
+        action: 'merchant.created',
+        tenantId,
+        context: audit,
+        resourceType: 'merchant',
+        resourceId: dto.id,
+        after: { name: dto.name, country: dto.country, defaultCurrency: dto.defaultCurrency },
+      });
+      return { merchant: dto, replayed: false };
     });
   }
 

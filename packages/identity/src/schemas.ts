@@ -8,17 +8,36 @@ import { CURRENCY_CODES, type CurrencyCode } from '@fluvia/money';
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,48}$/;
 
+// Campos compartidos entre el alta clasica (con ownerEmail) y el onboarding de
+// F6.5C2 (usuario existente): UNA sola definicion de validacion/normalizacion.
+const OrganizationNameSchema = z.string().trim().min(2).max(120);
+const OrganizationSlugSchema = z
+  .string()
+  .regex(SLUG_RE, 'slug must be lowercase alphanumeric with hyphens (2-49 chars)');
+
 export const CreateOrganizationSchema = z
   .object({
-    organizationName: z.string().trim().min(2).max(120),
-    slug: z
-      .string()
-      .regex(SLUG_RE, 'slug must be lowercase alphanumeric with hyphens (2-49 chars)'),
+    organizationName: OrganizationNameSchema,
+    slug: OrganizationSlugSchema,
     ownerEmail: z.string().trim().email().max(254),
   })
   .strict();
 
 export type CreateOrganizationInput = z.infer<typeof CreateOrganizationSchema>;
+
+/**
+ * F6.5C2 Paso A: crear organizacion para un usuario YA existente y autenticado
+ * (plano de plataforma). El userId viene de la sesion, jamas del body.
+ */
+export const CreateOrganizationForUserSchema = z
+  .object({
+    userId: z.string().uuid(),
+    organizationName: OrganizationNameSchema,
+    slug: OrganizationSlugSchema,
+  })
+  .strict();
+
+export type CreateOrganizationForUserInput = z.infer<typeof CreateOrganizationForUserSchema>;
 
 export const CreateMerchantSchema = z
   .object({

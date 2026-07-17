@@ -44,6 +44,12 @@ export const AUDIT_ACTIONS = [
   'webhook_endpoint.created',
   'webhook_endpoint.rotated',
   'webhook_endpoint.disabled',
+  // F6.5C2 (B5): onboarding de organización por SESIÓN (plano de plataforma).
+  // Ambos eventos se emiten DENTRO de la misma transacción que crea la
+  // organización y la membership owner (fallo de auditoría ⇒ rollback total);
+  // actor `user`, solo IDs de tenant/org/user — sin email/password/token.
+  'organization.created',
+  'membership.created',
   'operational_case.acknowledged',
   'operational_case.resolved',
   'operational_case.adjustment_proposed',

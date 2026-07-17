@@ -43,6 +43,39 @@ export class CustomerNotFoundError extends IdentityError {
   }
 }
 
+/**
+ * F6.5C2 — errores tipados del onboarding. Los mensajes son internos (solo
+ * logs); el cliente recibe el codigo estable del catalogo v1 del API.
+ */
+
+/** El usuario ya es owner de una organizacion y el payload NO coincide. */
+export class OnboardingAlreadyCompletedError extends IdentityError {
+  constructor() {
+    super('Organization onboarding is already completed for this user');
+  }
+}
+
+/** El merchant de onboarding ya existe (payload distinto o >1 merchants). */
+export class MerchantOnboardingAlreadyCompletedError extends IdentityError {
+  constructor() {
+    super('Merchant onboarding is already completed for this organization');
+  }
+}
+
+/** El usuario del onboarding no existe o esta eliminado (sesion invalida). */
+export class OnboardingUserNotFoundError extends IdentityError {
+  constructor() {
+    super('Onboarding user does not exist or is deleted');
+  }
+}
+
+/** El usuario del onboarding no tiene el email verificado. */
+export class OnboardingEmailNotVerifiedError extends IdentityError {
+  constructor() {
+    super('Onboarding requires a verified email address');
+  }
+}
+
 /** true si err es una violacion de unicidad de Postgres (23505), opcionalmente de un constraint concreto. */
 export function isUniqueViolation(err: unknown, constraint?: string): boolean {
   const e = err as { code?: string; constraint?: string } | null;
