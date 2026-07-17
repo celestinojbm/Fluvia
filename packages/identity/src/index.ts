@@ -1,13 +1,22 @@
-export { createOrganizationWithOwner, type CreatedOrganization } from './platform.js';
+export {
+  createOrganizationWithOwner,
+  createOrganizationForUser,
+  OrganizationOnboardingService,
+  type CreatedOrganization,
+  type OnboardingOrganizationResult,
+} from './platform.js';
 export {
   IdentityService,
+  merchantCreationLockKey,
   type OrganizationDto,
   type MerchantDto,
   type MemberDto,
+  type MerchantOnboardingResult,
 } from './tenant-service.js';
 export { CustomerService, type CustomerDto } from './customers.js';
 export {
   CreateOrganizationSchema,
+  CreateOrganizationForUserSchema,
   CreateMerchantSchema,
   UpdateMerchantSchema,
   CreateCustomerSchema,
@@ -15,6 +24,7 @@ export {
   ResourceMetadataSchema,
   SLUG_RE,
   type CreateOrganizationInput,
+  type CreateOrganizationForUserInput,
   type CreateMerchantInput,
   type UpdateMerchantInput,
   type CreateCustomerInput,
@@ -28,6 +38,10 @@ export {
   OrganizationNotFoundError,
   MerchantNotFoundError,
   CustomerNotFoundError,
+  OnboardingAlreadyCompletedError,
+  MerchantOnboardingAlreadyCompletedError,
+  OnboardingUserNotFoundError,
+  OnboardingEmailNotVerifiedError,
 } from './errors.js';
 export {
   ROLES,

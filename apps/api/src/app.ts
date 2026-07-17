@@ -5,7 +5,12 @@ import type { AppConfig } from '@fluvia/config';
 import type { Pool } from '@fluvia/db';
 import type { AuthService } from '@fluvia/auth';
 import { AuditReader } from '@fluvia/audit';
-import { CustomerService, type ApiKeyService, type IdentityService } from '@fluvia/identity';
+import {
+  CustomerService,
+  OrganizationOnboardingService,
+  type ApiKeyService,
+  type IdentityService,
+} from '@fluvia/identity';
 import { IdempotencyService } from '@fluvia/idempotency';
 import { InboxIngestService } from '@fluvia/inbox';
 import { WebhookEndpointService, WebhookEventService } from '@fluvia/webhooks';
@@ -31,6 +36,7 @@ import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import type { RateLimiter } from './rate-limit.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
+import { registerOnboardingRoutes } from './routes/onboarding.js';
 import { registerPaymentIntentRoutes } from './routes/payment-intents.js';
 import { registerRefundRoutes } from './routes/refunds.js';
 import { registerPayoutRoutes } from './routes/payouts.js';
@@ -56,6 +62,12 @@ export interface BuildAppOptions {
   config: AppConfig;
   /** Pool con rol fluvia_app (RLS forzado). */
   appPool: Pool;
+  /**
+   * F6.5C2: pool ADMINISTRATIVO (plano de plataforma) usado UNICAMENTE por el
+   * onboarding de organizacion (`POST /v1/organizations`, funcion sancionada
+   * `createOrganizationForUser`). Opcional: sin el, esa ruta no se registra.
+   */
+  adminPool?: Pool;
   /** Servicio de autenticacion (pool fluvia_auth). Opcional en tests de plataforma. */
   authService?: AuthService;
   identityService?: IdentityService;
@@ -111,6 +123,7 @@ export const LOG_REDACT = {
 export function buildApp({
   config,
   appPool,
+  adminPool,
   authService,
   identityService,
   apiKeyService,
@@ -265,6 +278,15 @@ export function buildApp({
     const paymentIntentService = new PaymentIntentService(appPool);
     const ledgerService = new LedgerService(appPool);
     const postingService = new PostingService(ledgerService, appPool);
+    // F6.5C2: onboarding (organizacion pre-tenant + merchant inicial + chart).
+    // El pool de plataforma queda ENCAPSULADO en la fachada aqui, en el
+    // wiring: las rutas jamas referencian pools administrativos (gate §5).
+    registerOnboardingRoutes(app, {
+      security,
+      identityService,
+      postingService,
+      organizationOnboarding: adminPool ? new OrganizationOnboardingService(adminPool) : undefined,
+    });
     // Proveedor del sandbox: MockPaymentProvider (tokenizacion simulada). Los
     // adapters reales llegan en Fase 5 tras la matriz de jurisdiccion. F3-04:
     // timeout real + circuit breaker alrededor de CUALQUIER adapter — un solo

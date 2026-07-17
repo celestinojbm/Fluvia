@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiBase, fetchOrganizations } from './lib/api';
 import { NoOrgCta } from './lib/no-org-cta';
+import { OrgList } from './lib/org-list';
 import { MESSAGES, normalizeLocale } from './messages';
 
 export const dynamic = 'force-dynamic';
@@ -29,16 +30,7 @@ export default async function HomePage({
       {orgs.length === 0 ? (
         <NoOrgCta locale={locale} />
       ) : (
-        <ul className="org-list">
-          {orgs.map((o) => (
-            <li key={o.organization_id}>
-              <a href={`/o/${o.organization_id}`}>
-                <span className="org-name">{o.name}</span>
-                <span className="org-role">{o.role}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
+        <OrgList orgs={orgs} locale={locale} />
       )}
       <p>
         <a className="signout" href="/logout">

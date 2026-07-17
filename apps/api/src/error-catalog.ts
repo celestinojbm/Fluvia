@@ -200,6 +200,18 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This action requires approval by a second, distinct authorized user',
   },
+  // F6.5C2: onboarding (idempotencia natural — el conflicto es estable y no
+  // filtra datos de otras organizaciones).
+  onboarding_already_completed: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'Organization onboarding is already completed for this account',
+  },
+  merchant_onboarding_already_completed: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The initial merchant onboarding is already completed for this organization',
+  },
   idempotency_key_reuse: {
     status: 422,
     type: 'unprocessable_error',
@@ -275,6 +287,12 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   MerchantNameTakenError: 'merchant_name_taken',
   OrganizationSlugTakenError: 'organization_slug_taken',
   InsufficientPermissionError: 'insufficient_permissions',
+  // onboarding F6.5C2: usuario inexistente/eliminado => la sesion ya no
+  // representa a nadie (401); sin email verificado => 403 del catalogo.
+  OnboardingAlreadyCompletedError: 'onboarding_already_completed',
+  MerchantOnboardingAlreadyCompletedError: 'merchant_onboarding_already_completed',
+  OnboardingUserNotFoundError: 'invalid_session',
+  OnboardingEmailNotVerifiedError: 'email_not_verified',
   InvalidApiKeyError: 'invalid_api_key',
   InsufficientScopeError: 'insufficient_scope',
   LiveKeysDisabledError: 'live_keys_disabled',

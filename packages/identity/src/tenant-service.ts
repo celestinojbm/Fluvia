@@ -1,8 +1,9 @@
-import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { insertAuditEvent, type AuditContext } from '@fluvia/audit';
 import {
   MerchantNameTakenError,
   MerchantNotFoundError,
+  MerchantOnboardingAlreadyCompletedError,
   OrganizationNotFoundError,
   isUniqueViolation,
 } from './errors.js';
@@ -63,12 +64,75 @@ const toMerchantDto = (r: MerchantRow): MerchantDto => ({
   createdAt: r.created_at.toISOString(),
 });
 
+export interface MerchantOnboardingResult {
+  merchant: MerchantDto;
+  /** true si la operacion recupero un merchant ya creado (replay natural). */
+  replayed: boolean;
+}
+
+/**
+ * RA-F65C2-EXT-001 — namespace del advisory lock transaccional de CREACION DE
+ * MERCHANT, COMPARTIDO por TODOS los caminos runtime que insertan merchants
+ * dentro de IdentityService (`createMerchant` general Y
+ * `ensureMerchantForOnboarding`): sin un lock comun, ambas rutas podian
+ * insertar concurrentemente merchants con nombres distintos sin serializar.
+ * La clave se calcula EN PostgreSQL (`hashtextextended` ⇒ bigint, jamas
+ * convertido a Number en JavaScript), es estable, va namespaced por
+ * `tenant_id` y NO depende del nombre del merchant; organizaciones distintas
+ * no se bloquean entre si. (El valor del namespace conserva la cadena
+ * historica por estabilidad de la clave; el CONCEPTO es «merchant creation
+ * lock». El lock de fila `SELECT organizations … FOR UPDATE` es inviable bajo
+ * la RLS actual: politica SELECT-only con FORCE RLS.)
+ *
+ * Semantica LINEALIZADA que garantiza el lock compartido (orden total por
+ * tenant, no «un merchant total para siempre»):
+ *  - si `createMerchant` general gana el lock primero, el onboarding espera y
+ *    al entrar observa exactamente ese merchant: payload identico ⇒ replay
+ *    natural (chart re-ejecutable, sin duplicar merchant ni audit); payload
+ *    distinto ⇒ 409 MerchantOnboardingAlreadyCompletedError (una sola fila);
+ *  - si el onboarding gana primero, la creacion general espera y DESPUES crea
+ *    un merchant adicional (valido: queda logicamente despues del merchant
+ *    inicial; un audit por merchant; mismo nombre ⇒ MerchantNameTakenError);
+ *  - jamas existe una carrera no serializada entre los dos endpoints.
+ */
+const MERCHANT_CREATION_LOCK_NS = 'fluvia:onboarding:merchant:';
+
+/** Clave (bigint como texto) del advisory lock compartido — para los tests. */
+export async function merchantCreationLockKey(
+  client: PoolClient | Pool,
+  tenantId: string
+): Promise<string> {
+  const res = await client.query<{ key: string }>(
+    'SELECT hashtextextended($1 || $2, 0)::text AS key',
+    [MERCHANT_CREATION_LOCK_NS, tenantId]
+  );
+  return res.rows[0]!.key;
+}
+
 /**
  * PLANO DE TENANT: todas las operaciones corren con el rol fluvia_app dentro
  * de withTenantTransaction — RLS es la segunda linea de defensa en cada query.
  */
 export class IdentityService {
   constructor(private readonly appPool: Pool) {}
+
+  /**
+   * RA-F65C2-EXT-001 — primitiva client-bound del lock COMPARTIDO de creacion
+   * de merchant. TODO camino runtime de IdentityService que inserte un
+   * merchant debe llamarla INMEDIATAMENTE tras entrar en su
+   * withTenantTransaction, ANTES de contar/consultar merchants para
+   * decisiones de cardinalidad y ANTES de insertar. Transaccional: se libera
+   * automaticamente al COMMIT o ROLLBACK. Misma clave exacta para todos los
+   * caminos (namespaced por tenant, independiente del nombre; bigint
+   * calculado en PostgreSQL — jamas Number en JS). No es un mutex de proceso
+   * ni un lock global: tenants distintos no se bloquean entre si.
+   */
+  private async acquireMerchantCreationLock(c: PoolClient, tenantId: string): Promise<void> {
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1 || $2, 0))', [
+      MERCHANT_CREATION_LOCK_NS,
+      tenantId,
+    ]);
+  }
 
   async getOrganization(tenantId: string): Promise<OrganizationDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
@@ -93,6 +157,11 @@ export class IdentityService {
   ): Promise<MerchantDto> {
     const input = CreateMerchantSchema.parse(rawInput);
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      // RA-F65C2-EXT-001: mismo lock que el onboarding — serializa AMBOS
+      // caminos de creacion antes de insertar. El contrato observable no
+      // cambia: sigue creando merchants adicionales, devolviendo MerchantDto
+      // y lanzando MerchantNameTakenError ante nombre duplicado.
+      await this.acquireMerchantCreationLock(c, tenantId);
       try {
         const res = await c.query<MerchantRow>(
           `INSERT INTO merchants (tenant_id, name, country, default_currency)
@@ -118,6 +187,73 @@ export class IdentityService {
         }
         throw err;
       }
+    });
+  }
+
+  /**
+   * F6.5C2 Paso B — merchant de ONBOARDING (exactamente UNO por organizacion),
+   * en una sola transaccion tenant-scoped serializada por advisory lock.
+   * NO sustituye a `createMerchant` (merchants adicionales siguen usando la
+   * ruta general despues del onboarding); su contrato queda intacto.
+   *
+   * Bajo el lock (tomado ANTES de contar):
+   *  - cero merchants activos ⇒ crea + `merchant.created` UNA vez (misma tx);
+   *  - exactamente uno y el payload normalizado coincide ⇒ replay natural
+   *    (devuelve el existente, cero auditoria duplicada);
+   *  - exactamente uno y difiere ⇒ MerchantOnboardingAlreadyCompletedError;
+   *  - dos o mas ⇒ MerchantOnboardingAlreadyCompletedError (jamas eleccion
+   *    arbitraria).
+   *
+   * El chart (`PostingService.ensureChart`) es un paso POSTERIOR idempotente
+   * del llamador — nunca dentro de esta transaccion (sin tx distribuida).
+   */
+  async ensureMerchantForOnboarding(
+    tenantId: string,
+    rawInput: CreateMerchantInput,
+    audit: AuditContext
+  ): Promise<MerchantOnboardingResult> {
+    const input = CreateMerchantSchema.parse(rawInput);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      // Serializacion por tenant, independiente del nombre: el UNIQUE
+      // (tenant_id, name) NO basta — dos nombres distintos concurrentes
+      // insertarian dos merchants sin conflicto de indice. MISMO lock que
+      // createMerchant (RA-F65C2-EXT-001): el conteo de cardinalidad de abajo
+      // solo se ejecuta cuando ninguna creacion general esta en vuelo.
+      await this.acquireMerchantCreationLock(c, tenantId);
+
+      const existing = await c.query<MerchantRow>(
+        `SELECT id, name, country, default_currency, status, created_at
+         FROM merchants WHERE deleted_at IS NULL ORDER BY created_at`
+      );
+      if (existing.rows.length === 1) {
+        const row = existing.rows[0]!;
+        if (
+          row.name === input.name &&
+          row.country === input.country &&
+          row.default_currency === input.defaultCurrency
+        ) {
+          return { merchant: toMerchantDto(row), replayed: true };
+        }
+        throw new MerchantOnboardingAlreadyCompletedError();
+      }
+      if (existing.rows.length > 1) throw new MerchantOnboardingAlreadyCompletedError();
+
+      const res = await c.query<MerchantRow>(
+        `INSERT INTO merchants (tenant_id, name, country, default_currency)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, country, default_currency, status, created_at`,
+        [tenantId, input.name, input.country, input.defaultCurrency]
+      );
+      const dto = toMerchantDto(res.rows[0]!);
+      await insertAuditEvent(c, {
+        action: 'merchant.created',
+        tenantId,
+        context: audit,
+        resourceType: 'merchant',
+        resourceId: dto.id,
+        after: { name: dto.name, country: dto.country, defaultCurrency: dto.defaultCurrency },
+      });
+      return { merchant: dto, replayed: false };
     });
   }
 

@@ -9,6 +9,9 @@ import { RedisFixedWindowLimiter } from './rate-limit.js';
 const config = loadConfig();
 const appPool = createPool({ connectionString: config.db.app });
 const authPool = createPool({ connectionString: config.db.auth, max: 5 });
+// F6.5C2: plano de plataforma SOLO para el onboarding de organizacion
+// (createOrganizationForUser). Pool minimo — no es un canal generico de admin.
+const adminPool = createPool({ connectionString: config.db.admin, max: 2 });
 
 // TM-03 (ADR-0002): el rate limiter de /v1/auth/* usa Redis como store
 // COMPARTIDO entre instancias. La conexion se establece en background y el
@@ -24,6 +27,7 @@ const rateLimiter = new RedisFixedWindowLimiter(redis, {
 const app = buildApp({
   config,
   appPool,
+  adminPool,
   authService: new AuthService(authPool, {
     mfaEncryptionKeyHex: config.mfaSecretKey,
     retiredMfaKeyHexes: config.mfaSecretKeysRetired,
@@ -49,7 +53,7 @@ async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, 'graceful shutdown started');
   await app.close();
   redis.destroy();
-  await Promise.all([appPool.end(), authPool.end()]);
+  await Promise.all([appPool.end(), authPool.end(), adminPool.end()]);
   process.exit(0);
 }
 

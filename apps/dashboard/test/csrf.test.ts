@@ -14,6 +14,8 @@ import { POST as rotatePOST } from '../app/api/orgs/[orgId]/webhook-endpoints/[i
 import { POST as disablePOST } from '../app/api/orgs/[orgId]/webhook-endpoints/[id]/disable/route';
 import { POST as resendPOST } from '../app/api/orgs/[orgId]/webhook-events/[id]/resend/route';
 import { POST as stepUpPOST } from '../app/api/step-up/password/route';
+import { POST as onboardingOrgPOST } from '../app/api/onboarding/organization/route';
+import { POST as onboardingMerchantPOST } from '../app/api/orgs/[orgId]/onboarding/merchant/route';
 
 // La cookie de sesión EXISTE en todos los escenarios (SameSite=Lax la envía
 // también desde el sibling): lo que debe frenar el request es el guard CSRF.
@@ -329,6 +331,17 @@ describe('route handlers mutantes: enforcement antes del backend', () => {
       name: 'step-up password',
       path: `/api/step-up/password`,
       call: (req) => stepUpPOST(req),
+    },
+    // F6.5C2: los dos proxies del wizard de onboarding.
+    {
+      name: 'onboarding organization',
+      path: `/api/onboarding/organization`,
+      call: (req) => onboardingOrgPOST(req),
+    },
+    {
+      name: 'onboarding merchant',
+      path: `/api/orgs/${ORG}/onboarding/merchant`,
+      call: (req) => onboardingMerchantPOST(req, PARAMS),
     },
   ];
 

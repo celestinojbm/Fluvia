@@ -305,6 +305,45 @@ interface Messages {
   // usuario sin organización (F6.5C1)
   noOrgCtaTitle: string;
   noOrgCtaBody: string;
+  noOrgCtaAction: string;
+  // wizard de onboarding (F6.5C2)
+  onboardingTitle: string;
+  onboardingIntro: string;
+  onboardingStepOrg: string;
+  onboardingStepMerchant: string;
+  orgNameLabel: string;
+  orgSlugLabel: string;
+  orgSlugHint: string;
+  continueAction: string;
+  creatingOrgAction: string;
+  onboardingOrgRecovered: string;
+  onboardingSlugTaken: string;
+  onboardingAlreadyCompleted: string;
+  merchantNameLabel: string;
+  merchantCountryLabel: string;
+  merchantCountryHint: string;
+  merchantCurrencyLabel: string;
+  finishAction: string;
+  creatingMerchantAction: string;
+  retryAction: string;
+  merchantOnboardingAlreadyCompleted: string;
+  onboardingMerchantRetryHint: string;
+  onboardingInvalidInput: string;
+  onboardingGenericError: string;
+  onboardingDone: string;
+  goToDashboard: string;
+  // recuperación durable del onboarding (F6.5C2)
+  onboardingOrgResumed: string;
+  onboardingMerchantResumed: string;
+  onboardingNotApplicableBody: string;
+  continueOnboardingAction: string;
+  // selección explícita y lecturas fail-closed (RA-F65C2-EXT-002/003)
+  onboardingSelectBody: string;
+  onboardingSelectOption: string;
+  onboardingInvalidSelection: string;
+  onboardingStartNew: string;
+  onboardingReadError: string;
+  onboardingReadErrorHint: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -604,7 +643,52 @@ export const MESSAGES: Record<Locale, Messages> = {
     signupSuccess: 'Cuenta creada ✓ — redirigiendo a iniciar sesión…',
     noOrgCtaTitle: 'Tu cuenta está lista',
     noOrgCtaBody:
-      'Aún no perteneces a ninguna organización. El siguiente paso — crear tu organización — pertenece al onboarding sandbox, que todavía no está disponible en este panel.',
+      'Aún no perteneces a ninguna organización. El siguiente paso es crear tu organización con el onboarding sandbox.',
+    noOrgCtaAction: 'Crear tu organización →',
+    onboardingTitle: 'Onboarding — crea tu organización',
+    onboardingIntro:
+      'Este es el onboarding del sandbox: configura tu organización y tu primer comercio con dinero simulado. No se mueve dinero real ni se contacta ningún proveedor.',
+    onboardingStepOrg: 'Paso 1 de 2 — Organización',
+    onboardingStepMerchant: 'Paso 2 de 2 — Comercio',
+    orgNameLabel: 'Nombre de la organización',
+    orgSlugLabel: 'Slug (identificador en URLs)',
+    orgSlugHint: 'Minúsculas, números y guiones. Ej.: mi-empresa',
+    continueAction: 'Continuar',
+    creatingOrgAction: 'Creando organización…',
+    onboardingOrgRecovered: 'Organización recuperada ✓ — continúa con tu comercio.',
+    onboardingSlugTaken: 'Ese slug ya está en uso. Elige otro.',
+    onboardingAlreadyCompleted:
+      'Tu organización ya fue creada con otros datos: el onboarding ya está completado.',
+    merchantNameLabel: 'Nombre del comercio',
+    merchantCountryLabel: 'País (código ISO de 2 letras)',
+    merchantCountryHint: 'Ej.: CO',
+    merchantCurrencyLabel: 'Moneda predeterminada',
+    finishAction: 'Finalizar',
+    creatingMerchantAction: 'Creando comercio…',
+    retryAction: 'Reintentar',
+    merchantOnboardingAlreadyCompleted:
+      'El comercio inicial de esta organización ya fue creado con otros datos. Gestiona comercios adicionales desde el panel.',
+    onboardingMerchantRetryHint:
+      'Si el paso falla a medias, reintenta: el estado real del backend gobierna la recuperación y no se duplican datos.',
+    onboardingInvalidInput: 'Datos inválidos: revisa los campos del formulario.',
+    onboardingGenericError: 'No se pudo completar el paso. Reintenta.',
+    onboardingDone: 'Todo listo ✓ — abriendo el panel…',
+    goToDashboard: 'Ir al panel',
+    onboardingOrgResumed: 'Estado recuperado del servidor: tu organización ya existe',
+    onboardingMerchantResumed:
+      'Tu comercio ya existe: los datos se prellenaron desde el servidor. Envía para completar/reintentar la configuración contable — no se duplica nada.',
+    onboardingNotApplicableBody:
+      'Esta organización ya tiene varios comercios: el onboarding inicial ya no aplica. Gestiona tus comercios desde el panel.',
+    continueOnboardingAction: 'Configurar / continuar onboarding sandbox',
+    onboardingSelectBody:
+      'Tienes varias organizaciones como owner. Elige explícitamente con cuál continuar el onboarding:',
+    onboardingSelectOption: 'Continuar onboarding con esta organización',
+    onboardingInvalidSelection:
+      'Esa organización no está disponible para continuar el onboarding con tu sesión.',
+    onboardingStartNew: 'Iniciar un onboarding nuevo',
+    onboardingReadError: 'No pudimos leer el estado del onboarding.',
+    onboardingReadErrorHint:
+      'No se creó ni cambió nada. Reintenta: el estado se vuelve a resolver desde el backend.',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -902,7 +986,52 @@ export const MESSAGES: Record<Locale, Messages> = {
     signupSuccess: 'Account created ✓ — redirecting to sign in…',
     noOrgCtaTitle: 'Your account is ready',
     noOrgCtaBody:
-      'You do not belong to any organization yet. The next step — creating your organization — belongs to the sandbox onboarding, which is not available in this panel yet.',
+      'You do not belong to any organization yet. The next step is creating your organization with the sandbox onboarding.',
+    noOrgCtaAction: 'Create your organization →',
+    onboardingTitle: 'Onboarding — create your organization',
+    onboardingIntro:
+      'This is the sandbox onboarding: set up your organization and your first merchant with simulated money. No real money moves and no provider is contacted.',
+    onboardingStepOrg: 'Step 1 of 2 — Organization',
+    onboardingStepMerchant: 'Step 2 of 2 — Merchant',
+    orgNameLabel: 'Organization name',
+    orgSlugLabel: 'Slug (URL identifier)',
+    orgSlugHint: 'Lowercase letters, digits and hyphens. E.g. my-company',
+    continueAction: 'Continue',
+    creatingOrgAction: 'Creating organization…',
+    onboardingOrgRecovered: 'Organization recovered ✓ — continue with your merchant.',
+    onboardingSlugTaken: 'That slug is already in use. Pick another one.',
+    onboardingAlreadyCompleted:
+      'Your organization was already created with different data: onboarding is already completed.',
+    merchantNameLabel: 'Merchant name',
+    merchantCountryLabel: 'Country (2-letter ISO code)',
+    merchantCountryHint: 'E.g. CO',
+    merchantCurrencyLabel: 'Default currency',
+    finishAction: 'Finish',
+    creatingMerchantAction: 'Creating merchant…',
+    retryAction: 'Retry',
+    merchantOnboardingAlreadyCompleted:
+      'The initial merchant for this organization was already created with different data. Manage additional merchants from the dashboard.',
+    onboardingMerchantRetryHint:
+      'If the step fails halfway, retry: the real backend state governs recovery and no data is duplicated.',
+    onboardingInvalidInput: 'Invalid input: review the form fields.',
+    onboardingGenericError: 'Could not complete the step. Retry.',
+    onboardingDone: 'All set ✓ — opening the dashboard…',
+    goToDashboard: 'Go to dashboard',
+    onboardingOrgResumed: 'State recovered from the server: your organization already exists',
+    onboardingMerchantResumed:
+      'Your merchant already exists: the fields were prefilled from the server. Submit to complete/retry the accounting setup — nothing is duplicated.',
+    onboardingNotApplicableBody:
+      'This organization already has several merchants: the initial onboarding no longer applies. Manage your merchants from the dashboard.',
+    continueOnboardingAction: 'Set up / continue sandbox onboarding',
+    onboardingSelectBody:
+      'You own several organizations. Explicitly choose which one to continue onboarding with:',
+    onboardingSelectOption: 'Continue onboarding with this organization',
+    onboardingInvalidSelection:
+      'That organization is not available to continue onboarding with your session.',
+    onboardingStartNew: 'Start a new onboarding',
+    onboardingReadError: 'We could not read the onboarding state.',
+    onboardingReadErrorHint:
+      'Nothing was created or changed. Retry: the state is re-resolved from the backend.',
   },
 };
 
