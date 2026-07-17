@@ -332,6 +332,11 @@ interface Messages {
   onboardingGenericError: string;
   onboardingDone: string;
   goToDashboard: string;
+  // recuperación durable del onboarding (F6.5C2)
+  onboardingOrgResumed: string;
+  onboardingMerchantResumed: string;
+  onboardingNotApplicableBody: string;
+  continueOnboardingAction: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -662,6 +667,12 @@ export const MESSAGES: Record<Locale, Messages> = {
     onboardingGenericError: 'No se pudo completar el paso. Reintenta.',
     onboardingDone: 'Todo listo ✓ — abriendo el panel…',
     goToDashboard: 'Ir al panel',
+    onboardingOrgResumed: 'Estado recuperado del servidor: tu organización ya existe',
+    onboardingMerchantResumed:
+      'Tu comercio ya existe: los datos se prellenaron desde el servidor. Envía para completar/reintentar la configuración contable — no se duplica nada.',
+    onboardingNotApplicableBody:
+      'Esta organización ya tiene varios comercios: el onboarding inicial ya no aplica. Gestiona tus comercios desde el panel.',
+    continueOnboardingAction: 'Configurar / continuar onboarding sandbox',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -990,6 +1001,12 @@ export const MESSAGES: Record<Locale, Messages> = {
     onboardingGenericError: 'Could not complete the step. Retry.',
     onboardingDone: 'All set ✓ — opening the dashboard…',
     goToDashboard: 'Go to dashboard',
+    onboardingOrgResumed: 'State recovered from the server: your organization already exists',
+    onboardingMerchantResumed:
+      'Your merchant already exists: the fields were prefilled from the server. Submit to complete/retry the accounting setup — nothing is duplicated.',
+    onboardingNotApplicableBody:
+      'This organization already has several merchants: the initial onboarding no longer applies. Manage your merchants from the dashboard.',
+    continueOnboardingAction: 'Set up / continue sandbox onboarding',
   },
 };
 

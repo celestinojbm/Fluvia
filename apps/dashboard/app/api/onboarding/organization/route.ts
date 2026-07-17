@@ -8,16 +8,38 @@ import { assertTrustedMutationRequest } from '../../../lib/csrf';
  * server-side hacia `POST /v1/organizations` (plano de sesion). Reglas:
  *
  *  - El guard CSRF (`assertTrustedMutationRequest`) corre PRIMERO: antes de
- *    leer body o cookies, construir el Bearer o invocar fetch. Un rechazo
- *    (403 estable) jamas llega al backend.
+ *    leer body o cookies, construir headers o invocar fetch. Un rechazo (403
+ *    estable) jamas llega al backend.
  *  - La cookie httpOnly `fluvia_session` se convierte en Bearer SOLO tras el
  *    guard; el token jamas llega al navegador.
- *  - La respuesta se RE-EMITE con campos whitelisted (jamas passthrough) y
- *    los redirects del backend NO se siguen (`redirect: 'manual'` ⇒ error).
- *  - Errores con `code` estable del catalogo, sin stack/SQL/body interno; el
- *    payload no se loguea. Host/X-Forwarded-Host jamas son fuente de confianza
- *    (la politica de origin vive en el guard).
+ *  - Contrato de exito ESTRICTO (jamas `res.ok`): SOLO status exacto 201 con
+ *    `replayed === false` (creacion) o status exacto 200 con
+ *    `replayed === true` (recuperacion natural), con body completo y valido.
+ *    Cualquier otro 2xx (202/204/...), un redirect 3xx, un body
+ *    vacio/malformado, `replayed` ausente/no-boolean/incoherente con el
+ *    status, un role distinto de `owner` o un campo contractual invalido
+ *    responde 502 `internal_error`.
+ *  - La respuesta de exito se RE-EMITE con campos whitelisted (jamas
+ *    passthrough). Los errores solo propagan codes de una ALLOWLIST cerrada;
+ *    un code desconocido se convierte en `internal_error` sin reflejarse.
+ *  - Sin stack/SQL/body interno; el payload no se loguea; Host/
+ *    X-Forwarded-Host jamas son fuente de confianza (la politica de origin
+ *    vive en el guard).
  */
+
+// Allowlist cerrada de codes de error que este proxy puede reflejar.
+const ORGANIZATION_ERROR_CODES = new Set([
+  'validation_error',
+  'invalid_session',
+  'email_not_verified',
+  'organization_slug_taken',
+  'onboarding_already_completed',
+  'internal_error',
+]);
+
+const badGateway = () =>
+  NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+
 export async function POST(req: Request) {
   const rejected = assertTrustedMutationRequest(req);
   if (rejected) return rejected;
@@ -45,42 +67,54 @@ export async function POST(req: Request) {
       redirect: 'manual',
     });
   } catch {
-    return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+    return badGateway();
   }
 
-  if (res.status >= 300 && res.status < 400) {
-    // Un redirect del backend no es un contrato valido de este proxy.
-    return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
-  }
-
-  if (res.ok) {
+  // Exito: SOLO 201 (creacion) o 200 (recuperacion natural). Un redirect 3xx
+  // o cualquier otro 2xx no es un contrato valido de este proxy.
+  if (res.status === 201 || res.status === 200) {
     const body = (await res.json().catch(() => null)) as {
       organization?: { id?: unknown; name?: unknown; slug?: unknown };
       membership?: { role?: unknown };
       replayed?: unknown;
     } | null;
     const org = body?.organization;
+    const replayed = body?.replayed;
     if (
       !org ||
       typeof org.id !== 'string' ||
+      org.id === '' ||
       typeof org.name !== 'string' ||
       typeof org.slug !== 'string' ||
-      body?.membership?.role !== 'owner'
+      body?.membership?.role !== 'owner' ||
+      typeof replayed !== 'boolean' ||
+      // Coherencia status/replayed: 201 = creacion nueva; 200 = replay.
+      (res.status === 201 && replayed !== false) ||
+      (res.status === 200 && replayed !== true)
     ) {
-      return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+      return badGateway();
     }
     // Whitelist estricta: solo los campos del contrato del wizard.
     return NextResponse.json(
       {
         organization: { id: org.id, name: org.name, slug: org.slug },
         membership: { role: 'owner' },
-        replayed: body.replayed === true,
+        replayed,
       },
-      { status: res.status === 201 ? 201 : 200 }
+      { status: res.status }
     );
   }
 
+  if (res.status < 400) {
+    // 2xx no contractual (202/204/...) o redirect 3xx no seguido.
+    return badGateway();
+  }
+
   const body = (await res.json().catch(() => ({}))) as { error?: { code?: unknown } };
-  const code = typeof body.error?.code === 'string' ? body.error.code : 'internal_error';
+  const code = body.error?.code;
+  if (typeof code !== 'string' || !ORGANIZATION_ERROR_CODES.has(code)) {
+    // Un code desconocido jamas se refleja al navegador.
+    return badGateway();
+  }
   return NextResponse.json({ ok: false, error: { code } }, { status: res.status });
 }

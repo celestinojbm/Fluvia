@@ -7,10 +7,29 @@ import { assertTrustedMutationRequest } from '../../../../../lib/csrf';
  * Onboarding Paso B (F6.5C2): merchant inicial + chart. Proxy server-side
  * hacia `POST /v1/organizations/:orgId/onboarding/merchant` (plano de sesion;
  * RBAC/RLS los aplica el API). Mismas reglas que el proxy de organizacion:
- * guard CSRF PRIMERO (antes de body/cookies/Bearer/fetch), respuesta re-emitida
- * por whitelist, sin redirects, errores con `code` estable sin detalle interno,
- * payload jamas logueado.
+ * guard CSRF PRIMERO (antes de body/cookies/Bearer/fetch) y contrato de exito
+ * ESTRICTO (jamas `res.ok`): SOLO status exacto 201 con `replayed === false`
+ * (creacion) o status exacto 200 con `replayed === true` (recuperacion), y
+ * SIEMPRE `chartReady === true`; cualquier otro 2xx, redirect 3xx, body
+ * incompleto/malformado o incoherencia status/replayed responde 502
+ * `internal_error`. Exito re-emitido por whitelist; errores solo desde una
+ * ALLOWLIST cerrada (code desconocido => `internal_error`, jamas reflejado);
+ * sin stack/SQL/body interno; payload jamas logueado.
  */
+
+// Allowlist cerrada de codes de error que este proxy puede reflejar.
+const MERCHANT_ERROR_CODES = new Set([
+  'validation_error',
+  'invalid_session',
+  'insufficient_permissions',
+  'not_found',
+  'merchant_onboarding_already_completed',
+  'internal_error',
+]);
+
+const badGateway = () =>
+  NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+
 export async function POST(req: Request, ctx: { params: Promise<{ orgId: string }> }) {
   const rejected = assertTrustedMutationRequest(req);
   if (rejected) return rejected;
@@ -51,29 +70,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
       }
     );
   } catch {
-    return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+    return badGateway();
   }
 
-  if (res.status >= 300 && res.status < 400) {
-    return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
-  }
-
-  if (res.ok) {
+  // Exito: SOLO 201 (creacion) o 200 (recuperacion natural), chart listo.
+  if (res.status === 201 || res.status === 200) {
     const body = (await res.json().catch(() => null)) as {
       merchant?: { id?: unknown; name?: unknown; country?: unknown; defaultCurrency?: unknown };
       chartReady?: unknown;
       replayed?: unknown;
     } | null;
     const m = body?.merchant;
+    const replayed = body?.replayed;
     if (
       !m ||
       typeof m.id !== 'string' ||
+      m.id === '' ||
       typeof m.name !== 'string' ||
       typeof m.country !== 'string' ||
       typeof m.defaultCurrency !== 'string' ||
-      body?.chartReady !== true
+      body?.chartReady !== true ||
+      typeof replayed !== 'boolean' ||
+      // Coherencia status/replayed: 201 = creacion nueva; 200 = replay.
+      (res.status === 201 && replayed !== false) ||
+      (res.status === 200 && replayed !== true)
     ) {
-      return NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
+      return badGateway();
     }
     return NextResponse.json(
       {
@@ -84,13 +106,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
           defaultCurrency: m.defaultCurrency,
         },
         chartReady: true,
-        replayed: body.replayed === true,
+        replayed,
       },
-      { status: res.status === 201 ? 201 : 200 }
+      { status: res.status }
     );
   }
 
+  if (res.status < 400) {
+    // 2xx no contractual (202/204/...) o redirect 3xx no seguido.
+    return badGateway();
+  }
+
   const body = (await res.json().catch(() => ({}))) as { error?: { code?: unknown } };
-  const code = typeof body.error?.code === 'string' ? body.error.code : 'internal_error';
+  const code = body.error?.code;
+  if (typeof code !== 'string' || !MERCHANT_ERROR_CODES.has(code)) {
+    // Un code desconocido jamas se refleja al navegador.
+    return badGateway();
+  }
   return NextResponse.json({ ok: false, error: { code } }, { status: res.status });
 }

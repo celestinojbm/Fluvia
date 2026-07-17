@@ -3,16 +3,24 @@
 import { useRef, useState } from 'react';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../lib/csrf-header';
 import { MESSAGES, type Locale } from '../messages';
+import type { InitialMerchant, InitialOrganization } from './resolve';
 
 /**
  * Wizard de onboarding sandbox (F6.5C2). Dos pasos contra los proxies BFF
  * (`/api/onboarding/organization` y `/api/orgs/:orgId/onboarding/merchant`),
  * cada uno con guard CSRF server-side y header `X-Fluvia-CSRF` del cliente.
  *
- * El cliente JAMAS crea organizacion/merchant por si mismo ni guarda secretos:
- * el estado real del backend gobierna la recuperacion — un reintento tras un
- * fallo parcial (p. ej. chart) recupera lo ya creado sin duplicar nada
- * (replay natural). Sin auto-login, sin emails reales, sin provider real.
+ * Recuperacion DURABLE: el paso inicial lo gobierna el estado enviado por el
+ * SERVIDOR (props `initialOrganization`/`initialMerchant`/
+ * `onboardingNotApplicable`, resueltas en page.tsx contra el backend) — un
+ * reload tras crear la organizacion, o tras merchant-creado/chart-fallido,
+ * retoma el paso correcto con los datos reales prellenados, sin recrear
+ * filas, sin exigir recordar name/slug y sin localStorage/sessionStorage.
+ *
+ * El cliente JAMAS crea organizacion/merchant por si mismo ni guarda
+ * secretos: un reintento llama al endpoint idempotente y el backend recupera
+ * por replay natural y re-ejecuta ensureChart. Sin auto-login, sin emails
+ * reales, sin provider real.
  */
 
 // Espejo de CURRENCY_CODES de @fluvia/money (el dashboard no depende del
@@ -32,27 +40,36 @@ type WizardError =
 export function OnboardingWizard({
   locale,
   navigate,
+  initialOrganization = null,
+  initialMerchant = null,
+  onboardingNotApplicable = false,
 }: {
   locale: Locale;
   /** Inyectable para tests; default: navegacion real del navegador. */
   navigate?: (url: string) => void;
+  /** Organizacion owner ya existente, validada server-side contra la sesion. */
+  initialOrganization?: InitialOrganization | null;
+  /** Merchant unico ya existente (replay + ensureChart al reenviar). */
+  initialMerchant?: InitialMerchant | null;
+  /** 2+ merchants: el onboarding inicial ya no aplica (sin seleccion). */
+  onboardingNotApplicable?: boolean;
 }) {
   const t = MESSAGES[locale];
   const go = navigate ?? ((url: string) => window.location.assign(url));
   const dashboardHref = locale === 'en' ? '/?lang=en' : '/';
 
-  const [step, setStep] = useState<Step>('org');
+  const [step, setStep] = useState<Step>(initialOrganization ? 'merchant' : 'org');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<WizardError>(null);
-  const [orgRecovered, setOrgRecovered] = useState(false);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgRecovered, setOrgRecovered] = useState(initialOrganization !== null);
+  const [orgId, setOrgId] = useState<string | null>(initialOrganization?.id ?? null);
   const [merchantFailedOnce, setMerchantFailedOnce] = useState(false);
 
   const [orgName, setOrgName] = useState('');
   const [slug, setSlug] = useState('');
-  const [merchantName, setMerchantName] = useState('');
-  const [country, setCountry] = useState('CO');
-  const [currency, setCurrency] = useState('COP');
+  const [merchantName, setMerchantName] = useState(initialMerchant?.name ?? '');
+  const [country, setCountry] = useState(initialMerchant?.country ?? 'CO');
+  const [currency, setCurrency] = useState(initialMerchant?.defaultCurrency ?? 'COP');
 
   const errorRef = useRef<HTMLParagraphElement>(null);
 
@@ -147,6 +164,21 @@ export function OnboardingWizard({
             ? t.onboardingInvalidInput
             : t.onboardingGenericError;
 
+  // 2+ merchants: el onboarding inicial ya no aplica — sin seleccion
+  // arbitraria, sin formulario; solo la explicacion y el enlace al panel.
+  if (onboardingNotApplicable) {
+    return (
+      <main className="auth" aria-labelledby="onboarding-title">
+        <h1 id="onboarding-title">{t.onboardingTitle}</h1>
+        <p className="notice">{t.onboardingNotApplicableBody}</p>
+        <p className="notice">{t.sandboxNotice}</p>
+        <p>
+          <a href={dashboardHref}>{t.goToDashboard}</a>
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="auth" aria-labelledby="onboarding-title">
       <h1 id="onboarding-title">{t.onboardingTitle}</h1>
@@ -206,7 +238,14 @@ export function OnboardingWizard({
           <h2 id="onboarding-step-merchant">{t.onboardingStepMerchant}</h2>
           {orgRecovered && (
             <p className="notice" role="status">
-              {t.onboardingOrgRecovered}
+              {initialOrganization
+                ? `${t.onboardingOrgResumed} (${initialOrganization.name})`
+                : t.onboardingOrgRecovered}
+            </p>
+          )}
+          {initialMerchant !== null && (
+            <p className="notice" role="status">
+              {t.onboardingMerchantResumed}
             </p>
           )}
           <label htmlFor="merchant-name">{t.merchantNameLabel}</label>

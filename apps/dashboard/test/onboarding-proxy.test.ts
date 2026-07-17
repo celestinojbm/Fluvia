@@ -7,7 +7,10 @@ import { POST as merchantPOST } from '../app/api/orgs/[orgId]/onboarding/merchan
  * F6.5C2 — proxies BFF del wizard de onboarding. Matriz CSRF completa por
  * proxy (el guard corre ANTES de leer body/cookie/Bearer/fetch), respuesta
  * re-emitida por WHITELIST (jamas passthrough), redirects del backend
- * rechazados y errores con `code` estable sin detalle interno.
+ * rechazados, contrato de exito ESTRICTO por status exacto (jamas `res.ok`:
+ * 201 solo con `replayed:false`, 200 solo con `replayed:true`; cualquier
+ * otro 2xx o incoherencia => 502) y errores restringidos a una ALLOWLIST
+ * cerrada (code desconocido => `internal_error`, jamas reflejado).
  */
 
 // Cookie configurable por test: los escenarios sin sesion la anulan.
@@ -383,5 +386,252 @@ describe('proxy de merchant: whitelist y errores estables', () => {
     );
     expect(malformed.status).toBe(502);
     expect((await malformed.json()).error.code).toBe('internal_error');
+  });
+});
+
+// ── Contrato HTTP ESTRICTO (jamas res.ok): status exacto + coherencia ────────
+
+/** Stub de fetch que devuelve una unica respuesta fija. */
+function stubBackend(status: number, body?: unknown, rawBody?: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          rawBody !== undefined ? rawBody : body === undefined ? null : JSON.stringify(body),
+          { status }
+        )
+      )
+    )
+  );
+}
+
+const GOOD_ORG_BODY = {
+  organization: { id: 'org-9', name: 'Mi Empresa', slug: 'mi-empresa' },
+  membership: { role: 'owner' },
+};
+const GOOD_MERCHANT_BODY = {
+  merchant: { id: 'm-1', name: 'Tienda', country: 'CO', defaultCurrency: 'COP' },
+  chartReady: true,
+};
+
+async function callOrg(): Promise<Response> {
+  return orgPOST(
+    requestWith('/api/onboarding/organization', legitHeaders(), {
+      organizationName: 'Mi Empresa',
+      slug: 'mi-empresa',
+    })
+  );
+}
+
+async function callMerchant(): Promise<Response> {
+  return merchantPOST(
+    requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), {
+      name: 'Tienda',
+      country: 'CO',
+      defaultCurrency: 'COP',
+    }),
+    PARAMS
+  );
+}
+
+async function expectBadGateway(res: Response) {
+  expect(res.status).toBe(502);
+  expect((await res.json()).error.code).toBe('internal_error');
+}
+
+describe('proxy de organizacion: contrato de exito ESTRICTO por status exacto', () => {
+  it('201 + replayed:false valido => 201; 200 + replayed:true valido => 200', async () => {
+    stubBackend(201, { ...GOOD_ORG_BODY, replayed: false });
+    const created = await callOrg();
+    expect(created.status).toBe(201);
+    expect((await created.json()).replayed).toBe(false);
+
+    stubBackend(200, { ...GOOD_ORG_BODY, replayed: true });
+    const replayed = await callOrg();
+    expect(replayed.status).toBe(200);
+    expect((await replayed.json()).replayed).toBe(true);
+  });
+
+  it('otros 2xx (202, 204, 206) => 502 internal_error', async () => {
+    for (const status of [202, 206]) {
+      stubBackend(status, { ...GOOD_ORG_BODY, replayed: false });
+      await expectBadGateway(await callOrg());
+    }
+    stubBackend(204); // sin body
+    await expectBadGateway(await callOrg());
+  });
+
+  it('incoherencia status/replayed: 201 con replayed:true y 200 con replayed:false => 502', async () => {
+    stubBackend(201, { ...GOOD_ORG_BODY, replayed: true });
+    await expectBadGateway(await callOrg());
+    stubBackend(200, { ...GOOD_ORG_BODY, replayed: false });
+    await expectBadGateway(await callOrg());
+  });
+
+  it('replayed ausente o no-boolean => 502', async () => {
+    stubBackend(201, GOOD_ORG_BODY); // sin replayed
+    await expectBadGateway(await callOrg());
+    stubBackend(201, { ...GOOD_ORG_BODY, replayed: 'false' });
+    await expectBadGateway(await callOrg());
+  });
+
+  it('body vacio o malformado => 502', async () => {
+    stubBackend(201, undefined, ''); // vacio
+    await expectBadGateway(await callOrg());
+    stubBackend(201, undefined, 'not-json{'); // malformado
+    await expectBadGateway(await callOrg());
+    stubBackend(201, { replayed: false }); // sin organization
+    await expectBadGateway(await callOrg());
+  });
+
+  it('campos contractuales invalidos: id vacio, name/slug no-string, role distinto de owner => 502', async () => {
+    stubBackend(201, {
+      organization: { id: '', name: 'X', slug: 'x' },
+      membership: { role: 'owner' },
+      replayed: false,
+    });
+    await expectBadGateway(await callOrg());
+    stubBackend(201, {
+      organization: { id: 'org-9', name: 42, slug: 'x' },
+      membership: { role: 'owner' },
+      replayed: false,
+    });
+    await expectBadGateway(await callOrg());
+    stubBackend(201, {
+      organization: { id: 'org-9', name: 'X', slug: null },
+      membership: { role: 'owner' },
+      replayed: false,
+    });
+    await expectBadGateway(await callOrg());
+    stubBackend(201, { ...GOOD_ORG_BODY, membership: { role: 'admin' }, replayed: false });
+    await expectBadGateway(await callOrg());
+    stubBackend(201, { organization: GOOD_ORG_BODY.organization, replayed: false }); // sin membership
+    await expectBadGateway(await callOrg());
+  });
+
+  it('allowlist de errores: los seis codes contractuales pasan con su status', async () => {
+    for (const [code, status] of [
+      ['validation_error', 400],
+      ['invalid_session', 401],
+      ['email_not_verified', 403],
+      ['organization_slug_taken', 409],
+      ['onboarding_already_completed', 409],
+      ['internal_error', 500],
+    ] as const) {
+      stubBackend(status, { error: { code } });
+      const res = await callOrg();
+      expect(res.status).toBe(status);
+      expect((await res.json()).error.code).toBe(code);
+    }
+  });
+
+  it('un code DESCONOCIDO jamas se refleja: se convierte en 502 internal_error', async () => {
+    for (const code of ['rate_limited', 'merchant_onboarding_already_completed', 'x'.repeat(80)]) {
+      stubBackend(400, { error: { code } });
+      const res = await callOrg();
+      expect(res.status).toBe(502);
+      const text = await res.text();
+      expect(JSON.parse(text).error.code).toBe('internal_error');
+      expect(text).not.toContain(code);
+    }
+    // Error sin code / body de error malformado => tambien 502.
+    stubBackend(500, {});
+    await expectBadGateway(await callOrg());
+    stubBackend(500, undefined, 'not-json{');
+    await expectBadGateway(await callOrg());
+  });
+});
+
+describe('proxy de merchant: contrato de exito ESTRICTO por status exacto', () => {
+  it('201 + replayed:false + chartReady:true => 201; 200 + replayed:true + chartReady:true => 200', async () => {
+    stubBackend(201, { ...GOOD_MERCHANT_BODY, replayed: false });
+    const created = await callMerchant();
+    expect(created.status).toBe(201);
+    expect((await created.json()).replayed).toBe(false);
+
+    stubBackend(200, { ...GOOD_MERCHANT_BODY, replayed: true });
+    const replayed = await callMerchant();
+    expect(replayed.status).toBe(200);
+    expect((await replayed.json()).replayed).toBe(true);
+  });
+
+  it('otros 2xx (202, 204, 206) => 502 internal_error', async () => {
+    for (const status of [202, 206]) {
+      stubBackend(status, { ...GOOD_MERCHANT_BODY, replayed: false });
+      await expectBadGateway(await callMerchant());
+    }
+    stubBackend(204);
+    await expectBadGateway(await callMerchant());
+  });
+
+  it('incoherencia status/replayed => 502', async () => {
+    stubBackend(201, { ...GOOD_MERCHANT_BODY, replayed: true });
+    await expectBadGateway(await callMerchant());
+    stubBackend(200, { ...GOOD_MERCHANT_BODY, replayed: false });
+    await expectBadGateway(await callMerchant());
+  });
+
+  it('replayed ausente/no-boolean y chartReady distinto de true => 502', async () => {
+    stubBackend(201, GOOD_MERCHANT_BODY); // sin replayed
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, { ...GOOD_MERCHANT_BODY, replayed: 'false' });
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, { ...GOOD_MERCHANT_BODY, chartReady: false, replayed: false });
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, {
+      merchant: GOOD_MERCHANT_BODY.merchant,
+      replayed: false, // sin chartReady
+    });
+    await expectBadGateway(await callMerchant());
+  });
+
+  it('body vacio/malformado/incompleto => 502', async () => {
+    stubBackend(201, undefined, '');
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, undefined, 'not-json{');
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, { chartReady: true, replayed: false }); // sin merchant
+    await expectBadGateway(await callMerchant());
+    stubBackend(201, {
+      merchant: { id: '', name: 'T', country: 'CO', defaultCurrency: 'COP' },
+      chartReady: true,
+      replayed: false,
+    });
+    await expectBadGateway(await callMerchant());
+  });
+
+  it('un redirect del backend NO se sigue: 502 estable', async () => {
+    stubBackend(307);
+    await expectBadGateway(await callMerchant());
+  });
+
+  it('allowlist de errores: los seis codes contractuales pasan con su status', async () => {
+    for (const [code, status] of [
+      ['validation_error', 400],
+      ['invalid_session', 401],
+      ['insufficient_permissions', 403],
+      ['not_found', 404],
+      ['merchant_onboarding_already_completed', 409],
+      ['internal_error', 500],
+    ] as const) {
+      stubBackend(status, { error: { code } });
+      const res = await callMerchant();
+      expect(res.status).toBe(status);
+      expect((await res.json()).error.code).toBe(code);
+    }
+  });
+
+  it('un code DESCONOCIDO jamas se refleja: se convierte en 502 internal_error', async () => {
+    for (const code of ['rate_limited', 'organization_slug_taken', 'debug_leak_code']) {
+      stubBackend(409, { error: { code } });
+      const res = await callMerchant();
+      expect(res.status).toBe(502);
+      const text = await res.text();
+      expect(JSON.parse(text).error.code).toBe('internal_error');
+      expect(text).not.toContain(code);
+    }
+    stubBackend(500, {});
+    await expectBadGateway(await callMerchant());
   });
 });
