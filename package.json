@@ -17,6 +17,7 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,yml,yaml}\"",
     "seed": "pnpm --filter @fluvia/seeds run seed",
     "showroom:seed": "pnpm --filter @fluvia/seeds run showroom:seed",
+    "demo:reset": "pnpm --filter @fluvia/seeds run demo:reset",
     "licenses:check": "node scripts/check-licenses.mjs",
     "licenses:report": "node scripts/check-licenses.mjs --report"
   },

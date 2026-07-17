@@ -13,7 +13,8 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx src/run.ts",
-    "showroom:seed": "tsx src/run-showroom.ts"
+    "showroom:seed": "tsx src/run-showroom.ts",
+    "demo:reset": "tsx src/run-reset.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",
