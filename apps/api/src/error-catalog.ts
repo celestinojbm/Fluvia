@@ -263,6 +263,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   AccountLockedError: 'account_locked',
   InvalidSessionError: 'invalid_session',
   InvalidVerificationTokenError: 'invalid_verification_token',
+  // F6.5C1 (B6): capacidad sandbox deshabilitada => fail-closed 404 (nunca 500,
+  // nunca fallback a register). Indistinguible de una ruta inexistente.
+  SandboxRegistrationDisabledError: 'not_found',
   // identidad / RBAC / API keys (F1-03, F1-04c). Los not-found cross-tenant
   // son indistinguibles de los inexistentes por diseño (anti-enumeracion).
   OrganizationNotFoundError: 'not_found',

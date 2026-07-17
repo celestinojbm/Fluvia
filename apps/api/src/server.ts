@@ -28,6 +28,9 @@ const app = buildApp({
     mfaEncryptionKeyHex: config.mfaSecretKey,
     retiredMfaKeyHexes: config.mfaSecretKeysRetired,
     sessionIdleTimeoutMs: config.sessionIdleTimeoutMs,
+    // F6.5C1 (B6): capacidad de registro sandbox atomico — SOLO local/test,
+    // misma fuente normativa de entorno que el gating de la ruta en app.ts.
+    allowSandboxRegistration: config.env === 'local' || config.env === 'test',
   }),
   identityService: new IdentityService(appPool),
   apiKeyService: new ApiKeyService(appPool, { hmacSecretHex: config.apiKeyHmacSecret }),

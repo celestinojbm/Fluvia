@@ -78,6 +78,18 @@ export class StepUpRequiredError extends AuthError {
   }
 }
 
+/**
+ * F6.5C1 (B6): el registro sandbox atomico esta deshabilitado en este proceso.
+ * Fail-closed: la capacidad SOLO existe cuando el API la activa explicitamente
+ * (entornos local/test); en cualquier otro caso el metodo rechaza sin tocar la
+ * base de datos y el API lo mapea a 404 (jamas degrada a `register` normal).
+ */
+export class SandboxRegistrationDisabledError extends AuthError {
+  constructor() {
+    super('Sandbox registration is not available in this environment');
+  }
+}
+
 /** F1-04b: limite de tasa alcanzado (por IP/email/ruta). */
 export class RateLimitedError extends AuthError {
   constructor(readonly retryAfterSeconds: number) {

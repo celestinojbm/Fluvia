@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { apiBase, fetchOrganizations } from './lib/api';
+import { NoOrgCta } from './lib/no-org-cta';
 import { MESSAGES, normalizeLocale } from './messages';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,7 @@ export default async function HomePage({
     <main className="picker" aria-labelledby="orgs-title">
       <h1 id="orgs-title">{t.orgsTitle}</h1>
       {orgs.length === 0 ? (
-        <p className="empty">{t.noOrgs}</p>
+        <NoOrgCta locale={locale} />
       ) : (
         <ul className="org-list">
           {orgs.map((o) => (

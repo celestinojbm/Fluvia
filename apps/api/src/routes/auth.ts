@@ -37,6 +37,14 @@ export interface AuthRoutesOptions {
   authService: AuthService;
   /** Solo local/test: expone el token de verificacion en la respuesta de registro. */
   exposeVerificationToken: boolean;
+  /**
+   * F6.5C1 (B6): registra `POST /v1/auth/register-sandbox` (registro +
+   * verificacion atomicos). SOLO local/test: fuera, la ruta NO se registra
+   * (404 del not-found handler) y jamas degrada a `register` normal. Ademas
+   * el propio AuthService rechaza si su capacidad no fue habilitada
+   * (defensa en profundidad, tambien 404).
+   */
+  enableSandboxRegistration: boolean;
   rateLimits?: AuthRateLimits;
   /** TM-03: backend del limiter. Default: ventana fija in-memory (mono-instancia);
    *  los despliegues compartidos inyectan `RedisFixedWindowLimiter`. */
@@ -55,7 +63,13 @@ function meta(req: FastifyRequest) {
 
 export function registerAuthRoutes(
   app: FastifyInstance,
-  { authService, exposeVerificationToken, rateLimits, limiter: injected }: AuthRoutesOptions
+  {
+    authService,
+    exposeVerificationToken,
+    enableSandboxRegistration,
+    rateLimits,
+    limiter: injected,
+  }: AuthRoutesOptions
 ): void {
   const limits = rateLimits ?? DEFAULT_AUTH_RATE_LIMITS;
   const limiter = injected ?? new FixedWindowLimiter();
@@ -83,6 +97,28 @@ export function registerAuthRoutes(
     await authService.verifyEmail(body);
     return { verified: true };
   });
+
+  // F6.5C1 (B6): registro sandbox ATOMICO (usuario + token + consumo + sello +
+  // ambos audits en UNA transaccion del AuthService). La ruta SOLO existe en
+  // local/test; comparte la MISMA ventana de rate limit por IP que `register`
+  // (misma clave `register:ip`: ambos endpoints consumen el mismo cupo 5/60s).
+  // La respuesta es minima: sin token de verificacion (se consumio dentro de
+  // la transaccion), sin session token, sin cookie — el flujo sigue en /login.
+  if (enableSandboxRegistration) {
+    app.post(
+      '/v1/auth/register-sandbox',
+      {
+        preHandler: rateLimit(limiter, [
+          { keyOf: ipKey('register:ip'), rule: limits.registerPerIp },
+        ]),
+      },
+      async (req, reply) => {
+        const body = RegisterSchema.parse(req.body);
+        await authService.registerAndVerifySandbox(body, meta(req));
+        return reply.code(201).send({ registered: true, email_verified: true });
+      }
+    );
+  }
 
   app.post(
     '/v1/auth/login',
