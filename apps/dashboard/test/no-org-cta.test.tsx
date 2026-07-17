@@ -4,9 +4,8 @@ import axe from 'axe-core';
 import { NoOrgCta } from '../app/lib/no-org-cta';
 
 /**
- * F6.5C1 — estado VALIDO de usuario sin organizacion: CTA informativa hacia el
- * futuro onboarding sandbox (F6.5C2, no implementado). Sin enlaces (no se deja
- * un enlace roto) y sin creacion automatica de datos.
+ * F6.5C1/C2 — estado VALIDO de usuario sin organizacion: CTA con enlace al
+ * wizard de onboarding sandbox (`/onboarding`, implementado en F6.5C2).
  */
 
 describe('NoOrgCta', () => {
@@ -19,9 +18,18 @@ describe('NoOrgCta', () => {
     expect(results.violations).toEqual([]);
   });
 
-  it('has NO links: the org onboarding route does not exist yet (no broken links)', () => {
-    render(<NoOrgCta locale="es" />);
-    expect(screen.queryAllByRole('link')).toEqual([]);
+  it('links to /onboarding (no broken links; lang preserved in english)', () => {
+    const { unmount } = render(<NoOrgCta locale="es" />);
+    expect(screen.getByRole('link', { name: 'Crear tu organización →' })).toHaveAttribute(
+      'href',
+      '/onboarding'
+    );
+    unmount();
+    render(<NoOrgCta locale="en" />);
+    expect(screen.getByRole('link', { name: 'Create your organization →' })).toHaveAttribute(
+      'href',
+      '/onboarding?lang=en'
+    );
   });
 
   it('renders in english too', () => {
