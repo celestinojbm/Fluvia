@@ -4,8 +4,9 @@ import type { AuditContext } from '@fluvia/audit';
 import { createTestContext, type TestContext } from '@fluvia/db/testing';
 import {
   IdentityService,
+  MerchantNameTakenError,
   MerchantOnboardingAlreadyCompletedError,
-  merchantOnboardingLockKey,
+  merchantCreationLockKey,
 } from '../src/index.js';
 
 /**
@@ -154,13 +155,74 @@ describe('concurrencia (la garantia que UNIQUE(tenant_id,name) NO da)', () => {
   });
 });
 
-describe('advisory lock transaccional por tenant', () => {
+describe('advisory lock transaccional por tenant (compartido por creacion general y onboarding)', () => {
+  /**
+   * Deteccion DETERMINISTA de bloqueo/orden via pg_locks (sin sleeps como
+   * prueba): un waiter del advisory lock aparece como fila `NOT granted` con
+   * classid/objid = mitades del bigint de la clave. El poll es solo espera
+   * acotada; la PRUEBA es la fila del lock manager y el orden FIFO con el que
+   * PostgreSQL concede el lock a los waiters encolados.
+   */
+  async function advisoryWaiterCount(key: string): Promise<number> {
+    const u = BigInt.asUintN(64, BigInt(key));
+    const classid = (u >> 32n).toString();
+    const objid = (u & 0xffffffffn).toString();
+    const res = await ctx.admin.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM pg_locks
+       WHERE locktype = 'advisory' AND classid = $1::oid AND objid = $2::oid
+         AND objsubid = 1 AND NOT granted`,
+      [classid, objid]
+    );
+    return Number(res.rows[0]!.n);
+  }
+
+  async function waitForAdvisoryWaiters(key: string, expected: number): Promise<void> {
+    for (let i = 0; i < 400; i++) {
+      if ((await advisoryWaiterCount(key)) >= expected) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`advisory waiters never reached ${expected}`);
+  }
+
+  /**
+   * Harness de ORDEN CONTROLADO: un gate (tx admin) retiene el lock del
+   * tenant; `first` se encola (1 waiter verificado en pg_locks), luego
+   * `second` (2 waiters). Al COMMIT del gate, PostgreSQL concede FIFO:
+   * `first` adquiere el lock ANTES que `second` — orden total determinista
+   * sin sleeps como prueba.
+   */
+  async function withGatedOrder(
+    tenantId: string,
+    first: () => Promise<unknown>,
+    second: () => Promise<unknown>
+  ): Promise<[PromiseSettledResult<unknown>, PromiseSettledResult<unknown>]> {
+    const key = await merchantCreationLockKey(ctx.admin, tenantId);
+    const gate = await ctx.admin.connect();
+    try {
+      await gate.query('BEGIN');
+      await gate.query('SELECT pg_advisory_xact_lock($1::bigint)', [key]);
+      const p1 = first();
+      await waitForAdvisoryWaiters(key, 1);
+      const p2 = second();
+      await waitForAdvisoryWaiters(key, 2);
+      // Ambas operaciones estan BLOQUEADAS en el lock (antes de contar o
+      // insertar): mientras el gate vive, ninguna toco la tabla.
+      await gate.query('COMMIT');
+      return (await Promise.allSettled([p1, p2])) as [
+        PromiseSettledResult<unknown>,
+        PromiseSettledResult<unknown>,
+      ];
+    } finally {
+      gate.release();
+    }
+  }
+
   it('the key is computed IN PostgreSQL (bigint as text — no JS precision loss), stable and per-tenant', async () => {
     const a = await ctx.createTenant();
     const b = await ctx.createTenant();
-    const keyA1 = await merchantOnboardingLockKey(ctx.admin, a);
-    const keyA2 = await merchantOnboardingLockKey(ctx.admin, a);
-    const keyB = await merchantOnboardingLockKey(ctx.admin, b);
+    const keyA1 = await merchantCreationLockKey(ctx.admin, a);
+    const keyA2 = await merchantCreationLockKey(ctx.admin, a);
+    const keyB = await merchantCreationLockKey(ctx.admin, b);
     // bigint serializado como texto: puede exceder Number.MAX_SAFE_INTEGER.
     expect(keyA1).toMatch(/^-?\d+$/);
     expect(BigInt(keyA1).toString()).toBe(keyA1);
@@ -168,30 +230,20 @@ describe('advisory lock transaccional por tenant', () => {
     expect(keyB).not.toBe(keyA1); // namespaced por tenant
   });
 
-  it('the lock is taken BEFORE counting: a held lock blocks the whole operation for the SAME tenant', async () => {
+  it('onboarding takes the lock BEFORE counting: a held lock shows a pg_locks waiter and zero rows', async () => {
     const tenantId = await ctx.createTenant();
-    const key = await merchantOnboardingLockKey(ctx.admin, tenantId);
-
+    const key = await merchantCreationLockKey(ctx.admin, tenantId);
     const holder = await ctx.admin.connect();
     try {
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock($1::bigint)', [key]);
-
-      let done = false;
-      const pending = service
-        .ensureMerchantForOnboarding(tenantId, { name: 'Bloqueada' }, audit())
-        .then((r) => {
-          done = true;
-          return r;
-        });
-      await new Promise((r) => setTimeout(r, 300));
-      // Bloqueado ANTES de contar/insertar: cero merchants mientras el lock vive.
-      expect(done).toBe(false);
+      const pending = service.ensureMerchantForOnboarding(tenantId, { name: 'Bloqueada' }, audit());
+      // Prueba determinista de bloqueo: waiter NOT granted en pg_locks, y la
+      // tabla sigue vacia (el lock va ANTES del conteo y del insert).
+      await waitForAdvisoryWaiters(key, 1);
       expect(await merchantCount(tenantId)).toBe(0);
-
-      await holder.query('COMMIT'); // libera el lock (transaccional)
+      await holder.query('COMMIT');
       const result = await pending;
-      expect(done).toBe(true);
       expect(result.replayed).toBe(false);
       expect(await merchantCount(tenantId)).toBe(1);
     } finally {
@@ -199,54 +251,174 @@ describe('advisory lock transaccional por tenant', () => {
     }
   });
 
-  it('DIFFERENT tenants do not block each other globally', async () => {
+  it('the GENERAL createMerchant also takes the SAME lock before inserting (shared key)', async () => {
+    const tenantId = await ctx.createTenant();
+    const key = await merchantCreationLockKey(ctx.admin, tenantId);
+    const holder = await ctx.admin.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock($1::bigint)', [key]);
+      const pending = service.createMerchant(tenantId, { name: 'General Bloqueada' }, audit());
+      await waitForAdvisoryWaiters(key, 1);
+      expect(await merchantCount(tenantId)).toBe(0);
+      await holder.query('COMMIT');
+      await expect(pending).resolves.toBeTruthy();
+      expect(await merchantCount(tenantId)).toBe(1);
+    } finally {
+      holder.release();
+    }
+  });
+
+  it('DIFFERENT tenants do not block each other globally (neither path)', async () => {
     const a = await ctx.createTenant();
     const b = await ctx.createTenant();
-    const keyA = await merchantOnboardingLockKey(ctx.admin, a);
-
+    const keyA = await merchantCreationLockKey(ctx.admin, a);
     const holder = await ctx.admin.connect();
     try {
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock($1::bigint)', [keyA]);
-      // Con el lock de A retenido, el onboarding de B completa sin esperar.
-      const result = await service.ensureMerchantForOnboarding(b, { name: 'Tienda B' }, audit());
-      expect(result.replayed).toBe(false);
+      // Con el lock de A retenido, AMBOS caminos de B completan sin esperar.
+      const onboarding = await service.ensureMerchantForOnboarding(
+        b,
+        { name: 'Tienda B' },
+        audit()
+      );
+      expect(onboarding.replayed).toBe(false);
+      await expect(service.createMerchant(b, { name: 'Tienda B2' }, audit())).resolves.toBeTruthy();
       await holder.query('ROLLBACK');
     } finally {
       holder.release();
     }
   });
 
-  it('the lock does NOT depend on the merchant name and is released on commit AND rollback', async () => {
+  it('the lock does NOT depend on the merchant name and is released on commit AND rollback (both paths)', async () => {
     const tenantId = await ctx.createTenant();
-    const key = await merchantOnboardingLockKey(ctx.admin, tenantId);
+    const key = await merchantCreationLockKey(ctx.admin, tenantId);
+    const probeFree = async () => {
+      const probe = await ctx.admin.connect();
+      try {
+        await probe.query('BEGIN');
+        const free = await probe.query<{ ok: boolean }>(
+          'SELECT pg_try_advisory_xact_lock($1::bigint) AS ok',
+          [key]
+        );
+        await probe.query('ROLLBACK');
+        return free.rows[0]!.ok;
+      } finally {
+        probe.release();
+      }
+    };
 
-    // Tras un COMMIT (creacion exitosa) el lock quedo libre.
+    // COMMIT del onboarding libera el lock.
     await service.ensureMerchantForOnboarding(tenantId, { name: 'Primera' }, audit());
-    const probe = await ctx.admin.connect();
-    try {
-      await probe.query('BEGIN');
-      const free = await probe.query<{ ok: boolean }>(
-        'SELECT pg_try_advisory_xact_lock($1::bigint) AS ok',
-        [key]
-      );
-      expect(free.rows[0]!.ok).toBe(true);
-      await probe.query('ROLLBACK');
+    expect(await probeFree()).toBe(true);
+    // ROLLBACK del onboarding (payload distinto => 409, con OTRO nombre)
+    // tambien libera: la clave es por tenant, no por nombre.
+    await expect(
+      service.ensureMerchantForOnboarding(tenantId, { name: 'Distinta' }, audit())
+    ).rejects.toThrow(MerchantOnboardingAlreadyCompletedError);
+    expect(await probeFree()).toBe(true);
+    // COMMIT del camino general libera.
+    await service.createMerchant(tenantId, { name: 'Adicional' }, audit());
+    expect(await probeFree()).toBe(true);
+    // ROLLBACK del camino general (nombre duplicado) tambien libera.
+    await expect(service.createMerchant(tenantId, { name: 'Adicional' }, audit())).rejects.toThrow(
+      MerchantNameTakenError
+    );
+    expect(await probeFree()).toBe(true);
+  });
 
-      // Tras un ROLLBACK (payload distinto => 409, con OTRO nombre) tambien:
-      // la clave es por tenant, no por nombre.
-      await expect(
-        service.ensureMerchantForOnboarding(tenantId, { name: 'Distinta' }, audit())
-      ).rejects.toThrow(MerchantOnboardingAlreadyCompletedError);
-      await probe.query('BEGIN');
-      const freeAgain = await probe.query<{ ok: boolean }>(
-        'SELECT pg_try_advisory_xact_lock($1::bigint) AS ok',
-        [key]
+  // ── RA-F65C2-EXT-001: serializacion COMPARTIDA general ↔ onboarding ────────
+  // Orden controlado por el gate + FIFO del lock manager (pg_locks probado en
+  // cada paso); se ejercitan AMBOS ordenes de adquisicion/finalizacion.
+
+  it('[general primero] onboarding con el MISMO payload espera y devuelve replay: una fila, un audit', async () => {
+    const tenantId = await ctx.createTenant();
+    const payload = { name: 'Compartida', country: 'CO', defaultCurrency: 'COP' as const };
+    const [general, onboarding] = await withGatedOrder(
+      tenantId,
+      () => service.createMerchant(tenantId, payload, audit()),
+      () => service.ensureMerchantForOnboarding(tenantId, payload, audit())
+    );
+    expect(general.status).toBe('fulfilled');
+    expect(onboarding.status).toBe('fulfilled');
+    const created = (general as PromiseFulfilledResult<{ id: string }>).value;
+    const replayed = (
+      onboarding as PromiseFulfilledResult<{ merchant: { id: string }; replayed: boolean }>
+    ).value;
+    // El onboarding observo EXACTAMENTE el merchant creado por la general.
+    expect(replayed.replayed).toBe(true);
+    expect(replayed.merchant.id).toBe(created.id);
+    expect(await merchantCount(tenantId)).toBe(1);
+    expect(await merchantAuditCount(tenantId)).toBe(1);
+  });
+
+  for (const [label, generalPayload, onboardingPayload] of [
+    ['nombre distinto', { name: 'General Gana' }, { name: 'Onboarding Pierde' }],
+    ['solo country distinto', { name: 'Mismo Nombre' }, { name: 'Mismo Nombre', country: 'MX' }],
+    [
+      'solo defaultCurrency distinto',
+      { name: 'Mismo Nombre' },
+      { name: 'Mismo Nombre', defaultCurrency: 'USD' as const },
+    ],
+  ] as const) {
+    it(`[general primero] payload que difiere (${label}): onboarding espera y recibe 409; una fila`, async () => {
+      const tenantId = await ctx.createTenant();
+      const [general, onboarding] = await withGatedOrder(
+        tenantId,
+        () => service.createMerchant(tenantId, generalPayload, audit()),
+        () => service.ensureMerchantForOnboarding(tenantId, onboardingPayload, audit())
       );
-      expect(freeAgain.rows[0]!.ok).toBe(true);
-      await probe.query('ROLLBACK');
-    } finally {
-      probe.release();
-    }
+      expect(general.status).toBe('fulfilled');
+      expect(onboarding.status).toBe('rejected');
+      expect((onboarding as PromiseRejectedResult).reason).toBeInstanceOf(
+        MerchantOnboardingAlreadyCompletedError
+      );
+      expect(await merchantCount(tenantId)).toBe(1);
+      expect(await merchantAuditCount(tenantId)).toBe(1);
+    });
+  }
+
+  it('[onboarding primero] la general espera y crea un merchant ADICIONAL: dos filas, un audit por merchant', async () => {
+    const tenantId = await ctx.createTenant();
+    const [onboarding, general] = await withGatedOrder(
+      tenantId,
+      () => service.ensureMerchantForOnboarding(tenantId, { name: 'Inicial' }, audit()),
+      () => service.createMerchant(tenantId, { name: 'Adicional Post' }, audit())
+    );
+    // Orden inverso de finalizacion respecto a los tests anteriores: el
+    // onboarding ADQUIERE y COMMITEA primero; la creacion general queda
+    // logicamente DESPUES del merchant inicial (valido por contrato).
+    expect(onboarding.status).toBe('fulfilled');
+    expect(general.status).toBe('fulfilled');
+    const initial = (
+      onboarding as PromiseFulfilledResult<{ merchant: { id: string }; replayed: boolean }>
+    ).value;
+    expect(initial.replayed).toBe(false);
+    const additional = (general as PromiseFulfilledResult<{ id: string }>).value;
+    expect(additional.id).not.toBe(initial.merchant.id);
+    expect(await merchantCount(tenantId)).toBe(2);
+    // Exactamente UN audit merchant.created por cada merchant.
+    const perMerchant = await ctx.admin.query<{ resource_id: string; n: string }>(
+      `SELECT resource_id, count(*)::text AS n FROM audit_events
+       WHERE tenant_id = $1 AND action = 'merchant.created' GROUP BY resource_id`,
+      [tenantId]
+    );
+    expect(perMerchant.rows).toHaveLength(2);
+    for (const row of perMerchant.rows) expect(row.n).toBe('1');
+  });
+
+  it('[onboarding primero] la general con el MISMO nombre espera y termina en MerchantNameTakenError: una fila', async () => {
+    const tenantId = await ctx.createTenant();
+    const [onboarding, general] = await withGatedOrder(
+      tenantId,
+      () => service.ensureMerchantForOnboarding(tenantId, { name: 'Unica' }, audit()),
+      () => service.createMerchant(tenantId, { name: 'Unica' }, audit())
+    );
+    expect(onboarding.status).toBe('fulfilled');
+    expect(general.status).toBe('rejected');
+    expect((general as PromiseRejectedResult).reason).toBeInstanceOf(MerchantNameTakenError);
+    expect(await merchantCount(tenantId)).toBe(1);
+    expect(await merchantAuditCount(tenantId)).toBe(1);
   });
 });

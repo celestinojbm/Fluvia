@@ -71,24 +71,40 @@ export interface MerchantOnboardingResult {
 }
 
 /**
- * F6.5C2 Paso B — namespace del advisory lock transaccional del merchant de
- * onboarding. La clave se calcula EN PostgreSQL (`hashtextextended` ⇒ bigint,
- * sin perdida de precision en JavaScript), es estable, va namespaced por
- * `tenant_id` y NO depende del nombre del merchant: serializa TODO onboarding
- * de merchant concurrente de una organizacion, y organizaciones distintas no
- * se bloquean entre si. (El lock de fila `SELECT organizations … FOR UPDATE`
- * es inviable bajo la RLS actual: politica SELECT-only con FORCE RLS.)
+ * RA-F65C2-EXT-001 — namespace del advisory lock transaccional de CREACION DE
+ * MERCHANT, COMPARTIDO por TODOS los caminos runtime que insertan merchants
+ * dentro de IdentityService (`createMerchant` general Y
+ * `ensureMerchantForOnboarding`): sin un lock comun, ambas rutas podian
+ * insertar concurrentemente merchants con nombres distintos sin serializar.
+ * La clave se calcula EN PostgreSQL (`hashtextextended` ⇒ bigint, jamas
+ * convertido a Number en JavaScript), es estable, va namespaced por
+ * `tenant_id` y NO depende del nombre del merchant; organizaciones distintas
+ * no se bloquean entre si. (El valor del namespace conserva la cadena
+ * historica por estabilidad de la clave; el CONCEPTO es «merchant creation
+ * lock». El lock de fila `SELECT organizations … FOR UPDATE` es inviable bajo
+ * la RLS actual: politica SELECT-only con FORCE RLS.)
+ *
+ * Semantica LINEALIZADA que garantiza el lock compartido (orden total por
+ * tenant, no «un merchant total para siempre»):
+ *  - si `createMerchant` general gana el lock primero, el onboarding espera y
+ *    al entrar observa exactamente ese merchant: payload identico ⇒ replay
+ *    natural (chart re-ejecutable, sin duplicar merchant ni audit); payload
+ *    distinto ⇒ 409 MerchantOnboardingAlreadyCompletedError (una sola fila);
+ *  - si el onboarding gana primero, la creacion general espera y DESPUES crea
+ *    un merchant adicional (valido: queda logicamente despues del merchant
+ *    inicial; un audit por merchant; mismo nombre ⇒ MerchantNameTakenError);
+ *  - jamas existe una carrera no serializada entre los dos endpoints.
  */
-const MERCHANT_ONBOARDING_LOCK_NS = 'fluvia:onboarding:merchant:';
+const MERCHANT_CREATION_LOCK_NS = 'fluvia:onboarding:merchant:';
 
-/** Clave (bigint como texto) del advisory lock — expuesta para los tests. */
-export async function merchantOnboardingLockKey(
+/** Clave (bigint como texto) del advisory lock compartido — para los tests. */
+export async function merchantCreationLockKey(
   client: PoolClient | Pool,
   tenantId: string
 ): Promise<string> {
   const res = await client.query<{ key: string }>(
     'SELECT hashtextextended($1 || $2, 0)::text AS key',
-    [MERCHANT_ONBOARDING_LOCK_NS, tenantId]
+    [MERCHANT_CREATION_LOCK_NS, tenantId]
   );
   return res.rows[0]!.key;
 }
@@ -99,6 +115,24 @@ export async function merchantOnboardingLockKey(
  */
 export class IdentityService {
   constructor(private readonly appPool: Pool) {}
+
+  /**
+   * RA-F65C2-EXT-001 — primitiva client-bound del lock COMPARTIDO de creacion
+   * de merchant. TODO camino runtime de IdentityService que inserte un
+   * merchant debe llamarla INMEDIATAMENTE tras entrar en su
+   * withTenantTransaction, ANTES de contar/consultar merchants para
+   * decisiones de cardinalidad y ANTES de insertar. Transaccional: se libera
+   * automaticamente al COMMIT o ROLLBACK. Misma clave exacta para todos los
+   * caminos (namespaced por tenant, independiente del nombre; bigint
+   * calculado en PostgreSQL — jamas Number en JS). No es un mutex de proceso
+   * ni un lock global: tenants distintos no se bloquean entre si.
+   */
+  private async acquireMerchantCreationLock(c: PoolClient, tenantId: string): Promise<void> {
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1 || $2, 0))', [
+      MERCHANT_CREATION_LOCK_NS,
+      tenantId,
+    ]);
+  }
 
   async getOrganization(tenantId: string): Promise<OrganizationDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
@@ -123,6 +157,11 @@ export class IdentityService {
   ): Promise<MerchantDto> {
     const input = CreateMerchantSchema.parse(rawInput);
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      // RA-F65C2-EXT-001: mismo lock que el onboarding — serializa AMBOS
+      // caminos de creacion antes de insertar. El contrato observable no
+      // cambia: sigue creando merchants adicionales, devolviendo MerchantDto
+      // y lanzando MerchantNameTakenError ante nombre duplicado.
+      await this.acquireMerchantCreationLock(c, tenantId);
       try {
         const res = await c.query<MerchantRow>(
           `INSERT INTO merchants (tenant_id, name, country, default_currency)
@@ -177,11 +216,10 @@ export class IdentityService {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       // Serializacion por tenant, independiente del nombre: el UNIQUE
       // (tenant_id, name) NO basta — dos nombres distintos concurrentes
-      // insertarian dos merchants sin conflicto de indice.
-      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1 || $2, 0))', [
-        MERCHANT_ONBOARDING_LOCK_NS,
-        tenantId,
-      ]);
+      // insertarian dos merchants sin conflicto de indice. MISMO lock que
+      // createMerchant (RA-F65C2-EXT-001): el conteo de cardinalidad de abajo
+      // solo se ejecuta cuando ninguna creacion general esta en vuelo.
+      await this.acquireMerchantCreationLock(c, tenantId);
 
       const existing = await c.query<MerchantRow>(
         `SELECT id, name, country, default_currency, status, created_at

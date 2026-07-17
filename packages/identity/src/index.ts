@@ -7,7 +7,7 @@ export {
 } from './platform.js';
 export {
   IdentityService,
-  merchantOnboardingLockKey,
+  merchantCreationLockKey,
   type OrganizationDto,
   type MerchantDto,
   type MemberDto,
