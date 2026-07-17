@@ -12,20 +12,23 @@ import { assertTrustedMutationRequest } from '../../../../../lib/csrf';
  * (creacion) o status exacto 200 con `replayed === true` (recuperacion), y
  * SIEMPRE `chartReady === true`; cualquier otro 2xx, redirect 3xx, body
  * incompleto/malformado o incoherencia status/replayed responde 502
- * `internal_error`. Exito re-emitido por whitelist; errores solo desde una
- * ALLOWLIST cerrada (code desconocido => `internal_error`, jamas reflejado);
- * sin stack/SQL/body interno; payload jamas logueado.
+ * `internal_error`. Exito re-emitido por whitelist; errores solo con el PAR
+ * code/status EXACTO del mapa cerrado del proxy (RA-F65C2-EXT-004) — code
+ * desconocido, del otro proxy o con status incorrecto ⇒ 502, jamas reflejado
+ * ni con status backend preservado; sin stack/SQL/body interno; payload jamas
+ * logueado.
  */
 
-// Allowlist cerrada de codes de error que este proxy puede reflejar.
-const MERCHANT_ERROR_CODES = new Set([
-  'validation_error',
-  'invalid_session',
-  'insufficient_permissions',
-  'not_found',
-  'merchant_onboarding_already_completed',
-  'internal_error',
-]);
+// RA-F65C2-EXT-004: mapa CERRADO code → status canonico (ver proxy de
+// organizacion). La respuesta de error se reconstruye con el status del mapa.
+const MERCHANT_ERROR_STATUS: Record<string, number> = {
+  validation_error: 400,
+  invalid_session: 401,
+  insufficient_permissions: 403,
+  not_found: 404,
+  merchant_onboarding_already_completed: 409,
+  internal_error: 500,
+};
 
 const badGateway = () =>
   NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
@@ -119,9 +122,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
 
   const body = (await res.json().catch(() => ({}))) as { error?: { code?: unknown } };
   const code = body.error?.code;
-  if (typeof code !== 'string' || !MERCHANT_ERROR_CODES.has(code)) {
-    // Un code desconocido jamas se refleja al navegador.
+  const canonicalStatus = typeof code === 'string' ? MERCHANT_ERROR_STATUS[code] : undefined;
+  if (typeof code !== 'string' || canonicalStatus === undefined || res.status !== canonicalStatus) {
+    // Code desconocido, del otro proxy, o conocido con status incorrecto:
+    // jamas se refleja ni se preserva el status backend.
     return badGateway();
   }
-  return NextResponse.json({ ok: false, error: { code } }, { status: res.status });
+  return NextResponse.json({ ok: false, error: { code } }, { status: canonicalStatus });
 }

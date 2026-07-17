@@ -30,12 +30,7 @@ const CURRENCY_OPTIONS = ['COP', 'USD', 'EUR', 'GBP', 'MXN', 'BRL', 'ARS', 'PEN'
 type Step = 'org' | 'merchant';
 type Phase = 'idle' | 'submitting' | 'success';
 type WizardError =
-  | null
-  | 'invalid'
-  | 'slug_taken'
-  | 'already_completed'
-  | 'merchant_already_completed'
-  | 'generic';
+  null | 'invalid' | 'slug_taken' | 'already_completed' | 'merchant_already_completed' | 'generic';
 
 export function OnboardingWizard({
   locale,

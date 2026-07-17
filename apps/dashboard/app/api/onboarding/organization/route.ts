@@ -20,22 +20,28 @@ import { assertTrustedMutationRequest } from '../../../lib/csrf';
  *    status, un role distinto de `owner` o un campo contractual invalido
  *    responde 502 `internal_error`.
  *  - La respuesta de exito se RE-EMITE con campos whitelisted (jamas
- *    passthrough). Los errores solo propagan codes de una ALLOWLIST cerrada;
- *    un code desconocido se convierte en `internal_error` sin reflejarse.
+ *    passthrough). Los errores solo se aceptan si el PAR code/status coincide
+ *    EXACTAMENTE con el mapa cerrado del proxy (RA-F65C2-EXT-004); la
+ *    respuesta se reconstruye con el status CANONICO del mapa. Code
+ *    desconocido, code con status incorrecto, code del otro proxy o
+ *    `internal_error` con status distinto de 500 ⇒ 502 sin reflejarse.
  *  - Sin stack/SQL/body interno; el payload no se loguea; Host/
  *    X-Forwarded-Host jamas son fuente de confianza (la politica de origin
  *    vive en el guard).
  */
 
-// Allowlist cerrada de codes de error que este proxy puede reflejar.
-const ORGANIZATION_ERROR_CODES = new Set([
-  'validation_error',
-  'invalid_session',
-  'email_not_verified',
-  'organization_slug_taken',
-  'onboarding_already_completed',
-  'internal_error',
-]);
+// RA-F65C2-EXT-004: mapa CERRADO code → status canonico. Un error solo es
+// contractual si el code pertenece al mapa Y el status del backend coincide
+// exactamente; la respuesta se reconstruye SIEMPRE con el status del mapa
+// (jamas se preserva un status backend engañoso).
+const ORGANIZATION_ERROR_STATUS: Record<string, number> = {
+  validation_error: 400,
+  invalid_session: 401,
+  email_not_verified: 403,
+  organization_slug_taken: 409,
+  onboarding_already_completed: 409,
+  internal_error: 500,
+};
 
 const badGateway = () =>
   NextResponse.json({ ok: false, error: { code: 'internal_error' } }, { status: 502 });
@@ -112,9 +118,11 @@ export async function POST(req: Request) {
 
   const body = (await res.json().catch(() => ({}))) as { error?: { code?: unknown } };
   const code = body.error?.code;
-  if (typeof code !== 'string' || !ORGANIZATION_ERROR_CODES.has(code)) {
-    // Un code desconocido jamas se refleja al navegador.
+  const canonicalStatus = typeof code === 'string' ? ORGANIZATION_ERROR_STATUS[code] : undefined;
+  if (typeof code !== 'string' || canonicalStatus === undefined || res.status !== canonicalStatus) {
+    // Code desconocido, del otro proxy, o conocido con status incorrecto:
+    // jamas se refleja ni se preserva el status backend.
     return badGateway();
   }
-  return NextResponse.json({ ok: false, error: { code } }, { status: res.status });
+  return NextResponse.json({ ok: false, error: { code } }, { status: canonicalStatus });
 }

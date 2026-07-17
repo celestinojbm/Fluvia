@@ -3,7 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { OnboardingWizard } from '../app/onboarding/onboarding-client';
-import { resolveMerchantState, selectOnboardingOrganization } from '../app/onboarding/resolve';
+import { resolveMerchantState, resolveOnboardingOrganization } from '../app/onboarding/resolve';
+import {
+  InvalidSelectionPanel,
+  OrgSelectionPanel,
+  ReadErrorPanel,
+} from '../app/onboarding/onboarding-panels';
 import { OrgList } from '../app/lib/org-list';
 import type { Merchant, Org } from '../app/lib/api';
 
@@ -47,36 +52,137 @@ function stubFetch(status: number, body: unknown) {
   return fn;
 }
 
-describe('selectOnboardingOrganization (validacion server-side de orgId)', () => {
-  it('user without organizations => null (Paso 1)', () => {
-    expect(selectOnboardingOrganization([])).toBeNull();
-    expect(selectOnboardingOrganization([], 'org-x')).toBeNull();
-  });
-
-  it('defaults to the first OWNER organization; non-owner memberships never qualify', () => {
-    const orgs = [org('a', 'developer'), org('b', 'owner'), org('c', 'owner')];
-    expect(selectOnboardingOrganization(orgs)).toEqual({
-      id: 'b',
-      name: 'Org b',
-      slug: 'slug-b',
+describe('resolveOnboardingOrganization (RA-F65C2-EXT-002: seleccion EXPLICITA, sin fallback)', () => {
+  it('sin orgId + cero organizaciones owner => new_onboarding (Paso 1); no-owner jamas califica', () => {
+    expect(resolveOnboardingOrganization([])).toEqual({ kind: 'new_onboarding' });
+    expect(resolveOnboardingOrganization([org('a', 'developer')])).toEqual({
+      kind: 'new_onboarding',
     });
-    // Solo membresias no-owner => Paso 1 (no hay onboarding que retomar).
-    expect(selectOnboardingOrganization([org('a', 'developer')])).toBeNull();
   });
 
-  it('a valid ?orgId picks that OWNER organization', () => {
+  it('sin orgId + exactamente una owner => selected', () => {
+    const res = resolveOnboardingOrganization([org('x', 'developer'), org('a', 'owner')]);
+    expect(res).toEqual({
+      kind: 'selected',
+      organization: { id: 'a', name: 'Org a', slug: 'slug-a' },
+    });
+  });
+
+  it('sin orgId + dos o mas owners => selection_required (JAMAS owned[0]); ofrece solo las propias', () => {
+    const res = resolveOnboardingOrganization([org('a', 'owner'), org('b', 'owner')]);
+    expect(res.kind).toBe('selection_required');
+    expect(
+      (res as { kind: 'selection_required'; options: Array<{ id: string }> }).options.map(
+        (o) => o.id
+      )
+    ).toEqual(['a', 'b']);
+  });
+
+  it('owner de A y B: orgId=A => A; orgId=B => B', () => {
     const orgs = [org('a', 'owner'), org('b', 'owner')];
-    expect(selectOnboardingOrganization(orgs, 'b')?.id).toBe('b');
+    expect(resolveOnboardingOrganization(orgs, 'a')).toMatchObject({
+      kind: 'selected',
+      organization: { id: 'a' },
+    });
+    expect(resolveOnboardingOrganization(orgs, 'b')).toMatchObject({
+      kind: 'selected',
+      organization: { id: 'b' },
+    });
   });
 
-  it('a foreign/unknown/non-owner orgId is IGNORED (fail-safe, no leak): falls back to own default', () => {
+  it('orgId inexistente/ajeno/no-owner => invalid_selection SIN fallback (indistinguibles entre si)', () => {
     const orgs = [org('a', 'owner'), org('b', 'developer')];
-    // Inexistente, ajena (no esta en la lista de la sesion) y no-owner: en
-    // todos los casos NO se usa el orgId del query string.
-    expect(selectOnboardingOrganization(orgs, 'zzz')?.id).toBe('a');
-    expect(selectOnboardingOrganization(orgs, 'b')?.id).toBe('a');
-    // Sin org owner propia + orgId ajeno => null, jamas datos del ajeno.
-    expect(selectOnboardingOrganization([org('b', 'developer')], 'zzz')).toBeNull();
+    // Inexistente, ajeno (no esta en la lista de la sesion) y membership
+    // no-owner producen el MISMO resultado: sin fallback a owned[0], solo las
+    // organizaciones owner propias como opciones.
+    for (const requested of ['zzz', 'b']) {
+      const res = resolveOnboardingOrganization(orgs, requested);
+      expect(res.kind).toBe('invalid_selection');
+      expect(
+        (res as { kind: 'invalid_selection'; options: Array<{ id: string }> }).options.map(
+          (o) => o.id
+        )
+      ).toEqual(['a']);
+    }
+  });
+
+  it('cero owners + orgId invalido => invalid_selection con cero opciones (no Paso 1 silencioso)', () => {
+    expect(resolveOnboardingOrganization([org('b', 'developer')], 'zzz')).toEqual({
+      kind: 'invalid_selection',
+      options: [],
+    });
+    expect(resolveOnboardingOrganization([], 'zzz')).toEqual({
+      kind: 'invalid_selection',
+      options: [],
+    });
+  });
+});
+
+describe('paneles de seleccion / seleccion invalida / lectura fallida (server-rendered)', () => {
+  const OPTIONS = [
+    { id: 'a', name: 'Empresa A', slug: 'empresa-a' },
+    { id: 'b', name: 'Empresa B', slug: 'empresa-b' },
+  ];
+
+  it('selection_required: opciones como ENLACES explicitos a /onboarding?orgId=…, sin formulario, axe limpio', async () => {
+    const { container } = render(<OrgSelectionPanel options={OPTIONS} locale="es" />);
+    expect(screen.getByText(/Elige explícitamente/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Continuar onboarding con esta organización — Empresa A/ })
+    ).toHaveAttribute('href', '/onboarding?orgId=a');
+    expect(
+      screen.getByRole('link', { name: /Continuar onboarding con esta organización — Empresa B/ })
+    ).toHaveAttribute('href', '/onboarding?orgId=b');
+    // Ningun formulario ni select con mutacion automatica.
+    expect(container.querySelector('form')).toBeNull();
+    expect(container.querySelector('select')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(results.violations).toEqual([]);
+  });
+
+  it('selection_required: los enlaces conservan el locale (lang=en)', () => {
+    render(<OrgSelectionPanel options={[OPTIONS[0]!]} locale="en" />);
+    expect(
+      screen.getByRole('link', { name: /Continue onboarding with this organization — Empresa A/ })
+    ).toHaveAttribute('href', '/onboarding?orgId=a&lang=en');
+  });
+
+  it('invalid_selection: mensaje GENERICO (no revela existencia), solo opciones owner propias, axe limpio', async () => {
+    const { container } = render(<InvalidSelectionPanel options={[OPTIONS[0]!]} locale="es" />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Esa organización no está disponible');
+    // Sin formulario de mutacion; sin IDs ajenos (solo la owner propia).
+    expect(container.querySelector('form')).toBeNull();
+    expect(screen.getByRole('link', { name: /Empresa A/ })).toHaveAttribute(
+      'href',
+      '/onboarding?orgId=a'
+    );
+    const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(results.violations).toEqual([]);
+  });
+
+  it('invalid_selection sin owners: enlace explicito a un onboarding NUEVO (sin orgId), no Paso 1 silencioso', () => {
+    render(<InvalidSelectionPanel options={[]} locale="es" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('no está disponible');
+    expect(screen.getByRole('link', { name: 'Iniciar un onboarding nuevo' })).toHaveAttribute(
+      'href',
+      '/onboarding'
+    );
+    expect(screen.queryByLabelText('Nombre de la organización')).not.toBeInTheDocument();
+  });
+
+  it('lectura fallida: estado recuperable con retry que conserva seleccion y locale; sin detalles internos', async () => {
+    const { container } = render(<ReadErrorPanel locale="en" retryOrgId="a" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('We could not read the onboarding state.');
+    expect(screen.getByRole('link', { name: 'Retry' })).toHaveAttribute(
+      'href',
+      '/onboarding?orgId=a&lang=en'
+    );
+    // Cero detalles de red/stack/body/backend.
+    expect(container.textContent).not.toMatch(/500|stack|fetch|ECONN|http/i);
+    const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(results.violations).toEqual([]);
   });
 });
 

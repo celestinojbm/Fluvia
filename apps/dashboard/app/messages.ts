@@ -337,6 +337,13 @@ interface Messages {
   onboardingMerchantResumed: string;
   onboardingNotApplicableBody: string;
   continueOnboardingAction: string;
+  // selección explícita y lecturas fail-closed (RA-F65C2-EXT-002/003)
+  onboardingSelectBody: string;
+  onboardingSelectOption: string;
+  onboardingInvalidSelection: string;
+  onboardingStartNew: string;
+  onboardingReadError: string;
+  onboardingReadErrorHint: string;
 }
 
 export const MESSAGES: Record<Locale, Messages> = {
@@ -673,6 +680,15 @@ export const MESSAGES: Record<Locale, Messages> = {
     onboardingNotApplicableBody:
       'Esta organización ya tiene varios comercios: el onboarding inicial ya no aplica. Gestiona tus comercios desde el panel.',
     continueOnboardingAction: 'Configurar / continuar onboarding sandbox',
+    onboardingSelectBody:
+      'Tienes varias organizaciones como owner. Elige explícitamente con cuál continuar el onboarding:',
+    onboardingSelectOption: 'Continuar onboarding con esta organización',
+    onboardingInvalidSelection:
+      'Esa organización no está disponible para continuar el onboarding con tu sesión.',
+    onboardingStartNew: 'Iniciar un onboarding nuevo',
+    onboardingReadError: 'No pudimos leer el estado del onboarding.',
+    onboardingReadErrorHint:
+      'No se creó ni cambió nada. Reintenta: el estado se vuelve a resolver desde el backend.',
   },
   en: {
     appTitle: 'Fluvia · Operations',
@@ -1007,6 +1023,15 @@ export const MESSAGES: Record<Locale, Messages> = {
     onboardingNotApplicableBody:
       'This organization already has several merchants: the initial onboarding no longer applies. Manage your merchants from the dashboard.',
     continueOnboardingAction: 'Set up / continue sandbox onboarding',
+    onboardingSelectBody:
+      'You own several organizations. Explicitly choose which one to continue onboarding with:',
+    onboardingSelectOption: 'Continue onboarding with this organization',
+    onboardingInvalidSelection:
+      'That organization is not available to continue onboarding with your session.',
+    onboardingStartNew: 'Start a new onboarding',
+    onboardingReadError: 'We could not read the onboarding state.',
+    onboardingReadErrorHint:
+      'Nothing was created or changed. Retry: the state is re-resolved from the backend.',
   },
 };
 

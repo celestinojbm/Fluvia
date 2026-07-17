@@ -635,3 +635,129 @@ describe('proxy de merchant: contrato de exito ESTRICTO por status exacto', () =
     await expectBadGateway(await callMerchant());
   });
 });
+
+// ── RA-F65C2-EXT-004: parejas code/status ESTRICTAS (mapa cerrado) ───────────
+
+const ORG_CANONICAL_PAIRS = [
+  ['validation_error', 400],
+  ['invalid_session', 401],
+  ['email_not_verified', 403],
+  ['organization_slug_taken', 409],
+  ['onboarding_already_completed', 409],
+  ['internal_error', 500],
+] as const;
+
+const MERCHANT_CANONICAL_PAIRS = [
+  ['validation_error', 400],
+  ['invalid_session', 401],
+  ['insufficient_permissions', 403],
+  ['not_found', 404],
+  ['merchant_onboarding_already_completed', 409],
+  ['internal_error', 500],
+] as const;
+
+describe('RA-F65C2-EXT-004 — proxy de organizacion: pareja code/status exacta', () => {
+  it('cada code SOLO es contractual con su status canonico; la respuesta se reconstruye con el', async () => {
+    for (const [code, status] of ORG_CANONICAL_PAIRS) {
+      stubBackend(status, { error: { code } });
+      const res = await callOrg();
+      expect(res.status, `${code}@${status}`).toBe(status);
+      expect((await res.json()).error.code).toBe(code);
+    }
+  });
+
+  it('cada code con un status INCORRECTO => 502 (jamas se preserva el status backend)', async () => {
+    const wrongByCode: Record<string, number[]> = {
+      validation_error: [401, 409],
+      invalid_session: [400, 403],
+      email_not_verified: [401, 409],
+      organization_slug_taken: [400, 403],
+      onboarding_already_completed: [400, 500],
+      internal_error: [400, 401, 403, 404, 409],
+    };
+    for (const [code, statuses] of Object.entries(wrongByCode)) {
+      for (const status of statuses) {
+        stubBackend(status, { error: { code } });
+        const res = await callOrg();
+        expect(res.status, `${code}@${status}`).toBe(502);
+        expect((await res.json()).error.code).toBe('internal_error');
+      }
+    }
+  });
+
+  it('codes del OTRO proxy en su status canonico => 502 sin reflejarse', async () => {
+    for (const [code, status] of [
+      ['insufficient_permissions', 403],
+      ['not_found', 404],
+      ['merchant_onboarding_already_completed', 409],
+    ] as const) {
+      stubBackend(status, { error: { code } });
+      const res = await callOrg();
+      expect(res.status, `${code}@${status}`).toBe(502);
+      const text = await res.text();
+      expect(JSON.parse(text).error.code).toBe('internal_error');
+      expect(text).not.toContain(code);
+    }
+  });
+
+  it('error de red del backend => 502 estable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('ECONNREFUSED')))
+    );
+    await expectBadGateway(await callOrg());
+  });
+});
+
+describe('RA-F65C2-EXT-004 — proxy de merchant: pareja code/status exacta', () => {
+  it('cada code SOLO es contractual con su status canonico; la respuesta se reconstruye con el', async () => {
+    for (const [code, status] of MERCHANT_CANONICAL_PAIRS) {
+      stubBackend(status, { error: { code } });
+      const res = await callMerchant();
+      expect(res.status, `${code}@${status}`).toBe(status);
+      expect((await res.json()).error.code).toBe(code);
+    }
+  });
+
+  it('cada code con un status INCORRECTO => 502 (jamas se preserva el status backend)', async () => {
+    const wrongByCode: Record<string, number[]> = {
+      validation_error: [401, 404],
+      invalid_session: [400, 403],
+      insufficient_permissions: [401, 404],
+      not_found: [403, 409],
+      merchant_onboarding_already_completed: [400, 404],
+      internal_error: [400, 401, 403, 404, 409],
+    };
+    for (const [code, statuses] of Object.entries(wrongByCode)) {
+      for (const status of statuses) {
+        stubBackend(status, { error: { code } });
+        const res = await callMerchant();
+        expect(res.status, `${code}@${status}`).toBe(502);
+        expect((await res.json()).error.code).toBe('internal_error');
+      }
+    }
+  });
+
+  it('codes del OTRO proxy en su status canonico => 502 sin reflejarse', async () => {
+    for (const [code, status] of [
+      ['email_not_verified', 403],
+      ['organization_slug_taken', 409],
+      ['onboarding_already_completed', 409],
+    ] as const) {
+      stubBackend(status, { error: { code } });
+      const res = await callMerchant();
+      expect(res.status, `${code}@${status}`).toBe(502);
+      const text = await res.text();
+      expect(JSON.parse(text).error.code).toBe('internal_error');
+      expect(text).not.toContain(code);
+    }
+  });
+
+  it('error de red del backend => 502 estable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('ECONNREFUSED')))
+    );
+    await expectBadGateway(await callMerchant());
+  });
+});

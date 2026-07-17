@@ -1,4 +1,5 @@
-import type { Merchant, Org } from '../lib/api';
+import type { Org } from '../lib/api';
+import type { OnboardingMerchant } from '../lib/onboarding-reads';
 
 /**
  * F6.5C2 — resolucion SERVER-SIDE del estado de onboarding (recuperacion
@@ -21,22 +22,38 @@ export interface InitialMerchant {
 }
 
 /**
- * Selecciona la organizacion del onboarding entre las organizaciones OWNER del
- * usuario (obtenidas server-side con su sesion). Un `orgId` de query string
- * JAMAS se usa directamente: solo selecciona si pertenece a esa lista; un
- * orgId ajeno/inexistente/no-owner se IGNORA (fail-safe, sin fuga — se cae a
- * la resolucion propia por defecto). Sin organizacion owner => null (Paso 1).
+ * RA-F65C2-EXT-002 — resultado DISCRIMINADO de la seleccion de organizacion.
+ * NO existe fallback silencioso: un `orgId` que no pertenece a las
+ * organizaciones OWNER de la propia sesion es `invalid_selection` (jamas se
+ * muta contra otra organizacion elegida implicitamente), y con 2+
+ * organizaciones owner sin `orgId` se exige seleccion explicita
+ * (`selection_required`) en vez de elegir `owned[0]`.
  */
-export function selectOnboardingOrganization(
+export type OnboardingOrgResolution =
+  | { kind: 'new_onboarding' }
+  | { kind: 'selected'; organization: InitialOrganization }
+  | { kind: 'selection_required'; options: InitialOrganization[] }
+  | { kind: 'invalid_selection'; options: InitialOrganization[] };
+
+export function resolveOnboardingOrganization(
   orgs: Org[],
   requestedOrgId?: string
-): InitialOrganization | null {
-  const owned = orgs.filter((o) => o.role === 'owner');
-  const pick =
-    (requestedOrgId !== undefined && owned.find((o) => o.organization_id === requestedOrgId)) ||
-    owned[0];
-  if (!pick) return null;
-  return { id: pick.organization_id, name: pick.name, slug: pick.slug };
+): OnboardingOrgResolution {
+  const owned: InitialOrganization[] = orgs
+    .filter((o) => o.role === 'owner')
+    .map((o) => ({ id: o.organization_id, name: o.name, slug: o.slug }));
+
+  if (requestedOrgId !== undefined) {
+    const match = owned.find((o) => o.id === requestedOrgId);
+    if (match) return { kind: 'selected', organization: match };
+    // Inexistente, ajeno o membership no-owner: indistinguibles entre si (el
+    // mensaje no revela si el ID existe); las opciones ofrecidas son SOLO las
+    // organizaciones owner de la propia sesion.
+    return { kind: 'invalid_selection', options: owned };
+  }
+  if (owned.length === 0) return { kind: 'new_onboarding' };
+  if (owned.length === 1) return { kind: 'selected', organization: owned[0]! };
+  return { kind: 'selection_required', options: owned };
 }
 
 /**
@@ -48,7 +65,7 @@ export function selectOnboardingOrganization(
  *  - 2+ => el onboarding inicial ya no aplica (JAMAS se selecciona uno
  *    arbitrariamente; se ofrece el enlace al dashboard).
  */
-export function resolveMerchantState(merchants: Merchant[]): {
+export function resolveMerchantState(merchants: OnboardingMerchant[]): {
   initialMerchant: InitialMerchant | null;
   notApplicable: boolean;
 } {
