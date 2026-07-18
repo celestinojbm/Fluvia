@@ -1,19 +1,12 @@
 import { loadConfig } from '@fluvia/config';
+import { formatSafeShowroomCliError } from './cli-errors.js';
 import {
   RESET_CONFIRMATION,
-  ShowroomResetGuardError,
-  ShowroomResetSequenceError,
   assertShowroomResetAllowed,
   runShowroomReset,
   showroomUrlsFromEnv,
 } from './reset.js';
-import {
-  SHOWROOM,
-  ShowroomAlreadySeededError,
-  ShowroomEnvironmentError,
-  ShowroomSeedError,
-  type ShowroomSeedResult,
-} from './showroom.js';
+import { SHOWROOM, type ShowroomSeedResult } from './showroom.js';
 
 /**
  * CLI: `pnpm demo:reset -- --confirm RESET_FLUVIA_SHOWROOM`
@@ -29,14 +22,6 @@ import {
  *   SHOWROOM_MAINTENANCE_DATABASE_URL -> conexion de MANTENIMIENTO separada
  *   (allowlist: solo la base `postgres`; nunca puede ser el target del DROP).
  */
-
-const KNOWN_ERRORS = [
-  ShowroomResetGuardError,
-  ShowroomResetSequenceError,
-  ShowroomEnvironmentError,
-  ShowroomAlreadySeededError,
-  ShowroomSeedError,
-];
 
 // eslint-disable-next-line no-console
 const say = (msg: string) => console.log(msg);
@@ -75,6 +60,7 @@ ${result.sandbox.users.map((u) => `    ${u.email} / ${u.password}  [${u.role}]`)
 ==================================================================================`);
 }
 
+let lastPhase = 'guard';
 try {
   // Guard PURO por adelantado (sin conexiones) solo para poder anunciar el
   // target exacto; runShowroomReset lo re-ejecuta como primera fase.
@@ -92,13 +78,18 @@ try {
   const result = await runShowroomReset(
     { env: config.env, confirm, targetUrls: urls.targetUrls, maintenanceUrl: urls.maintenanceUrl },
     {
-      onPhase: (phase) => say(`  fase ${phase}`),
-      onSeedPhase: (phase) =>
+      onPhase: (phase) => {
+        lastPhase = phase;
+        say(`  fase ${phase}`);
+      },
+      onSeedPhase: (phase) => {
+        lastPhase = phase;
         say(
           phase === 'await-expiry'
             ? '    seed await-expiry: esperando la expiracion NORMATIVA del checkout (TTL minimo 5 min)…'
             : `    seed ${phase}`
-        ),
+        );
+      },
     }
   );
 
@@ -110,11 +101,9 @@ Reset del showroom COMPLETO sobre "${result.targetDbName}":
   manifiesto    version ${result.manifest.manifestVersion} (semantico, sin IDs/secretos/timestamps)`);
   printSandboxMaterial(result.seed);
 } catch (err) {
-  if (KNOWN_ERRORS.some((k) => err instanceof k)) {
-    // Errores esperados (guard incluido): mensaje estable, sin stack.
-    console.error(`demo:reset fallo: ${(err as Error).message}`);
-  } else {
-    console.error(err);
-  }
+  // Conocidos: mensaje estable (la cause interna JAMAS se imprime).
+  // Desconocidos: linea sanitizada — sin objeto, sin stack, sin cause, sin
+  // URLs, sin connection strings, sin secretos (RA-F65C3-EXT-006).
+  console.error(formatSafeShowroomCliError('demo:reset', err, lastPhase));
   process.exitCode = 1;
 }
