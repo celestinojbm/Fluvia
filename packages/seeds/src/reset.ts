@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPool as realCreatePool, migrate } from '@fluvia/db';
 import { buildShowroomSemanticManifest, type ShowroomSemanticManifest } from './manifest.js';
-import { seedShowroom, type ShowroomSeedResult } from './showroom.js';
+import { seedShowroom, type ShowroomPools, type ShowroomSeedResult } from './showroom.js';
 
 /**
  * `demo:reset` (F6.5C3, decision B2) — reset DESTRUCTIVO por DROP/CREATE de la
@@ -122,6 +122,21 @@ interface ParsedDbUrl {
 }
 
 /**
+ * Codigos del validador COMPARTIDO de URLs target (una sola politica para el
+ * reset y para el seed — jamas dos copias que puedan divergir). Cada guard los
+ * traduce a su propio error tipado mediante su `raise`.
+ */
+type TargetGuardCode =
+  | 'url_invalid'
+  | 'target_name_invalid'
+  | 'target_denylisted'
+  | 'target_dbnames_differ'
+  | 'host_not_loopback'
+  | 'target_host_port_differ';
+
+type TargetGuardRaise = (code: TargetGuardCode, detail: string) => never;
+
+/**
  * Parsing fail-closed con `URL`. Se normaliza SOLO lo necesario para comparar
  * (hostname, puerto efectivo, dbname del pathname). Rechaza: esquema no
  * postgres, hostname vacio, userinfo-sin-host, pathname vacio o con multiples
@@ -129,40 +144,103 @@ interface ParsedDbUrl {
  * raiz percent-encoding ambiguo), query strings (en libpq `?host=`/`?dbname=`
  * pueden REDIRIGIR el destino) y fragments. Sin resolucion DNS.
  */
-function parseDbUrl(label: string, raw: string): ParsedDbUrl {
+function parseDbUrl(label: string, raw: string, raise: TargetGuardRaise): ParsedDbUrl {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    throw new ShowroomResetGuardError('url_invalid', `${label}: not a parseable URL`);
+    raise('url_invalid', `${label}: not a parseable URL`);
   }
   if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
-    throw new ShowroomResetGuardError('url_invalid', `${label}: protocol must be postgres://`);
+    raise('url_invalid', `${label}: protocol must be postgres://`);
   }
   if (url.search !== '' || url.hash !== '') {
-    throw new ShowroomResetGuardError(
+    raise(
       'url_invalid',
       `${label}: query/fragment can ambiguously alter the destination and are rejected`
     );
   }
   const hostRaw = url.hostname;
   if (hostRaw === '') {
-    throw new ShowroomResetGuardError(
-      'url_invalid',
-      `${label}: empty hostname (unix sockets are ambiguous and rejected)`
-    );
+    raise('url_invalid', `${label}: empty hostname (unix sockets are ambiguous and rejected)`);
   }
   // Un solo segmento de pathname, caracteres explicitos: sin '%', sin '/'.
   const path = url.pathname;
   const m = /^\/([A-Za-z0-9_]+)$/.exec(path);
   if (!m) {
-    throw new ShowroomResetGuardError(
-      'url_invalid',
-      `${label}: pathname must be a single plain database name segment`
-    );
+    raise('url_invalid', `${label}: pathname must be a single plain database name segment`);
   }
   const host = hostRaw.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
   return { host, port: url.port === '' ? '5432' : url.port, dbName: m[1]! };
+}
+
+export interface ShowroomTargetPlan {
+  targetDbName: string;
+  host: string;
+  port: string;
+}
+
+/**
+ * Validador COMPARTIDO de la identidad del TARGET dedicado (reset Y seed):
+ * parsea las 5 URLs por rol, exige nombre exacto `fluvia_showroom` o la regex
+ * estricta de test, aplica la denylist por URL (defensa en profundidad), exige
+ * el MISMO dbname en todas, hosts loopback LITERALES (sin DNS) y el mismo
+ * host:puerto efectivo entre roles. PURO: sin I/O, sin pools.
+ */
+function validateDedicatedTargets(
+  targetUrls: ShowroomDbUrls,
+  raise: TargetGuardRaise
+): ShowroomTargetPlan {
+  const targets = SHOWROOM_DB_ROLES.map((role) => ({
+    role,
+    parsed: parseDbUrl(`target[${role}]`, targetUrls[role], raise),
+  }));
+
+  for (const t of targets) {
+    // Target exacto: fluvia_showroom o fluvia_showroom_test_<id> estricto.
+    if (t.parsed.dbName !== SHOWROOM_TARGET_DB && !SHOWROOM_TEST_TARGET_RE.test(t.parsed.dbName)) {
+      raise(
+        'target_name_invalid',
+        `target[${t.role}] dbname "${t.parsed.dbName}" is not ${SHOWROOM_TARGET_DB} nor ${SHOWROOM_TEST_TARGET_RE.source}`
+      );
+    }
+    // Ninguna URL target puede apuntar a una base del sistema o a la
+    // principal (redundante con la regex a proposito: defensa en profundidad).
+    if (RESET_TARGET_DENYLIST.has(t.parsed.dbName)) {
+      raise('target_denylisted', `target[${t.role}] dbname "${t.parsed.dbName}" is denylisted`);
+    }
+  }
+
+  // TODAS las URLs target comparten dbname.
+  const dbNames = new Set(targets.map((t) => t.parsed.dbName));
+  if (dbNames.size !== 1) {
+    raise(
+      'target_dbnames_differ',
+      `target URLs point at different databases: ${[...dbNames].join(', ')}`
+    );
+  }
+
+  // Todos los hosts target son loopback LITERAL (sin resolucion DNS).
+  for (const t of targets) {
+    if (!LOOPBACK_HOSTS.has(t.parsed.host)) {
+      raise(
+        'host_not_loopback',
+        `target[${t.role}] host "${t.parsed.host}" is not localhost/127.0.0.1/::1`
+      );
+    }
+  }
+
+  // Todas las URLs target comparten host y puerto EFECTIVO (mismo cluster).
+  const hostPorts = new Set(targets.map((t) => `${t.parsed.host}:${t.parsed.port}`));
+  if (hostPorts.size !== 1) {
+    raise(
+      'target_host_port_differ',
+      `target URLs span multiple host:port pairs: ${[...hostPorts].join(', ')}`
+    );
+  }
+
+  const parsed = targets[0]!.parsed;
+  return { targetDbName: parsed.dbName, host: parsed.host, port: parsed.port };
 }
 
 export interface ShowroomResetPlan {
@@ -190,75 +268,40 @@ export function assertShowroomResetAllowed(req: ShowroomResetRequest): ShowroomR
     );
   }
 
-  const targets = SHOWROOM_DB_ROLES.map((role) => ({
-    role,
-    parsed: parseDbUrl(`target[${role}]`, req.targetUrls[role]),
-  }));
-  const maintenance = parseDbUrl('maintenance', req.maintenanceUrl);
-
-  for (const t of targets) {
-    // [3] Target exacto: fluvia_showroom o fluvia_showroom_test_<id> estricto.
-    if (t.parsed.dbName !== SHOWROOM_TARGET_DB && !SHOWROOM_TEST_TARGET_RE.test(t.parsed.dbName)) {
-      throw new ShowroomResetGuardError(
-        'target_name_invalid',
-        `target[${t.role}] dbname "${t.parsed.dbName}" is not ${SHOWROOM_TARGET_DB} nor ${SHOWROOM_TEST_TARGET_RE.source}`
-      );
-    }
-    // [4] + [10] Ninguna URL target puede apuntar a una base del sistema o a
-    // la principal (redundante con [3] a proposito: defensa en profundidad).
-    if (RESET_TARGET_DENYLIST.has(t.parsed.dbName)) {
-      throw new ShowroomResetGuardError(
-        'target_denylisted',
-        `target[${t.role}] dbname "${t.parsed.dbName}" is denylisted`
-      );
-    }
-  }
-
-  // [5] TODAS las URLs target comparten dbname.
-  const dbNames = new Set(targets.map((t) => t.parsed.dbName));
-  if (dbNames.size !== 1) {
+  // [3][4][5][6-target][10] + homogeneidad host:puerto de los targets: el
+  // validador COMPARTIDO con el guard del seed (una sola politica). El codigo
+  // publico del reset conserva su forma historica (`maintenance_target_mismatch`
+  // cubre tambien la homogeneidad entre targets).
+  const resetRaise: TargetGuardRaise = (code, detail) => {
     throw new ShowroomResetGuardError(
-      'target_dbnames_differ',
-      `target URLs point at different databases: ${[...dbNames].join(', ')}`
+      code === 'target_host_port_differ' ? 'maintenance_target_mismatch' : code,
+      detail
+    );
+  };
+  const target = validateDedicatedTargets(req.targetUrls, resetRaise);
+  const maintenance = parseDbUrl('maintenance', req.maintenanceUrl, resetRaise);
+
+  // [6] La maintenance tambien debe ser loopback LITERAL (sin DNS).
+  if (!LOOPBACK_HOSTS.has(maintenance.host)) {
+    throw new ShowroomResetGuardError(
+      'host_not_loopback',
+      `maintenance host "${maintenance.host}" is not localhost/127.0.0.1/::1`
     );
   }
-  const targetDbName = targets[0]!.parsed.dbName;
 
-  // [6] Todos los hosts (target y maintenance) son loopback LITERAL (sin DNS).
-  for (const entry of [
-    ...targets.map((t) => ({ label: t.role, p: t.parsed })),
-    { label: 'maintenance', p: maintenance },
-  ]) {
-    if (!LOOPBACK_HOSTS.has(entry.p.host)) {
-      throw new ShowroomResetGuardError(
-        'host_not_loopback',
-        `${entry.label} host "${entry.p.host}" is not localhost/127.0.0.1/::1`
-      );
-    }
-  }
-
-  // [7] Maintenance y target comparten host y puerto (mismo cluster). Los
-  // targets ademas deben ser homogeneos entre si.
-  const hostPorts = new Set(targets.map((t) => `${t.parsed.host}:${t.parsed.port}`));
-  if (hostPorts.size !== 1) {
+  // [7] Maintenance y target comparten host y puerto (mismo cluster).
+  if (maintenance.host !== target.host || maintenance.port !== target.port) {
     throw new ShowroomResetGuardError(
       'maintenance_target_mismatch',
-      `target URLs span multiple host:port pairs: ${[...hostPorts].join(', ')}`
-    );
-  }
-  const [targetHostPort] = hostPorts;
-  if (`${maintenance.host}:${maintenance.port}` !== targetHostPort) {
-    throw new ShowroomResetGuardError(
-      'maintenance_target_mismatch',
-      `maintenance ${maintenance.host}:${maintenance.port} does not match target ${targetHostPort}`
+      `maintenance ${maintenance.host}:${maintenance.port} does not match target ${target.host}:${target.port}`
     );
   }
 
   // [8] La base de mantenimiento es DISTINTA del target.
-  if (maintenance.dbName === targetDbName) {
+  if (maintenance.dbName === target.targetDbName) {
     throw new ShowroomResetGuardError(
       'maintenance_equals_target',
-      `maintenance database equals the drop target "${targetDbName}"`
+      `maintenance database equals the drop target "${target.targetDbName}"`
     );
   }
   // [9] La base de mantenimiento pertenece a la allowlist literal.
@@ -269,12 +312,86 @@ export function assertShowroomResetAllowed(req: ShowroomResetRequest): ShowroomR
     );
   }
 
-  const targetParsed = targets[0]!.parsed;
   return {
-    targetDbName,
+    targetDbName: target.targetDbName,
     maintenanceDbName: maintenance.dbName,
-    host: targetParsed.host,
-    port: targetParsed.port,
+    host: target.host,
+    port: target.port,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Guard del SEED (F6.5C3, revision pre-auditoria): `showroom:seed` tambien es
+// un camino de ESCRITURA hacia una base y debe demostrar por si mismo que su
+// target es la base DEDICADA — sin depender del reset. Misma politica de URLs
+// (validador compartido), sin confirmacion (el seed no es destructivo) y sin
+// plano maintenance (el seed no dropea nada).
+// ---------------------------------------------------------------------------
+
+export type ShowroomSeedGuardCode = 'env_not_allowed' | TargetGuardCode;
+
+/** Error tipado y estable del guard del seed: cero conexiones, cero efectos. */
+export class ShowroomSeedGuardError extends Error {
+  constructor(
+    readonly code: ShowroomSeedGuardCode,
+    detail: string
+  ) {
+    super(`showroom:seed blocked (${code}): ${detail}`);
+    this.name = 'ShowroomSeedGuardError';
+  }
+}
+
+export interface ShowroomSeedTargetRequest {
+  /** Entorno efectivo. El guard exige EXACTAMENTE 'local' o 'test'. */
+  env: string;
+  /** URLs por rol hacia la base OBJETIVO del seed (mismo dbname dedicado). */
+  targetUrls: ShowroomDbUrls;
+}
+
+/**
+ * Guard PURO del `showroom:seed` — corre COMPLETO antes de crear cualquier
+ * pool/conexion (sin I/O, sin DNS): env exacto local/test + el validador
+ * compartido del target dedicado (parse fail-closed, nombre exacto o regex
+ * estricta, denylist `fluvia`/`postgres`/`template0`/`template1`, mismo dbname
+ * en los 5 roles, hosts loopback literales, mismo host:puerto efectivo).
+ */
+export function assertShowroomSeedTargetAllowed(
+  req: ShowroomSeedTargetRequest
+): ShowroomTargetPlan {
+  if (req.env !== 'local' && req.env !== 'test') {
+    throw new ShowroomSeedGuardError('env_not_allowed', `env "${req.env}" is not local/test`);
+  }
+  return validateDedicatedTargets(req.targetUrls, (code, detail) => {
+    throw new ShowroomSeedGuardError(code, detail);
+  });
+}
+
+export interface ShowroomSeedPoolSet {
+  plan: ShowroomTargetPlan;
+  pools: ShowroomPools;
+}
+
+/**
+ * Unica via del CLI para abrir los pools del seed: el guard puro corre PRIMERO
+ * y el factory de conexiones es INYECTABLE, de modo que los tests prueban de
+ * forma objetiva que un rechazo jamas invoca el factory (cero pools, cero
+ * queries, cero DNS).
+ */
+export function createShowroomSeedPools(
+  env: string,
+  targetUrls: ShowroomDbUrls,
+  createPool: typeof realCreatePool = realCreatePool
+): ShowroomSeedPoolSet {
+  const plan = assertShowroomSeedTargetAllowed({ env, targetUrls });
+  return {
+    plan,
+    pools: {
+      admin: createPool({ connectionString: targetUrls.admin, max: 4 }),
+      app: createPool({ connectionString: targetUrls.app, max: 8 }),
+      auth: createPool({ connectionString: targetUrls.auth, max: 2 }),
+      relay: createPool({ connectionString: targetUrls.relay, max: 2 }),
+      webhook: createPool({ connectionString: targetUrls.webhook, max: 2 }),
+    },
   };
 }
 

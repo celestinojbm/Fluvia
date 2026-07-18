@@ -3,12 +3,17 @@ import type { Pool } from '@fluvia/db';
 import {
   RESET_CONFIRMATION,
   ShowroomResetGuardError,
+  ShowroomSeedGuardError,
   assertShowroomResetAllowed,
+  assertShowroomSeedTargetAllowed,
+  createShowroomSeedPools,
   runShowroomReset,
+  type ShowroomDbUrls,
   type ShowroomResetGuardCode,
   type ShowroomResetRequest,
+  type ShowroomSeedGuardCode,
 } from '../src/reset.js';
-import { resetRequestFor } from './showroom-helpers.js';
+import { resetRequestFor, targetUrlsFor } from './showroom-helpers.js';
 
 /**
  * F6.5C3 — guard de DIEZ condiciones del `demo:reset`, fail-closed y
@@ -296,6 +301,144 @@ describe('guard: positivos', () => {
       }
       req.maintenanceUrl = req.maintenanceUrl.replace('127.0.0.1', host);
       expect(() => assertShowroomResetAllowed(req)).not.toThrow();
+    }
+  });
+});
+
+/**
+ * Guard PURO del `showroom:seed` (revision pre-auditoria): el seed tambien
+ * debe demostrar POR SI MISMO que su target es la base dedicada — sin heredar
+ * nada del reset. Misma politica de URLs (validador compartido) y el mismo
+ * estandar de prueba: en cada rechazo, el factory de conexiones JAMAS se
+ * invoca (createShowroomSeedPools guarda primero, abre despues).
+ */
+describe('guard del seed (assertShowroomSeedTargetAllowed / createShowroomSeedPools)', () => {
+  const SEED_DB = 'fluvia_showroom_test_seedguard1';
+  const seedUrls = () => targetUrlsFor(SEED_DB);
+
+  function expectSeedBlocked(
+    env: string,
+    targetUrls: ShowroomDbUrls,
+    codes: ShowroomSeedGuardCode | ShowroomSeedGuardCode[]
+  ): void {
+    const allowed = Array.isArray(codes) ? codes : [codes];
+    // 1) El guard puro (sincrono, cero I/O) lanza el codigo estable esperado…
+    let guardErr: unknown;
+    try {
+      assertShowroomSeedTargetAllowed({ env, targetUrls });
+    } catch (err) {
+      guardErr = err;
+    }
+    expect(guardErr).toBeInstanceOf(ShowroomSeedGuardError);
+    expect(allowed).toContain((guardErr as ShowroomSeedGuardError).code);
+
+    // 2) …y la via del CLI aborta SIN invocar jamas el connection factory.
+    const factory = spyFactory();
+    expect(() => createShowroomSeedPools(env, targetUrls, factory)).toThrow(ShowroomSeedGuardError);
+    expect(factory).not.toHaveBeenCalled();
+  }
+
+  it.each(['production', 'staging', 'sandbox', 'development', ''])(
+    'env "%s" aborta pre-conexion',
+    (env) => {
+      expectSeedBlocked(env, seedUrls(), 'env_not_allowed');
+    }
+  );
+
+  it('TODAS las URLs apuntando a la base principal `fluvia` abortan', () => {
+    expectSeedBlocked('test', targetUrlsFor('fluvia'), [
+      'target_name_invalid',
+      'target_denylisted',
+    ]);
+  });
+
+  it.each(['postgres', 'template0', 'template1'])('target "%s" aborta SIEMPRE', (db) => {
+    expectSeedBlocked('test', targetUrlsFor(db), ['target_name_invalid', 'target_denylisted']);
+  });
+
+  it('admin al showroom pero app a `fluvia` aborta (mezcla de destinos)', () => {
+    const urls = seedUrls();
+    urls.app = urls.app.replace(/\/[^/]+$/, '/fluvia');
+    expectSeedBlocked('test', urls, [
+      'target_name_invalid',
+      'target_denylisted',
+      'target_dbnames_differ',
+    ]);
+  });
+
+  it('dos bases dedicadas DISTINTAS entre roles abortan igualmente', () => {
+    const urls = seedUrls();
+    urls.relay = urls.relay.replace(/\/[^/]+$/, '/fluvia_showroom_test_other9');
+    expectSeedBlocked('test', urls, 'target_dbnames_differ');
+  });
+
+  it('role con URL invalida u omitida aborta', () => {
+    const broken = seedUrls();
+    broken.webhook = 'esto no es una url';
+    expectSeedBlocked('test', broken, 'url_invalid');
+
+    const missing = seedUrls();
+    (missing as unknown as Record<string, unknown>).auth = undefined;
+    expectSeedBlocked('test', missing, 'url_invalid');
+  });
+
+  it.each(['shopdb', 'fluvia_showroom2', 'xfluvia_showroom', 'fluvia_showroom_test_'])(
+    'target arbitrario o prefijo parecido "%s" aborta',
+    (db) => {
+      expectSeedBlocked('test', targetUrlsFor(db), 'target_name_invalid');
+    }
+  );
+
+  it('host remoto aborta (literal, sin DNS)', () => {
+    const urls = seedUrls();
+    urls.admin = urls.admin.replace('127.0.0.1', 'db.example.com');
+    expectSeedBlocked('test', urls, 'host_not_loopback');
+  });
+
+  it('hosts o puertos DISTINTOS entre roles abortan', () => {
+    const hosts = seedUrls();
+    hosts.app = hosts.app.replace('127.0.0.1', 'localhost');
+    expectSeedBlocked('test', hosts, 'target_host_port_differ');
+
+    const ports = seedUrls();
+    ports.app = ports.app.replace(':5432/', ':5433/');
+    expectSeedBlocked('test', ports, 'target_host_port_differ');
+  });
+
+  it('query/fragment/path multi-segmento/percent-encoding abortan', () => {
+    const query = seedUrls();
+    query.admin = `${query.admin}?host=10.0.0.9`;
+    expectSeedBlocked('test', query, 'url_invalid');
+
+    const fragment = seedUrls();
+    fragment.admin = `${fragment.admin}#frag`;
+    expectSeedBlocked('test', fragment, 'url_invalid');
+
+    const multi = seedUrls();
+    multi.admin = `${multi.admin}/extra`;
+    expectSeedBlocked('test', multi, 'url_invalid');
+
+    const percent = seedUrls();
+    percent.admin = percent.admin.replace(SEED_DB, `%66${SEED_DB.slice(1)}`);
+    expectSeedBlocked('test', percent, 'url_invalid');
+  });
+
+  it('fluvia_showroom y el target efimero de test son validos; el factory abre EXACTAMENTE 5 pools', () => {
+    const planReal = assertShowroomSeedTargetAllowed({
+      env: 'local',
+      targetUrls: targetUrlsFor('fluvia_showroom'),
+    });
+    expect(planReal.targetDbName).toBe('fluvia_showroom');
+
+    const factory = vi.fn(
+      (opts: { connectionString: string; max?: number }) =>
+        ({ connectionString: opts.connectionString }) as unknown as Pool
+    );
+    const opened = createShowroomSeedPools('test', seedUrls(), factory);
+    expect(opened.plan.targetDbName).toBe(SEED_DB);
+    expect(factory).toHaveBeenCalledTimes(5);
+    for (const call of factory.mock.calls) {
+      expect(new URL(call[0].connectionString).pathname).toBe(`/${SEED_DB}`);
     }
   });
 });

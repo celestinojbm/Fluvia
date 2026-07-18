@@ -34,6 +34,12 @@ import {
   WebhookEndpointService,
   createWebhookFanoutPublisher,
 } from '@fluvia/webhooks';
+import {
+  RESET_TARGET_DENYLIST,
+  SHOWROOM_DB_ROLES,
+  SHOWROOM_TARGET_DB,
+  SHOWROOM_TEST_TARGET_RE,
+} from './reset.js';
 
 /**
  * Seed del SHOWROOM (F6.5C3) — dataset rico y deterministicamente SEMANTICO,
@@ -82,6 +88,20 @@ export class ShowroomSeedError extends Error {
   constructor(detail: string) {
     super(`seedShowroom postcondition failed: ${detail}`);
     this.name = 'ShowroomSeedError';
+  }
+}
+
+/**
+ * Los pools NO apuntan (todos y en vivo) a la base DEDICADA del showroom:
+ * fail-closed, cero mutaciones. Distinto de ShowroomAlreadySeededError — aqui
+ * el problema es el DESTINO, no el contenido.
+ */
+export class ShowroomDatabaseMismatchError extends Error {
+  constructor(detail: string) {
+    super(
+      `seedShowroom blocked (wrong database): ${detail}. The showroom only runs against its dedicated database (${SHOWROOM_TARGET_DB} or fluvia_showroom_test_<id>); it NEVER touches the main database.`
+    );
+    this.name = 'ShowroomDatabaseMismatchError';
   }
 }
 
@@ -268,6 +288,46 @@ function buildServices(pools: ShowroomPools): ShowroomServices {
   };
 }
 
+/**
+ * Defensa PROGRAMATICA en vivo (no solo del CLI): `seedShowroom` es exportado
+ * y puede invocarse con pools arbitrarios, asi que ANTES de mirar contenido y
+ * ANTES de cualquier mutacion se pregunta a la PROPIA base — read-only,
+ * `current_database()` por CADA uno de los cinco pools — a donde apuntan de
+ * verdad (jamas se confia solo en el pathname de una URL):
+ *  - los cinco roles deben reportar EXACTAMENTE el mismo dbname;
+ *  - ese dbname debe ser `fluvia_showroom` o `fluvia_showroom_test_<id>`;
+ *  - `fluvia`/`postgres`/`template0`/`template1` (o cualquier otro nombre) se
+ *    rechazan explicitamente.
+ * Cualquier fallo (incluida una comprobacion que no responde) aborta ANTES de
+ * crear el primer usuario, sin datos parciales.
+ */
+async function assertDedicatedDatabase(pools: ShowroomPools): Promise<void> {
+  const reported: Array<[string, string]> = [];
+  for (const role of SHOWROOM_DB_ROLES) {
+    const res = await pools[role].query<{ db: string }>('SELECT current_database() AS db');
+    const db = res.rows[0]?.db;
+    if (!db) {
+      throw new ShowroomDatabaseMismatchError(`pool "${role}" did not report current_database()`);
+    }
+    reported.push([role, db]);
+  }
+  const unique = new Set(reported.map(([, db]) => db));
+  if (unique.size !== 1) {
+    throw new ShowroomDatabaseMismatchError(
+      `pools are connected to DIFFERENT databases: ${reported.map(([r, db]) => `${r}=${db}`).join(', ')}`
+    );
+  }
+  const [db] = unique;
+  if (RESET_TARGET_DENYLIST.has(db!)) {
+    throw new ShowroomDatabaseMismatchError(`live current_database() is "${db}" (denylisted)`);
+  }
+  if (db !== SHOWROOM_TARGET_DB && !SHOWROOM_TEST_TARGET_RE.test(db!)) {
+    throw new ShowroomDatabaseMismatchError(
+      `live current_database() is "${db}", not a dedicated showroom database`
+    );
+  }
+}
+
 /** Comprobacion READ-ONLY de base vacia de showroom (fail-closed). */
 async function assertShowroomEmpty(admin: Pool): Promise<void> {
   const org = await admin.query(
@@ -325,6 +385,9 @@ export async function seedShowroom(
   const cop = (units: bigint) => Money.of(units, SHOWROOM.currency);
 
   phase('preflight');
+  // Primero el DESTINO (defensa live contra pools que no apuntan a la base
+  // dedicada), despues el CONTENIDO (base vacia de showroom).
+  await assertDedicatedDatabase(pools);
   await assertShowroomEmpty(pools.admin);
 
   const services = buildServices(pools);
@@ -754,7 +817,15 @@ export async function seedShowroom(
     req.resume();
     req.on('end', () => res.writeHead(200).end());
   });
-  await new Promise<void>((resolve) => receiver.listen(0, '127.0.0.1', resolve));
+  // Loopback EXPLICITO (jamas 0.0.0.0/::) y fallo de listen convertido en
+  // rechazo limpio (sin handle colgado ni excepcion no capturada).
+  await new Promise<void>((resolve, reject) => {
+    receiver.once('error', reject);
+    receiver.listen(0, '127.0.0.1', () => {
+      receiver.removeListener('error', reject);
+      resolve();
+    });
+  });
   try {
     const receiverBase = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}`;
     await services.endpoints.create(
