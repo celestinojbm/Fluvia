@@ -6,7 +6,7 @@ import {
   ShowroomSeedGuardError,
   assertShowroomResetAllowed,
   assertShowroomSeedTargetAllowed,
-  createShowroomSeedPools,
+  openVerifiedShowroomTarget,
   runShowroomReset,
   type ShowroomDbUrls,
   type ShowroomResetGuardCode,
@@ -310,17 +310,18 @@ describe('guard: positivos', () => {
  * debe demostrar POR SI MISMO que su target es la base dedicada — sin heredar
  * nada del reset. Misma politica de URLs (validador compartido) y el mismo
  * estandar de prueba: en cada rechazo, el factory de conexiones JAMAS se
- * invoca (createShowroomSeedPools guarda primero, abre despues).
+ * invoca (openVerifiedShowroomTarget guarda primero, abre despues, atestigua
+ * al final).
  */
-describe('guard del seed (assertShowroomSeedTargetAllowed / createShowroomSeedPools)', () => {
+describe('guard del seed (assertShowroomSeedTargetAllowed / openVerifiedShowroomTarget)', () => {
   const SEED_DB = 'fluvia_showroom_test_seedguard1';
   const seedUrls = () => targetUrlsFor(SEED_DB);
 
-  function expectSeedBlocked(
+  async function expectSeedBlocked(
     env: string,
     targetUrls: ShowroomDbUrls,
     codes: ShowroomSeedGuardCode | ShowroomSeedGuardCode[]
-  ): void {
+  ): Promise<void> {
     const allowed = Array.isArray(codes) ? codes : [codes];
     // 1) El guard puro (sincrono, cero I/O) lanza el codigo estable esperado…
     let guardErr: unknown;
@@ -334,108 +335,131 @@ describe('guard del seed (assertShowroomSeedTargetAllowed / createShowroomSeedPo
 
     // 2) …y la via del CLI aborta SIN invocar jamas el connection factory.
     const factory = spyFactory();
-    expect(() => createShowroomSeedPools(env, targetUrls, factory)).toThrow(ShowroomSeedGuardError);
+    await expect(openVerifiedShowroomTarget(env, targetUrls, factory)).rejects.toBeInstanceOf(
+      ShowroomSeedGuardError
+    );
     expect(factory).not.toHaveBeenCalled();
   }
 
   it.each(['production', 'staging', 'sandbox', 'development', ''])(
     'env "%s" aborta pre-conexion',
-    (env) => {
-      expectSeedBlocked(env, seedUrls(), 'env_not_allowed');
+    async (env) => {
+      await expectSeedBlocked(env, seedUrls(), 'env_not_allowed');
     }
   );
 
-  it('TODAS las URLs apuntando a la base principal `fluvia` abortan', () => {
-    expectSeedBlocked('test', targetUrlsFor('fluvia'), [
+  it('TODAS las URLs apuntando a la base principal `fluvia` abortan', async () => {
+    await expectSeedBlocked('test', targetUrlsFor('fluvia'), [
       'target_name_invalid',
       'target_denylisted',
     ]);
   });
 
-  it.each(['postgres', 'template0', 'template1'])('target "%s" aborta SIEMPRE', (db) => {
-    expectSeedBlocked('test', targetUrlsFor(db), ['target_name_invalid', 'target_denylisted']);
+  it.each(['postgres', 'template0', 'template1'])('target "%s" aborta SIEMPRE', async (db) => {
+    await expectSeedBlocked('test', targetUrlsFor(db), [
+      'target_name_invalid',
+      'target_denylisted',
+    ]);
   });
 
-  it('admin al showroom pero app a `fluvia` aborta (mezcla de destinos)', () => {
+  it('admin al showroom pero app a `fluvia` aborta (mezcla de destinos)', async () => {
     const urls = seedUrls();
     urls.app = urls.app.replace(/\/[^/]+$/, '/fluvia');
-    expectSeedBlocked('test', urls, [
+    await expectSeedBlocked('test', urls, [
       'target_name_invalid',
       'target_denylisted',
       'target_dbnames_differ',
     ]);
   });
 
-  it('dos bases dedicadas DISTINTAS entre roles abortan igualmente', () => {
+  it('dos bases dedicadas DISTINTAS entre roles abortan igualmente', async () => {
     const urls = seedUrls();
     urls.relay = urls.relay.replace(/\/[^/]+$/, '/fluvia_showroom_test_other9');
-    expectSeedBlocked('test', urls, 'target_dbnames_differ');
+    await expectSeedBlocked('test', urls, 'target_dbnames_differ');
   });
 
-  it('role con URL invalida u omitida aborta', () => {
+  it('role con URL invalida u omitida aborta', async () => {
     const broken = seedUrls();
     broken.webhook = 'esto no es una url';
-    expectSeedBlocked('test', broken, 'url_invalid');
+    await expectSeedBlocked('test', broken, 'url_invalid');
 
     const missing = seedUrls();
     (missing as unknown as Record<string, unknown>).auth = undefined;
-    expectSeedBlocked('test', missing, 'url_invalid');
+    await expectSeedBlocked('test', missing, 'url_invalid');
   });
 
   it.each(['shopdb', 'fluvia_showroom2', 'xfluvia_showroom', 'fluvia_showroom_test_'])(
     'target arbitrario o prefijo parecido "%s" aborta',
-    (db) => {
-      expectSeedBlocked('test', targetUrlsFor(db), 'target_name_invalid');
+    async (db) => {
+      await expectSeedBlocked('test', targetUrlsFor(db), 'target_name_invalid');
     }
   );
 
-  it('host remoto aborta (literal, sin DNS)', () => {
+  it('host remoto aborta (literal, sin DNS)', async () => {
     const urls = seedUrls();
     urls.admin = urls.admin.replace('127.0.0.1', 'db.example.com');
-    expectSeedBlocked('test', urls, 'host_not_loopback');
+    await expectSeedBlocked('test', urls, 'host_not_loopback');
   });
 
-  it('hosts o puertos DISTINTOS entre roles abortan', () => {
+  it('hosts o puertos DISTINTOS entre roles abortan', async () => {
     const hosts = seedUrls();
     hosts.app = hosts.app.replace('127.0.0.1', 'localhost');
-    expectSeedBlocked('test', hosts, 'target_host_port_differ');
+    await expectSeedBlocked('test', hosts, 'target_host_port_differ');
 
     const ports = seedUrls();
     ports.app = ports.app.replace(':5432/', ':5433/');
-    expectSeedBlocked('test', ports, 'target_host_port_differ');
+    await expectSeedBlocked('test', ports, 'target_host_port_differ');
   });
 
-  it('query/fragment/path multi-segmento/percent-encoding abortan', () => {
+  it('query/fragment/path multi-segmento/percent-encoding abortan', async () => {
     const query = seedUrls();
     query.admin = `${query.admin}?host=10.0.0.9`;
-    expectSeedBlocked('test', query, 'url_invalid');
+    await expectSeedBlocked('test', query, 'url_invalid');
 
     const fragment = seedUrls();
     fragment.admin = `${fragment.admin}#frag`;
-    expectSeedBlocked('test', fragment, 'url_invalid');
+    await expectSeedBlocked('test', fragment, 'url_invalid');
 
     const multi = seedUrls();
     multi.admin = `${multi.admin}/extra`;
-    expectSeedBlocked('test', multi, 'url_invalid');
+    await expectSeedBlocked('test', multi, 'url_invalid');
 
     const percent = seedUrls();
     percent.admin = percent.admin.replace(SEED_DB, `%66${SEED_DB.slice(1)}`);
-    expectSeedBlocked('test', percent, 'url_invalid');
+    await expectSeedBlocked('test', percent, 'url_invalid');
   });
 
-  it('fluvia_showroom y el target efimero de test son validos; el factory abre EXACTAMENTE 5 pools', () => {
+  it('fluvia_showroom y el target efimero de test son validos; el factory abre EXACTAMENTE 5 pools', async () => {
     const planReal = assertShowroomSeedTargetAllowed({
       env: 'local',
       targetUrls: targetUrlsFor('fluvia_showroom'),
     });
     expect(planReal.targetDbName).toBe('fluvia_showroom');
 
-    const factory = vi.fn(
-      (opts: { connectionString: string; max?: number }) =>
-        ({ connectionString: opts.connectionString }) as unknown as Pool
-    );
-    const opened = createShowroomSeedPools('test', seedUrls(), factory);
-    expect(opened.plan.targetDbName).toBe(SEED_DB);
+    // Pools falsos cuya identidad LIVE es valida y consistente (la attestation
+    // real contra PostgreSQL vive en showroom-cluster-identity.test.ts y en el
+    // seed completo): aqui se prueba el ORDEN del flujo y el conteo exacto.
+    const factory = vi.fn((opts: { connectionString: string; max?: number }) => {
+      return {
+        connectionString: opts.connectionString,
+        query: async () => ({
+          rows: [
+            {
+              database: SEED_DB,
+              server_address: '127.0.0.1',
+              server_port: '5432',
+              postmaster_started_at: '2026-07-18 00:00:00.000000+00',
+              cluster_identifier: '7000000000000000001',
+            },
+          ],
+        }),
+        end: async () => undefined,
+      } as unknown as Pool;
+    });
+    const opened = await openVerifiedShowroomTarget('test', seedUrls(), factory);
+    expect(opened.plan?.targetDbName).toBe(SEED_DB);
+    expect(opened.identity.database).toBe(SEED_DB);
+    expect(opened.identity.clusterIdentifier).toBe('7000000000000000001');
     expect(factory).toHaveBeenCalledTimes(5);
     for (const call of factory.mock.calls) {
       expect(new URL(call[0].connectionString).pathname).toBe(`/${SEED_DB}`);

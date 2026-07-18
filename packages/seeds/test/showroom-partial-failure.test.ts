@@ -36,15 +36,18 @@ vi.mock('@fluvia/identity', async (importOriginal) => {
 
 // Import DESPUES del mock: seedShowroom debe resolver la clase interceptada.
 const { seedShowroom, ShowroomAlreadySeededError } = await import('../src/showroom.js');
+const { verifyShowroomTarget } = await import('../src/live-identity.js');
 const { prepareShowroomDatabase, runShowroomReset } = await import('../src/reset.js');
 const { MAINTENANCE_URL, ephemeralDbName, resetRequestFor, snapshotCounts } =
   await import('./showroom-helpers.js');
 type ShowroomPools = import('../src/showroom.js').ShowroomPools;
+type VerifiedShowroomTarget = import('../src/live-identity.js').VerifiedShowroomTarget;
 
 const DB = ephemeralDbName();
 const REQ = resetRequestFor(DB);
 
 let pools: ShowroomPools;
+let target: VerifiedShowroomTarget;
 
 beforeAll(async () => {
   await prepareShowroomDatabase(REQ);
@@ -55,6 +58,7 @@ beforeAll(async () => {
     relay: createPool({ connectionString: REQ.targetUrls.relay, max: 2 }),
     webhook: createPool({ connectionString: REQ.targetUrls.webhook, max: 2 }),
   };
+  target = await verifyShowroomTarget('test', pools);
 }, 120_000);
 
 afterAll(async () => {
@@ -71,7 +75,7 @@ describe('fallo parcial del seed y reconstruccion por demo:reset', () => {
     let result: unknown;
     let error: unknown;
     try {
-      result = await seedShowroom('test', pools, { onPhase: (p) => phases.push(p) });
+      result = await seedShowroom('test', target, { onPhase: (p) => phases.push(p) });
     } catch (err) {
       error = err;
     } finally {
@@ -101,7 +105,7 @@ describe('fallo parcial del seed y reconstruccion por demo:reset', () => {
 
   it('una segunda llamada directa a seedShowroom falla CLOSED con cero mutaciones', async () => {
     const before = await snapshotCounts(pools.admin);
-    await expect(seedShowroom('test', pools)).rejects.toBeInstanceOf(ShowroomAlreadySeededError);
+    await expect(seedShowroom('test', target)).rejects.toBeInstanceOf(ShowroomAlreadySeededError);
     const after = await snapshotCounts(pools.admin);
     expect(after).toEqual(before);
   });

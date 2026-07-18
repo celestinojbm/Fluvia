@@ -22,6 +22,16 @@ export {
   type ShowroomSeedResult,
 } from './showroom.js';
 export {
+  ShowroomUnverifiedTargetError,
+  assertVerifiedShowroomTarget,
+  observeShowroomLiveIdentity,
+  reattestVerifiedShowroomTarget,
+  verifyShowroomTarget,
+  type ShowroomLiveDatabaseIdentity,
+  type VerifiedShowroomTarget,
+} from './live-identity.js';
+export { formatSafeShowroomCliError } from './cli-errors.js';
+export {
   buildShowroomSemanticManifest,
   serializeShowroomManifest,
   type ManifestEntityState,
@@ -37,9 +47,14 @@ export {
   ShowroomResetGuardError,
   ShowroomResetSequenceError,
   ShowroomSeedGuardError,
+  ShowroomTargetRemovedError,
+  TUPLE_CONCURRENTLY_UPDATED_MESSAGE,
+  TUPLE_CONCURRENTLY_UPDATED_SQLSTATE,
   assertShowroomResetAllowed,
   assertShowroomSeedTargetAllowed,
-  createShowroomSeedPools,
+  isRetryableTupleConcurrentlyUpdated,
+  openShowroomPoolsSafely,
+  openVerifiedShowroomTarget,
   prepareShowroomDatabase,
   runShowroomReset,
   showroomUrlsFromEnv,
@@ -52,7 +67,6 @@ export {
   type ShowroomResetRequest,
   type ShowroomResetResult,
   type ShowroomSeedGuardCode,
-  type ShowroomSeedPoolSet,
   type ShowroomSeedTargetRequest,
   type ShowroomTargetPlan,
 } from './reset.js';

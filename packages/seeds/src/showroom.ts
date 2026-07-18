@@ -35,11 +35,11 @@ import {
   createWebhookFanoutPublisher,
 } from '@fluvia/webhooks';
 import {
-  RESET_TARGET_DENYLIST,
-  SHOWROOM_DB_ROLES,
-  SHOWROOM_TARGET_DB,
-  SHOWROOM_TEST_TARGET_RE,
-} from './reset.js';
+  assertVerifiedShowroomTarget,
+  reattestVerifiedShowroomTarget,
+  type VerifiedShowroomTarget,
+} from './live-identity.js';
+import { SHOWROOM_TARGET_DB } from './reset.js';
 
 /**
  * Seed del SHOWROOM (F6.5C3) — dataset rico y deterministicamente SEMANTICO,
@@ -288,46 +288,6 @@ function buildServices(pools: ShowroomPools): ShowroomServices {
   };
 }
 
-/**
- * Defensa PROGRAMATICA en vivo (no solo del CLI): `seedShowroom` es exportado
- * y puede invocarse con pools arbitrarios, asi que ANTES de mirar contenido y
- * ANTES de cualquier mutacion se pregunta a la PROPIA base — read-only,
- * `current_database()` por CADA uno de los cinco pools — a donde apuntan de
- * verdad (jamas se confia solo en el pathname de una URL):
- *  - los cinco roles deben reportar EXACTAMENTE el mismo dbname;
- *  - ese dbname debe ser `fluvia_showroom` o `fluvia_showroom_test_<id>`;
- *  - `fluvia`/`postgres`/`template0`/`template1` (o cualquier otro nombre) se
- *    rechazan explicitamente.
- * Cualquier fallo (incluida una comprobacion que no responde) aborta ANTES de
- * crear el primer usuario, sin datos parciales.
- */
-async function assertDedicatedDatabase(pools: ShowroomPools): Promise<void> {
-  const reported: Array<[string, string]> = [];
-  for (const role of SHOWROOM_DB_ROLES) {
-    const res = await pools[role].query<{ db: string }>('SELECT current_database() AS db');
-    const db = res.rows[0]?.db;
-    if (!db) {
-      throw new ShowroomDatabaseMismatchError(`pool "${role}" did not report current_database()`);
-    }
-    reported.push([role, db]);
-  }
-  const unique = new Set(reported.map(([, db]) => db));
-  if (unique.size !== 1) {
-    throw new ShowroomDatabaseMismatchError(
-      `pools are connected to DIFFERENT databases: ${reported.map(([r, db]) => `${r}=${db}`).join(', ')}`
-    );
-  }
-  const [db] = unique;
-  if (RESET_TARGET_DENYLIST.has(db!)) {
-    throw new ShowroomDatabaseMismatchError(`live current_database() is "${db}" (denylisted)`);
-  }
-  if (db !== SHOWROOM_TARGET_DB && !SHOWROOM_TEST_TARGET_RE.test(db!)) {
-    throw new ShowroomDatabaseMismatchError(
-      `live current_database() is "${db}", not a dedicated showroom database`
-    );
-  }
-}
-
 /** Comprobacion READ-ONLY de base vacia de showroom (fail-closed). */
 async function assertShowroomEmpty(admin: Pool): Promise<void> {
   const org = await admin.query(
@@ -375,19 +335,28 @@ async function expectIntentStatus(
 
 export async function seedShowroom(
   env: string,
-  pools: ShowroomPools,
+  target: VerifiedShowroomTarget,
   options: ShowroomSeedOptions = {}
 ): Promise<ShowroomSeedResult> {
   // Guard duro de entorno ANTES de tocar la base (patron seedDemo/F1-10).
   if (env !== 'local' && env !== 'test') throw new ShowroomEnvironmentError(env);
+  // Contrato nuevo (RA-F65C3-EXT-001): SOLO se acepta el handle runtime opaco
+  // producido por `verifyShowroomTarget` (attestation live de identidad unica
+  // del cluster). Un objeto de pools plano, un cast de TypeScript o una copia
+  // estructural del handle se rechazan AQUI, antes de consultar contenido.
+  assertVerifiedShowroomTarget(target);
+  const pools = target.pools;
   const phase = (p: ShowroomPhase) => options.onPhase?.(p);
   const A = SHOWROOM.amounts;
   const cop = (units: bigint) => Money.of(units, SHOWROOM.currency);
 
   phase('preflight');
-  // Primero el DESTINO (defensa live contra pools que no apuntan a la base
-  // dedicada), despues el CONTENIDO (base vacia de showroom).
-  await assertDedicatedDatabase(pools);
+  // Primero el DESTINO — re-attestation TOCTOU: inmediatamente antes de mirar
+  // contenido, la identidad LIVE actual (base + endpoint del servidor +
+  // arranque del postmaster + system_identifier) debe seguir siendo la
+  // atestiguada en el handle (una attestation antigua no basta si los pools o
+  // el endpoint cambiaron). Despues el CONTENIDO (base vacia de showroom).
+  await reattestVerifiedShowroomTarget(target);
   await assertShowroomEmpty(pools.admin);
 
   const services = buildServices(pools);

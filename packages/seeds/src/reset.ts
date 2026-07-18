@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPool as realCreatePool, migrate } from '@fluvia/db';
+import { createPool as realCreatePool, migrate, type Pool } from '@fluvia/db';
+import { verifyShowroomTarget, type VerifiedShowroomTarget } from './live-identity.js';
 import { buildShowroomSemanticManifest, type ShowroomSemanticManifest } from './manifest.js';
 import { seedShowroom, type ShowroomPools, type ShowroomSeedResult } from './showroom.js';
 
@@ -110,6 +111,25 @@ export class ShowroomResetSequenceError extends Error {
   constructor(detail: string) {
     super(`demo:reset sequence failed: ${detail}`);
     this.name = 'ShowroomResetSequenceError';
+  }
+}
+
+/**
+ * RA-F65C3-EXT-004 — el DROP del target TERMINO pero el CREATE posterior NO:
+ * la base dedicada quedo ELIMINADA y debe reconstruirse volviendo a ejecutar
+ * `demo:reset`. Error tipado con codigo estable; la causa original queda SOLO
+ * para uso interno (`cause`) — el CLI jamas la imprime (puede contener SQL
+ * crudo o detalles del driver). El mensaje publico no incluye SQL, URLs ni
+ * credenciales.
+ */
+export class ShowroomTargetRemovedError extends Error {
+  readonly code = 'target_removed_rebuild_required';
+  constructor(targetDbName: string, cause: unknown) {
+    super(
+      `demo:reset removed the dedicated database "${targetDbName}" (DROP succeeded) but CREATE DATABASE did not complete; migrate/seed/invariants never started. The target no longer exists: run demo:reset again to rebuild it from scratch.`,
+      { cause }
+    );
+    this.name = 'ShowroomTargetRemovedError';
   }
 }
 
@@ -366,33 +386,72 @@ export function assertShowroomSeedTargetAllowed(
   });
 }
 
-export interface ShowroomSeedPoolSet {
-  plan: ShowroomTargetPlan;
-  pools: ShowroomPools;
+/** Tamaños de pool por rol (identicos en seed y reset: una sola politica). */
+const SHOWROOM_POOL_SIZES: Record<(typeof SHOWROOM_DB_ROLES)[number], number> = {
+  admin: 4,
+  app: 8,
+  auth: 2,
+  relay: 2,
+  webhook: 2,
+};
+
+/**
+ * RA-F65C3-EXT-003 — apertura SEGURA de los cinco pools del showroom: cada
+ * pool se registra inmediatamente al crearse; si el factory falla en cualquier
+ * posicion, TODOS los anteriores se cierran (`Promise.allSettled`: un fallo de
+ * cleanup no oculta el error original) y no se crea ninguno posterior. Cero
+ * handles vivos tras un fallo. No imprime connection strings. Sirve tanto a
+ * `showroom:seed` como a `demo:reset`.
+ */
+export async function openShowroomPoolsSafely(
+  targetUrls: ShowroomDbUrls,
+  createPool: typeof realCreatePool = realCreatePool
+): Promise<ShowroomPools> {
+  const opened: Pick<Pool, 'end'>[] = [];
+  const partial: Partial<Record<(typeof SHOWROOM_DB_ROLES)[number], Pool>> = {};
+  try {
+    for (const role of SHOWROOM_DB_ROLES) {
+      const pool = createPool({
+        connectionString: targetUrls[role],
+        max: SHOWROOM_POOL_SIZES[role],
+      });
+      opened.push(pool);
+      partial[role] = pool;
+    }
+    return partial as ShowroomPools;
+  } catch (err) {
+    await Promise.allSettled(opened.map((pool) => pool.end()));
+    throw err;
+  }
 }
 
 /**
- * Unica via del CLI para abrir los pools del seed: el guard puro corre PRIMERO
- * y el factory de conexiones es INYECTABLE, de modo que los tests prueban de
- * forma objetiva que un rechazo jamas invoca el factory (cero pools, cero
- * queries, cero DNS).
+ * UNICA via del CLI `showroom:seed` hacia un target utilizable, en el orden
+ * exacto del flujo autorizado: guard PURO de URLs (cero I/O; un rechazo jamas
+ * invoca el factory) -> apertura segura de pools (cleanup ante fallo parcial)
+ * -> attestation LIVE de identidad unica -> handle verificado. Si la
+ * attestation falla, los cinco pools se cierran aqui mismo (sin fuga) y el
+ * error original se propaga.
  */
-export function createShowroomSeedPools(
+export async function openVerifiedShowroomTarget(
   env: string,
   targetUrls: ShowroomDbUrls,
   createPool: typeof realCreatePool = realCreatePool
-): ShowroomSeedPoolSet {
+): Promise<VerifiedShowroomTarget> {
   const plan = assertShowroomSeedTargetAllowed({ env, targetUrls });
-  return {
-    plan,
-    pools: {
-      admin: createPool({ connectionString: targetUrls.admin, max: 4 }),
-      app: createPool({ connectionString: targetUrls.app, max: 8 }),
-      auth: createPool({ connectionString: targetUrls.auth, max: 2 }),
-      relay: createPool({ connectionString: targetUrls.relay, max: 2 }),
-      webhook: createPool({ connectionString: targetUrls.webhook, max: 2 }),
-    },
-  };
+  const pools = await openShowroomPoolsSafely(targetUrls, createPool);
+  try {
+    return await verifyShowroomTarget(env, pools, { plan });
+  } catch (err) {
+    await Promise.allSettled([
+      pools.admin.end(),
+      pools.app.end(),
+      pools.auth.end(),
+      pools.relay.end(),
+      pools.webhook.end(),
+    ]);
+    throw err;
+  }
 }
 
 /**
@@ -525,10 +584,25 @@ export async function prepareShowroomDatabase(
           plan.targetDbName,
         ]);
         const ident = quoted.rows[0]!.q;
+        // Maquina de fases explicita (RA-F65C3-EXT-004): un fallo del CREATE
+        // DESPUES de un DROP exitoso deja el target ELIMINADO — ese estado se
+        // comunica con un error tipado estable, no con el error crudo del
+        // driver. Antes del DROP, cualquier fallo se propaga tal cual (el
+        // target sigue existiendo o nunca existio; nada que reconstruir).
+        let stage: 'before_drop' | 'target_dropped' | 'target_created' = 'before_drop';
         // WITH (FORCE): termina de forma dirigida las sesiones del TARGET (y
         // solo del target) antes de dropearlo.
         await session.query(`DROP DATABASE IF EXISTS ${ident} WITH (FORCE)`);
-        await session.query(`CREATE DATABASE ${ident}`);
+        stage = 'target_dropped';
+        try {
+          await session.query(`CREATE DATABASE ${ident}`);
+          stage = 'target_created';
+        } catch (createErr) {
+          if (stage === 'target_dropped') {
+            throw new ShowroomTargetRemovedError(plan.targetDbName, createErr);
+          }
+          throw createErr;
+        }
       } finally {
         await session
           .query('SELECT pg_advisory_unlock($1)', [SHOWROOM_RESET_LOCK_KEY])
@@ -550,14 +624,17 @@ export async function prepareShowroomDatabase(
     // (p. ej. `ALTER ROLE … NOBYPASSRLS` en 0009 — pg_authid) pueden chocar
     // transitoriamente con «tuple concurrently updated». Cada archivo corre en
     // su propia transaccion y esas sentencias son idempotentes, asi que un
-    // reintento ACOTADO y especifico de ESE error converge sin ocultar fallos
-    // reales de migracion (cualquier otro error se propaga al primer intento).
+    // reintento ACOTADO y ESTRUCTURADO de ESE error (SQLSTATE + mensaje
+    // exactos, no un match de texto) converge sin ocultar fallos reales de
+    // migracion (cualquier otro error se propaga al primer intento).
     for (let attempt = 1; ; attempt++) {
       try {
         await migrate(admin, undefined, { environment: req.env });
         break;
       } catch (err) {
-        if (attempt >= 10 || !/tuple concurrently updated/.test(String(err))) throw err;
+        if (attempt >= MIGRATE_RETRY_MAX_ATTEMPTS || !isRetryableTupleConcurrentlyUpdated(err)) {
+          throw err;
+        }
         await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
       }
     }
@@ -565,6 +642,47 @@ export async function prepareShowroomDatabase(
     await admin.end();
   }
   return plan;
+}
+
+// ---------------------------------------------------------------------------
+// RA-F65C3-EXT-005 — clasificador ESTRUCTURADO del unico error de migracion
+// reintentable. Campos observados EMPIRICAMENTE en PostgreSQL 16.13 al chocar
+// dos `ALTER ROLE` concurrentes sobre pg_authid (node-postgres DatabaseError):
+//   code (SQLSTATE): 'XX000' (internal_error)
+//   message:         'tuple concurrently updated'
+//   routine:         'simple_heap_update'  (informativo; NO se exige — otras
+//                    rutas de catalogo emiten el mismo error con otra routine)
+// El runner de migraciones envuelve el fallo por archivo en un Error propio
+// con `{ cause }`, asi que el clasificador recorre la cadena `cause` acotada.
+// ---------------------------------------------------------------------------
+
+/** SQLSTATE exacto del error concurrente observado (internal_error). */
+export const TUPLE_CONCURRENTLY_UPDATED_SQLSTATE = 'XX000';
+/** Mensaje exacto del error concurrente observado. */
+export const TUPLE_CONCURRENTLY_UPDATED_MESSAGE = 'tuple concurrently updated';
+
+const MIGRATE_RETRY_MAX_ATTEMPTS = 10;
+
+/**
+ * true SOLO para el error estructurado exacto: SQLSTATE 'XX000' Y mensaje
+ * 'tuple concurrently updated' en el propio error o en su cadena `cause`
+ * (acotada). Mismo texto con otro SQLSTATE => no. SQLSTATE correcto con otro
+ * mensaje => no. Errores sin estructura (sin `code`), de permisos, de SQL, de
+ * integridad, de red o de autenticacion => no.
+ */
+export function isRetryableTupleConcurrentlyUpdated(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 10 && current !== null && typeof current === 'object'; depth++) {
+    const { code, message } = current as { code?: unknown; message?: unknown };
+    if (
+      code === TUPLE_CONCURRENTLY_UPDATED_SQLSTATE &&
+      message === TUPLE_CONCURRENTLY_UPDATED_MESSAGE
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**
@@ -579,28 +697,32 @@ export async function runShowroomReset(
   const createPool = deps.createPool ?? realCreatePool;
   const plan = await prepareShowroomDatabase(req, deps);
 
-  const admin = createPool({ connectionString: req.targetUrls.admin, max: 4 });
-  const app = createPool({ connectionString: req.targetUrls.app, max: 8 });
-  const auth = createPool({ connectionString: req.targetUrls.auth, max: 2 });
-  const relay = createPool({ connectionString: req.targetUrls.relay, max: 2 });
-  const webhook = createPool({ connectionString: req.targetUrls.webhook, max: 2 });
+  // Apertura SEGURA (fallo parcial => cierre de los ya creados) y luego la
+  // MISMA attestation live + handle verificado que exige el camino del seed
+  // standalone: el reset no tiene un atajo hacia seedShowroom.
+  const pools = await openShowroomPoolsSafely(req.targetUrls, createPool);
   try {
     deps.onPhase?.('seed');
-    const seed = await seedShowroom(
-      req.env,
-      { admin, app, auth, relay, webhook },
-      { onPhase: deps.onSeedPhase }
-    );
+    const target = await verifyShowroomTarget(req.env, pools, {
+      plan: { targetDbName: plan.targetDbName, host: plan.host, port: plan.port },
+    });
+    const seed = await seedShowroom(req.env, target, { onPhase: deps.onSeedPhase });
 
     deps.onPhase?.('invariants');
     const script = readFileSync(INVARIANTS_SCRIPT_PATH, 'utf8');
-    await admin.query(script);
+    await pools.admin.query(script);
 
     deps.onPhase?.('manifest');
-    const manifest = await buildShowroomSemanticManifest(admin);
+    const manifest = await buildShowroomSemanticManifest(pools.admin);
 
     return { targetDbName: plan.targetDbName, seed, manifest, invariants: 'passed' };
   } finally {
-    await Promise.all([admin.end(), app.end(), auth.end(), relay.end(), webhook.end()]);
+    await Promise.all([
+      pools.admin.end(),
+      pools.app.end(),
+      pools.auth.end(),
+      pools.relay.end(),
+      pools.webhook.end(),
+    ]);
   }
 }

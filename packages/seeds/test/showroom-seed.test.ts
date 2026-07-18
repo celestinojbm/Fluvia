@@ -5,6 +5,7 @@ import {
   serializeShowroomManifest,
   type ShowroomSemanticManifest,
 } from '../src/manifest.js';
+import { verifyShowroomTarget, type VerifiedShowroomTarget } from '../src/live-identity.js';
 import { prepareShowroomDatabase } from '../src/reset.js';
 import {
   SHOWROOM,
@@ -33,6 +34,7 @@ const DB = ephemeralDbName();
 const REQ = resetRequestFor(DB);
 
 let pools: ShowroomPools;
+let target: VerifiedShowroomTarget;
 let manifest: ShowroomSemanticManifest;
 let seedResult: ShowroomSeedResult;
 
@@ -45,6 +47,9 @@ beforeAll(async () => {
     relay: createPool({ connectionString: REQ.targetUrls.relay, max: 2 }),
     webhook: createPool({ connectionString: REQ.targetUrls.webhook, max: 2 }),
   };
+  // Contrato nuevo (EXT-001): seedShowroom exige el handle verificado —
+  // attestation live real de los cinco pools contra la base efimera dedicada.
+  target = await verifyShowroomTarget('test', pools);
 }, 120_000);
 
 afterAll(async () => {
@@ -58,21 +63,15 @@ describe('seedShowroom (dataset normativo, secuencial)', () => {
   it('rechaza entornos fuera de local/test ANTES de tocar la base', async () => {
     for (const env of ['sandbox', 'staging', 'production']) {
       await expect(
-        // Pools rotos a proposito: si el guard no fuera pre-conexion, esto
-        // reventaria por conexion (patron seedDemo/F1-10).
-        seedShowroom(env, {
-          admin: null as unknown as Pool,
-          app: null as unknown as Pool,
-          auth: null as unknown as Pool,
-          relay: null as unknown as Pool,
-          webhook: null as unknown as Pool,
-        })
+        // Handle nulo a proposito: el guard de entorno corre ANTES incluso
+        // de validar el handle o tocar conexion alguna (patron seedDemo/F1-10).
+        seedShowroom(env, null as unknown as VerifiedShowroomTarget)
       ).rejects.toBeInstanceOf(ShowroomEnvironmentError);
     }
   });
 
   it('sobre una base recien migrada y vacia construye el dataset COMPLETO via servicios', async () => {
-    seedResult = await seedShowroom('test', pools);
+    seedResult = await seedShowroom('test', target);
     expect(seedResult.organizationId).toMatch(/^[0-9a-f-]{36}$/);
 
     // Identidad SOLO por servicios: los usuarios existen en el plano auth con
@@ -225,7 +224,7 @@ describe('seedShowroom (dataset normativo, secuencial)', () => {
 
   it('una SEGUNDA ejecucion sobre la misma base aborta fail-closed con CERO mutaciones', async () => {
     const before = await snapshotCounts(pools.admin);
-    await expect(seedShowroom('test', pools)).rejects.toBeInstanceOf(ShowroomAlreadySeededError);
+    await expect(seedShowroom('test', target)).rejects.toBeInstanceOf(ShowroomAlreadySeededError);
     const after = await snapshotCounts(pools.admin);
     expect(after).toEqual(before);
   });

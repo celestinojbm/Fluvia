@@ -1,27 +1,30 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool, dbUrlsFromEnv, type Pool } from '@fluvia/db';
+import { ShowroomUnverifiedTargetError, verifyShowroomTarget } from '../src/live-identity.js';
 import {
   ShowroomAlreadySeededError,
   ShowroomDatabaseMismatchError,
   seedShowroom,
   type ShowroomPhase,
   type ShowroomPools,
+  type ShowroomSeedResult,
 } from '../src/showroom.js';
 import { MAINTENANCE_URL, targetUrlsFor } from './showroom-helpers.js';
 
 /**
- * F6.5C3 (revision pre-auditoria) — defensa LIVE de `seedShowroom`: aunque se
- * invoque SIN el CLI (es un simbolo exportado) y con pools arbitrarios, el
- * seed pregunta a la PROPIA base (`current_database()` por CADA pool) antes de
- * mirar contenido y antes de cualquier mutacion. Pools hacia la base principal
- * `fluvia`, hacia una base arbitraria o hacia bases MEZCLADAS abortan con un
- * error tipado DISTINTO de ShowroomAlreadySeededError, sin crear usuario/org/
- * merchant/auditoria, sin imprimir credenciales, sin receptor HTTP y sin
- * entrar en la espera del checkout (fases observadas = solo 'preflight').
+ * F6.5C3 (revision pre-auditoria + RA-F65C3-EXT-001) — defensa LIVE contra la
+ * base principal: `verifyShowroomTarget` (el UNICO productor del handle que
+ * `seedShowroom` acepta) pregunta a la PROPIA base a donde apuntan de verdad
+ * los cinco pools ANTES de mirar contenido. Pools hacia la base principal
+ * `fluvia`, hacia una base arbitraria o hacia bases MEZCLADAS abortan con
+ * ShowroomDatabaseMismatchError (distinto de ShowroomAlreadySeededError), sin
+ * crear usuario/org/merchant/auditoria, sin imprimir credenciales, sin
+ * receptor HTTP y sin espera del checkout. Y `seedShowroom` con un objeto de
+ * pools PLANO (sin handle) rechaza en runtime sin tocar la base.
  *
- * El caso POSITIVO (base efimera autorizada ⇒ exito completo) lo cubre
- * showroom-seed.test.ts: su seed completo atraviesa esta misma defensa.
+ * El caso POSITIVO (base efimera autorizada => attestation + seed completo)
+ * lo cubren showroom-seed.test.ts y showroom-cluster-identity.test.ts.
  */
 
 /** Base efimera SIN nombre de showroom: el rechazo debe ser por DESTINO. */
@@ -54,23 +57,40 @@ async function showroomMarkers(pool: Pool): Promise<{ orgs: number; users: numbe
   return { orgs: orgs.rowCount ?? 0, users: users.rowCount ?? 0 };
 }
 
+/**
+ * El destino ilegitimo se rechaza DOS veces: (1) la attestation live jamas
+ * emite un handle; (2) seedShowroom con los pools planos (el unico camino
+ * restante) rechaza el objeto sin marca runtime ANTES de tocar la base.
+ */
 async function expectLiveBlocked(pools: ShowroomPools): Promise<ShowroomDatabaseMismatchError> {
-  const phases: ShowroomPhase[] = [];
-  let result: unknown;
+  let handle: unknown;
   let error: unknown;
   try {
-    result = await seedShowroom('test', pools, { onPhase: (p) => phases.push(p) });
+    handle = await verifyShowroomTarget('test', pools);
   } catch (err) {
     error = err;
   }
-  // Rechazo tipado por DESTINO (no por contenido), sin resultado, sin avanzar
-  // de fase: ni receptor HTTP, ni espera del checkout, ni identidad creada.
-  expect(result).toBeUndefined();
+  expect(handle).toBeUndefined();
   expect(error).toBeInstanceOf(ShowroomDatabaseMismatchError);
   expect(error).not.toBeInstanceOf(ShowroomAlreadySeededError);
-  expect(phases).toEqual(['preflight']);
   // El error jamas transporta credenciales sandbox.
   expect(String(error)).not.toMatch(/showroom-owner-sandbox|showroom-revisor-sandbox|fluvia_sk_/);
+
+  // Sin handle no hay seed: el objeto plano se rechaza en runtime, sin fases,
+  // sin receptor HTTP, sin espera del checkout, sin identidad creada.
+  const phases: ShowroomPhase[] = [];
+  let result: ShowroomSeedResult | undefined;
+  let seedError: unknown;
+  try {
+    result = await seedShowroom('test', { pools, identity: undefined, plan: null } as never, {
+      onPhase: (p) => phases.push(p),
+    });
+  } catch (err) {
+    seedError = err;
+  }
+  expect(result).toBeUndefined();
+  expect(seedError).toBeInstanceOf(ShowroomUnverifiedTargetError);
+  expect(phases).toEqual([]);
   return error as ShowroomDatabaseMismatchError;
 }
 
@@ -120,8 +140,8 @@ afterAll(async () => {
   await maintenance.end();
 });
 
-describe('defensa live de seedShowroom (current_database() por pool)', () => {
-  it('TODOS los pools apuntando a la base principal `fluvia` ⇒ rechazo ANTES de mutar', async () => {
+describe('defensa live (attestation + handle) contra destinos ilegitimos', () => {
+  it('TODOS los pools apuntando a la base principal `fluvia` => rechazo ANTES de mutar', async () => {
     const before = await showroomMarkers(mainPools.admin);
     expect(before).toEqual({ orgs: 0, users: 0 });
 
@@ -141,13 +161,13 @@ describe('defensa live de seedShowroom (current_database() por pool)', () => {
     expect(audit.rowCount).toBe(0);
   });
 
-  it('UN pool apuntando a una base distinta del resto ⇒ rechazo (sin datos parciales)', async () => {
+  it('UN pool apuntando a una base distinta del resto => rechazo (sin datos parciales)', async () => {
     const mixed: ShowroomPools = { ...foreignPools, app: mainPools.app };
     const error = await expectLiveBlocked(mixed);
     expect(error.message).toContain('DIFFERENT databases');
   });
 
-  it('base ARBITRARIA (vacia, sin nombre showroom) ⇒ rechazo con cero objetos creados', async () => {
+  it('base ARBITRARIA (vacia, sin nombre showroom) => rechazo con cero objetos creados', async () => {
     const tablesBefore = await foreignPools.admin.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM pg_class WHERE relnamespace = 'public'::regnamespace`
     );

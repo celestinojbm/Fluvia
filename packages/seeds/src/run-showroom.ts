@@ -1,43 +1,26 @@
 import { loadConfig } from '@fluvia/config';
-import {
-  ShowroomSeedGuardError,
-  createShowroomSeedPools,
-  showroomUrlsFromEnv,
-  type ShowroomSeedPoolSet,
-} from './reset.js';
-import {
-  SHOWROOM,
-  ShowroomAlreadySeededError,
-  ShowroomDatabaseMismatchError,
-  ShowroomEnvironmentError,
-  ShowroomSeedError,
-  seedShowroom,
-  type ShowroomSeedResult,
-} from './showroom.js';
+import { formatSafeShowroomCliError } from './cli-errors.js';
+import type { VerifiedShowroomTarget } from './live-identity.js';
+import { openVerifiedShowroomTarget, showroomUrlsFromEnv } from './reset.js';
+import { SHOWROOM, seedShowroom, type ShowroomSeedResult } from './showroom.js';
 
 /**
  * CLI: `pnpm showroom:seed` — puebla la base DEDICADA del showroom
  * (`fluvia_showroom`, ya migrada y VACIA) via servicios normativos.
  *
- * El guard PURO del target (assertShowroomSeedTargetAllowed, via
- * createShowroomSeedPools) corre ANTES de crear cualquier pool, conexion o
- * query y ANTES de imprimir nada que afirme que el target es valido: unas
- * SHOWROOM_*_DATABASE_URL explicitas apuntando a `fluvia` (o a cualquier base
- * no dedicada) abortan aqui con cero efectos. Dentro de `seedShowroom` hay
- * ademas una defensa LIVE (`current_database()` por pool).
+ * Flujo autorizado (RA-F65C3-EXT-001): guard PURO de URLs (antes de crear
+ * cualquier pool/conexion/query y antes de imprimir nada que afirme un target
+ * valido) -> apertura SEGURA de pools (fallo parcial => cierre de los ya
+ * creados) -> attestation LIVE de identidad unica del cluster
+ * (current_database + endpoint del servidor + arranque del postmaster +
+ * system_identifier, por CADA rol) -> handle verificado -> seedShowroom.
  *
  * Si la base ya tiene datos del showroom, el seed falla closed e indica
  * ejecutar `pnpm demo:reset -- --confirm RESET_FLUVIA_SHOWROOM`.
  * Las credenciales SANDBOX se muestran UNA sola vez y SOLO tras el exito.
+ * Cualquier error DESCONOCIDO se imprime SANITIZADO (sin objeto, sin stack,
+ * sin cause, sin URLs ni secretos) via formatSafeShowroomCliError.
  */
-
-const KNOWN_ERRORS = [
-  ShowroomSeedGuardError,
-  ShowroomEnvironmentError,
-  ShowroomDatabaseMismatchError,
-  ShowroomAlreadySeededError,
-  ShowroomSeedError,
-];
 
 // eslint-disable-next-line no-console
 const say = (msg: string) => console.log(msg);
@@ -56,26 +39,27 @@ ${result.sandbox.users.map((u) => `    ${u.email} / ${u.password}  [${u.role}]`)
 const config = loadConfig();
 const urls = showroomUrlsFromEnv();
 
-// Guard PURO primero: si rechaza, no existe ningun pool que cerrar.
-let opened: ShowroomSeedPoolSet;
+// Guard puro -> pools seguros -> attestation live -> handle. Si CUALQUIER
+// paso rechaza, no queda ningun pool abierto (la apertura segura y la
+// attestation cierran lo que hubieran abierto) y no se ha impreso nada que
+// afirme un target valido.
+let target: VerifiedShowroomTarget;
 try {
-  opened = createShowroomSeedPools(config.env, urls.targetUrls);
+  target = await openVerifiedShowroomTarget(config.env, urls.targetUrls);
 } catch (err) {
-  if (err instanceof ShowroomSeedGuardError) {
-    console.error(`showroom:seed fallo: ${err.message}`);
-    process.exit(1);
-  }
-  throw err;
+  console.error(formatSafeShowroomCliError('showroom:seed', err, 'startup'));
+  process.exit(1);
 }
-const { plan, pools } = opened;
 
 say(
-  `Seed del showroom (SANDBOX) sobre la base dedicada "${plan.targetDbName}" (env=${config.env})…`
+  `Seed del showroom (SANDBOX) sobre la base dedicada "${target.identity.database}" (env=${config.env}, identidad live atestiguada)…`
 );
 
+let lastPhase = 'preflight';
 try {
-  const result = await seedShowroom(config.env, pools, {
+  const result = await seedShowroom(config.env, target, {
     onPhase: (phase) => {
+      lastPhase = phase;
       if (phase === 'await-expiry') {
         say(
           '  fase await-expiry: esperando la expiracion NORMATIVA de la sesion de checkout (TTL minimo del servicio: 5 min)…'
@@ -90,14 +74,10 @@ Showroom sembrado (org "${SHOWROOM.organizationName}", merchant "${SHOWROOM.merc
 Re-ejecutar sobre la misma base ABORTA sin mutar: reconstruye con demo:reset.`);
   printSandboxMaterial(result);
 } catch (err) {
-  if (KNOWN_ERRORS.some((k) => err instanceof k)) {
-    // Errores esperados: mensaje estable, sin stack.
-    console.error(`showroom:seed fallo: ${(err as Error).message}`);
-  } else {
-    console.error(err);
-  }
+  console.error(formatSafeShowroomCliError('showroom:seed', err, lastPhase));
   process.exitCode = 1;
 } finally {
+  const pools = target.pools;
   await Promise.all([
     pools.admin.end(),
     pools.app.end(),
