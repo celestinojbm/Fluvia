@@ -18,6 +18,7 @@
     "seed": "pnpm --filter @fluvia/seeds run seed",
     "showroom:seed": "pnpm --filter @fluvia/seeds run showroom:seed",
     "demo:reset": "pnpm --filter @fluvia/seeds run demo:reset",
+    "runtime:image:verify": "node scripts/verify-runtime-image.mjs",
     "licenses:check": "node scripts/check-licenses.mjs",
     "licenses:report": "node scripts/check-licenses.mjs --report"
   },
