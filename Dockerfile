@@ -34,6 +34,15 @@ RUN pnpm build
 FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=build /app /app
+# F6.5C3: el tooling de seeds es LOCAL (local/test) y `demo:reset` es ademas
+# DESTRUCTIVO — jamas viaja en la imagen app (plan F6.5C §6). Se elimina del
+# FILESYSTEM runtime (no basta con que el CMD no lo invoque) y se quitan los
+# scripts `seed`/`showroom:seed`/`demo:reset` SOLO del package.json de esta
+# capa (el package.json del repo para desarrollo local no cambia; el flujo
+# showroom/demo corre siempre desde el checkout, nunca desde la imagen).
+# Ningun paquete runtime depende de @fluvia/seeds (verificado por tests).
+RUN rm -rf /app/packages/seeds && \
+    node -e "const fs=require('fs');const p='/app/package.json';const pkg=JSON.parse(fs.readFileSync(p,'utf8'));for(const s of ['seed','showroom:seed','demo:reset'])delete pkg.scripts[s];fs.writeFileSync(p,JSON.stringify(pkg,null,2)+'\n');"
 # El usuario `node` viene con la imagen oficial; el proceso jamás corre como root.
 USER node
 EXPOSE 3000
