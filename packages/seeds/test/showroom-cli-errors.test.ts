@@ -23,7 +23,10 @@ const SECRETS = {
   queryPassword: "ALTER ROLE fluvia_app PASSWORD 'hunter2-rotated'",
   token: 'fluvia_sk_live_9f8e7d6c5b4a3210',
   apiKeySecret: 'fluvia_sk_test_deadbeefcafebabe',
-  webhookSecret: 'whsec_0123456789abcdef0123456789abcdef',
+  // Fixture SINTETICO de baja entropia (sin prefijo de proveedor): prueba la
+  // ausencia de REFLEXION del valor recibido, no la forma de un secreto real
+  // (un fixture con forma realista dispara el gate de secret scanning).
+  webhookSecret: 'fixturefixturefixturefixture',
   showroomPassword: 'showroom-owner-sandbox',
   fetchUrl: 'https://internal.example.test/hook?sig=abc123&key=topsecret',
 } as const;

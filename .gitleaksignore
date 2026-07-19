@@ -1,0 +1,13 @@
+# Findings historicos ignorados UNICAMENTE por fingerprint EXACTO
+# (commit:path:regla:linea) — jamas commits/paths/reglas completos.
+# Cada entrada exige justificacion en el PR que la introduce.
+#
+# Fixture SINTETICO del test anti-fuga de packages/seeds (formato realista
+# whsec_… con entropia suficiente para la regla generic-api-key). NO es una
+# credencial real ni un secreto operativo: era el valor falso con el que
+# showroom-cli-errors.test.ts prueba que el sanitizador de los CLIs jamas
+# refleja el valor recibido. El fixture ACTUAL fue sustituido por uno de baja
+# entropia; este fingerprint cubre solo el commit HISTORICO (la historia del
+# PR es inmutable: amend/force-push prohibidos). Justificacion completa en el
+# PR #47 («Correccion del gate Gitleaks»).
+c37ba145a5cc4b8ecf93a9211cb9c78f77e6fed1:packages/seeds/test/showroom-cli-errors.test.ts:generic-api-key:26
