@@ -35,7 +35,7 @@ import {
   createWebhookFanoutPublisher,
 } from '@fluvia/webhooks';
 import {
-  assertVerifiedShowroomTarget,
+  getVerifiedShowroomTargetState,
   reattestVerifiedShowroomTarget,
   type VerifiedShowroomTarget,
 } from './live-identity.js';
@@ -340,22 +340,25 @@ export async function seedShowroom(
 ): Promise<ShowroomSeedResult> {
   // Guard duro de entorno ANTES de tocar la base (patron seedDemo/F1-10).
   if (env !== 'local' && env !== 'test') throw new ShowroomEnvironmentError(env);
-  // Contrato nuevo (RA-F65C3-EXT-001): SOLO se acepta el handle runtime opaco
-  // producido por `verifyShowroomTarget` (attestation live de identidad unica
-  // del cluster). Un objeto de pools plano, un cast de TypeScript o una copia
-  // estructural del handle se rechazan AQUI, antes de consultar contenido.
-  assertVerifiedShowroomTarget(target);
-  const pools = target.pools;
+  // Contrato (RA-F65C3-EXT-001): SOLO se acepta el handle runtime opaco
+  // producido por `verifyShowroomTarget`. El accessor privado valida la
+  // autenticidad (WeakMap del modulo — un objeto plano, un cast o una copia
+  // estructural se rechazan AQUI, antes de consultar contenido) y entrega el
+  // SNAPSHOT INMUTABLE de pools: a partir de aqui TODO usa ese snapshot,
+  // jamas un objeto del caller (que pudo ser mutado tras la attestation).
+  const state = getVerifiedShowroomTargetState(target);
+  const pools = state.pools;
   const phase = (p: ShowroomPhase) => options.onPhase?.(p);
   const A = SHOWROOM.amounts;
   const cop = (units: bigint) => Money.of(units, SHOWROOM.currency);
 
   phase('preflight');
-  // Primero el DESTINO — re-attestation TOCTOU: inmediatamente antes de mirar
-  // contenido, la identidad LIVE actual (base + endpoint del servidor +
-  // arranque del postmaster + system_identifier) debe seguir siendo la
-  // atestiguada en el handle (una attestation antigua no basta si los pools o
-  // el endpoint cambiaron). Despues el CONTENIDO (base vacia de showroom).
+  // Primero el DESTINO — re-attestation TOCTOU sobre el snapshot privado:
+  // inmediatamente antes del preflight de datos, la identidad LIVE actual
+  // (base + endpoint + postmaster + evidencia de system_identifier) debe
+  // seguir siendo la atestiguada. Entre la re-attestation, la obtencion del
+  // snapshot (ya en mano) y la primera lectura de preflight NO hay ningun
+  // callback/hook/await ajeno. Despues el CONTENIDO (base vacia de showroom).
   await reattestVerifiedShowroomTarget(target);
   await assertShowroomEmpty(pools.admin);
 

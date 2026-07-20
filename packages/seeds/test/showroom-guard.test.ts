@@ -457,9 +457,9 @@ describe('guard del seed (assertShowroomSeedTargetAllowed / openVerifiedShowroom
       } as unknown as Pool;
     });
     const opened = await openVerifiedShowroomTarget('test', seedUrls(), factory);
-    expect(opened.plan?.targetDbName).toBe(SEED_DB);
-    expect(opened.identity.database).toBe(SEED_DB);
-    expect(opened.identity.clusterIdentifier).toBe('7000000000000000001');
+    expect(opened.targetDbName).toBe(SEED_DB);
+    // El handle es OPACO (delta EXT-001): no expone pools/identidad/plan.
+    expect(opened.target).toEqual({ kind: 'verified-showroom-target' });
     expect(factory).toHaveBeenCalledTimes(5);
     for (const call of factory.mock.calls) {
       expect(new URL(call[0].connectionString).pathname).toBe(`/${SEED_DB}`);

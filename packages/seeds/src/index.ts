@@ -21,16 +21,23 @@ export {
   type ShowroomSeedOptions,
   type ShowroomSeedResult,
 } from './showroom.js';
+// NOTA (RA-F65C3-EXT-001): el accessor interno `getVerifiedShowroomTargetState`
+// NO se reexporta aqui a proposito — el estado privado del handle (snapshot de
+// pools/identidad/plan) solo es alcanzable dentro del paquete.
 export {
   ShowroomUnverifiedTargetError,
   assertVerifiedShowroomTarget,
   observeShowroomLiveIdentity,
   reattestVerifiedShowroomTarget,
   verifyShowroomTarget,
+  type ClusterIdentifierEvidence,
   type ShowroomLiveDatabaseIdentity,
+  type ShowroomRole,
   type VerifiedShowroomTarget,
 } from './live-identity.js';
-export { formatSafeShowroomCliError } from './cli-errors.js';
+export { formatSafeShowroomCliError, type ShowroomCliName } from './cli-errors.js';
+export { runShowroomSeedCli, type ShowroomSeedCliDeps } from './run-showroom.js';
+export { runShowroomResetCli, type ShowroomResetCliDeps } from './run-reset.js';
 export {
   buildShowroomSemanticManifest,
   serializeShowroomManifest,
@@ -60,6 +67,7 @@ export {
   showroomUrlsFromEnv,
   type ShowroomDbUrls,
   type ShowroomEnvUrls,
+  type ShowroomOpenedTarget,
   type ShowroomResetDeps,
   type ShowroomResetGuardCode,
   type ShowroomResetPhase,

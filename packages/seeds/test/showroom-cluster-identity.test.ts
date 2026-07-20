@@ -198,12 +198,29 @@ describe('identidad live unica entre clusters PostgreSQL 16 reales', () => {
   it('cinco pools del MISMO cluster real => handle verificado con identidad completa', async () => {
     const pools = poolsAcross([c1, c1, c1, c1, c1]);
     const target = await verifyShowroomTarget('test', pools);
-    expect(target.identity.database).toBe(DB);
-    expect(target.identity.serverAddress).toBeTruthy();
-    expect(target.identity.serverPort).toBeGreaterThan(0);
-    expect(target.identity.postmasterStartedAt).toMatch(/^\d{4}-\d{2}-\d{2} /);
-    // postgres:16 permite pg_control_system() a superuser: identidad estable.
-    expect(target.identity.clusterIdentifier).toMatch(/^\d+$/);
+    // El handle es OPACO (delta EXT-001): no expone pools/identidad/estado.
+    expect(target).toEqual({ kind: 'verified-showroom-target' });
+    expect((target as unknown as Record<string, unknown>).pools).toBeUndefined();
+    expect((target as unknown as Record<string, unknown>).identity).toBeUndefined();
+    // La identidad live se observa directamente de los pools (misma fuente
+    // que uso la attestation): completa, con system_identifier de superuser.
+    const identity = await observeShowroomLiveIdentity(pools);
+    expect(identity.database).toBe(DB);
+    expect(identity.serverAddress).toBeTruthy();
+    expect(identity.serverPort).toBeGreaterThan(0);
+    expect(identity.postmasterStartedAt).toMatch(/^\d{4}-\d{2}-\d{2} /);
+    // postgres:16 permite pg_control_system() a superuser: evidencia COMPLETA.
+    expect(identity.clusterEvidence.mode).toBe('complete');
+    if (identity.clusterEvidence.mode !== 'none') {
+      expect(identity.clusterEvidence.value).toMatch(/^\d+$/);
+      expect([...identity.clusterEvidence.observingRoles]).toEqual([
+        'admin',
+        'app',
+        'auth',
+        'relay',
+        'webhook',
+      ]);
+    }
   }, 60_000);
 
   it('UN pool cambiado a otro cluster => rechazo', async () => {
@@ -247,7 +264,7 @@ describe('identidad live unica entre clusters PostgreSQL 16 reales', () => {
     // Attestation real contra c5…
     const pools = poolsAcross([c5, c5, c5, c5, c5]);
     const target: VerifiedShowroomTarget = await verifyShowroomTarget('test', pools);
-    const attested = target.identity;
+    const attested = await observeShowroomLiveIdentity(pools);
 
     // …y el cluster es REEMPLAZADO por otro en el MISMO host:puerto (mismo
     // dbname): la attestation antigua no puede bastar.
@@ -292,8 +309,9 @@ describe('identidad live unica entre clusters PostgreSQL 16 reales', () => {
     const genuine = await verifyShowroomTarget('test', pools);
 
     const attempts: unknown[] = [
-      { pools, identity: genuine.identity, plan: null }, // plano equivalente
-      { ...genuine }, // copia estructural (pierde la marca runtime)
+      { pools, identity: undefined, plan: null }, // pools planos equivalentes
+      { kind: 'verified-showroom-target' }, // objeto fabricado con la etiqueta
+      { ...genuine }, // copia estructural (pierde la membresia del WeakMap)
       Object.create(genuine as object), // hereda propiedades, no la membresia
       null,
       42,

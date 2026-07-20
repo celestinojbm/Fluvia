@@ -18,30 +18,42 @@ import {
  * `current_database()` por pool NO basta: cinco clusters PostgreSQL distintos
  * pueden tener todos una base llamada `fluvia_showroom`. Antes de cualquier
  * mutacion, los CINCO roles deben demostrar que estan conectados al MISMO
- * servidor real, no solo a bases con el mismo nombre. La identidad se observa
- * read-only preguntandole a la propia base:
+ * servidor real. La identidad se observa read-only:
  *
  *  - `current_database()`        -> nombre real de la base (dedicada, denylist);
- *  - `inet_server_addr()`        -> direccion LOCAL del servidor para esta
- *                                   conexion (NULL en sockets Unix => rechazo:
- *                                   la identidad exige endpoint TCP observable);
- *  - `inet_server_port()`        -> puerto real del servidor (no el de la URL);
- *  - `pg_postmaster_start_time()`-> instante de arranque del postmaster
- *                                   (microsegundos: dos clusters no lo comparten);
+ *  - `inet_server_addr()`        -> direccion LOCAL del servidor (NULL en
+ *                                   sockets Unix => rechazo);
+ *  - `inet_server_port()`        -> puerto real del servidor;
+ *  - `pg_postmaster_start_time()`-> instante de arranque del postmaster;
  *  - `pg_control_system().system_identifier` -> identificador ESTABLE del
- *    cluster generado por initdb. En PostgreSQL 16 es ejecutable por los cinco
- *    roles reales sin grants (verificado empiricamente); si algun rol recibe
- *    `insufficient_privilege` (42501) NO se ignora en silencio: la identidad
- *    degrada explicitamente a endpoint live + postmaster (fail-closed: esos
- *    campos siguen siendo obligatorios y deben coincidir exactamente), y los
- *    identificadores que SI se observaron deben coincidir entre si.
+ *    cluster. La evidencia se conserva de forma DISCRIMINADA (delta EXT-001):
+ *    `complete` (los cinco lo observaron) / `partial` (al menos uno lo observo
+ *    y al menos uno recibio EXACTAMENTE 42501) / `none` (los cinco recibieron
+ *    42501). Un identifier observado JAMAS se descarta por ser parcial; todo
+ *    identifier observado debe tener formato valido y coincidir con el resto;
+ *    cualquier error distinto de 42501 aborta.
  *
- * Ademas del chequeo, `seedShowroom` exige un HANDLE runtime opaco
- * (`VerifiedShowroomTarget`) que SOLO produce `verifyShowroomTarget` en este
- * modulo: un objeto de pools plano, un cast de TypeScript o una copia
- * estructural del handle se rechazan en runtime (WeakSet privado) antes de
- * consultar contenido o mutar nada.
+ * ESTADO VERIFICADO PRIVADO E INMUTABLE (delta EXT-001): el handle publico
+ * `VerifiedShowroomTarget` es OPACO — no expone pools, identidad, plan, Symbol
+ * ni accessor. El estado real vive en un WeakMap PRIVADO de este modulo, con
+ * un SNAPSHOT NUEVO y CONGELADO del mapping de pools (claves exactas
+ * admin/app/auth/relay/webhook) copiado en `verifyShowroomTarget`: mutar el
+ * objeto de pools ORIGINAL despues de crear el handle no cambia el target —
+ * la re-attestation y todos los servicios usan exclusivamente el snapshot
+ * privado. `getVerifiedShowroomTargetState` es el accessor INTERNO del paquete
+ * (reset/seed/CLI) y NO se reexporta en `packages/seeds/src/index.ts`.
  */
+
+export type ShowroomRole = (typeof SHOWROOM_DB_ROLES)[number];
+
+/**
+ * Evidencia DISCRIMINADA del system_identifier del cluster dentro de una
+ * attestation (jamas se mezclan ausencia, respuesta invalida y 42501: una
+ * respuesta invalida o un error distinto de 42501 abortan la attestation).
+ */
+export type ClusterIdentifierEvidence =
+  | { mode: 'none'; observingRoles: readonly [] }
+  | { mode: 'partial' | 'complete'; value: string; observingRoles: readonly ShowroomRole[] };
 
 export interface ShowroomLiveDatabaseIdentity {
   /** current_database() — identico en los cinco roles y dedicado. */
@@ -52,11 +64,8 @@ export interface ShowroomLiveDatabaseIdentity {
   serverPort: number;
   /** pg_postmaster_start_time()::text — coincide exactamente entre roles. */
   postmasterStartedAt: string;
-  /**
-   * pg_control_system().system_identifier — presente SOLO cuando los cinco
-   * roles pudieron leerlo; cuando existe, debe coincidir exactamente.
-   */
-  clusterIdentifier?: string;
+  /** Evidencia discriminada del system_identifier (ver arriba). */
+  clusterEvidence: ClusterIdentifierEvidence;
 }
 
 /**
@@ -74,31 +83,43 @@ export class ShowroomUnverifiedTargetError extends Error {
   }
 }
 
-/** Handle runtime OPACO: solo `verifyShowroomTarget` puede producir uno valido. */
+/**
+ * Handle runtime OPACO: solo `verifyShowroomTarget` produce uno valido. NO
+ * expone pools, identidad, plan, estado, WeakMap, Symbol ni accessor publico:
+ * su unica propiedad es una etiqueta informativa constante.
+ */
 export interface VerifiedShowroomTarget {
-  readonly pools: ShowroomPools;
-  /** Identidad live observada en la attestation (base del re-chequeo TOCTOU). */
+  readonly kind: 'verified-showroom-target';
+}
+
+/** Estado privado e inmutable de un handle verificado (jamas exportado). */
+interface InternalVerifiedTargetState {
+  readonly pools: Readonly<{
+    admin: Pool;
+    app: Pool;
+    auth: Pool;
+    relay: Pool;
+    webhook: Pool;
+  }>;
   readonly identity: ShowroomLiveDatabaseIdentity;
-  /** Plan del guard puro de URLs cuando el flujo venia de URLs (CLI/reset). */
   readonly plan: ShowroomTargetPlan | null;
 }
 
 /**
- * Marca runtime privada: WeakSet (autoridad — una copia `{ ...handle }` o un
- * `Object.create(handle)` NO estan en el set) + Symbol no exportado (defensa
- * adicional y señal de depuracion). Ninguno de los dos sale de este modulo.
+ * Autoridad runtime PRIVADA y UNICA: el WeakMap (una copia `{ ...handle }` o
+ * un `Object.create(handle)` no estan en el map). El handle NO lleva ninguna
+ * marca propia — ni Symbol ni token — para no exponer nada reutilizable.
  */
-const VERIFIED_TARGETS = new WeakSet<object>();
-const VERIFIED_BRAND = Symbol('fluvia.showroom.verified-target');
+const TARGET_STATE = new WeakMap<object, InternalVerifiedTargetState>();
 
 const TIMESTAMPTZ_TEXT_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}(:?\d{2})?$/;
+const CLUSTER_IDENTIFIER_RE = /^\d{1,32}$/;
 
 interface IdentityRow {
   database: unknown;
   server_address: unknown;
   server_port: unknown;
   postmaster_started_at: unknown;
-  cluster_identifier?: unknown;
 }
 
 const IDENTITY_SQL = `SELECT current_database() AS database,
@@ -108,8 +129,12 @@ const IDENTITY_SQL = `SELECT current_database() AS database,
 
 const CLUSTER_SQL = `SELECT system_identifier::text AS cluster_identifier FROM pg_control_system()`;
 
-interface ObservedIdentity extends ShowroomLiveDatabaseIdentity {
-  /** null => este rol recibio 42501 al leer pg_control_system(). */
+interface ObservedIdentity {
+  database: string;
+  serverAddress: string;
+  serverPort: number;
+  postmasterStartedAt: string;
+  /** null <=> este rol recibio EXACTAMENTE 42501 al leer pg_control_system(). */
   observedClusterIdentifier: string | null;
 }
 
@@ -147,12 +172,14 @@ async function observePoolIdentity(role: string, pool: Pool): Promise<ObservedId
     fail(`pool "${role}": pg_postmaster_start_time() is missing or malformed`);
   }
 
-  // system_identifier: normativo cuando es legible; 42501 degrada EXPLICITO.
+  // system_identifier: la UNICA ausencia legitima es EXACTAMENTE 42501
+  // (insufficient_privilege). Una respuesta invalida o cualquier otro error
+  // abortan — jamas se confunden con "no observable".
   let observedClusterIdentifier: string | null = null;
   try {
     const res = await pool.query<{ cluster_identifier: unknown }>(CLUSTER_SQL);
     const id = res.rows[0]?.cluster_identifier;
-    if (typeof id !== 'string' || !/^\d{1,32}$/.test(id)) {
+    if (typeof id !== 'string' || !CLUSTER_IDENTIFIER_RE.test(id)) {
       fail(`pool "${role}": pg_control_system() returned an unexpected system_identifier`);
     }
     observedClusterIdentifier = id;
@@ -161,9 +188,6 @@ async function observePoolIdentity(role: string, pool: Pool): Promise<ObservedId
     if ((err as { code?: unknown }).code !== '42501') {
       fail(`pool "${role}": pg_control_system() query failed (${(err as Error).name ?? 'error'})`);
     }
-    // 42501 (insufficient_privilege): unico caso en que el identificador de
-    // cluster puede faltar; la identidad endpoint+postmaster sigue siendo
-    // obligatoria y exacta.
   }
 
   return {
@@ -176,15 +200,15 @@ async function observePoolIdentity(role: string, pool: Pool): Promise<ObservedId
 }
 
 /**
- * Observa y CONSOLIDA la identidad live de los cinco pools: los cinco deben
- * reportar exactamente la misma base dedicada, el mismo endpoint del servidor
- * (addr+port), el mismo arranque de postmaster y — cuando exista — el mismo
- * system_identifier. Cualquier divergencia o respuesta parcial aborta.
+ * Observa y CONSOLIDA la identidad live de los cinco pools: misma base
+ * dedicada, mismo endpoint (addr+port), mismo arranque de postmaster, y
+ * evidencia discriminada del system_identifier (todo identifier observado debe
+ * coincidir; `none` SOLO si los cinco recibieron exactamente 42501).
  */
 export async function observeShowroomLiveIdentity(
   pools: ShowroomPools
 ): Promise<ShowroomLiveDatabaseIdentity> {
-  const observed: Array<[string, ObservedIdentity]> = [];
+  const observed: Array<[ShowroomRole, ObservedIdentity]> = [];
   for (const role of SHOWROOM_DB_ROLES) {
     observed.push([role, await observePoolIdentity(role, pools[role])]);
   }
@@ -212,16 +236,34 @@ export async function observeShowroomLiveIdentity(
       )}`
     );
   }
-  const clusterIds = observed
-    .map(([, o]) => o.observedClusterIdentifier)
-    .filter((id): id is string => id !== null);
-  if (new Set(clusterIds).size > 1) {
+
+  const observingRoles = observed
+    .filter(([, o]) => o.observedClusterIdentifier !== null)
+    .map(([role]) => role);
+  const observedIds = new Set(
+    observed.map(([, o]) => o.observedClusterIdentifier).filter((id): id is string => id !== null)
+  );
+  if (observedIds.size > 1) {
     fail(
       `pools report DIFFERENT cluster system identifiers: ${describe(
         (o) => o.observedClusterIdentifier ?? 'unavailable'
       )}`
     );
   }
+  // Evidencia DISCRIMINADA: un identifier observado por ALGUNOS roles se
+  // CONSERVA como `partial` (jamas se descarta); `none` solo si los cinco
+  // recibieron exactamente 42501.
+  const clusterEvidence: ClusterIdentifierEvidence =
+    observingRoles.length === 0
+      ? Object.freeze({ mode: 'none' as const, observingRoles: Object.freeze([]) as readonly [] })
+      : Object.freeze({
+          mode:
+            observingRoles.length === SHOWROOM_DB_ROLES.length
+              ? ('complete' as const)
+              : ('partial' as const),
+          value: [...observedIds][0]!,
+          observingRoles: Object.freeze([...observingRoles]),
+        });
 
   const first = observed[0]![1];
   const database = first.database;
@@ -232,23 +274,70 @@ export async function observeShowroomLiveIdentity(
     fail(`live current_database() is "${database}", not a dedicated showroom database`);
   }
 
-  const identity: ShowroomLiveDatabaseIdentity = {
+  return Object.freeze({
     database,
     serverAddress: first.serverAddress,
     serverPort: first.serverPort,
     postmasterStartedAt: first.postmasterStartedAt,
-  };
-  // Presente SOLO cuando los cinco roles lo observaron (unanime).
-  if (clusterIds.length === SHOWROOM_DB_ROLES.length) {
-    identity.clusterIdentifier = clusterIds[0];
+    clusterEvidence,
+  });
+}
+
+/**
+ * Compara la identidad atestiguada con una observacion fresca como UNA sola
+ * identidad (address, port, postmaster, dbname y evidencia de identifier).
+ * Transiciones de evidencia (fail-closed, jamas degradacion silenciosa):
+ *  - inicial con valor X: todo identifier nuevo observado debe ser X (Y =>
+ *    rechazo); perder TODA observabilidad (`none`) => rechazo; perder algun
+ *    rol observador previo => rechazo explicito (el conjunto fresco debe
+ *    CONTENER al inicial; ganar observabilidad partial->complete es valido).
+ *  - inicial `none`: debe conservarse `none`; la aparicion posterior de un
+ *    identifier es un CAMBIO de evidencia => rechazo fail-closed (no se
+ *    implementa ninguna transicion autenticada adicional).
+ */
+function assertSameIdentity(
+  attested: ShowroomLiveDatabaseIdentity,
+  fresh: ShowroomLiveDatabaseIdentity
+): void {
+  const drift: string[] = [];
+  if (fresh.database !== attested.database) drift.push('database');
+  if (fresh.serverAddress !== attested.serverAddress) drift.push('serverAddress');
+  if (fresh.serverPort !== attested.serverPort) drift.push('serverPort');
+  if (fresh.postmasterStartedAt !== attested.postmasterStartedAt) {
+    drift.push('postmasterStartedAt');
   }
-  return identity;
+
+  const a = attested.clusterEvidence;
+  const f = fresh.clusterEvidence;
+  if (a.mode === 'none') {
+    if (f.mode !== 'none') drift.push('clusterEvidence(none->observed)');
+  } else {
+    if (f.mode === 'none') {
+      drift.push('clusterEvidence(observability lost)');
+    } else {
+      if (f.value !== a.value) drift.push('clusterIdentifier');
+      const freshRoles = new Set<ShowroomRole>(f.observingRoles);
+      const lost = a.observingRoles.filter((role) => !freshRoles.has(role));
+      if (lost.length > 0) {
+        drift.push(`clusterEvidence(observing roles lost: ${lost.join('/')})`);
+      }
+    }
+  }
+
+  if (drift.length > 0) {
+    fail(
+      `live identity changed since attestation (${drift.join(', ')}): the target is no longer the attested cluster/database`
+    );
+  }
 }
 
 /**
  * UNICO productor del handle verificado: attestation live completa sobre los
- * cinco pools. El plan (cuando el flujo venia del guard puro de URLs) debe ser
- * coherente con lo observado en vivo — la URL jamas es la unica evidencia.
+ * cinco pools. Copia el mapping de pools en un SNAPSHOT NUEVO y CONGELADO
+ * (claves exactas admin/app/auth/relay/webhook) — el objeto recibido del
+ * caller no se almacena ni se vuelve a usar jamas: mutarlo despues no cambia
+ * el target. El plan (cuando el flujo venia del guard puro de URLs) debe ser
+ * coherente con lo observado en vivo.
  */
 export async function verifyShowroomTarget(
   env: string,
@@ -256,62 +345,63 @@ export async function verifyShowroomTarget(
   options: { plan?: ShowroomTargetPlan | null } = {}
 ): Promise<VerifiedShowroomTarget> {
   if (env !== 'local' && env !== 'test') throw new ShowroomEnvironmentError(env);
-  const identity = await observeShowroomLiveIdentity(pools);
+  // SNAPSHOT primero (una sola lectura de cada rol del objeto del caller):
+  // la attestation y todo uso posterior operan SOLO sobre el snapshot.
+  const snapshot = Object.freeze({
+    admin: pools.admin,
+    app: pools.app,
+    auth: pools.auth,
+    relay: pools.relay,
+    webhook: pools.webhook,
+  });
+  const identity = await observeShowroomLiveIdentity(snapshot);
   const plan = options.plan ?? null;
   if (plan && plan.targetDbName !== identity.database) {
     fail(
       `planned target "${plan.targetDbName}" does not match live current_database() "${identity.database}"`
     );
   }
-  const target: VerifiedShowroomTarget = Object.freeze({
-    pools,
-    identity,
-    plan,
-    [VERIFIED_BRAND]: true,
+  const target = Object.freeze({
+    kind: 'verified-showroom-target' as const,
   }) as VerifiedShowroomTarget;
-  VERIFIED_TARGETS.add(target);
+  TARGET_STATE.set(target, Object.freeze({ pools: snapshot, identity, plan }));
   return target;
+}
+
+/**
+ * Accessor INTERNO del paquete (reset/seed/CLI): valida la autenticidad del
+ * handle (WeakMap privado — copias/casts/fakes quedan fuera) y devuelve el
+ * estado privado inmutable. NO se reexporta en `packages/seeds/src/index.ts`.
+ */
+export function getVerifiedShowroomTargetState(target: unknown): InternalVerifiedTargetState {
+  if (target === null || typeof target !== 'object') {
+    throw new ShowroomUnverifiedTargetError();
+  }
+  const state = TARGET_STATE.get(target);
+  if (state === undefined) {
+    throw new ShowroomUnverifiedTargetError();
+  }
+  return state;
 }
 
 /** Validacion runtime del handle: pools planos/casts/copias se rechazan. */
 export function assertVerifiedShowroomTarget(
   target: unknown
 ): asserts target is VerifiedShowroomTarget {
-  if (
-    target === null ||
-    typeof target !== 'object' ||
-    !VERIFIED_TARGETS.has(target) ||
-    (target as Record<PropertyKey, unknown>)[VERIFIED_BRAND] !== true
-  ) {
-    throw new ShowroomUnverifiedTargetError();
-  }
+  void getVerifiedShowroomTargetState(target);
 }
 
 /**
- * Re-attestation TOCTOU: inmediatamente antes de mirar contenido, la identidad
- * live ACTUAL debe coincidir con la atestiguada en el handle. Una attestation
- * antigua no basta si los pools fueron reemplazados o el endpoint cambio de
- * cluster (p. ej. otro servidor escuchando en el mismo puerto).
+ * Re-attestation TOCTOU sobre el SNAPSHOT PRIVADO (jamas sobre un objeto del
+ * caller): inmediatamente antes del preflight de datos, la identidad live
+ * ACTUAL debe coincidir con la atestiguada como UNA sola identidad (endpoint +
+ * postmaster + dbname + evidencia de identifier, con las transiciones
+ * fail-closed documentadas en assertSameIdentity).
  */
 export async function reattestVerifiedShowroomTarget(
   target: VerifiedShowroomTarget
 ): Promise<void> {
-  const now = await observeShowroomLiveIdentity(target.pools);
-  const attested = target.identity;
-  const drift: string[] = [];
-  if (now.database !== attested.database) drift.push('database');
-  if (now.serverAddress !== attested.serverAddress) drift.push('serverAddress');
-  if (now.serverPort !== attested.serverPort) drift.push('serverPort');
-  if (now.postmasterStartedAt !== attested.postmasterStartedAt) drift.push('postmasterStartedAt');
-  if (
-    attested.clusterIdentifier !== undefined &&
-    now.clusterIdentifier !== attested.clusterIdentifier
-  ) {
-    drift.push('clusterIdentifier');
-  }
-  if (drift.length > 0) {
-    fail(
-      `live identity changed since attestation (${drift.join(', ')}): the target is no longer the attested cluster/database`
-    );
-  }
+  const state = getVerifiedShowroomTargetState(target);
+  const fresh = await observeShowroomLiveIdentity(state.pools);
+  assertSameIdentity(state.identity, fresh);
 }
