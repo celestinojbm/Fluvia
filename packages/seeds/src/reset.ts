@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPool as realCreatePool, migrate, type Pool } from '@fluvia/db';
+import { createPool as realCreatePool, migrate, type Pool, type PoolClient } from '@fluvia/db';
 import { verifyShowroomTarget, type VerifiedShowroomTarget } from './live-identity.js';
 import { buildShowroomSemanticManifest, type ShowroomSemanticManifest } from './manifest.js';
 import { seedShowroom, type ShowroomPools, type ShowroomSeedResult } from './showroom.js';
@@ -433,16 +433,23 @@ export async function openShowroomPoolsSafely(
  * attestation falla, los cinco pools se cierran aqui mismo (sin fuga) y el
  * error original se propaga.
  */
+export interface ShowroomOpenedTarget {
+  /** Handle OPACO para seedShowroom (el estado vive en el modulo privado). */
+  target: VerifiedShowroomTarget;
+  /** Nombre del target autorizado por el guard puro (sin URLs/credenciales). */
+  targetDbName: string;
+  /** Cierra los cinco pools abiertos por esta via (allSettled, sin fuga). */
+  close(): Promise<void>;
+}
+
 export async function openVerifiedShowroomTarget(
   env: string,
   targetUrls: ShowroomDbUrls,
   createPool: typeof realCreatePool = realCreatePool
-): Promise<VerifiedShowroomTarget> {
+): Promise<ShowroomOpenedTarget> {
   const plan = assertShowroomSeedTargetAllowed({ env, targetUrls });
   const pools = await openShowroomPoolsSafely(targetUrls, createPool);
-  try {
-    return await verifyShowroomTarget(env, pools, { plan });
-  } catch (err) {
+  const close = async (): Promise<void> => {
     await Promise.allSettled([
       pools.admin.end(),
       pools.app.end(),
@@ -450,6 +457,12 @@ export async function openVerifiedShowroomTarget(
       pools.relay.end(),
       pools.webhook.end(),
     ]);
+  };
+  try {
+    const target = await verifyShowroomTarget(env, pools, { plan });
+    return { target, targetDbName: plan.targetDbName, close };
+  } catch (err) {
+    await close();
     throw err;
   }
 }
@@ -530,6 +543,14 @@ export interface ShowroomResetDeps {
   onPhase?: (phase: ShowroomResetPhase) => void;
   /** Observador de fase del seed (progreso del CLI). */
   onSeedPhase?: (phase: string) => void;
+  /**
+   * Seams de test CONDUCTUAL del retry de migracion (RA-F65C3-EXT-005): los
+   * tests inyectan un migrateFn/sleepFn scriptados para contar intentos y
+   * delays exactos. Defaults: `migrate` de @fluvia/db y setTimeout real. No
+   * son hooks de runtime publico — viven en las deps ya inyectables del reset.
+   */
+  migrateFn?: typeof migrate;
+  sleepFn?: (ms: number) => Promise<void>;
 }
 
 export interface ShowroomResetResult {
@@ -555,68 +576,121 @@ export async function prepareShowroomDatabase(
 
   deps.onPhase?.('drop-create');
   const maintenance = createPool({ connectionString: req.maintenanceUrl, max: 1 });
+  // PRESERVACION DEL ERROR PRIMARIO (delta RA-F65C3-EXT-004): el error
+  // operativo (recheck fallido, DROP fallido, o el CRITICO
+  // ShowroomTargetRemovedError de un CREATE fallido tras el DROP) JAMAS es
+  // sustituido por un fallo del cleanup (unlock/release/end). Cada recurso
+  // recibe SU intento de cleanup en orden (un unlock fallido no impide el
+  // release; un release fallido no impide el end); los fallos secundarios se
+  // registran solo como CODIGOS de paso fijos (jamas message/URL/SQL crudos),
+  // adjuntos de forma NO enumerable al error primario. Si NO hay error
+  // primario y el cleanup falla, se lanza un error tipado y sanitizado.
+  let session: PoolClient | undefined;
+  let lockTaken = false;
+  let hasPrimary = false;
+  let primaryError: unknown;
   try {
     // UNA sola sesion fisica para todo el bloque de mantenimiento: el
     // advisory lock de abajo es de SESION y debe vivir y morir con ella.
-    const session = await maintenance.connect();
-    try {
-      // Re-check en vivo: la sesion de mantenimiento debe estar en una base de
-      // la allowlist y NUNCA en el target (defensa contra una URL enganosa que
-      // el parser no anticipo — la BD dice la verdad).
-      const current = await session.query<{ db: string }>('SELECT current_database() AS db');
-      const currentDb = current.rows[0]!.db;
-      if (!MAINTENANCE_DB_ALLOWLIST.has(currentDb) || currentDb === plan.targetDbName) {
-        throw new ShowroomResetSequenceError(
-          `maintenance session is connected to "${currentDb}", expected an allowlisted maintenance database`
-        );
-      }
-      // Serializa DROP/CREATE entre resets CONCURRENTES (los tests de
-      // integracion preparan varias bases efimeras en paralelo): dos CREATE
-      // DATABASE simultaneos chocan porque ambos copian template1 («source
-      // database is being accessed by other users»). Advisory lock de sesion
-      // sobre la base de mantenimiento compartida (precedente: el runner de
-      // migraciones usa la misma primitiva con su propia clave).
-      await session.query('SELECT pg_advisory_lock($1)', [SHOWROOM_RESET_LOCK_KEY]);
-      try {
-        // Identificador YA validado por regex; se cita ADEMAS con quote_ident
-        // de PostgreSQL (jamas interpolacion cruda de un nombre arbitrario).
-        const quoted = await session.query<{ q: string }>('SELECT quote_ident($1) AS q', [
-          plan.targetDbName,
-        ]);
-        const ident = quoted.rows[0]!.q;
-        // Maquina de fases explicita (RA-F65C3-EXT-004): un fallo del CREATE
-        // DESPUES de un DROP exitoso deja el target ELIMINADO — ese estado se
-        // comunica con un error tipado estable, no con el error crudo del
-        // driver. Antes del DROP, cualquier fallo se propaga tal cual (el
-        // target sigue existiendo o nunca existio; nada que reconstruir).
-        let stage: 'before_drop' | 'target_dropped' | 'target_created' = 'before_drop';
-        // WITH (FORCE): termina de forma dirigida las sesiones del TARGET (y
-        // solo del target) antes de dropearlo.
-        await session.query(`DROP DATABASE IF EXISTS ${ident} WITH (FORCE)`);
-        stage = 'target_dropped';
-        try {
-          await session.query(`CREATE DATABASE ${ident}`);
-          stage = 'target_created';
-        } catch (createErr) {
-          if (stage === 'target_dropped') {
-            throw new ShowroomTargetRemovedError(plan.targetDbName, createErr);
-          }
-          throw createErr;
-        }
-      } finally {
-        await session
-          .query('SELECT pg_advisory_unlock($1)', [SHOWROOM_RESET_LOCK_KEY])
-          .catch(() => undefined);
-      }
-    } finally {
-      session.release();
+    session = await maintenance.connect();
+    // Re-check en vivo: la sesion de mantenimiento debe estar en una base de
+    // la allowlist y NUNCA en el target (defensa contra una URL enganosa que
+    // el parser no anticipo — la BD dice la verdad).
+    const current = await session.query<{ db: string }>('SELECT current_database() AS db');
+    const currentDb = current.rows[0]!.db;
+    if (!MAINTENANCE_DB_ALLOWLIST.has(currentDb) || currentDb === plan.targetDbName) {
+      throw new ShowroomResetSequenceError(
+        `maintenance session is connected to "${currentDb}", expected an allowlisted maintenance database`
+      );
     }
-  } finally {
-    await maintenance.end();
+    // Serializa DROP/CREATE entre resets CONCURRENTES (los tests de
+    // integracion preparan varias bases efimeras en paralelo): dos CREATE
+    // DATABASE simultaneos chocan porque ambos copian template1 («source
+    // database is being accessed by other users»). Advisory lock de sesion
+    // sobre la base de mantenimiento compartida (precedente: el runner de
+    // migraciones usa la misma primitiva con su propia clave).
+    await session.query('SELECT pg_advisory_lock($1)', [SHOWROOM_RESET_LOCK_KEY]);
+    lockTaken = true;
+    // Identificador YA validado por regex; se cita ADEMAS con quote_ident
+    // de PostgreSQL (jamas interpolacion cruda de un nombre arbitrario).
+    const quoted = await session.query<{ q: string }>('SELECT quote_ident($1) AS q', [
+      plan.targetDbName,
+    ]);
+    const ident = quoted.rows[0]!.q;
+    // Maquina de fases explicita (RA-F65C3-EXT-004): un fallo del CREATE
+    // DESPUES de un DROP exitoso deja el target ELIMINADO — ese estado se
+    // comunica con un error tipado estable, no con el error crudo del
+    // driver. Antes del DROP, cualquier fallo se propaga tal cual (el
+    // target sigue existiendo o nunca existio; nada que reconstruir).
+    let stage: 'before_drop' | 'target_dropped' | 'target_created' = 'before_drop';
+    // WITH (FORCE): termina de forma dirigida las sesiones del TARGET (y
+    // solo del target) antes de dropearlo.
+    await session.query(`DROP DATABASE IF EXISTS ${ident} WITH (FORCE)`);
+    stage = 'target_dropped';
+    try {
+      await session.query(`CREATE DATABASE ${ident}`);
+      stage = 'target_created';
+    } catch (createErr) {
+      if (stage === 'target_dropped') {
+        throw new ShowroomTargetRemovedError(plan.targetDbName, createErr);
+      }
+      throw createErr;
+    }
+  } catch (error) {
+    hasPrimary = true;
+    primaryError = error;
+  }
+  {
+    // Cleanup SIEMPRE (el catch de arriba captura todo primario, asi que este
+    // bloque corre en todos los caminos; deliberadamente FUERA de un finally:
+    // relanzar desde finally puede pisar excepciones en vuelo — la esencia
+    // del finding EXT-004 — y aqui ya no hay ninguna en vuelo).
+    const cleanupFailures: string[] = [];
+    if (session !== undefined && lockTaken) {
+      try {
+        await session.query('SELECT pg_advisory_unlock($1)', [SHOWROOM_RESET_LOCK_KEY]);
+      } catch {
+        cleanupFailures.push('advisory_unlock');
+      }
+    }
+    if (session !== undefined) {
+      try {
+        session.release();
+      } catch {
+        cleanupFailures.push('session_release');
+      }
+    }
+    try {
+      await maintenance.end();
+    } catch {
+      cleanupFailures.push('maintenance_end');
+    }
+    if (hasPrimary) {
+      if (cleanupFailures.length > 0 && primaryError !== null && typeof primaryError === 'object') {
+        // Registro seguro de fallos secundarios: SOLO codigos de paso fijos,
+        // NO enumerable (jamas viaja a serializaciones/outputs por accidente).
+        Object.defineProperty(primaryError, 'cleanupFailureSteps', {
+          value: Object.freeze([...cleanupFailures]),
+          enumerable: false,
+          configurable: false,
+          writable: false,
+        });
+      }
+      throw primaryError;
+    }
+    if (cleanupFailures.length > 0) {
+      throw new ShowroomResetSequenceError(
+        `maintenance cleanup failed (${cleanupFailures.join('/')})`
+      );
+    }
   }
 
   deps.onPhase?.('migrate');
   const admin = createPool({ connectionString: req.targetUrls.admin, max: 2 });
+  const migrateFn = deps.migrateFn ?? migrate;
+  const sleepFn = deps.sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let migrateError: unknown;
+  let hasMigrateError = false;
   try {
     // El advisory lock del runner de migraciones es POR BASE; varios resets
     // CONCURRENTES (tests de integracion) migran bases efimeras DISTINTAS a la
@@ -629,17 +703,31 @@ export async function prepareShowroomDatabase(
     // migracion (cualquier otro error se propaga al primer intento).
     for (let attempt = 1; ; attempt++) {
       try {
-        await migrate(admin, undefined, { environment: req.env });
+        await migrateFn(admin, undefined, { environment: req.env });
         break;
       } catch (err) {
         if (attempt >= MIGRATE_RETRY_MAX_ATTEMPTS || !isRetryableTupleConcurrentlyUpdated(err)) {
           throw err;
         }
-        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+        await sleepFn(250 * attempt);
       }
     }
-  } finally {
-    await admin.end();
+  } catch (error) {
+    hasMigrateError = true;
+    migrateError = error;
+  }
+  {
+    // Mismo patron que el bloque de mantenimiento: cleanup fuera de finally.
+    let adminEndFailed = false;
+    try {
+      await admin.end();
+    } catch {
+      adminEndFailed = true;
+    }
+    if (hasMigrateError) throw migrateError;
+    if (adminEndFailed) {
+      throw new ShowroomResetSequenceError('maintenance cleanup failed (admin_pool_end)');
+    }
   }
   return plan;
 }
