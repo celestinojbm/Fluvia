@@ -16,7 +16,12 @@
 # `# syntax=` (solo parsea `FROM`); su digest se revisa/bumpea a mano, junto con
 # la base — costo deliberado de la inmutabilidad frente a un frontend ejecutable.
 FROM node:22-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS base
-ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+# COREPACK_HOME explicito y NO bajo /root: el default (~/.cache del usuario
+# que construye, es decir root) es ilegible para `USER node`, con lo que el
+# primer `pnpm` del contenedor re-descargaria pnpm de la red en runtime
+# (hallazgo del smoke del verificador OCI, segunda delta F6.5C3). La cache se
+# hornea aqui y se cede al usuario runtime: arranque SIN red.
+ENV PNPM_HOME=/pnpm COREPACK_HOME=/pnpm/corepack PATH=/pnpm:$PATH
 # Hornea el pnpm pineado (packageManager) en la capa base para que el runtime
 # (FROM base) NO tenga que descargarlo en el primer uso (sin red en runtime).
 # CA de build OPCIONAL y EFIMERA (RA-F65C3-EXT-007): entornos cuyo egress TLS
@@ -27,7 +32,8 @@ ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 # filesystem final. Sin secret, el build se comporta exactamente igual.
 RUN --mount=type=secret,id=fluvia_build_ca,required=false \
     if [ -s /run/secrets/fluvia_build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/fluvia_build_ca; fi \
-    && corepack enable && corepack prepare pnpm@10.33.0 --activate
+    && corepack enable && corepack prepare pnpm@10.33.0 --activate \
+    && chown -R node:node "$COREPACK_HOME"
 WORKDIR /app
 
 # ---- build: instala TODAS las deps (tsx corre en runtime, no se podan) y
@@ -53,10 +59,15 @@ RUN pnpm build
 #      ESTE snapshot (el package.json del repo para desarrollo local no
 #      cambia; el flujo showroom/demo corre siempre desde el checkout).
 #      Ningun paquete runtime depende de @fluvia/seeds (verificado por tests).
+#      El propio verificador OCI (scripts/verify-runtime-image.mjs) tambien se
+#      poda: es tooling de CI/desarrollo y contiene los literales de firma
+#      semantica del showroom que el scan de la imagen busca (dejarlo dentro
+#      seria un falso positivo autoinfligido, y ningun proceso runtime lo usa).
 FROM build AS runtime-pruned
 RUN rm -rf /app/packages/seeds \
       /app/node_modules/@fluvia/seeds \
       /app/node_modules/.pnpm/node_modules/@fluvia/seeds \
+      /app/scripts/verify-runtime-image.mjs \
       /app/.turbo /app/node_modules/.cache && \
     find /app -name .turbo -type d -prune -exec rm -rf {} + && \
     find /app -type l \( -lname '*packages/seeds*' -o -lname '*@fluvia/seeds*' \) -delete && \

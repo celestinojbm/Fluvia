@@ -78,6 +78,28 @@ describe('Dockerfile: pruning del tooling showroom ANTES de la copia final (OCI)
     expect(repoPkg.scripts['runtime:image:verify']).toBeDefined();
   });
 
+  it('pnpm queda HORNEADO para el usuario runtime: COREPACK_HOME fuera de /root y cedido a node', () => {
+    // Hallazgo del smoke (segunda delta): el default ~/.cache de root es
+    // ilegible para USER node y el primer pnpm re-descargaria de la red.
+    const text = dockerfile();
+    expect(text).toMatch(/^ENV .*COREPACK_HOME=\/pnpm\/corepack/m);
+    expect(text).toContain('chown -R node:node "$COREPACK_HOME"');
+  });
+
+  it('el propio verificador OCI se poda del snapshot (sus firmas no viajan en la imagen)', () => {
+    const pruned = stage('runtime-pruned');
+    expect(pruned).toContain('/app/scripts/verify-runtime-image.mjs');
+  });
+
+  it('el gate OCI es OBLIGATORIO dentro de `pnpm test` de @fluvia/seeds (sin skip/condicion)', () => {
+    const seedsPkg = JSON.parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8')
+    ) as { scripts: Record<string, string> };
+    expect(seedsPkg.scripts.test).toBe('vitest run && node ../../scripts/verify-runtime-image.mjs');
+    // sin condicion de entorno, sin fallback, sin `|| true`, sin recursion
+    expect(seedsPkg.scripts.test).not.toMatch(/\|\||if |CI|pnpm test/);
+  });
+
   it('la CA de build es OPCIONAL y EFIMERA: secret mount, jamas ENV/COPY persistente', () => {
     const text = dockerfile();
     // soporte opcional via BuildKit secret en los RUN que necesitan red

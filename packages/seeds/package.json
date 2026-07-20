@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node ../../scripts/verify-runtime-image.mjs",
+    "test:unit": "vitest run",
     "seed": "tsx src/run.ts",
     "showroom:seed": "tsx src/run-showroom.ts",
     "demo:reset": "tsx src/run-reset.ts"
