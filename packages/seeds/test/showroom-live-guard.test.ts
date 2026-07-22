@@ -10,7 +10,7 @@ import {
   type ShowroomPools,
   type ShowroomSeedResult,
 } from '../src/showroom.js';
-import { MAINTENANCE_URL, targetUrlsFor } from './showroom-helpers.js';
+import { MAINTENANCE_URL, TEST_PG_HOST, targetUrlsFor } from './showroom-helpers.js';
 
 /**
  * F6.5C3 (revision pre-auditoria + RA-F65C3-EXT-001) — defensa LIVE contra la
@@ -121,7 +121,7 @@ beforeAll(async () => {
   // Pools hacia una base arbitraria VACIA (sin migrar): la defensa corre antes
   // de tocar tabla alguna, asi que ni siquiera hace falta esquema.
   const foreignUrl = (role: string, pass: string) =>
-    `postgres://${role}:${pass}@127.0.0.1:5432/${FOREIGN_DB}`;
+    `postgres://${role}:${pass}@${TEST_PG_HOST}/${FOREIGN_DB}`;
   foreignPools = {
     admin: createPool({ connectionString: foreignUrl('postgres', 'postgres'), max: 2 }),
     app: createPool({ connectionString: foreignUrl('postgres', 'postgres'), max: 2 }),

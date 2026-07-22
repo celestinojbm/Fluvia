@@ -7,14 +7,24 @@ import type { ShowroomDbUrls, ShowroomResetRequest } from '../src/reset.js';
  * JAMAS la base principal del job).
  */
 
-export const MAINTENANCE_URL = 'postgres://postgres:postgres@127.0.0.1:5432/postgres';
+/**
+ * host:port del cluster PG de test, derivado de la MISMA variable normativa
+ * que usa CI (`ADMIN_DATABASE_URL`); sin ella, el default local historico.
+ * Asi TODA la suite real puede apuntarse a un cluster efimero limpio (roles y
+ * credenciales sandbox identicos a los del workflow) sin tocar codigo.
+ */
+export const TEST_PG_HOST = new URL(
+  process.env.ADMIN_DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/fluvia'
+).host;
+
+export const MAINTENANCE_URL = `postgres://postgres:postgres@${TEST_PG_HOST}/postgres`;
 
 export function ephemeralDbName(): string {
   return `fluvia_showroom_test_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
 export function targetUrlsFor(dbName: string): ShowroomDbUrls {
-  const at = (creds: string) => `postgres://${creds}@127.0.0.1:5432/${dbName}`;
+  const at = (creds: string) => `postgres://${creds}@${TEST_PG_HOST}/${dbName}`;
   return {
     admin: at('postgres:postgres'),
     app: at('fluvia_app:fluvia_app_dev_password'),

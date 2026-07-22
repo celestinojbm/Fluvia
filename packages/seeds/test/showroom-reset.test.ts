@@ -20,12 +20,31 @@ const REQ = resetRequestFor(DB);
 interface TrackedPool {
   connectionString: string;
   pool: Pool;
+  /** Primeros bytes de cada SQL ejecutado por ESTE pool (delta EXT-001). */
+  sqls: string[];
 }
 
 function trackingFactory(track: TrackedPool[]) {
   return (opts: { connectionString: string; max?: number }): Pool => {
     const pool = createPool(opts);
-    track.push({ connectionString: opts.connectionString, pool });
+    const entry: TrackedPool = { connectionString: opts.connectionString, pool, sqls: [] };
+    const originalQuery = pool.query.bind(pool) as (...args: unknown[]) => unknown;
+    (pool as unknown as { query: (...args: unknown[]) => unknown }).query = (
+      ...args: unknown[]
+    ) => {
+      const first = args[0];
+      const text =
+        typeof first === 'string'
+          ? first
+          : ((first as { text?: string } | undefined)?.text ?? '<non-string>');
+      // Marcador SEMANTICO explicito: el script de invariantes es un DO $$ de
+      // varios KB cuyo marcador FLUVIA_INVARIANT vive lejos del prefijo — se
+      // registra como token fijo (jamas el SQL completo); el resto de queries
+      // conserva solo un prefijo acotado.
+      entry.sqls.push(text.includes('FLUVIA_INVARIANT') ? 'INVARIANTS_SCRIPT' : text.slice(0, 120));
+      return originalQuery(...args);
+    };
+    track.push(entry);
     return pool;
   };
 }
@@ -80,6 +99,32 @@ describe('demo:reset real (dos ciclos completos)', () => {
       for (const t of tracked) {
         expect((t.pool as unknown as { ended: boolean }).ended).toBe(true);
       }
+    }
+
+    // Delta RA-F65C3-EXT-001: TODOS los usos posteriores a la attestation
+    // proceden del SNAPSHOT privado del handle. Orden de creacion por ciclo:
+    // [0] maintenance (postgres) · [1] admin de migrate (target, cerrado antes
+    // del seed) · [2..6] los CINCO pools de la apertura verificada (admin
+    // primero) cuyo snapshot congela verifyShowroomTarget. Las invariantes y
+    // el manifiesto DEBEN ejecutarse sobre el pool [2] (el admin del snapshot)
+    // y sobre NINGUN otro.
+    for (const tracked of [tracked1, tracked2]) {
+      expect(tracked).toHaveLength(7);
+      const snapshotAdmin = tracked[2]!;
+      expect(dbNameOf(snapshotAdmin.connectionString)).toBe(DB);
+      expect(new URL(snapshotAdmin.connectionString).username).toBe('postgres');
+      const ranInvariants = (t: TrackedPool) => t.sqls.includes('INVARIANTS_SCRIPT');
+      const ranManifest = (t: TrackedPool) =>
+        t.sqls.some((s) => s.includes('FROM organizations') && s.trimStart().startsWith('SELECT'));
+      expect(ranInvariants(snapshotAdmin)).toBe(true);
+      expect(ranManifest(snapshotAdmin)).toBe(true);
+      for (const other of tracked) {
+        if (other === snapshotAdmin) continue;
+        expect(ranInvariants(other)).toBe(false);
+      }
+      // El admin de migrate ([1]) jamas recibe queries del seed/invariantes/
+      // manifiesto: solo migraciones (y su cierre ocurre antes del seed).
+      expect(tracked[1]!.sqls.includes('INVARIANTS_SCRIPT')).toBe(false);
     }
 
     // La base principal del job quedo INTACTA: ni una fila showroom en ella

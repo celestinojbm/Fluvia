@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createPool, type Pool } from '@fluvia/db';
+import { openVerifiedShowroomTarget } from '../src/reset.js';
 import {
   ShowroomUnverifiedTargetError,
   observeShowroomLiveIdentity,
@@ -312,5 +314,103 @@ describe('evidencia DISCRIMINADA del cluster identifier', () => {
     expect(String(error)).not.toMatch(/showroom-owner-sandbox|fluvia_sk_|postgres:\/\//);
     // Ninguna lectura de contenido llego a ocurrir (solo identidad).
     expect(fakes.admin.queries.some((sql) => sql.includes('FROM organizations'))).toBe(false);
+  });
+});
+
+/**
+ * Delta 3 (EXT-001) — TODOS los usos posteriores a la attestation proceden
+ * del estado privado; el mapping original se lee UNA sola vez por rol y puede
+ * descartarse. `openVerifiedShowroomTarget` cierra desde el snapshot.
+ */
+describe('delta 3: lectura unica del mapping y cierre desde el snapshot', () => {
+  it('getter del mapping: EXACTAMENTE una lectura por rol y ningun uso posterior', async () => {
+    const { fakes } = poolSet([X, X, X, X, X]);
+    const reads: Record<string, number> = {};
+    const mapping = {} as ShowroomPools;
+    for (const role of ROLES) {
+      reads[role] = 0;
+      Object.defineProperty(mapping, role, {
+        get() {
+          reads[role]! += 1;
+          return fakes[role];
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    const target = await verifyShowroomTarget('test', mapping);
+    expect(reads).toEqual({ admin: 1, app: 1, auth: 1, relay: 1, webhook: 1 });
+
+    // Re-attestation y seed (aborta en AlreadySeeded consultando el snapshot):
+    // CERO lecturas adicionales del mapping original.
+    await reattestVerifiedShowroomTarget(target);
+    await expect(seedShowroom('test', target, {})).rejects.toBeInstanceOf(
+      ShowroomAlreadySeededError
+    );
+    expect(reads).toEqual({ admin: 1, app: 1, auth: 1, relay: 1, webhook: 1 });
+  });
+
+  it('getter que devuelve valores DISTINTOS en lecturas sucesivas: solo la primera cuenta', async () => {
+    const { fakes } = poolSet([X, X, X, X, X]);
+    const hostile = evilPool();
+    let adminReads = 0;
+    const mapping = {
+      app: fakes.app,
+      auth: fakes.auth,
+      relay: fakes.relay,
+      webhook: fakes.webhook,
+    } as unknown as ShowroomPools;
+    Object.defineProperty(mapping, 'admin', {
+      get() {
+        adminReads += 1;
+        // La SEGUNDA lectura devolveria un pool hostil: no debe ocurrir jamas.
+        return adminReads === 1 ? fakes.admin : hostile;
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    const target = await verifyShowroomTarget('test', mapping);
+    await reattestVerifiedShowroomTarget(target);
+    await expect(seedShowroom('test', target, {})).rejects.toBeInstanceOf(
+      ShowroomAlreadySeededError
+    );
+    expect(adminReads).toBe(1);
+    expect(hostile.queries).toHaveLength(0);
+    // El admin del snapshot recibio identidad (x2 attestations extra) y preflight.
+    expect(fakes.admin.queries.some((sql) => sql.includes('FROM organizations'))).toBe(true);
+  });
+
+  it('openVerifiedShowroomTarget: close() cierra los CINCO pools del SNAPSHOT exactamente una vez', async () => {
+    const { fakes } = poolSet([X, X, X, X, X]);
+    const byUser: Record<string, FakePool> = {
+      postgres: fakes.admin,
+      fluvia_app: fakes.app,
+      fluvia_auth: fakes.auth,
+      fluvia_relay: fakes.relay,
+      fluvia_webhook: fakes.webhook,
+    };
+    const db = 'fluvia_showroom_test_snapclose';
+    for (const role of ROLES) fakes[role].behavior.db = db;
+    const factory = ((opts: { connectionString: string }) => {
+      const user = new URL(opts.connectionString).username;
+      return byUser[user] as unknown as Pool;
+    }) as unknown as typeof createPool;
+    const url = (user: string, pw: string) => `postgres://${user}:${pw}@127.0.0.1:5432/${db}`;
+    const opened = await openVerifiedShowroomTarget(
+      'test',
+      {
+        admin: url('postgres', 'postgres'),
+        app: url('fluvia_app', 'x'),
+        auth: url('fluvia_auth', 'x'),
+        relay: url('fluvia_relay', 'x'),
+        webhook: url('fluvia_webhook', 'x'),
+      },
+      factory
+    );
+    expect(opened.targetDbName).toBe(db);
+    await opened.close();
+    for (const role of ROLES) {
+      expect(fakes[role].endCalls).toBe(1);
+    }
   });
 });

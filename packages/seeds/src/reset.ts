@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPool as realCreatePool, migrate, type Pool, type PoolClient } from '@fluvia/db';
-import { verifyShowroomTarget, type VerifiedShowroomTarget } from './live-identity.js';
+import {
+  getVerifiedShowroomTargetState,
+  verifyShowroomTarget,
+  type VerifiedShowroomTarget,
+} from './live-identity.js';
 import { buildShowroomSemanticManifest, type ShowroomSemanticManifest } from './manifest.js';
 import { seedShowroom, type ShowroomPools, type ShowroomSeedResult } from './showroom.js';
 
@@ -449,7 +453,7 @@ export async function openVerifiedShowroomTarget(
 ): Promise<ShowroomOpenedTarget> {
   const plan = assertShowroomSeedTargetAllowed({ env, targetUrls });
   const pools = await openShowroomPoolsSafely(targetUrls, createPool);
-  const close = async (): Promise<void> => {
+  const closeUnverified = async (): Promise<void> => {
     await Promise.allSettled([
       pools.admin.end(),
       pools.app.end(),
@@ -460,9 +464,16 @@ export async function openVerifiedShowroomTarget(
   };
   try {
     const target = await verifyShowroomTarget(env, pools, { plan });
+    // Delta RA-F65C3-EXT-001: TODO uso posterior a la attestation (incluido el
+    // cierre) procede del SNAPSHOT privado del handle — el mapping local se
+    // descarta aqui y jamas vuelve a leerse.
+    const state = getVerifiedShowroomTargetState(target);
+    const close = async (): Promise<void> => {
+      await Promise.allSettled(SHOWROOM_DB_ROLES.map((role) => state.pools[role].end()));
+    };
     return { target, targetDbName: plan.targetDbName, close };
   } catch (err) {
-    await close();
+    await closeUnverified();
     throw err;
   }
 }
@@ -551,6 +562,44 @@ export interface ShowroomResetDeps {
    */
   migrateFn?: typeof migrate;
   sleepFn?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Timeout duro INDIVIDUAL de cada paso de cleanup (delta RA-F65C3-EXT-004):
+ * un `pg_advisory_unlock` o un `pool.end()` que jamas resuelve no puede
+ * impedir que los recursos SIGUIENTES reciban su intento. El total del
+ * cleanup queda acotado POR CONSTRUCCION: numero fijo de pasos x este tope.
+ */
+const CLEANUP_STEP_TIMEOUT_MS = 5_000;
+
+type CleanupStepOutcome = 'ok' | 'failed' | 'timeout';
+
+/**
+ * Ejecuta UN paso de cleanup con timeout duro individual. Jamas lanza; jamas
+ * deja una unhandled rejection (la promesa tardia queda con handler); el
+ * timer se limpia siempre. El resultado nunca contiene el error crudo.
+ */
+async function settleCleanupStep(
+  operation: () => unknown,
+  timeoutMs: number = CLEANUP_STEP_TIMEOUT_MS
+): Promise<CleanupStepOutcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const settled = Promise.resolve()
+      .then(operation)
+      .then(
+        () => 'ok' as const,
+        () => 'failed' as const
+      );
+    return await Promise.race([
+      settled,
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface ShowroomResetResult {
@@ -645,25 +694,30 @@ export async function prepareShowroomDatabase(
     // bloque corre en todos los caminos; deliberadamente FUERA de un finally:
     // relanzar desde finally puede pisar excepciones en vuelo — la esencia
     // del finding EXT-004 — y aqui ya no hay ninguna en vuelo).
+    // Cada paso con timeout duro individual (settleCleanupStep): un paso que
+    // FALLA se registra con su codigo fijo; uno que JAMAS RESUELVE se registra
+    // con el codigo `<paso>_timeout` y el siguiente recurso recibe su intento.
     const cleanupFailures: string[] = [];
-    if (session !== undefined && lockTaken) {
-      try {
-        await session.query('SELECT pg_advisory_unlock($1)', [SHOWROOM_RESET_LOCK_KEY]);
-      } catch {
-        cleanupFailures.push('advisory_unlock');
+    const sessionRef = session;
+    if (sessionRef !== undefined && lockTaken) {
+      const outcome = await settleCleanupStep(() =>
+        sessionRef.query('SELECT pg_advisory_unlock($1)', [SHOWROOM_RESET_LOCK_KEY])
+      );
+      if (outcome !== 'ok') {
+        cleanupFailures.push(outcome === 'timeout' ? 'advisory_unlock_timeout' : 'advisory_unlock');
       }
     }
-    if (session !== undefined) {
-      try {
-        session.release();
-      } catch {
-        cleanupFailures.push('session_release');
+    if (sessionRef !== undefined) {
+      const outcome = await settleCleanupStep(() => sessionRef.release());
+      if (outcome !== 'ok') {
+        cleanupFailures.push(outcome === 'timeout' ? 'session_release_timeout' : 'session_release');
       }
     }
-    try {
-      await maintenance.end();
-    } catch {
-      cleanupFailures.push('maintenance_end');
+    {
+      const outcome = await settleCleanupStep(() => maintenance.end());
+      if (outcome !== 'ok') {
+        cleanupFailures.push(outcome === 'timeout' ? 'maintenance_end_timeout' : 'maintenance_end');
+      }
     }
     if (hasPrimary) {
       if (cleanupFailures.length > 0 && primaryError !== null && typeof primaryError === 'object') {
@@ -717,16 +771,13 @@ export async function prepareShowroomDatabase(
     migrateError = error;
   }
   {
-    // Mismo patron que el bloque de mantenimiento: cleanup fuera de finally.
-    let adminEndFailed = false;
-    try {
-      await admin.end();
-    } catch {
-      adminEndFailed = true;
-    }
+    // Mismo patron que el bloque de mantenimiento: cleanup fuera de finally,
+    // con timeout duro individual.
+    const outcome = await settleCleanupStep(() => admin.end());
     if (hasMigrateError) throw migrateError;
-    if (adminEndFailed) {
-      throw new ShowroomResetSequenceError('maintenance cleanup failed (admin_pool_end)');
+    if (outcome !== 'ok') {
+      const step = outcome === 'timeout' ? 'admin_pool_end_timeout' : 'admin_pool_end';
+      throw new ShowroomResetSequenceError(`maintenance cleanup failed (${step})`);
     }
   }
   return plan;
@@ -785,32 +836,45 @@ export async function runShowroomReset(
   const createPool = deps.createPool ?? realCreatePool;
   const plan = await prepareShowroomDatabase(req, deps);
 
-  // Apertura SEGURA (fallo parcial => cierre de los ya creados) y luego la
-  // MISMA attestation live + handle verificado que exige el camino del seed
-  // standalone: el reset no tiene un atajo hacia seedShowroom.
-  const pools = await openShowroomPoolsSafely(req.targetUrls, createPool);
+  // Delta RA-F65C3-EXT-001: el reset reutiliza la MISMA primitiva del seed
+  // standalone (guard puro -> apertura segura -> attestation -> handle). El
+  // mapping de pools vive SOLO dentro de openVerifiedShowroomTarget y se
+  // descarta tras la verificacion: seed, invariantes, manifiesto y cierre
+  // corren EXCLUSIVAMENTE sobre el snapshot privado del handle.
+  deps.onPhase?.('seed');
+  const opened = await openVerifiedShowroomTarget(req.env, req.targetUrls, createPool);
+  const state = getVerifiedShowroomTargetState(opened.target);
+  let hasPrimary = false;
+  let primaryError: unknown;
+  let seed: ShowroomSeedResult | undefined;
+  let manifest: ShowroomSemanticManifest | undefined;
   try {
-    deps.onPhase?.('seed');
-    const target = await verifyShowroomTarget(req.env, pools, {
-      plan: { targetDbName: plan.targetDbName, host: plan.host, port: plan.port },
-    });
-    const seed = await seedShowroom(req.env, target, { onPhase: deps.onSeedPhase });
+    seed = await seedShowroom(req.env, opened.target, { onPhase: deps.onSeedPhase });
 
     deps.onPhase?.('invariants');
     const script = readFileSync(INVARIANTS_SCRIPT_PATH, 'utf8');
-    await pools.admin.query(script);
+    await state.pools.admin.query(script);
 
     deps.onPhase?.('manifest');
-    const manifest = await buildShowroomSemanticManifest(pools.admin);
-
-    return { targetDbName: plan.targetDbName, seed, manifest, invariants: 'passed' };
-  } finally {
-    await Promise.all([
-      pools.admin.end(),
-      pools.app.end(),
-      pools.auth.end(),
-      pools.relay.end(),
-      pools.webhook.end(),
-    ]);
+    manifest = await buildShowroomSemanticManifest(state.pools.admin);
+  } catch (error) {
+    hasPrimary = true;
+    primaryError = error;
   }
+  {
+    // Cierre de los pools del SNAPSHOT con timeout duro (jamas sustituye al
+    // error primario; sin primario, un cierre fallido/colgado es error tipado).
+    const outcome = await settleCleanupStep(() => opened.close());
+    if (hasPrimary) throw primaryError;
+    if (outcome !== 'ok') {
+      const step = outcome === 'timeout' ? 'target_pools_end_timeout' : 'target_pools_end';
+      throw new ShowroomResetSequenceError(`maintenance cleanup failed (${step})`);
+    }
+  }
+  return {
+    targetDbName: plan.targetDbName,
+    seed: seed!,
+    manifest: manifest!,
+    invariants: 'passed',
+  };
 }
