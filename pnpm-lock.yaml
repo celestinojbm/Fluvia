@@ -625,6 +625,9 @@ importers:
 
   packages/seeds:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
       '@fluvia/auth':
         specifier: workspace:*
         version: link:../auth
@@ -634,12 +637,27 @@ importers:
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db
+      '@fluvia/identity':
+        specifier: workspace:*
+        version: link:../identity
       '@fluvia/ledger':
         specifier: workspace:*
         version: link:../ledger
       '@fluvia/money':
         specifier: workspace:*
         version: link:../money
+      '@fluvia/outbox':
+        specifier: workspace:*
+        version: link:../outbox
+      '@fluvia/payments-core':
+        specifier: workspace:*
+        version: link:../payments-core
+      '@fluvia/reconciliation':
+        specifier: workspace:*
+        version: link:../reconciliation
+      '@fluvia/webhooks':
+        specifier: workspace:*
+        version: link:../webhooks
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

@@ -18,6 +18,19 @@
 #    docker-compose local, DEV_*_KEY_HEX con guard de entorno AUD-P2-008) no
 #    disparan las reglas por defecto hoy; si una regla futura los detecta, la
 #    excepción se añade AQUÍ, acotada, con justificación — no silenciando CI.
+#
+# DIVISIÓN DE MECANISMOS (gobernanza, F6.5C3):
+#  - Este archivo (`.gitleaks.toml`) conserva las allowlists FUNCIONALES por
+#    regla/path/regex cuando sean objetivamente necesarias (clases enteras de
+#    contenido, siempre con el alcance más estrecho posible).
+#  - Un finding HISTÓRICO INDIVIDUAL (p. ej. un fixture sintético de test que
+#    ya vive en un commit inmutable del rango del PR) se ignora ÚNICAMENTE por
+#    su fingerprint EXACTO `commit:path:regla:línea` en `.gitleaksignore` —
+#    nunca aquí. Cada fingerprint exige comentario/justificación en el PR que
+#    lo introduce.
+#  - PROHIBIDO allowlistear commits completos, paths completos o reglas
+#    enteras (p. ej. generic-api-key) para resolver un fixture individual: el
+#    fingerprint exacto es el único mecanismo autorizado para ese caso.
 
 [extend]
 # Hereda TODAS las reglas y el allowlist por defecto de gitleaks; este

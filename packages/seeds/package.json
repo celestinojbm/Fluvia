@@ -11,15 +11,24 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "vitest run",
-    "seed": "tsx src/run.ts"
+    "test": "vitest run && node ../../scripts/verify-runtime-image.mjs",
+    "test:unit": "vitest run",
+    "seed": "tsx src/run.ts",
+    "showroom:seed": "tsx src/run-showroom.ts",
+    "demo:reset": "tsx src/run-reset.ts"
   },
   "dependencies": {
+    "@fluvia/audit": "workspace:*",
     "@fluvia/auth": "workspace:*",
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
+    "@fluvia/identity": "workspace:*",
     "@fluvia/ledger": "workspace:*",
-    "@fluvia/money": "workspace:*"
+    "@fluvia/money": "workspace:*",
+    "@fluvia/outbox": "workspace:*",
+    "@fluvia/payments-core": "workspace:*",
+    "@fluvia/reconciliation": "workspace:*",
+    "@fluvia/webhooks": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
