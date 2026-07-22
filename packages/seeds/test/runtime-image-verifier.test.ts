@@ -1,4 +1,10 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
   FORBIDDEN_SCRIPTS,
@@ -14,6 +20,16 @@ import {
   scanTarEntries,
   semanticSignatureViolation,
   shouldCaptureContent,
+  dependencySpecResolvesFluviaSeeds,
+  workspacePatternCanResolveFluviaSeeds,
+  canonicalTokens,
+  lexicalFingerprint,
+  extractStringLiterals,
+  buildLexicalInventory,
+  transformedCopyViolation,
+  matchesLexicalScreen,
+  runBoundedProcess,
+  createDockerCleanupTracker,
 } from '../../../scripts/verify-runtime-image.mjs';
 
 /**
@@ -58,7 +74,7 @@ function tarHeader(spec: TarSpec, size: number): Buffer {
   return h;
 }
 
-function makeTar(specs: TarSpec[]): Buffer {
+function makeTar(specs: TarSpec[], terminatorBlocks = 2): Buffer {
   const parts: Buffer[] = [];
   for (const spec of specs) {
     const content =
@@ -67,7 +83,10 @@ function makeTar(specs: TarSpec[]): Buffer {
         : Buffer.isBuffer(spec.content)
           ? spec.content
           : Buffer.from(spec.content, 'utf8');
-    const isData = (spec.type ?? '0') === '0';
+    // Los typeflags con DATA: fichero regular ('0') y extensiones PAX/GNU
+    // ('x'/'g'/'L'/'K') — los tests de terminacion construyen extensiones
+    // pendientes deliberadamente.
+    const isData = ['0', 'x', 'g', 'L', 'K'].includes(spec.type ?? '0');
     const size = isData ? content.length : 0;
     parts.push(tarHeader(spec, size));
     if (isData && size > 0) {
@@ -77,7 +96,7 @@ function makeTar(specs: TarSpec[]): Buffer {
       parts.push(block);
     }
   }
-  parts.push(Buffer.alloc(1024)); // terminador: dos bloques cero
+  parts.push(Buffer.alloc(512 * terminatorBlocks)); // terminador estricto: DOS bloques cero
   return Buffer.concat(parts);
 }
 
@@ -240,13 +259,15 @@ describe('scanTarEntries: inventario SHA-256 del tooling', () => {
     expect(violations.join('\n')).toContain('targets seeds tooling');
   });
 
-  it('archivos limpios bajo app/ y archivos FUERA de app/ no disparan', () => {
+  it('delta 3: el inventario aplica a TODO el filesystem — una copia FUERA de /app tambien delata', () => {
     const tar = makeTar([
       { name: 'app/apps/api/src/server.js', content: 'const s = 1;' },
-      { name: 'etc/passwd-copy', content: RESET_SOURCE }, // fuera de app/: base layer
+      { name: 'etc/passwd-copy', content: RESET_SOURCE }, // fuera de app/: tambien detectada
     ]);
     const violations = scanTarEntries(parseTarEntries(tar), 'L', { seedHashes });
-    expect(violations.filter((v) => v.includes('content-hash'))).toHaveLength(0);
+    expect(violations.join('\n')).toContain('etc/passwd-copy content-hash matches checkout');
+    // Archivos limpios jamas disparan.
+    expect(violations.filter((v) => v.includes('server.js'))).toHaveLength(0);
   });
 });
 
@@ -347,16 +368,18 @@ describe('packageJsonViolations: fail-closed, jamas lista vacia por parseo roto'
     expect(packageJsonViolations(pkg, 'app/node_modules/faker/package.json')).toEqual([]);
   });
 
-  it('fixture anidado de un tercero: solo la referencia a @fluvia/seeds delata', () => {
+  it('fixture ANIDADO de un tercero: JSON invalido = fallo (delta 3, jamas se acepta)', () => {
     expect(
       packageJsonViolations('broken json', 'app/node_modules/dep/test/fixtures/package.json')
-    ).toEqual([]);
+    ).toEqual([
+      'app/node_modules/dep/test/fixtures/package.json: invalid JSON in package.json (fail-closed)',
+    ]);
     expect(
       packageJsonViolations(
         '{"dependencies":{"@fluvia/seeds":"*"}}',
         'app/node_modules/dep/test/fixtures/package.json'
       ).join('\n')
-    ).toContain('references @fluvia/seeds');
+    ).toContain('dependencies resolves @fluvia/seeds');
   });
 
   it('manifestKindForPath clasifica workspace/dependency/nested', () => {
@@ -382,19 +405,35 @@ describe('residuos /run/secrets y redaccion', () => {
     ]);
   });
 
-  it('la CA de build se detecta por hash y por aguja textual', () => {
+  it('la CA se detecta por hash y aguja en CUALQUIER path del filesystem (delta 3)', () => {
     const ca = '-----BEGIN CERTIFICATE-----\nAAAABBBBCCCC\n-----END CERTIFICATE-----\n';
     const caSha = sha256(ca);
+    const needle = Buffer.from('AAAABBBBCCCC', 'utf8');
     const tar = makeTar([
-      { name: 'app/etc/rogue-ca.crt', content: ca },
+      // FUERA de /app: /usr, /etc y un hardlink hacia la CA.
+      { name: 'usr/local/share/ca-certificates/fluvia.crt', content: ca },
+      { name: 'etc/ssl/certs/extra.pem', content: ca },
+      { name: 'etc/motd', content: `welcome AAAABBBBCCCC bye` },
+      { name: 'home/node/link-to-ca', type: '1', linkname: 'etc/ssl/certs/extra.pem' },
       { name: 'app/apps/api/src/embed.ts', content: `const pem = "AAAABBBBCCCC";` },
     ]);
-    const violations = scanTarEntries(parseTarEntries(tar, shouldCaptureContent), 'L', {
+    const violations = scanTarEntries(parseTarEntries(tar, shouldCaptureContent, { needle }), 'L', {
       caSha256: caSha,
-      caNeedle: 'AAAABBBBCCCC',
     });
-    expect(violations.join('\n')).toContain('content-hash matches the build CA');
-    expect(violations.join('\n')).toContain('embeds build CA material');
+    const text = violations.join('\n');
+    expect(text).toContain(
+      'usr/local/share/ca-certificates/fluvia.crt content-hash matches the build CA'
+    );
+    expect(text).toContain('etc/ssl/certs/extra.pem content-hash matches the build CA');
+    expect(text).toContain('etc/motd embeds build CA material'); // texto fuera de /app
+    expect(text).toContain('home/node/link-to-ca content-hash matches the build CA'); // hardlink
+    expect(text).toContain('app/apps/api/src/embed.ts embeds build CA material');
+  });
+
+  it('imagen SIN CA: cero falsos positivos de CA', () => {
+    const tar = makeTar([{ name: 'usr/share/doc/readme', content: 'hello world' }]);
+    const violations = scanTarEntries(parseTarEntries(tar), 'L', { caSha256: null });
+    expect(violations).toEqual([]);
   });
 
   it('redactForLog elimina URLs con credenciales y material password', () => {
@@ -404,5 +443,444 @@ describe('residuos /run/secrets y redaccion', () => {
     expect(out).not.toContain('secret-pw');
     expect(out).not.toContain('abc123');
     expect(out).toContain('<redacted-url>');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delta 3 — tar strict terminator PASS
+// ---------------------------------------------------------------------------
+
+describe('tar strict terminator PASS (delta 3: doble bloque cero obligatorio)', () => {
+  const entry = { name: 'app/ok.js', content: 'ok' };
+
+  it('sin terminador (EOF tras la ultima entrada) = fallo', () => {
+    expect(() => parseTarEntries(makeTar([entry], 0))).toThrow(/terminator|truncated/);
+  });
+
+  it('UN solo bloque cero = fallo', () => {
+    expect(() => parseTarEntries(makeTar([entry], 1))).toThrow(TarFormatError);
+    expect(() => parseTarEntries(makeTar([entry], 1))).toThrow(/single zero block|EOF between/);
+  });
+
+  it('DOS bloques cero = valido; TRES (padding extra cero) = valido', () => {
+    expect(parseTarEntries(makeTar([entry], 2))).toHaveLength(1);
+    expect(parseTarEntries(makeTar([entry], 3))).toHaveLength(1);
+  });
+
+  it('segundo bloque PARCIAL (EOF entre terminadores) = fallo', () => {
+    const tar = Buffer.concat([makeTar([entry], 1), Buffer.alloc(100)]);
+    expect(() => parseTarEntries(tar)).toThrow(/EOF between tar terminator blocks/);
+  });
+
+  it('dato no-cero DESPUES del segundo bloque = fallo', () => {
+    const tar = Buffer.concat([makeTar([entry], 2), Buffer.alloc(511), Buffer.from([0x41])]);
+    expect(() => parseTarEntries(tar)).toThrow(/after tar terminator/);
+  });
+
+  it('PAX pendiente al llegar el terminador = fallo', () => {
+    const pax = { name: 'pax', type: 'x', content: '17 path=app/x.js\n' };
+    expect(() => parseTarEntries(makeTar([entry, pax], 2))).toThrow(/pending PAX\/GNU extension/);
+  });
+
+  it('GNU longname pendiente al llegar el terminador = fallo', () => {
+    const longname = { name: 'gnu', type: 'L', content: 'app/very-long-name.js\0' };
+    expect(() => parseTarEntries(makeTar([entry, longname], 2))).toThrow(
+      /pending PAX\/GNU extension/
+    );
+  });
+
+  it('archivo VACIO = fallo (cero terminadores)', () => {
+    expect(() => parseTarEntries(Buffer.alloc(0))).toThrow(/terminator|truncated/);
+  });
+
+  it('header PARCIAL (menos de 512 bytes) = fallo', () => {
+    expect(() => parseTarEntries(Buffer.alloc(300))).toThrow(/terminator|truncated/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delta 3 — package aliases PASS (metadata EXACTA, clave y VALOR)
+// ---------------------------------------------------------------------------
+
+describe('package aliases PASS (delta 3: aliases npm:/workspace:/file:/link: y workspaces exactos)', () => {
+  it.each([
+    ['clave directa', '@fluvia/seeds', 'workspace:*'],
+    ['alias npm', 'innocent', 'npm:@fluvia/seeds@1.0.0'],
+    ['alias npm sin version', 'innocent', 'npm:@fluvia/seeds'],
+    ['alias workspace', 'innocent', 'workspace:@fluvia/seeds@*'],
+    ['alias file', 'innocent', 'file:../../packages/seeds'],
+    ['alias link', 'innocent', 'link:packages/seeds'],
+  ])('%s => resuelve @fluvia/seeds', (_label, name, spec) => {
+    expect(dependencySpecResolvesFluviaSeeds(name, spec)).toBe(true);
+  });
+
+  it.each([
+    ['paquete parecido', '@example/seeds', '1.0.0'],
+    ['alias hacia otro paquete', 'x', 'npm:@fluvia/db@1.0.0'],
+    ['file hacia oilseeds', 'x', 'file:../../packages/oilseeds'],
+    ['file hacia un sub-path de seeds', 'x', 'file:packages/seeds-helper'],
+    ['nombre con substring', 'some-seeds-helper', '2.0.0'],
+    ['version normal', 'left-pad', '^1.3.0'],
+  ])('%s => NO resuelve', (_label, name, spec) => {
+    expect(dependencySpecResolvesFluviaSeeds(name, spec)).toBe(false);
+  });
+
+  it('workspaces: patrones que PUEDEN resolver packages/seeds', () => {
+    expect(workspacePatternCanResolveFluviaSeeds('packages/seeds')).toBe(true);
+    expect(workspacePatternCanResolveFluviaSeeds('packages/*')).toBe(true);
+    expect(workspacePatternCanResolveFluviaSeeds('**')).toBe(true);
+    expect(workspacePatternCanResolveFluviaSeeds('packages/se*')).toBe(true);
+  });
+
+  it('workspaces: negativos exactos (sin substring ciego)', () => {
+    expect(workspacePatternCanResolveFluviaSeeds('packages/oilseeds')).toBe(false);
+    expect(workspacePatternCanResolveFluviaSeeds('packages/seeds-extra')).toBe(false);
+    expect(workspacePatternCanResolveFluviaSeeds('apps/*')).toBe(false);
+    expect(workspacePatternCanResolveFluviaSeeds('tools/seeds')).toBe(false);
+  });
+
+  it('package.json: alias en el VALOR delata; override y resolution tambien', () => {
+    const alias = JSON.stringify({ dependencies: { innocent: 'npm:@fluvia/seeds@1.0.0' } });
+    expect(packageJsonViolations(alias, 'app/apps/api/package.json').join('\n')).toContain(
+      'dependencies resolves @fluvia/seeds (innocent)'
+    );
+    const override = JSON.stringify({ overrides: { x: 'npm:@fluvia/seeds@2' } });
+    expect(packageJsonViolations(override, 'app/package.json').join('\n')).toContain(
+      'overrides resolves @fluvia/seeds'
+    );
+    const resolution = JSON.stringify({ resolutions: { '@fluvia/seeds': '1.0.0' } });
+    expect(packageJsonViolations(resolution, 'app/package.json').join('\n')).toContain(
+      'resolutions resolves @fluvia/seeds'
+    );
+    const pnpmOverride = JSON.stringify({ pnpm: { overrides: { y: 'workspace:@fluvia/seeds' } } });
+    expect(packageJsonViolations(pnpmOverride, 'app/package.json').join('\n')).toContain(
+      'pnpm.overrides resolves @fluvia/seeds'
+    );
+  });
+
+  it('workspaces packages/* delata; packages/oilseeds como DEPENDENCIA no', () => {
+    const ws = JSON.stringify({ workspaces: ['packages/*'] });
+    expect(packageJsonViolations(ws, 'app/package.json').join('\n')).toContain(
+      'workspaces pattern can resolve packages/seeds'
+    );
+    const innocent = JSON.stringify({
+      workspaces: ['packages/oilseeds'],
+      dependencies: { oilseeds: 'file:packages/oilseeds' },
+    });
+    expect(packageJsonViolations(innocent, 'app/package.json')).toEqual([]);
+  });
+
+  it('metadata inesperada = fallo (dependencies string, workspaces objeto raro, scripts string)', () => {
+    expect(
+      packageJsonViolations(JSON.stringify({ dependencies: 'oops' }), 'app/package.json').join('\n')
+    ).toContain('dependencies is not an object (fail-closed)');
+    expect(
+      packageJsonViolations(JSON.stringify({ workspaces: 42 }), 'app/package.json').join('\n')
+    ).toContain('workspaces has an unexpected shape (fail-closed)');
+    expect(
+      packageJsonViolations(JSON.stringify({ scripts: 'echo' }), 'app/package.json').join('\n')
+    ).toContain('scripts is not an object (fail-closed)');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delta 3 — transformed-content scan PASS (fingerprint lexico canonico)
+// ---------------------------------------------------------------------------
+
+describe('transformed-content scan PASS (delta 3: copias minificadas/transpiladas/renombradas)', () => {
+  const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), '../src');
+  const liveIdentity = readFileSync(join(SRC_DIR, 'live-identity.ts'), 'utf8');
+  const resetSource = readFileSync(join(SRC_DIR, 'reset.ts'), 'utf8');
+  const inventory = buildLexicalInventory([
+    { path: 'packages/seeds/src/live-identity.ts', text: liveIdentity },
+    { path: 'packages/seeds/src/reset.ts', text: resetSource },
+  ]);
+
+  /** Minificacion de whitespace REAL: colapsa todo whitespace fuera de strings. */
+  const whitespaceMinify = (source: string) => canonicalTokensJoin(source);
+  function canonicalTokensJoin(source: string): string {
+    // reconstruye un "minificado" plausible: tokens del fuente unidos por un
+    // espacio (comillas normalizadas a dobles para strings)
+    return canonicalTokens(source)
+      .map((t) => (t.startsWith('S:') ? JSON.stringify(t.slice(2)) : t))
+      .join(' ');
+  }
+
+  it('canonicalTokens/lexicalFingerprint: whitespace, comentarios y comillas NO cambian el stream', () => {
+    const a = `const x = 'hola'; // comentario\nfunction f( a , b ) { return a + b; }`;
+    const b = `/* otro */ const x="hola";function f(a,b){return a+b;}`;
+    expect(lexicalFingerprint(a)).toBe(lexicalFingerprint(b));
+    expect(canonicalTokens(a)).toEqual(canonicalTokens(b));
+  });
+
+  it('TOKEN_SEPARATOR: fronteras de tokens DISTINTAS jamas colisionan en el fingerprint', () => {
+    // Un separador de ESPACIO seria ambiguo: un literal con espacio interno
+    // (["S:a b"]) y un literal mas un identificador (["S:a","b"]) producirian
+    // exactamente la misma cadena unida. El separador NUL (expresado como
+    // escape textual, no como byte literal) no puede aparecer dentro de un
+    // token canonico, asi que streams distintos JAMAS colisionan.
+    const oneLiteral = `'a b'`;
+    const literalPlusIdent = `'a' b`;
+    expect(canonicalTokens(oneLiteral)).not.toEqual(canonicalTokens(literalPlusIdent));
+    expect(canonicalTokens(oneLiteral).join(' ')).toBe(canonicalTokens(literalPlusIdent).join(' '));
+    expect(lexicalFingerprint(oneLiteral)).not.toBe(lexicalFingerprint(literalPlusIdent));
+    // Fronteras distintas entre identificadores tampoco colisionan.
+    expect(lexicalFingerprint('ab c')).not.toBe(lexicalFingerprint('a bc'));
+  });
+
+  it('copia WHITESPACE-MINIFIED de live-identity.ts: detectada', () => {
+    const minified = whitespaceMinify(liveIdentity);
+    expect(minified.length).toBeLessThan(liveIdentity.length); // es una transformacion real
+    expect(matchesLexicalScreen(minified, inventory)).toBe(true);
+    const verdict = transformedCopyViolation(minified, inventory);
+    expect(verdict).toContain('live-identity.ts');
+  });
+
+  it('copia SIN comentarios de linea y re-indentada: detectada (fingerprint identico)', () => {
+    const stripped = liveIdentity
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/\n{2,}/g, '\n')
+      .replace(/^[ \t]+/gm, '');
+    expect(stripped).not.toBe(liveIdentity);
+    const verdict = transformedCopyViolation(stripped, inventory);
+    expect(verdict).toContain('live-identity.ts');
+  });
+
+  it('transpilacion TypeScript->JavaScript REAL de live-identity.ts: detectada', () => {
+    const js = ts.transpileModule(liveIdentity, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    }).outputText;
+    expect(js).not.toBe(liveIdentity);
+    const verdict = transformedCopyViolation(js, inventory);
+    expect(verdict).toContain('live-identity.ts');
+  });
+
+  it('source map con sourcesContent MINIFICADO del reset: detectado via scan', () => {
+    const map = JSON.stringify({
+      version: 3,
+      sources: ['anything.ts'],
+      sourcesContent: [whitespaceMinify(resetSource)],
+    });
+    const tar = makeTar([{ name: 'app/packages/db/dist/x.js.map', content: map }]);
+    const violations = scanTarEntries(parseTarEntries(tar, shouldCaptureContent), 'L', {
+      lexicalInventory: inventory,
+    });
+    expect(violations.join('\n')).toContain('transformed copy of checkout');
+  });
+
+  it('source map con JSON INVALIDO o sourcesContent no-array = fallo', () => {
+    const bad = makeTar([{ name: 'app/apps/api/dist/x.js.map', content: 'not json {' }]);
+    expect(scanTarEntries(parseTarEntries(bad, shouldCaptureContent), 'L').join('\n')).toContain(
+      'invalid JSON in source map (fail-closed)'
+    );
+    const badShape = makeTar([
+      {
+        name: 'app/apps/api/dist/y.js.map',
+        content: JSON.stringify({ version: 3, sourcesContent: 'nope' }),
+      },
+    ]);
+    expect(
+      scanTarEntries(parseTarEntries(badShape, shouldCaptureContent), 'L').join('\n')
+    ).toContain('sourcesContent is not an array (fail-closed)');
+  });
+
+  it('dos archivos inocuos con una palabra comun NO disparan', () => {
+    const innocentA = `export function connect() { return 'postgres://localhost'; }`;
+    const innocentB = `const label = 'showroom'; console.log(label);`;
+    expect(transformedCopyViolation(innocentA, inventory)).toBeNull();
+    expect(transformedCopyViolation(innocentB, inventory)).toBeNull();
+  });
+
+  it('extractStringLiterals: literales significativas, sin duplicados', () => {
+    const lits = extractStringLiterals(
+      `const a = 'literal-uno-larga'; const b = "literal-uno-larga"; const c = 'x';`
+    );
+    expect(lits.has('literal-uno-larga')).toBe(true);
+    expect(lits.has('x')).toBe(false); // demasiado corta
+    expect(lits.size).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delta 3 — stdout/stderr bounds PASS (procesos REALES, limites en bytes)
+// ---------------------------------------------------------------------------
+
+describe('stdout/stderr bounds PASS (delta 3: overflow fail-closed con procesos reales)', () => {
+  const LIMIT = 64 * 1024; // limite pequeno para tests
+
+  it('stdout excesivo + exit 0 = fallo (jamas success con output truncado)', async () => {
+    await expect(
+      runBoundedProcess(
+        'node',
+        ['-e', `process.stdout.write('x'.repeat(${LIMIT * 4})); process.exit(0)`],
+        { timeoutMs: 30_000, outputLimitBytes: LIMIT }
+      )
+    ).rejects.toThrow(/exceeded the output byte limit/);
+  });
+
+  it('stderr excesivo + exit 0 = fallo (misma politica que stdout)', async () => {
+    await expect(
+      runBoundedProcess(
+        'node',
+        ['-e', `process.stderr.write('e'.repeat(${LIMIT * 4})); process.exit(0)`],
+        { timeoutMs: 30_000, outputLimitBytes: LIMIT }
+      )
+    ).rejects.toThrow(/exceeded the output byte limit/);
+  });
+
+  it('ambos streams excesivos = fallo con error FIJO sanitizado (sin el output)', async () => {
+    let message = '';
+    try {
+      await runBoundedProcess(
+        'node',
+        [
+          '-e',
+          `process.stdout.write('S'.repeat(${LIMIT * 2})); process.stderr.write('E'.repeat(${LIMIT * 2}));`,
+        ],
+        { timeoutMs: 30_000, outputLimitBytes: LIMIT }
+      );
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain('exceeded the output byte limit');
+    expect(message).not.toContain('SSSS');
+    expect(message).not.toContain('EEEE');
+  });
+
+  it('output JUSTO BAJO el limite = exito', async () => {
+    const { stdout } = await runBoundedProcess(
+      'node',
+      ['-e', `process.stdout.write('x'.repeat(${LIMIT - 1024}))`],
+      { timeoutMs: 30_000, outputLimitBytes: LIMIT }
+    );
+    expect(stdout).toHaveLength(LIMIT - 1024);
+  });
+
+  it('el limite se mide en BYTES, no en longitud UTF-16', async () => {
+    // 'é' = 2 bytes UTF-8: LIMIT*0.75 caracteres exceden LIMIT bytes.
+    const chars = Math.floor(LIMIT * 0.75);
+    await expect(
+      runBoundedProcess('node', ['-e', `process.stdout.write('\\u00e9'.repeat(${chars}))`], {
+        timeoutMs: 30_000,
+        outputLimitBytes: LIMIT,
+      })
+    ).rejects.toThrow(/exceeded the output byte limit/);
+  });
+
+  it('proceso que IGNORA SIGTERM y deja un NIETO: el process group muere igual (SIGKILL)', async () => {
+    const pidFile = join(tmpdir(), `.fluvia-tmp-grandchild-${process.pid}`);
+    await expect(
+      runBoundedProcess(
+        'sh',
+        [
+          '-c',
+          `trap '' TERM; sleep 300 & echo $! > ${JSON.stringify(pidFile)}; while true; do echo flood; done`,
+        ],
+        { timeoutMs: 60_000, outputLimitBytes: LIMIT }
+      )
+    ).rejects.toThrow(/exceeded the output byte limit/);
+    // el nieto (sleep) tambien murio con el grupo (SIGKILL groupwide). Un
+    // proceso ZOMBIE sin reapear cuenta como muerto: kill(pid,0) responderia
+    // exito para un zombie, asi que se lee el ESTADO real de /proc.
+    const grandchild = Number(readFileSync(pidFile, 'utf8').trim());
+    await new Promise((r) => setTimeout(r, 200));
+    let state = 'gone';
+    try {
+      const stat = readFileSync(`/proc/${grandchild}/stat`, 'utf8');
+      state = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0] ?? 'gone';
+    } catch {
+      state = 'gone';
+    }
+    expect(['gone', 'Z', 'X']).toContain(state);
+    spawnSync('rm', ['-f', pidFile]);
+  });
+
+  it('timeout con proceso SILENCIOSO: fallo por timeout con grupo matado', async () => {
+    await expect(
+      runBoundedProcess('sleep', ['300'], { timeoutMs: 1_000, outputLimitBytes: LIMIT })
+    ).rejects.toThrow(/timed out .* \(group killed\)/);
+  }, 15_000);
+});
+
+// ---------------------------------------------------------------------------
+// Delta 3 — Docker cleanup verification PASS (tracker tipado con verificacion)
+// ---------------------------------------------------------------------------
+
+describe('Docker cleanup verification PASS (delta 3: tracker con verificacion por inspect)', () => {
+  type Exec = (args: string[], timeoutMs: number) => Promise<unknown>;
+
+  function scriptedExec(script: {
+    removeFails?: Set<string>;
+    stillExists?: Set<string>;
+    calls?: string[][];
+  }): Exec {
+    return async (args) => {
+      script.calls?.push(args);
+      const id = args[args.length - 1]!;
+      const isInspect = args.includes('inspect');
+      if (isInspect) {
+        if (script.stillExists?.has(id)) return 'exists';
+        throw new Error('No such object');
+      }
+      if (script.removeFails?.has(id)) throw new Error('cannot remove');
+      return '';
+    };
+  }
+
+  it('rm falla pero el recurso YA NO existe: aceptable (verificado ausente)', async () => {
+    const tracker = createDockerCleanupTracker(
+      scriptedExec({ removeFails: new Set(['c1']), stillExists: new Set() })
+    );
+    tracker.register('container', 'c1');
+    const result = await tracker.cleanupAll();
+    expect(result.ok).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it('rm falla y el recurso SIGUE existiendo: cleanup FAILED', async () => {
+    const tracker = createDockerCleanupTracker(
+      scriptedExec({ removeFails: new Set(['c1']), stillExists: new Set(['c1']) })
+    );
+    tracker.register('container', 'c1', 'api');
+    const result = await tracker.cleanupAll();
+    expect(result.ok).toBe(false);
+    expect(result.failures).toEqual([{ kind: 'container', label: 'api' }]);
+  });
+
+  it('rmi y network rm fallidos con recursos vivos: DOS failures reportados', async () => {
+    const tracker = createDockerCleanupTracker(
+      scriptedExec({
+        removeFails: new Set(['img1', 'net1']),
+        stillExists: new Set(['img1', 'net1']),
+      })
+    );
+    tracker.register('image', 'img1');
+    tracker.register('network', 'net1');
+    tracker.register('container', 'ok1');
+    const result = await tracker.cleanupAll();
+    expect(result.ok).toBe(false);
+    expect(result.failures).toHaveLength(2);
+  });
+
+  it('un recurso NO creado no es failure; removeNow verifica de inmediato', async () => {
+    const calls: string[][] = [];
+    const tracker = createDockerCleanupTracker(scriptedExec({ calls }));
+    tracker.register('container', 'c1');
+    expect(await tracker.removeNow('container', 'c1')).toBe(true);
+    // segunda pasada: ya no esta 'created', no se re-intenta
+    const result = await tracker.cleanupAll();
+    expect(result.ok).toBe(true);
+    const rmCalls = calls.filter((c) => c[0] === 'rm');
+    expect(rmCalls).toHaveLength(1);
+  });
+
+  it('cleanup PASS es IMPOSIBLE con un recurso vivo (resumen tipado)', async () => {
+    const tracker = createDockerCleanupTracker(
+      scriptedExec({ removeFails: new Set(['v1']), stillExists: new Set(['v1']) })
+    );
+    tracker.register('volume', 'v1');
+    const result = await tracker.cleanupAll();
+    expect(result.ok).toBe(false);
+    expect(result.summary.join(',')).toContain('volume:v1=cleanup_failed');
   });
 });
