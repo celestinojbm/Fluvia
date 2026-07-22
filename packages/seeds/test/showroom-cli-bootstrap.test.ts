@@ -207,7 +207,7 @@ describe('runShowroomSeedCli: frontera sanitizada COMPLETA', () => {
     expect(c.err[0]).not.toContain('at seedShowroom');
   });
 
-  it('fallo del seed + fallo del close(): el close degradado NO añade secretos', async () => {
+  it('fallo del seed + fallo del close(): EXACTAMENTE UNA linea (sufijo fijo), sin secretos', async () => {
     const c = collector();
     const code = await runShowroomSeedCli({
       loadConfig: fakeConfig,
@@ -226,18 +226,15 @@ describe('runShowroomSeedCli: frontera sanitizada COMPLETA', () => {
       error: c.error,
     });
     expect(code).toBe(1);
-    // Dos lineas: la del error y el warning FIJO del cleanup — ambas seguras.
-    expect(c.err).toHaveLength(2);
+    // UNA sola linea: plantilla del primario + sufijo fijo [pool_close_failed].
+    expect(c.err).toHaveLength(1);
     expect(c.err[0]).toMatch(GENERIC);
-    expect(c.err[1]).toBe('showroom:seed cleanup warning [pool_close_failed]');
-    for (const line of c.err) {
-      expect(line.includes(SECRETS.dbUrl)).toBe(false);
-    }
+    expect(c.err[0]).toMatch(/\[pool_close_failed\]$/);
+    expect(c.err[0]!.includes(SECRETS.dbUrl)).toBe(false);
   });
 
-  it('exito: credenciales sandbox impresas UNA sola vez y SOLO al final', async () => {
+  it('cleanup-only failure (seed OK, close falla): UNA linea fija, SIN credenciales, exit 1', async () => {
     const c = collector();
-    let closed = 0;
     const code = await runShowroomSeedCli({
       loadConfig: fakeConfig,
       urlsFromEnv: localUrls,
@@ -245,22 +242,160 @@ describe('runShowroomSeedCli: frontera sanitizada COMPLETA', () => {
         target: { kind: 'verified-showroom-target' },
         targetDbName: 'fluvia_showroom',
         close: async () => {
-          closed += 1;
+          throw new Error(`close failed: ${SECRETS.dbUrl}`);
         },
       })) as unknown as typeof openVerifiedShowroomTarget,
       seed: (async () => fakeSeedResult) as unknown as typeof seedShowroom,
       log: c.log,
       error: c.error,
     });
+    expect(code).toBe(1);
+    expect(c.err).toEqual(['showroom:seed cleanup failed [pool_close_failed]']);
+    // Las credenciales JAMAS se imprimen si el cleanup fallo.
+    expect(c.out.join('\n')).not.toContain('sandbox-api-key-material');
+    expect(c.out.join('\n')).not.toContain('CREDENCIALES SANDBOX');
+  });
+
+  it('exito: credenciales UNA sola vez, SOLO al final y SOLO despues del cleanup', async () => {
+    const c = collector();
+    const events: string[] = [];
+    const code = await runShowroomSeedCli({
+      loadConfig: fakeConfig,
+      urlsFromEnv: localUrls,
+      openTarget: (async () => ({
+        target: { kind: 'verified-showroom-target' },
+        targetDbName: 'fluvia_showroom',
+        close: async () => {
+          events.push('close');
+        },
+      })) as unknown as typeof openVerifiedShowroomTarget,
+      seed: (async () => fakeSeedResult) as unknown as typeof seedShowroom,
+      log: (line) => {
+        if (line.includes('CREDENCIALES SANDBOX')) events.push('credentials');
+        c.log(line);
+      },
+      error: c.error,
+    });
     expect(code).toBe(0);
     expect(c.err).toHaveLength(0);
-    expect(closed).toBe(1);
+    // ORDEN estricto: primero el cierre de pools, DESPUES las credenciales.
+    expect(events).toEqual(['close', 'credentials']);
     const all = c.out.join('\n');
-    const occurrences = all.split('sandbox-api-key-material').length - 1;
-    expect(occurrences).toBe(1);
-    // Las credenciales van en la ULTIMA linea impresa (tras el exito).
+    expect(all.split('sandbox-api-key-material').length - 1).toBe(1);
     expect(c.out[c.out.length - 1]).toContain('CREDENCIALES SANDBOX');
     expect(c.out[c.out.length - 1]).toContain('owner@fluvia.dev');
+  });
+});
+
+/**
+ * Delta 3 (EXT-006) — CLI writer safety PASS: el writer inyectado (stderr o
+ * stdout) puede lanzar (EPIPE real, un string-token, un Proxy callable con
+ * trap hostil) y JAMAS escapa una excepcion del CLI: exit 1, como maximo UNA
+ * llamada al writer de error, cero secretos, cero unhandled rejections.
+ */
+describe('CLI writer safety PASS (delta EXT-006: safeWrite y linea unica)', () => {
+  const epipeWriter = () => {
+    const err = Object.assign(new Error('write EPIPE'), { code: 'EPIPE', syscall: 'write' });
+    throw err;
+  };
+
+  it('errOut lanza EPIPE: cero excepcion, exit 1', async () => {
+    let errCalls = 0;
+    const code = await runShowroomSeedCli({
+      loadConfig: (() => {
+        throw new Error(`boot failed: ${SECRETS.dbUrl}`);
+      }) as unknown as typeof loadConfig,
+      log: () => undefined,
+      error: (line) => {
+        errCalls += 1;
+        expect(line.includes(SECRETS.dbUrl)).toBe(false);
+        epipeWriter();
+      },
+    });
+    expect(code).toBe(1);
+    expect(errCalls).toBe(1); // exactamente UNA llamada al writer de error
+  });
+
+  it('errOut lanza un STRING-token: no se inspecciona ni escapa', async () => {
+    const code = await runShowroomResetCli({
+      argv: [],
+      loadConfig: fakeConfig,
+      urlsFromEnv: localUrls,
+      log: () => undefined,
+      error: () => {
+        throw SECRETS.token;
+      },
+    });
+    expect(code).toBe(1);
+  });
+
+  it('errOut es un Proxy callable HOSTIL (trap apply lanza): degradacion sin crash', async () => {
+    const hostileWriter = new Proxy(() => undefined, {
+      apply() {
+        throw new Error(`hostile apply: ${SECRETS.password}`);
+      },
+      get() {
+        throw new Error('hostile get');
+      },
+    }) as unknown as (line: string) => void;
+    const code = await runShowroomSeedCli({
+      loadConfig: (() => {
+        throw new Error('boot failed');
+      }) as unknown as typeof loadConfig,
+      log: () => undefined,
+      error: hostileWriter,
+    });
+    expect(code).toBe(1);
+  });
+
+  it('stdout writer lanza DURANTE el exito: exit 1, una linea fija de error, sin reintento del secreto', async () => {
+    const errLines: string[] = [];
+    let successAttempts = 0;
+    const code = await runShowroomSeedCli({
+      loadConfig: fakeConfig,
+      urlsFromEnv: localUrls,
+      openTarget: (async () => ({
+        target: { kind: 'verified-showroom-target' },
+        targetDbName: 'fluvia_showroom',
+        close: async () => undefined,
+      })) as unknown as typeof openVerifiedShowroomTarget,
+      seed: (async () => fakeSeedResult) as unknown as typeof seedShowroom,
+      log: (line) => {
+        if (line.includes('CREDENCIALES SANDBOX')) {
+          successAttempts += 1;
+          throw new Error('stdout gone');
+        }
+      },
+      error: (line) => {
+        errLines.push(line);
+      },
+    });
+    expect(code).toBe(1);
+    expect(successAttempts).toBe(1); // el bloque con el secreto NO se reintenta
+    expect(errLines).toEqual(['showroom:seed output write failed [output_write_failed]']);
+  });
+
+  it('demo:reset con TODOS los writers rotos: exit 1 sin excepcion ni unhandled rejection', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onRejection);
+    try {
+      const code = await runShowroomResetCli({
+        argv: ['--confirm', 'RESET_FLUVIA_SHOWROOM'],
+        loadConfig: fakeConfig,
+        urlsFromEnv: localUrls,
+        runReset: (async () => {
+          throw new Error(`reset blew up: ${SECRETS.dbUrl}`);
+        }) as unknown as typeof runShowroomReset,
+        log: epipeWriter as unknown as (line: string) => void,
+        error: epipeWriter as unknown as (line: string) => void,
+      });
+      expect(code).toBe(1);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
   });
 });
 

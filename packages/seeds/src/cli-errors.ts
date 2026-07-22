@@ -96,6 +96,43 @@ function guardTemplate(
 }
 
 /**
+ * Escritura SEGURA hacia un writer inyectado o console (delta EXT-006): el
+ * writer puede lanzar (EPIPE, un writer de test hostil, un Proxy callable con
+ * trap que lanza) y esa excepcion JAMAS escapa del CLI ni se inspecciona
+ * (nada de leer propiedades del error del writer). Devuelve false si el
+ * writer fallo — el llamador decide el exit code, nunca relanza.
+ */
+export function safeWrite(writer: (line: string) => void, line: string): boolean {
+  try {
+    writer(line);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * UNA sola linea de fallo para stderr (delta EXT-006): con error primario, la
+ * plantilla segura del primario y — si ADEMAS fallo el cleanup — el sufijo
+ * FIJO `[pool_close_failed]` en la MISMA linea (jamas una segunda). Sin
+ * primario, la linea fija de cleanup. Nunca lanza; nunca refleja material del
+ * error.
+ */
+export function renderSingleFailureLine(
+  cli: ShowroomCliName,
+  hasPrimary: boolean,
+  primaryError: unknown,
+  cleanupFailed: boolean,
+  phase: string
+): string {
+  if (hasPrimary) {
+    const base = formatSafeShowroomCliError(cli, primaryError, phase);
+    return cleanupFailed ? `${base} [pool_close_failed]` : base;
+  }
+  return `${cli} cleanup failed [pool_close_failed]`;
+}
+
+/**
  * Devuelve UNA linea segura para stderr. Nunca lanza; nunca refleja material
  * externo (detail/message/cause/stack/config/URLs/secretos).
  */

@@ -528,7 +528,81 @@ describe('retry conductual de migracion (delta EXT-005)', () => {
     expect(sleeps).toHaveLength(0);
   }, 20_000);
 
-  it('integracion PG16 REAL: un retry real (fallo inyectado con forma exacta) y exito del intento 2', async () => {
+  /**
+   * Delta 3 (EXT-005) — el error del primer intento NO se fabrica: se produce
+   * una colision REAL de catalogo en el PostgreSQL 16 del job. Dos sesiones
+   * reales ejecutan ALTER ROLE concurrentes sobre el MISMO role efimero; la
+   * sesion B queda esperando el lock (confirmado via pg_stat_activity), la
+   * sesion A hace COMMIT y B recibe de PostgreSQL el error autentico
+   * `XX000 / tuple concurrently updated`. Ese OBJETO de error real (identidad
+   * incluida) es el fallo del primer intento del loop real de migracion.
+   * Reintentos del harness acotados y declarados (3); si la colision no se
+   * produce, el test FALLA — jamas se sustituye por un error sintetico.
+   */
+  async function produceRealTupleConcurrentlyUpdated(): Promise<{
+    code: string;
+    message: string;
+    routine?: string;
+  }> {
+    const poolA = createPool({ connectionString: MAINTENANCE_URL, max: 1 });
+    const poolB = createPool({ connectionString: MAINTENANCE_URL, max: 1 });
+    const a = await poolA.connect();
+    const b = await poolB.connect();
+    const role = `fluvia_tcu_probe_${Date.now().toString(36)}`;
+    let captured: unknown;
+    try {
+      await a.query(`CREATE ROLE ${role}`);
+      const HARNESS_ATTEMPTS = 3; // acotado y declarado
+      for (let attempt = 1; attempt <= HARNESS_ATTEMPTS && captured === undefined; attempt++) {
+        await a.query('BEGIN');
+        await a.query(`ALTER ROLE ${role} CONNECTION LIMIT 5`);
+        const bOutcome = b
+          .query(`ALTER ROLE ${role} CONNECTION LIMIT 7`)
+          .then(() => undefined)
+          .catch((err: unknown) => err);
+        // B debe estar BLOQUEADA esperando el lock de la fila de pg_authid
+        // antes del COMMIT de A (fase confirmada, no una carrera ciega).
+        let waiting = false;
+        for (let i = 0; i < 100; i++) {
+          const r = await a.query(
+            `SELECT 1 FROM pg_stat_activity
+              WHERE wait_event_type = 'Lock'
+                AND query LIKE 'ALTER ROLE % CONNECTION LIMIT 7'`
+          );
+          if ((r.rowCount ?? 0) >= 1) {
+            waiting = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        await a.query('COMMIT');
+        const maybeError = await bOutcome;
+        if (waiting && maybeError !== undefined) captured = maybeError;
+      }
+    } finally {
+      await a.query(`DROP ROLE IF EXISTS ${role}`).catch(() => undefined);
+      a.release();
+      b.release();
+      await Promise.allSettled([poolA.end(), poolB.end()]);
+    }
+    if (captured === undefined) {
+      throw new Error(
+        'real PG16 catalog collision could not be produced within the bounded harness attempts'
+      );
+    }
+    return captured as { code: string; message: string; routine?: string };
+  }
+
+  it('real PG16 retry PASS: colision de catalogo REAL como primer intento y exito del segundo', async () => {
+    // 1) Error AUTENTICO de PostgreSQL 16 (jamas Object.assign/sintetico).
+    const realError = await produceRealTupleConcurrentlyUpdated();
+    // Byte-for-byte sobre el objeto real del driver (solo code/routine se
+    // registran; jamas credenciales).
+    expect(realError.code).toBe(TUPLE_CONCURRENTLY_UPDATED_SQLSTATE);
+    expect(realError.message).toBe(TUPLE_CONCURRENTLY_UPDATED_MESSAGE);
+    expect(isRetryableTupleConcurrentlyUpdated(realError)).toBe(true);
+
+    // 2) ESE objeto real es el fallo del primer intento del loop real.
     const db = ephemeralDbName();
     const req = resetRequestFor(db);
     const maintenance = createPool({ connectionString: MAINTENANCE_URL, max: 1 });
@@ -538,7 +612,7 @@ describe('retry conductual de migracion (delta EXT-005)', () => {
       const plan = await prepareShowroomDatabase(req, {
         migrateFn: (async (pool, dir, opts) => {
           calls += 1;
-          if (calls === 1) throw realShapeError();
+          if (calls === 1) throw realError;
           const { migrate } = await import('@fluvia/db');
           return migrate(pool, dir, opts);
         }) as NonNullable<import('../src/reset.js').ShowroomResetDeps['migrateFn']>,
@@ -565,4 +639,180 @@ describe('retry conductual de migracion (delta EXT-005)', () => {
       await maintenance.end();
     }
   }, 180_000);
+});
+
+/**
+ * Delta 3 (EXT-004) — reset cleanup timeout tests PASS: cada paso de cleanup
+ * tiene timeout duro individual; un unlock/end que JAMAS resuelve se registra
+ * como `<paso>_timeout` y los recursos siguientes reciben su intento; el
+ * error primario se preserva por IDENTIDAD; sin primario, un cleanup colgado
+ * produce un error tipado sanitizado; cero unhandled rejections; el total
+ * queda acotado por construccion (pasos fijos x tope individual).
+ */
+describe('reset cleanup timeout tests PASS (delta EXT-004: pasos con timeout duro)', () => {
+  const REQT = resetRequestFor('fluvia_showroom_test_cleanupt');
+  const never = () => new Promise<never>(() => {});
+
+  interface HangScript {
+    createFails?: boolean;
+    unlockHangs?: boolean;
+    releaseFails?: boolean;
+    endHangs?: boolean;
+  }
+
+  function fakeMaintenanceWithHangs(script: HangScript, injectedCreateError?: Error) {
+    const state = { unlockAttempted: false, releaseAttempted: false, endAttempted: false };
+    const session = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (sql.includes('current_database')) return { rows: [{ db: 'postgres' }] };
+        if (sql.includes('pg_advisory_lock(')) return { rows: [] };
+        if (sql.includes('pg_advisory_unlock(')) {
+          state.unlockAttempted = true;
+          if (script.unlockHangs) return never();
+          return { rows: [] };
+        }
+        if (sql.includes('quote_ident')) return { rows: [{ q: `"${(params as string[])[0]}"` }] };
+        if (sql.startsWith('DROP DATABASE')) return { rows: [] };
+        if (sql.startsWith('CREATE DATABASE')) {
+          if (script.createFails) throw injectedCreateError ?? new Error('injected create failure');
+          return { rows: [] };
+        }
+        throw new Error(`unexpected maintenance sql: ${sql}`);
+      },
+      release: () => {
+        state.releaseAttempted = true;
+        if (script.releaseFails) throw new Error('release failed: sup3r-s3cret');
+      },
+    };
+    const maintenance = {
+      connect: async () => session,
+      end: () => {
+        state.endAttempted = true;
+        if (script.endHangs) return never();
+        return Promise.resolve();
+      },
+    };
+    const factory = ((_opts: { connectionString: string }) =>
+      maintenance as unknown as Pool) as unknown as typeof createPool;
+    return { factory, state };
+  }
+
+  async function runWithFakeTimers(promiseFactory: () => Promise<unknown>): Promise<unknown> {
+    vi.useFakeTimers();
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onRejection);
+    try {
+      let settled: { ok: boolean; value: unknown } | undefined;
+      const p = promiseFactory().then(
+        (v) => (settled = { ok: true, value: v }),
+        (e) => (settled = { ok: false, value: e })
+      );
+      // Total ACOTADO por construccion: 3 pasos x 5s. Avanzamos 20s de reloj
+      // falso; si el cleanup no termino en ese presupuesto, el test falla.
+      for (let i = 0; i < 20 && settled === undefined; i++) {
+        await vi.advanceTimersByTimeAsync(1_000);
+      }
+      await p.catch(() => undefined);
+      expect(settled, 'cleanup must settle within the bounded fake-clock budget').toBeDefined();
+      // Una promesa tardia (que resuelva/rechace despues del timeout) JAMAS
+      // produce unhandled rejection.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(rejections).toEqual([]);
+      if (!settled!.ok) throw settled!.value;
+      return settled!.value;
+    } finally {
+      process.off('unhandledRejection', onRejection);
+      vi.useRealTimers();
+    }
+  }
+
+  it('unlock que JAMAS resuelve: timeout registrado, release y end reciben su intento, primario preservado', async () => {
+    const injected = new Error('CREATE failed: disk full at postgres://u:pw@127.0.0.1/x');
+    const { factory, state } = fakeMaintenanceWithHangs(
+      { createFails: true, unlockHangs: true },
+      injected
+    );
+    let error: unknown;
+    try {
+      await runWithFakeTimers(() => prepareShowroomDatabase(REQT, { createPool: factory }));
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(ShowroomTargetRemovedError);
+    expect((error as ShowroomTargetRemovedError).cause).toBe(injected); // identidad
+    const steps = Object.getOwnPropertyDescriptor(error as object, 'cleanupFailureSteps');
+    expect([...(steps?.value as string[])]).toEqual(['advisory_unlock_timeout']);
+    expect(state.releaseAttempted).toBe(true);
+    expect(state.endAttempted).toBe(true);
+    expect((error as Error).message).not.toMatch(/disk full|postgres:\/\//);
+  });
+
+  it('end que JAMAS resuelve SIN primario: error tipado maintenance_end_timeout', async () => {
+    const { factory, state } = fakeMaintenanceWithHangs({ endHangs: true });
+    let error: unknown;
+    try {
+      await runWithFakeTimers(() => prepareShowroomDatabase(REQT, { createPool: factory }));
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(ShowroomResetSequenceError);
+    expect((error as Error).message).toContain(
+      'maintenance cleanup failed (maintenance_end_timeout)'
+    );
+    expect(state.unlockAttempted).toBe(true);
+    expect(state.releaseAttempted).toBe(true);
+  });
+
+  it('unlock colgado + release que lanza + end colgado: los TRES pasos registrados, primario intacto', async () => {
+    const injected = new Error('boom');
+    const { factory, state } = fakeMaintenanceWithHangs(
+      { createFails: true, unlockHangs: true, releaseFails: true, endHangs: true },
+      injected
+    );
+    let error: unknown;
+    try {
+      await runWithFakeTimers(() => prepareShowroomDatabase(REQT, { createPool: factory }));
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(ShowroomTargetRemovedError);
+    expect((error as ShowroomTargetRemovedError).cause).toBe(injected);
+    const steps = Object.getOwnPropertyDescriptor(error as object, 'cleanupFailureSteps');
+    expect([...(steps?.value as string[])]).toEqual([
+      'advisory_unlock_timeout',
+      'session_release',
+      'maintenance_end_timeout',
+    ]);
+    expect(state.unlockAttempted).toBe(true);
+    expect(state.releaseAttempted).toBe(true);
+    expect(state.endAttempted).toBe(true);
+    expect((error as Error).message).not.toContain('sup3r-s3cret');
+  });
+
+  it('promesa que RECHAZA despues del timeout: cero unhandled rejection', async () => {
+    let rejectLate: ((reason: unknown) => void) | undefined;
+    const { factory } = fakeMaintenanceWithHangs({ endHangs: false });
+    const maintenance = (factory as unknown as (o: object) => { end: () => Promise<void> })({});
+    maintenance.end = () =>
+      new Promise<void>((_resolve, reject) => {
+        rejectLate = reject;
+      });
+    let error: unknown;
+    try {
+      await runWithFakeTimers(async () => {
+        const p = prepareShowroomDatabase(REQT, {
+          createPool: (() => maintenance) as unknown as typeof createPool,
+        });
+        // el rechazo llega DESPUES del timeout del paso
+        setTimeout(() => rejectLate?.(new Error('late failure: whsec-material')), 30_000);
+        return p;
+      });
+    } catch (err) {
+      error = err;
+    }
+    expect(error).toBeInstanceOf(ShowroomResetSequenceError);
+    expect((error as Error).message).toContain('maintenance_end_timeout');
+    expect((error as Error).message).not.toContain('whsec');
+  });
 });
