@@ -39,13 +39,13 @@
     "@fluvia/payments-core": "workspace:*",
     "@fluvia/reconciliation": "workspace:*",
     "@fluvia/webhooks": "workspace:*",
-    "fastify": "^5.2.0",
-    "redis": "6.1.0",
+    "fastify": "^5.11.0",
+    "redis": "6.2.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
