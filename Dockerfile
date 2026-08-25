@@ -15,7 +15,7 @@
 # Nota: Dependabot bumpea el `FROM` y las actions, pero NO la directiva
 # `# syntax=` (solo parsea `FROM`); su digest se revisa/bumpea a mano, junto con
 # la base — costo deliberado de la inmutabilidad frente a un frontend ejecutable.
-FROM node:22-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS base
+FROM node:25-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 # Hornea el pnpm pineado (packageManager) en la capa base para que el runtime
 # (FROM base) NO tenga que descargarlo en el primer uso (sin red en runtime).
