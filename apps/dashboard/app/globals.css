@@ -988,9 +988,9 @@ a.btn {
   margin-top: 0.5rem;
 }
 .pos-recent-active {
-  margin: 0 -0.5rem;
-  padding-right: 0.5rem;
-  padding-left: calc(0.5rem - 4px);
+  margin: 0 -0.75rem;
+  padding-right: 0.75rem;
+  padding-left: calc(0.75rem - 4px);
   background: #f3f7fc;
   border-left: 4px solid var(--brand);
 }
@@ -1067,4 +1067,54 @@ a.btn {
 .pos-phase-unknown {
   color: #5c3d00;
   background: #fff4d6;
+}
+
+/* POS: recuperación tras rechazo e intentos de la venta */
+.pos-recovery {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 2px solid var(--brand);
+  border-radius: 8px;
+}
+.pos-recovery h3,
+.pos-attempts h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+.pos-recovery p {
+  margin: 0.25rem 0;
+}
+.pos-recovery .btn {
+  margin-top: 0.5rem;
+}
+.pos-attempts {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+.pos-attempts ol {
+  margin: 0.5rem 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+.pos-attempts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.35rem 0;
+}
+.pos-attempts li[aria-current] {
+  font-weight: 600;
+}
+.pos-attempt-at,
+.pos-attempt-current {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+@media (max-width: 640px) {
+  .pos-recovery .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }

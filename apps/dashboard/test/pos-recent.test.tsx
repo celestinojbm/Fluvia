@@ -448,6 +448,26 @@ describe('PosRecentCharges', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
+  it('fallo al refrescar con datos previos ⇒ los marca como desactualizados', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('{}', { status: 502 })))
+    );
+    render(
+      <PosRecentCharges
+        orgId={ORG}
+        locale="es"
+        merchants={MERCHANTS}
+        initial={okResult([session(1)], [intent(1, 'succeeded')])}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No pudimos actualizar la lista. Lo que ves es de la carga inicial y puede estar desactualizado.'
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
   it('cobro en seguimiento y venta sin cerrar bloquean «Seguir»', () => {
     render(
       <PosRecentCharges

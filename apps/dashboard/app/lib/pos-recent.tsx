@@ -120,6 +120,10 @@ export function PosRecentCharges({
   const [phase, setPhase] = useState<SalePhase | ''>('');
   const [merchantId, setMerchantId] = useState('');
   const [visible, setVisible] = useState(PAGE);
+  // Las fechas se formatean tras hidratar: el ICU del servidor y el del
+  // navegador difieren (p. ej. «p. m.» vs «p.m.») y romperían la hidratación.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const seq = useRef(0);
   const lastFetch = useRef(Date.now());
 
@@ -218,10 +222,9 @@ export function PosRecentCharges({
       )}
       {load === 'error' && (
         <div className="pos-alert pos-alert-bad" role="alert">
-          <p>{t.recentLoadError}</p>
-          {data && fetchedAt && (
-            <p className="hint">{t.recentUpdatedAt(timeOf(fetchedAt, locale))}</p>
-          )}
+          <p>
+            {data ? t.recentStale(fetchedAt ? timeOf(fetchedAt, locale) : null) : t.recentLoadError}
+          </p>
           <button type="button" className="btn btn-secondary" onClick={() => void refresh()}>
             {t.retry}
           </button>
@@ -311,7 +314,9 @@ export function PosRecentCharges({
                   const { session, payment } = row;
                   const p = phaseOf(row);
                   const active = session.id === activeSessionId;
-                  const label = when(session.created_at, locale);
+                  const label = hydrated
+                    ? when(session.created_at, locale)
+                    : session.created_at.slice(0, 16).replace('T', ' ');
                   const href = `/o/${orgId}/pos?${lang}session=${session.id}`;
                   return (
                     <li

@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Locale } from '../messages';
 import type { Merchant } from './api';
+import type { SalePhase } from './pos-contract';
 import type { RecentChargesResult } from './pos-reads';
 import { PosRecentCharges } from './pos-recent';
 import { PosTerminal, type PosActivity } from './pos-terminal';
@@ -43,9 +44,19 @@ export function PosWorkspace({
     locked: false,
   });
 
+  // Refresca la lista solo cuando cambia el cobro seguido o su fase
+  // verificada (no al montar sin cobro, ni por el bloqueo del borrador).
+  const last = useRef<{ sessionId: string | null; phase: SalePhase | null }>({
+    sessionId: null,
+    phase: null,
+  });
   const onActivity = useCallback((ev: PosActivity) => {
     setActivity(ev);
-    setSignal((n) => n + 1);
+    const prev = last.current;
+    last.current = { sessionId: ev.sessionId, phase: ev.phase };
+    if (ev.sessionId !== null && (ev.sessionId !== prev.sessionId || ev.phase !== prev.phase)) {
+      setSignal((n) => n + 1);
+    }
   }, []);
 
   const onTrack = useCallback(

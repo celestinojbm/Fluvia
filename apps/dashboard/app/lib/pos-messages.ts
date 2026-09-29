@@ -90,6 +90,7 @@ export interface PosMessages {
   recentLoading: string;
   recentUpdating: string;
   recentUpdatedAt: (time: string) => string;
+  recentStale: (time: string | null) => string;
   recentAuthLost: string;
   recentForbidden: string;
   retry: string;
@@ -107,6 +108,7 @@ export interface PosMessages {
   recoveryText: Record<'failed' | 'expired' | 'canceled', string>;
   reopenNoLink: string;
   unverifiedTitle: string;
+  lastKnownPhase: string;
   unverifiedText: string;
   processingBlock: string;
   reopenAwaitingWarn: (time: string) => string;
@@ -246,6 +248,8 @@ const ES: PosMessages = {
   recentLoading: 'Cargando cobros…',
   recentUpdating: 'Actualizando…',
   recentUpdatedAt: (time) => `Actualizado: ${time}`,
+  recentStale: (time) =>
+    `No pudimos actualizar la lista. Lo que ves ${time ? `es de las ${time}` : 'es de la carga inicial'} y puede estar desactualizado.`,
   recentAuthLost: 'Tu sesión caducó: no podemos mostrar los cobros.',
   recentForbidden: 'No tienes acceso a los cobros de esta organización.',
   retry: 'Reintentar',
@@ -270,6 +274,7 @@ const ES: PosMessages = {
   reopenNoLink:
     'Este cobro se abrió sin referencia a su venta en este navegador y la API no permite averiguarla (G3). Para volver a cobrar, crea un cobro nuevo.',
   unverifiedTitle: 'Resultado sin verificar',
+  lastKnownPhase: 'Último estado leído. Ya no se actualiza sola: consulta el estado.',
   unverifiedText:
     'No pudimos confirmar el estado actual del pago. No cobres de nuevo hasta verificarlo.',
   processingBlock:
@@ -408,6 +413,8 @@ const EN: PosMessages = {
   recentLoading: 'Loading charges…',
   recentUpdating: 'Refreshing…',
   recentUpdatedAt: (time) => `Updated: ${time}`,
+  recentStale: (time) =>
+    `We could not refresh the list. What you see ${time ? `is from ${time}` : 'is from the initial load'} and may be out of date.`,
   recentAuthLost: 'Your session expired: we cannot show the charges.',
   recentForbidden: "You do not have access to this organization's charges.",
   retry: 'Retry',
@@ -433,6 +440,7 @@ const EN: PosMessages = {
   reopenNoLink:
     'This charge was opened without a reference to its sale in this browser, and the API cannot look it up (G3). To charge again, create a new charge.',
   unverifiedTitle: 'Outcome not verified',
+  lastKnownPhase: 'Last status read. It no longer updates by itself: check the status.',
   unverifiedText:
     'We could not confirm the current payment status. Do not charge again until it is verified.',
   processingBlock:
