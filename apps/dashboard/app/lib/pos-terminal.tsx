@@ -594,7 +594,11 @@ export function PosTerminal({
             <p className="pos-status-label">{phase ? t.phase[phase] : t.refreshing}</p>
             {phase && (
               <p className="pos-status-detail">
-                {stoppedUnverified ? t.lastKnownPhase : t.phaseDetail[phase]}
+                {stoppedUnverified
+                  ? t.lastKnownPhase
+                  : phase === 'awaiting_payment' && otherPaid
+                    ? t.superseded
+                    : t.phaseDetail[phase]}
               </p>
             )}
             {phase === 'unknown' && status && (
@@ -777,7 +781,9 @@ export function PosTerminal({
           {canCharge && !blockNext && (
             <button
               type="button"
-              className={phase === 'succeeded' ? 'btn btn-primary' : 'btn btn-secondary'}
+              className={
+                phase === 'succeeded' || otherPaid ? 'btn btn-primary' : 'btn btn-secondary'
+              }
               onClick={newSale}
             >
               {t.nextSale}

@@ -123,6 +123,7 @@ export interface PosMessages {
   legacyNoRecovery: string;
   protectedNote: string;
   saleInFlightElsewhere: string;
+  superseded: string;
   heldProtected: string;
   substituteCheckout: string;
   attemptsScopePartial: (since: string) => string;
@@ -299,12 +300,12 @@ const ES: PosMessages = {
     'Mientras el pago esté en proceso no se puede iniciar otro cobro: podría cobrarse dos veces.',
   heldTitle: 'El checkout de esta venta sigue abierto',
   heldText: (time) =>
-    `El cliente todavía puede pagarlo hasta ${time}. No abras otro checkout para esta venta: si paga los dos, se cobraría dos veces.`,
-  heldTextProtected: (time) => `El cliente todavía puede pagarlo hasta ${time}.`,
+    `El cliente todavía puede pagarlo (expira: ${time}). No abras otro checkout para esta venta: si paga los dos, se cobraría dos veces.`,
+  heldTextProtected: (time) => `El cliente todavía puede pagarlo (expira: ${time}).`,
   heldCustomer:
     'Pide al cliente que termine el pago en la pantalla donde lo abrió. Este estado se actualiza solo; si deja de hacerlo, usa «Consultar estado».',
   heldWait: (time) =>
-    `Si el cliente cerró el checkout, espera a que expire (${time}): entonces podrás abrir uno nuevo para esta misma venta.`,
+    `Si el cliente cerró el checkout, espera a que expire (${time}); entonces podrás abrir uno nuevo para esta misma venta.`,
   heldOtherSale: '«Nuevo cobro» es solo para otra venta distinta, no para repetir esta.',
   recoveryBlockedOther:
     'Otro checkout de esta venta sigue abierto, en proceso o sin verificar. No abras uno nuevo hasta que ese termine o expire.',
@@ -316,6 +317,7 @@ const ES: PosMessages = {
     'Esta venta es anterior al registro de checkouts del servidor: no podemos verificar si otro checkout suyo sigue abierto. Revisa Pagos antes de volver a cobrar; si hace falta, crea un cobro nuevo.',
   protectedNote:
     'Venta protegida: el servidor solo permite un cobro por venta, aunque haya varios checkouts abiertos.',
+  superseded: 'Este checkout ya no puede cobrar: la venta se cobró con otro checkout.',
   saleInFlightElsewhere:
     'Otro checkout de esta venta tiene un pago en curso. No presentes este: espera el resultado.',
   heldProtected:
@@ -494,12 +496,12 @@ const EN: PosMessages = {
     'While the payment is processing no other charge can be started: it could be charged twice.',
   heldTitle: "This sale's checkout is still open",
   heldText: (time) =>
-    `The customer can still pay it until ${time}. Do not open another checkout for this sale: if they pay both, they would be charged twice.`,
-  heldTextProtected: (time) => `The customer can still pay it until ${time}.`,
+    `The customer can still pay it (expires: ${time}). Do not open another checkout for this sale: if they pay both, they would be charged twice.`,
+  heldTextProtected: (time) => `The customer can still pay it (expires: ${time}).`,
   heldCustomer:
     'Ask the customer to finish paying on the screen where they opened it. This status updates by itself; if it stops, use «Check status».',
   heldWait: (time) =>
-    `If the customer closed the checkout, wait until it expires (${time}): then you can open a new one for this same sale.`,
+    `If the customer closed the checkout, wait until it expires (${time}); then you can open a new one for this same sale.`,
   heldOtherSale: '«New charge» is only for a different sale, not to repeat this one.',
   recoveryBlockedOther:
     'Another checkout for this sale is still open, processing or unverified. Do not open a new one until it finishes or expires.',
@@ -511,6 +513,7 @@ const EN: PosMessages = {
     "This sale predates the server's checkout registry: we cannot verify whether another of its checkouts is still open. Review Payments before charging again; if needed, create a new charge.",
   protectedNote:
     'Protected sale: the server allows only one charge per sale, even with several open checkouts.',
+  superseded: 'This checkout can no longer charge: the sale was paid with another checkout.',
   saleInFlightElsewhere:
     'Another checkout for this sale has a payment in progress. Do not present this one: wait for the outcome.',
   heldProtected:

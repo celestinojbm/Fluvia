@@ -761,6 +761,7 @@ describe('PosTerminal — dos checkouts de la misma venta', () => {
     fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '12.50' } });
     await userEvent.click(screen.getByRole('button', { name: /Cobrar US\$\s12,50/ }));
     expect(await screen.findByTestId('pos-sale-closed')).toHaveTextContent('la venta está cobrada');
+    expect(screen.getByTestId('pos-phase')).toHaveTextContent('ya no puede cobrar');
     expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
   });
 

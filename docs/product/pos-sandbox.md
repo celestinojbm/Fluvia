@@ -93,3 +93,16 @@ Contrato mínimo propuesto (para decidir, no implementado): `POST /v1/organizati
 | [09](pos-evidence/09-resultado-sin-verificar-390.png) | Resultado sin verificar (API caída durante el seguimiento) |
 
 Límites conocidos: el terminal no detecta la caducidad de la sesión mientras muestra una fase terminal (deja de consultar); si el operador pulsa «Abrir checkout nuevo» recibe `invalid_session` y el enlace a iniciar sesión. El registro de intentos por pestaña (`sessionStorage`) de ese incremento quedó sustituido por la lectura de venta del servidor (§3).
+
+### Incremento «una venta, como máximo un cobro» (PR apilado sobre `claude/pos-charge-tracking-recovery`)
+
+- Tests CI: `packages/payments-core/test/pos-sale-single-charge.test.ts` (PG real: carreras, incierto, motor, aislamiento, legado), `apps/api/test/dashboard-routes.test.ts` (HTTP), `apps/dashboard/test/pos-terminal.test.tsx` · `pos-bff.test.ts` · `pos-recent.test.tsx`, `apps/checkout/test/checkout-client.test.tsx`.
+- Navegador (local): PostgreSQL 16, API `NODE_ENV=local`, dashboard y checkout `next start`, seed de demo. Recorrido: venta protegida → recarga (URL perdida) → checkout sustituto → el comprador paga el checkout ANTERIOR → el sustituto queda bloqueado (página y `POST /confirm` directo ⇒ `409 sale_already_charged`) → el terminal lo refleja. Venta antigua (link insertado con `single_charge = false` e historial parcial) ⇒ sin sustituto. Sin scroll horizontal en 390 y 1440.
+
+| Captura | Estado |
+| --- | --- |
+| [10 · 1440](pos-evidence/10-protegida-sin-url-sustituto-1440.png) · [390](pos-evidence/10-protegida-sin-url-sustituto-390.png) | Venta protegida sin URL: salida guiada + checkout sustituto |
+| [11 · 390](pos-evidence/11-comprador-sustituto-bloqueado-390.png) | Comprador en el sustituto tras pagar el anterior: bloqueado, sin formulario |
+| [12 · 1440](pos-evidence/12-terminal-venta-cobrada-por-otro-1440.png) · [390](pos-evidence/12-terminal-venta-cobrada-por-otro-390.png) | Terminal: la venta se cobró con otro checkout; checkouts de la venta según el servidor |
+| [13 · 1440](pos-evidence/13-venta-antigua-sin-sustituto-1440.png) · [390](pos-evidence/13-venta-antigua-sin-sustituto-390.png) | Venta antigua: historial parcial, sin sustituto |
+| [14 · 1440](pos-evidence/14-cobros-recientes-venta-1440.png) | Cobros recientes con su venta vinculada |
