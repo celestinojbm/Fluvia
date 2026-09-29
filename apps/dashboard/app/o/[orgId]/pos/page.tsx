@@ -8,6 +8,8 @@ import {
 } from '../../../lib/api';
 import { UUID_RE } from '../../../lib/pos-contract';
 import { POS_MESSAGES } from '../../../lib/pos-messages';
+import { fetchRecentCharges } from '../../../lib/pos-reads';
+import { PosRecentCharges } from '../../../lib/pos-recent';
 import { PosTerminal } from '../../../lib/pos-terminal';
 import { normalizeLocale } from '../../../messages';
 
@@ -34,9 +36,10 @@ export default async function PosPage({
   const t = POS_MESSAGES[locale];
 
   const base = apiBase();
-  const [orgs, merchants] = await Promise.all([
+  const [orgs, merchants, recent] = await Promise.all([
     fetchOrganizations({ apiBase: base, token }),
     fetchMerchants({ apiBase: base, token, orgId }),
+    fetchRecentCharges({ apiBase: base, token, orgId }),
   ]);
   const org = orgs.find((o) => o.organization_id === orgId);
   const active = merchants.filter((m) => m.status === 'active');
@@ -69,6 +72,7 @@ export default async function PosPage({
           canCharge={canManageReconciliation(org?.role)}
           resume={resume}
         />
+        <PosRecentCharges result={recent} orgId={orgId} locale={locale} />
       </div>
       <p className="notice">{t.sandboxNotice}</p>
     </main>

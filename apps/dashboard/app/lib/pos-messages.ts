@@ -72,11 +72,9 @@ export interface PosMessages {
   recentScope: string;
   recentEmpty: string;
   recentLoadError: string;
-  colWhen: string;
-  colAmount: string;
+  refreshList: string;
   colPayment: string;
   colCheckout: string;
-  colActions: string;
   track: string;
   detail: string;
   sandboxNotice: string;
@@ -189,12 +187,10 @@ const ES: PosMessages = {
   recentScope:
     'Sesiones de checkout de la organización con el estado de su pago (datos de la API).',
   recentEmpty: 'Aún no hay cobros. El primero aparecerá aquí.',
-  recentLoadError: 'No pudimos cargar los cobros recientes. Recarga la página.',
-  colWhen: 'Fecha',
-  colAmount: 'Importe',
+  recentLoadError: 'No pudimos cargar los cobros recientes. Actualiza para reintentar.',
+  refreshList: 'Actualizar',
   colPayment: 'Pago',
   colCheckout: 'Checkout',
-  colActions: 'Acciones',
   track: 'Seguir',
   detail: 'Detalle',
   sandboxNotice: 'Sandbox: MockProvider, dinero simulado. Fluvia no es banco ni procesador.',
@@ -305,12 +301,10 @@ const EN: PosMessages = {
   recentTitle: 'Recent charges',
   recentScope: "The organization's checkout sessions with their payment status (API data).",
   recentEmpty: 'No charges yet. The first one will show up here.',
-  recentLoadError: 'We could not load recent charges. Reload the page.',
-  colWhen: 'Date',
-  colAmount: 'Amount',
+  recentLoadError: 'We could not load recent charges. Refresh to retry.',
+  refreshList: 'Refresh',
   colPayment: 'Payment',
   colCheckout: 'Checkout',
-  colActions: 'Actions',
   track: 'Track',
   detail: 'Detail',
   sandboxNotice: 'Sandbox: MockProvider, simulated money. Fluvia is not a bank or a processor.',

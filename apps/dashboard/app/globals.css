@@ -743,6 +743,11 @@ code {
   min-height: 1.25rem;
   margin: 0.25rem 0 0;
 }
+.pos-field-error:empty,
+.pos-preview:empty {
+  min-height: 0;
+  margin: 0;
+}
 .pos-preview {
   min-height: 1.25rem;
   margin: 0.25rem 0 0;
@@ -933,4 +938,85 @@ a.btn {
   margin-top: 0.75rem;
   padding: 0.4rem 1.1rem;
   font-size: 0.95rem;
+}
+.signout {
+  white-space: nowrap;
+}
+
+/* POS: cobros recientes (lista; se adapta mejor que una tabla en 390 px) */
+.pos-recent-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.pos-recent-head h2 {
+  margin: 0;
+}
+.pos-refresh {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--brand);
+  font-weight: 600;
+}
+.pos-recent-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+.pos-recent-item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--line);
+}
+.pos-recent-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pos-recent-amount {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pos-recent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.pos-recent-actions {
+  display: flex;
+  gap: 1.25rem;
+}
+.pos-recent-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--brand);
+  font-weight: 600;
+}
+.pos-phase-succeeded {
+  color: var(--ok);
+  background: #e7f4ec;
+}
+.pos-phase-failed,
+.pos-phase-canceled,
+.pos-phase-expired {
+  color: var(--bad);
+  background: #fbeaea;
+}
+.pos-phase-awaiting_payment,
+.pos-phase-processing {
+  color: #1d3f66;
+  background: #eaf2fb;
+}
+.pos-phase-unknown {
+  color: #5c3d00;
+  background: #fff4d6;
 }
