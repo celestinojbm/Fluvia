@@ -1,10 +1,11 @@
 import { UUID_RE } from './pos-contract';
 
 /**
- * Registro LOCAL (este navegador, `sessionStorage`) de los checkouts que el
- * terminal abrió para cada venta: `linkId → [sessionId…]`. Existe porque la
- * API no persiste la relación venta→sesiones (gap G3): no es un sustituto de
- * ese contrato y la UI lo presenta como «abiertos desde este navegador».
+ * Registro LOCAL (esta pestaña: `sessionStorage` es por pestaña y se pierde al
+ * cerrarla) de los checkouts que el terminal abrió para cada venta:
+ * `linkId → [sessionId…]`. Existe porque la API no persiste la relación
+ * venta→sesiones (gap G3): no es un sustituto de ese contrato y la UI lo
+ * presenta como «abiertos desde esta pestaña».
  *
  * Solo guarda ids devueltos por el BFF (nunca el `client_secret` ni la URL de
  * pago). Todo acceso va en try/catch: sin almacenamiento, el terminal sigue
@@ -50,12 +51,12 @@ export function recordAttempt(orgId: string, linkId: string, sessionId: string):
   write(orgId, [...reg, { link: linkId, sessions }].slice(-MAX_SALES));
 }
 
-/** Checkouts abiertos desde este navegador para la venta, del más antiguo al último. */
+/** Checkouts abiertos desde esta pestaña para la venta, del más antiguo al último. */
 export function attemptsFor(orgId: string, linkId: string): string[] {
   return read(orgId).find((e) => e.link === linkId)?.sessions ?? [];
 }
 
-/** Venta de una sesión, si la abrió este navegador; si no, null (no se adivina). */
+/** Venta de una sesión, si la abrió esta pestaña; si no, null (no se adivina). */
 export function linkForSession(orgId: string, sessionId: string): string | null {
   return read(orgId).find((e) => e.sessions.includes(sessionId))?.link ?? null;
 }

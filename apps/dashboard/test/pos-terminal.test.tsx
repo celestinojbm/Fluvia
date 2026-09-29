@@ -274,9 +274,9 @@ describe('PosTerminal — reanudación y lectura', () => {
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
     expect(await screen.findByText('Esperando al cliente')).toBeInTheDocument();
     expect(screen.getByText(/no se conserva al recargar/)).toBeInTheDocument();
-    // El checkout anterior sigue pagable: abrir otro exige confirmar el riesgo.
-    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Abrir otro checkout…' })).toBeInTheDocument();
+    // El checkout anterior sigue pagable: NO se ofrece un checkout sustituto.
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.getByTestId('pos-held')).toHaveTextContent('sigue abierto');
   });
 
   it('404 al consultar ⇒ «no encontrado», nunca un estado inventado', async () => {
@@ -386,7 +386,7 @@ describe('PosTerminal — rechazo y recuperación', () => {
     expect(window.location.search).toContain(`session=${SID2}`);
     expect(window.location.search).toContain(`link=${LINK}`);
 
-    // Relación venta→intentos (registrada en este navegador), con estado real.
+    // Relación venta→intentos (registrada en esta pestaña), con estado real.
     const attempts = screen.getByTestId('pos-attempts');
     await within(attempts).findByText('Pago rechazado');
     expect(within(attempts).getByText('Esperando al cliente')).toBeInTheDocument();
@@ -395,7 +395,7 @@ describe('PosTerminal — rechazo y recuperación', () => {
         .getByText(/Intento 2/)
         .closest('li')
     ).toHaveAttribute('aria-current', 'step');
-    expect(attempts).toHaveTextContent('Abiertos desde este navegador');
+    expect(attempts).toHaveTextContent('Abiertos desde esta pestaña');
     expect(window.sessionStorage.getItem(`fluvia.pos.sales.v1:${ORG}`)).not.toContain('cs_');
     expect((await axe.run(container)).violations).toEqual([]);
   });
@@ -451,7 +451,7 @@ describe('PosTerminal — rechazo y recuperación', () => {
     expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeInTheDocument();
   });
 
-  it('venta registrada en este navegador ⇒ se recupera aunque se siga sin ?link=', async () => {
+  it('venta registrada en esta pestaña ⇒ se recupera aunque se siga sin ?link=', async () => {
     recordAttempt(ORG, LINK, SID);
     mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'failed'))] });
     renderPos({ resume: { sessionId: SID, linkId: null } });
@@ -523,18 +523,111 @@ describe('PosTerminal — rechazo y recuperación', () => {
     }
   });
 
-  it('esperando sin URL ⇒ abrir otro exige confirmar el riesgo de doble cobro', async () => {
-    mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'created'))] });
+  it('esperando sin URL ⇒ sin checkout sustituto; salida guiada y verificada', async () => {
+    mockFetch({
+      open: [openOk2],
+      status: [
+        () => res(200, status('open', 'created')),
+        () => res(200, status('open', 'requires_payment_method')),
+      ],
+    });
+    const { container } = renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    const held = await screen.findByTestId('pos-held');
+    expect(held).toHaveTextContent('El checkout de esta venta sigue abierto');
+    expect(held).toHaveTextContent('se cobraría dos veces');
+    expect(held).toHaveTextContent('espera a que expire');
+    expect(held).toHaveTextContent('«Nuevo cobro» es solo para otra venta distinta');
+    // Ningún camino abre un segundo checkout pagable de la misma venta.
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Consultar estado' })).toBeInTheDocument();
+    expect((await axe.run(container)).violations).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Consultar estado' }));
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(posts('/pos/checkout')).toHaveLength(0);
+  });
+
+  it('esperando sin URL ⇒ al expirar (estado verificado) se recupera la misma venta', async () => {
+    mockFetch({
+      open: [openOk2],
+      status: [
+        () => res(200, status('open', 'created')),
+        () => res(200, status('expired', 'requires_payment_method')),
+      ],
+    });
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
-    await userEvent.click(await screen.findByRole('button', { name: 'Abrir otro checkout…' }));
-    const warn = screen.getByRole('alert');
-    expect(warn).toHaveTextContent('se cobrará dos veces');
-    expect(warn).toHaveFocus();
+    expect(await screen.findByTestId('pos-held')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Consultar estado' }));
+    expect(await screen.findByText('Checkout expirado')).toBeInTheDocument();
+    expect(screen.queryByTestId('pos-held')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir checkout nuevo' }));
+    await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
+  });
+});
+
+// ── Dos checkouts de la misma venta ──────────────────────────────────────────
+
+describe('PosTerminal — dos checkouts de la misma venta', () => {
+  /** Intento 1 (SID) en `first`; intento 2 (SID2, el seguido) rechazado. */
+  function twoCheckouts(first: unknown) {
+    recordAttempt(ORG, LINK, SID);
+    recordAttempt(ORG, LINK, SID2);
+    mockFetchByUrl({
+      open: [openOk],
+      status: (url) =>
+        url.endsWith(SID2)
+          ? res(200, statusFor(SID2, PI2, 'open', 'failed', { failure_code: 'card_declined' }))
+          : res(200, first),
+    });
+    renderPos({ resume: { sessionId: SID2, linkId: LINK } });
+  }
+
+  it('el otro checkout sigue pagable ⇒ el rechazo del actual NO permite abrir otro', async () => {
+    twoCheckouts(statusFor(SID, PI, 'open', 'requires_payment_method'));
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'failed')
+    );
+    await within(screen.getByTestId('pos-attempts')).findByText('Esperando al cliente');
+    expect(screen.getByTestId('pos-recovery')).toHaveTextContent(
+      'Otro checkout de esta venta sigue abierto'
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
     expect(posts('/pos/checkout')).toHaveLength(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(posts('/pos/checkout')).toHaveLength(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Abrir otro checkout…' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Entiendo, abrir otro' }));
+  });
+
+  it('el otro checkout ya cobró ⇒ la venta está cobrada; no se ofrece recobrar', async () => {
+    twoCheckouts(statusFor(SID, PI, 'completed', 'succeeded'));
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'failed')
+    );
+    await within(screen.getByTestId('pos-attempts')).findByText('Pago aprobado');
+    expect(screen.getByTestId('pos-recovery')).toHaveTextContent('la venta está cobrada');
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+  });
+
+  it('el otro checkout no se pudo leer ⇒ sin verificar, no se reabre', async () => {
+    recordAttempt(ORG, LINK, SID);
+    recordAttempt(ORG, LINK, SID2);
+    mockFetchByUrl({
+      status: (url) =>
+        url.endsWith(SID2)
+          ? res(200, statusFor(SID2, PI2, 'open', 'failed'))
+          : res(503, { error: { code: 'upstream_unavailable' } }),
+    });
+    renderPos({ resume: { sessionId: SID2, linkId: LINK } });
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'failed')
+    );
+    await within(screen.getByTestId('pos-attempts')).findByText('sin consultar');
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+  });
+
+  it('el otro checkout expiró ⇒ la recuperación es segura y se ofrece', async () => {
+    twoCheckouts(statusFor(SID, PI, 'expired', 'requires_payment_method'));
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'failed')
+    );
+    await within(screen.getByTestId('pos-attempts')).findByText('Checkout expirado');
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
     await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
   });
 });

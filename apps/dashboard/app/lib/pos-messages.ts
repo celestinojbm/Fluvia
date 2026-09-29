@@ -111,10 +111,13 @@ export interface PosMessages {
   lastKnownPhase: string;
   unverifiedText: string;
   processingBlock: string;
-  reopenAwaitingWarn: (time: string) => string;
-  reopenConfirm: string;
-  reopenCancel: string;
-  reopenAwaiting: string;
+  heldTitle: string;
+  heldText: (time: string) => string;
+  heldCustomer: string;
+  heldWait: (time: string) => string;
+  heldOtherSale: string;
+  recoveryBlockedOther: string;
+  recoveryBlockedPaid: string;
 }
 
 const ES: PosMessages = {
@@ -179,7 +182,7 @@ const ES: PosMessages = {
   copyUrl: 'Copiar enlace',
   copied: 'Copiado',
   urlLostText:
-    'El enlace de pago no se conserva al recargar (contiene un secreto que no se guarda). Si el cliente aún no pagó, abre un checkout nuevo.',
+    'El enlace de pago no se conserva al recargar (contiene un secreto que no se guarda).',
   statusTitle: 'Estado del cobro',
   phase: {
     awaiting_payment: 'Esperando al cliente',
@@ -260,7 +263,7 @@ const ES: PosMessages = {
   paymentOutsideWindow: 'Pago fuera de la ventana leída',
   attemptsTitle: 'Checkouts de esta venta',
   attemptsScope:
-    'Abiertos desde este navegador. La API no relaciona una venta con todas sus sesiones (G3): los abiertos en otro dispositivo no aparecen aquí.',
+    'Abiertos desde esta pestaña. La API no relaciona una venta con todas sus sesiones (G3): los abiertos en otra pestaña, ventana o dispositivo no aparecen aquí.',
   attemptLabel: (n) => `Intento ${n}`,
   attemptCurrent: 'actual',
   attemptPending: 'sin consultar',
@@ -272,18 +275,25 @@ const ES: PosMessages = {
     canceled: 'Abre un checkout nuevo para la misma venta: no se crea otra.',
   },
   reopenNoLink:
-    'Este cobro se abrió sin referencia a su venta en este navegador y la API no permite averiguarla (G3). Para volver a cobrar, crea un cobro nuevo.',
+    'Este cobro se abrió sin referencia a su venta en esta pestaña y la API no permite averiguarla (G3). Para volver a cobrar, crea un cobro nuevo.',
   unverifiedTitle: 'Resultado sin verificar',
   lastKnownPhase: 'Último estado leído. Ya no se actualiza sola: consulta el estado.',
   unverifiedText:
     'No pudimos confirmar el estado actual del pago. No cobres de nuevo hasta verificarlo.',
   processingBlock:
     'Mientras el pago esté en proceso no se puede iniciar otro cobro: podría cobrarse dos veces.',
-  reopenAwaitingWarn: (time) =>
-    `El checkout anterior sigue abierto hasta ${time}. Si el cliente lo paga y también paga el nuevo, se cobrará dos veces.`,
-  reopenConfirm: 'Entiendo, abrir otro',
-  reopenCancel: 'Cancelar',
-  reopenAwaiting: 'Abrir otro checkout…',
+  heldTitle: 'El checkout de esta venta sigue abierto',
+  heldText: (time) =>
+    `El cliente todavía puede pagarlo hasta ${time}. No abras otro checkout para esta venta: si paga los dos, se cobraría dos veces.`,
+  heldCustomer:
+    'Pide al cliente que termine el pago en la pantalla donde lo abrió. Este estado se actualiza solo; si deja de hacerlo, usa «Consultar estado».',
+  heldWait: (time) =>
+    `Si el cliente cerró el checkout, espera a que expire (${time}): entonces podrás abrir uno nuevo para esta misma venta.`,
+  heldOtherSale: '«Nuevo cobro» es solo para otra venta distinta, no para repetir esta.',
+  recoveryBlockedOther:
+    'Otro checkout de esta venta sigue abierto, en proceso o sin verificar. No abras uno nuevo hasta que ese termine o expire.',
+  recoveryBlockedPaid:
+    'Otro checkout de esta venta ya fue aprobado: la venta está cobrada. No la cobres de nuevo.',
 };
 
 const EN: PosMessages = {
@@ -348,7 +358,7 @@ const EN: PosMessages = {
   copyUrl: 'Copy link',
   copied: 'Copied',
   urlLostText:
-    'The payment link is not kept after a reload (it contains a secret that is not stored). If the customer has not paid yet, open a new checkout.',
+    'The payment link is not kept after a reload (it contains a secret that is not stored).',
   statusTitle: 'Charge status',
   phase: {
     awaiting_payment: 'Waiting for the customer',
@@ -425,7 +435,7 @@ const EN: PosMessages = {
   paymentOutsideWindow: 'Payment outside the read window',
   attemptsTitle: 'Checkouts for this sale',
   attemptsScope:
-    'Opened from this browser. The API does not link a sale to all of its sessions (G3): those opened on another device do not show here.',
+    'Opened from this tab. The API does not link a sale to all of its sessions (G3): those opened in another tab, window or device do not show here.',
   attemptLabel: (n) => `Attempt ${n}`,
   attemptCurrent: 'current',
   attemptPending: 'not checked',
@@ -438,18 +448,25 @@ const EN: PosMessages = {
     canceled: 'Open a new checkout for the same sale: no new sale is created.',
   },
   reopenNoLink:
-    'This charge was opened without a reference to its sale in this browser, and the API cannot look it up (G3). To charge again, create a new charge.',
+    'This charge was opened without a reference to its sale in this tab, and the API cannot look it up (G3). To charge again, create a new charge.',
   unverifiedTitle: 'Outcome not verified',
   lastKnownPhase: 'Last status read. It no longer updates by itself: check the status.',
   unverifiedText:
     'We could not confirm the current payment status. Do not charge again until it is verified.',
   processingBlock:
     'While the payment is processing no other charge can be started: it could be charged twice.',
-  reopenAwaitingWarn: (time) =>
-    `The previous checkout stays open until ${time}. If the customer pays it and also pays the new one, they will be charged twice.`,
-  reopenConfirm: 'I understand, open another',
-  reopenCancel: 'Cancel',
-  reopenAwaiting: 'Open another checkout…',
+  heldTitle: "This sale's checkout is still open",
+  heldText: (time) =>
+    `The customer can still pay it until ${time}. Do not open another checkout for this sale: if they pay both, they would be charged twice.`,
+  heldCustomer:
+    'Ask the customer to finish paying on the screen where they opened it. This status updates by itself; if it stops, use «Check status».',
+  heldWait: (time) =>
+    `If the customer closed the checkout, wait until it expires (${time}): then you can open a new one for this same sale.`,
+  heldOtherSale: '«New charge» is only for a different sale, not to repeat this one.',
+  recoveryBlockedOther:
+    'Another checkout for this sale is still open, processing or unverified. Do not open a new one until it finishes or expires.',
+  recoveryBlockedPaid:
+    'Another checkout for this sale was already approved: the sale is paid. Do not charge it again.',
 };
 
 export const POS_MESSAGES: Record<Locale, PosMessages> = { es: ES, en: EN };
