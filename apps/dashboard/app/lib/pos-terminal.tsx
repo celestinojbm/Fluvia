@@ -108,9 +108,28 @@ export interface PosTerminalProps {
   canCharge: boolean;
   /** Reanudar el seguimiento tras recargar (`?session=&link=`). */
   resume?: { sessionId: string; linkId: string | null };
+  /**
+   * Aviso al contenedor cuando cambia lo que el terminal sigue: sesión, fase
+   * verificada o si hay una venta sin cerrar (`locked`). Lo usa «Cobros
+   * recientes» para refrescarse sin recargar la página.
+   */
+  onActivity?: (ev: PosActivity) => void;
 }
 
-export function PosTerminal({ orgId, locale, merchants, canCharge, resume }: PosTerminalProps) {
+export interface PosActivity {
+  sessionId: string | null;
+  phase: SalePhase | null;
+  locked: boolean;
+}
+
+export function PosTerminal({
+  orgId,
+  locale,
+  merchants,
+  canCharge,
+  resume,
+  onActivity,
+}: PosTerminalProps) {
   const t = POS_MESSAGES[locale];
   const org = encodeURIComponent(orgId);
 
@@ -333,6 +352,21 @@ export function PosTerminal({ orgId, locale, merchants, canCharge, resume }: Pos
       if (timer) clearTimeout(timer);
     };
   }, [trackingId, org, pollNonce]);
+
+  // Aviso de actividad (solo cuando cambia algo observable, no en cada sondeo).
+  const phaseNow: SalePhase | null = status
+    ? classifySale(status.session.status, status.payment.status)
+    : null;
+  const pendingSale =
+    busy ||
+    step.kind === 'create_uncertain' ||
+    step.kind === 'open_failed' ||
+    step.kind === 'open_uncertain';
+  const activityRef = useRef(onActivity);
+  activityRef.current = onActivity;
+  useEffect(() => {
+    activityRef.current?.({ sessionId: trackingId, phase: phaseNow, locked: pendingSale });
+  }, [trackingId, phaseNow, pendingSale]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 

@@ -78,6 +78,41 @@ export interface PosMessages {
   track: string;
   detail: string;
   sandboxNotice: string;
+  recentWindow: (returned: number, limit: number, truncated: boolean) => string;
+  filterStatus: string;
+  filterMerchant: string;
+  filterAll: string;
+  clearFilters: string;
+  filteredCount: (shown: number, total: number) => string;
+  filteredEmpty: string;
+  outsideWindow: string;
+  goToPayments: string;
+  recentLoading: string;
+  recentUpdating: string;
+  recentUpdatedAt: (time: string) => string;
+  recentAuthLost: string;
+  recentForbidden: string;
+  retry: string;
+  showMore: (n: number) => string;
+  trackLocked: string;
+  trackingNow: string;
+  unknownMerchant: string;
+  paymentOutsideWindow: string;
+  attemptsTitle: string;
+  attemptsScope: string;
+  attemptLabel: (n: number) => string;
+  attemptCurrent: string;
+  attemptPending: string;
+  recoveryTitle: string;
+  recoveryText: Record<'failed' | 'expired' | 'canceled', string>;
+  reopenNoLink: string;
+  unverifiedTitle: string;
+  unverifiedText: string;
+  processingBlock: string;
+  reopenAwaitingWarn: (time: string) => string;
+  reopenConfirm: string;
+  reopenCancel: string;
+  reopenAwaiting: string;
 }
 
 const ES: PosMessages = {
@@ -187,13 +222,63 @@ const ES: PosMessages = {
   recentScope:
     'Sesiones de checkout de la organización con el estado de su pago (datos de la API).',
   recentEmpty: 'Aún no hay cobros. El primero aparecerá aquí.',
-  recentLoadError: 'No pudimos cargar los cobros recientes. Actualiza para reintentar.',
+  recentLoadError:
+    'No pudimos cargar los cobros recientes. Esto no significa que no haya cobros: reintenta.',
   refreshList: 'Actualizar',
   colPayment: 'Pago',
   colCheckout: 'Checkout',
   track: 'Seguir',
   detail: 'Detalle',
   sandboxNotice: 'Sandbox: MockProvider, dinero simulado. Fluvia no es banco ni procesador.',
+  recentWindow: (returned, limit, truncated) =>
+    truncated
+      ? `Ventana: las ${returned} sesiones más recientes (máximo que devuelve la API: ${limit}). Los filtros buscan solo aquí, no en todo el historial.`
+      : `Ventana: ${returned} ${returned === 1 ? 'sesión' : 'sesiones'} (todas las de la organización; la API devuelve hasta ${limit}).`,
+  filterStatus: 'Estado',
+  filterMerchant: 'Comercio',
+  filterAll: 'Todos',
+  clearFilters: 'Quitar filtros',
+  filteredCount: (shown, total) => `${shown} de ${total} en la ventana`,
+  filteredEmpty: 'Ningún cobro de la ventana coincide con estos filtros.',
+  outsideWindow:
+    'Puede haber cobros más antiguos fuera de la ventana; el historial completo está en Pagos.',
+  goToPayments: 'Ir a Pagos',
+  recentLoading: 'Cargando cobros…',
+  recentUpdating: 'Actualizando…',
+  recentUpdatedAt: (time) => `Actualizado: ${time}`,
+  recentAuthLost: 'Tu sesión caducó: no podemos mostrar los cobros.',
+  recentForbidden: 'No tienes acceso a los cobros de esta organización.',
+  retry: 'Reintentar',
+  showMore: (n) => `Mostrar ${n} más`,
+  trackLocked: 'Termina o descarta la venta en curso para seguir otro cobro.',
+  trackingNow: 'En seguimiento',
+  unknownMerchant: 'Comercio no disponible',
+  paymentOutsideWindow: 'Pago fuera de la ventana leída',
+  attemptsTitle: 'Checkouts de esta venta',
+  attemptsScope:
+    'Abiertos desde este navegador. La API no relaciona una venta con todas sus sesiones (G3): los abiertos en otro dispositivo no aparecen aquí.',
+  attemptLabel: (n) => `Intento ${n}`,
+  attemptCurrent: 'actual',
+  attemptPending: 'sin consultar',
+  recoveryTitle: 'Recuperar la venta',
+  recoveryText: {
+    failed:
+      'Pide al cliente otro método de pago y abre un checkout nuevo. Es la misma venta: no se crea otra.',
+    expired: 'El checkout caducó sin pago. Abre uno nuevo para la misma venta: no se crea otra.',
+    canceled: 'Abre un checkout nuevo para la misma venta: no se crea otra.',
+  },
+  reopenNoLink:
+    'Este cobro se abrió sin referencia a su venta en este navegador y la API no permite averiguarla (G3). Para volver a cobrar, crea un cobro nuevo.',
+  unverifiedTitle: 'Resultado sin verificar',
+  unverifiedText:
+    'No pudimos confirmar el estado actual del pago. No cobres de nuevo hasta verificarlo.',
+  processingBlock:
+    'Mientras el pago esté en proceso no se puede iniciar otro cobro: podría cobrarse dos veces.',
+  reopenAwaitingWarn: (time) =>
+    `El checkout anterior sigue abierto hasta ${time}. Si el cliente lo paga y también paga el nuevo, se cobrará dos veces.`,
+  reopenConfirm: 'Entiendo, abrir otro',
+  reopenCancel: 'Cancelar',
+  reopenAwaiting: 'Abrir otro checkout…',
 };
 
 const EN: PosMessages = {
@@ -301,13 +386,62 @@ const EN: PosMessages = {
   recentTitle: 'Recent charges',
   recentScope: "The organization's checkout sessions with their payment status (API data).",
   recentEmpty: 'No charges yet. The first one will show up here.',
-  recentLoadError: 'We could not load recent charges. Refresh to retry.',
+  recentLoadError: 'We could not load recent charges. This does not mean there are none: retry.',
   refreshList: 'Refresh',
   colPayment: 'Payment',
   colCheckout: 'Checkout',
   track: 'Track',
   detail: 'Detail',
   sandboxNotice: 'Sandbox: MockProvider, simulated money. Fluvia is not a bank or a processor.',
+  recentWindow: (returned, limit, truncated) =>
+    truncated
+      ? `Window: the ${returned} most recent sessions (the API returns at most ${limit}). Filters only search here, not the whole history.`
+      : `Window: ${returned} ${returned === 1 ? 'session' : 'sessions'} (all of the organization's; the API returns up to ${limit}).`,
+  filterStatus: 'Status',
+  filterMerchant: 'Merchant',
+  filterAll: 'All',
+  clearFilters: 'Clear filters',
+  filteredCount: (shown, total) => `${shown} of ${total} in the window`,
+  filteredEmpty: 'No charge in the window matches these filters.',
+  outsideWindow: 'Older charges may be outside the window; the full history is in Payments.',
+  goToPayments: 'Go to Payments',
+  recentLoading: 'Loading charges…',
+  recentUpdating: 'Refreshing…',
+  recentUpdatedAt: (time) => `Updated: ${time}`,
+  recentAuthLost: 'Your session expired: we cannot show the charges.',
+  recentForbidden: "You do not have access to this organization's charges.",
+  retry: 'Retry',
+  showMore: (n) => `Show ${n} more`,
+  trackLocked: 'Finish or discard the current sale to track another charge.',
+  trackingNow: 'Tracking',
+  unknownMerchant: 'Merchant unavailable',
+  paymentOutsideWindow: 'Payment outside the read window',
+  attemptsTitle: 'Checkouts for this sale',
+  attemptsScope:
+    'Opened from this browser. The API does not link a sale to all of its sessions (G3): those opened on another device do not show here.',
+  attemptLabel: (n) => `Attempt ${n}`,
+  attemptCurrent: 'current',
+  attemptPending: 'not checked',
+  recoveryTitle: 'Recover the sale',
+  recoveryText: {
+    failed:
+      'Ask the customer for another payment method and open a new checkout. It is the same sale: no new sale is created.',
+    expired:
+      'The checkout expired unpaid. Open a new one for the same sale: no new sale is created.',
+    canceled: 'Open a new checkout for the same sale: no new sale is created.',
+  },
+  reopenNoLink:
+    'This charge was opened without a reference to its sale in this browser, and the API cannot look it up (G3). To charge again, create a new charge.',
+  unverifiedTitle: 'Outcome not verified',
+  unverifiedText:
+    'We could not confirm the current payment status. Do not charge again until it is verified.',
+  processingBlock:
+    'While the payment is processing no other charge can be started: it could be charged twice.',
+  reopenAwaitingWarn: (time) =>
+    `The previous checkout stays open until ${time}. If the customer pays it and also pays the new one, they will be charged twice.`,
+  reopenConfirm: 'I understand, open another',
+  reopenCancel: 'Cancel',
+  reopenAwaiting: 'Open another checkout…',
 };
 
 export const POS_MESSAGES: Record<Locale, PosMessages> = { es: ES, en: EN };
