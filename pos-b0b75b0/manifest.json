@@ -1,0 +1,224 @@
+{
+  "pr": "celestinojbm/Fluvia#55",
+  "commit": "b0b75b00b2272f7e39a0f2adf71a5104c159a105",
+  "arbol_limpio": true,
+  "build_id": {
+    "dashboard": "O3oKK9Es6SonOj-IfL0S8",
+    "checkout": "G1Yj7K_Mwetv6fS72z___"
+  },
+  "modo": "next build + next start (producción), MockProvider, datos de seed de demo en BD recién creada",
+  "generado_utc": "2026-09-29T18:44:25.903Z",
+  "saneado": "Playwright screenshot `mask` (negro) sobre .org, .pos-refs, .pos-url, .pos-recent-list; verificación automática del texto visible restante",
+  "capturas": [
+    {
+      "file": "390px-1-aprobado.png",
+      "viewport_px": 390,
+      "caso": "1-aprobado",
+      "pantalla": "POS: pago aprobado",
+      "fase_observada": "succeeded",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "1fb4ccf0ddd699290e5225be5fbd721b253f4878f5e865b5d203e0aaef8714af"
+    },
+    {
+      "file": "390px-2-rechazado-recuperacion.png",
+      "viewport_px": 390,
+      "caso": "2-rechazado-recuperacion",
+      "pantalla": "POS: tras el rechazo, checkout nuevo abierto para la misma venta",
+      "fase_observada": "awaiting_payment",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "f6823f10573884cc0afd604b97443341eb8d0206d3b41bb4ec63d98115681d0e"
+    },
+    {
+      "file": "390px-3-en-proceso.png",
+      "viewport_px": 390,
+      "caso": "3-en-proceso",
+      "pantalla": "POS: pago en proceso (asíncrono)",
+      "fase_observada": "processing",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "4c6836edf8665cf43c5d77027bade5852a7ffda07a051af9ef42b185b50ea9c7"
+    },
+    {
+      "file": "768px-1-aprobado.png",
+      "viewport_px": 768,
+      "caso": "1-aprobado",
+      "pantalla": "POS: pago aprobado",
+      "fase_observada": "succeeded",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "0285c836debbc9bec5770f3cdc56313f7def9c7f6784b24cf3cd0eeb11b032fa"
+    },
+    {
+      "file": "768px-2-rechazado-recuperacion.png",
+      "viewport_px": 768,
+      "caso": "2-rechazado-recuperacion",
+      "pantalla": "POS: tras el rechazo, checkout nuevo abierto para la misma venta",
+      "fase_observada": "awaiting_payment",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "947d5e20fc15d41a03334683aea21dd787cc1e515f175853e65ee92e0035da69"
+    },
+    {
+      "file": "768px-3-en-proceso.png",
+      "viewport_px": 768,
+      "caso": "3-en-proceso",
+      "pantalla": "POS: pago en proceso (asíncrono)",
+      "fase_observada": "processing",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "209def993804c1e841fb6d1516cda2abe62b2660a76ea1a071195d991195e6e7"
+    },
+    {
+      "file": "1440px-1-aprobado.png",
+      "viewport_px": 1440,
+      "caso": "1-aprobado",
+      "pantalla": "POS: pago aprobado",
+      "fase_observada": "succeeded",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "9c73e00087e9a83debe69fa9cab24851ed7e3203834029a7936f75d3bde8b7bb"
+    },
+    {
+      "file": "1440px-2-rechazado-recuperacion.png",
+      "viewport_px": 1440,
+      "caso": "2-rechazado-recuperacion",
+      "pantalla": "POS: tras el rechazo, checkout nuevo abierto para la misma venta",
+      "fase_observada": "awaiting_payment",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "d9b794eb2b0c2a8fe7896bd60dbc154950540d6c5c554e0ce1ea7b8030420c8d"
+    },
+    {
+      "file": "1440px-3-en-proceso.png",
+      "viewport_px": 1440,
+      "caso": "3-en-proceso",
+      "pantalla": "POS: pago en proceso (asíncrono)",
+      "fase_observada": "processing",
+      "overflow_horizontal_px": 0,
+      "build_id_en_html": "O3oKK9Es6SonOj-IfL0S8",
+      "elementos_enmascarados": [
+        ".org",
+        ".pos-refs",
+        ".pos-url",
+        ".pos-recent-list"
+      ],
+      "sha256": "9d82bf824bd413ab26cd5c77901ef5f1ae985a29d2ed6a10bc8522d9c6f5e993"
+    }
+  ],
+  "comprobaciones": [
+    {
+      "name": "árbol de trabajo limpio en la cabeza",
+      "ok": true
+    },
+    {
+      "name": "390px-1-aprobado.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "390px: recuperación reutiliza la MISMA venta (mismo link) con sesión de checkout nueva",
+      "ok": true
+    },
+    {
+      "name": "390px: 1 creación de venta y 2 aperturas de checkout",
+      "ok": true
+    },
+    {
+      "name": "390px-2-rechazado-recuperacion.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "390px-3-en-proceso.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "768px-1-aprobado.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "768px: recuperación reutiliza la MISMA venta (mismo link) con sesión de checkout nueva",
+      "ok": true
+    },
+    {
+      "name": "768px: 1 creación de venta y 2 aperturas de checkout",
+      "ok": true
+    },
+    {
+      "name": "768px-2-rechazado-recuperacion.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "768px-3-en-proceso.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "1440px-1-aprobado.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "1440px: recuperación reutiliza la MISMA venta (mismo link) con sesión de checkout nueva",
+      "ok": true
+    },
+    {
+      "name": "1440px: 1 creación de venta y 2 aperturas de checkout",
+      "ok": true
+    },
+    {
+      "name": "1440px-2-rechazado-recuperacion.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    },
+    {
+      "name": "1440px-3-en-proceso.png: saneado (sin uuid/email/client_secret/url_fragment/org_name/merchant_name/localhost_url)",
+      "ok": true
+    }
+  ]
+}
