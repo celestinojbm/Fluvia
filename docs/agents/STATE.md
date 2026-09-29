@@ -4,6 +4,7 @@
 
 ## Hitos
 
+- **POS — una venta, como máximo un cobro exitoso (PR apilado sobre `claude/pos-charge-tracking-recovery`, Draft, sin merge)**: reproducido con PG real que dos checkouts del mismo link podían terminar ambos `succeeded`. Contención en la UI + invariante en el backend (0046: vínculo intent→link, `single_charge`, índice único parcial; guard bajo lock del link; 409 `sale_already_charged`). Detalle y límites en `docs/product/pos-sandbox.md` §3–§4.
 - **Fase 0 APROBADA por el propietario (2026-07-04)** — decisión #16. ADRs 0001–0010 aceptados.
 - **País inicial: Colombia** (decisión #15, ex PEND-001). Implicaciones MVP: COP como moneda principal de sandbox; el MockProvider incluirá un método asíncrono tipo PSE; candidatos de proveedor para Fase 5: Wompi/PayU/dLocal/Mercado Pago. La matriz de jurisdicción queda por verificar con fuentes y revisión legal (bloquea solo Fase 5).
 - **F1-01 y F1-02 completados** (apps + config + CI; primer run de CI verde en GitHub Actions).
