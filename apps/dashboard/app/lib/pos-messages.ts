@@ -113,11 +113,24 @@ export interface PosMessages {
   processingBlock: string;
   heldTitle: string;
   heldText: (time: string) => string;
+  heldTextProtected: (time: string) => string;
   heldCustomer: string;
   heldWait: (time: string) => string;
   heldOtherSale: string;
   recoveryBlockedOther: string;
   recoveryBlockedPaid: string;
+  saleUnverified: string;
+  legacyNoRecovery: string;
+  protectedNote: string;
+  saleInFlightElsewhere: string;
+  heldProtected: string;
+  substituteCheckout: string;
+  attemptsScopePartial: (since: string) => string;
+  attemptsTruncated: string;
+  colSale: string;
+  saleCheckouts: (n: number) => string;
+  saleUnlinked: string;
+  recentUnlinkedNote: string;
 }
 
 const ES: PosMessages = {
@@ -174,6 +187,8 @@ const ES: PosMessages = {
     origin_not_allowed: 'Solicitud bloqueada por seguridad. Recarga la página.',
     idempotency_key_reuse: 'La venta cambió desde el último intento. Vuelve a enviarla.',
     merchant_not_found: 'El comercio no existe o no está activo.',
+    sale_already_charged:
+      'Esta venta ya tiene un pago aprobado o en curso: no se abrió otro checkout.',
   },
   presentTitle: 'Presenta el checkout al cliente',
   presentText:
@@ -263,8 +278,8 @@ const ES: PosMessages = {
   paymentOutsideWindow: 'Pago fuera de la ventana leída',
   attemptsTitle: 'Checkouts de esta venta',
   attemptsScope:
-    'Abiertos desde esta pestaña. La API no relaciona una venta con todas sus sesiones (G3): los abiertos en otra pestaña, ventana o dispositivo no aparecen aquí.',
-  attemptLabel: (n) => `Intento ${n}`,
+    'Todos los checkouts de esta venta según el servidor, abiertos desde cualquier pestaña o dispositivo.',
+  attemptLabel: (n) => `Checkout ${n}`,
   attemptCurrent: 'actual',
   attemptPending: 'sin consultar',
   recoveryTitle: 'Recuperar la venta',
@@ -275,7 +290,7 @@ const ES: PosMessages = {
     canceled: 'Abre un checkout nuevo para la misma venta: no se crea otra.',
   },
   reopenNoLink:
-    'Este cobro se abrió sin referencia a su venta en esta pestaña y la API no permite averiguarla (G3). Para volver a cobrar, crea un cobro nuevo.',
+    'Este cobro es anterior al registro de ventas del servidor: no sabemos a qué venta pertenece. Revisa Pagos antes de volver a cobrar; si hace falta, crea un cobro nuevo.',
   unverifiedTitle: 'Resultado sin verificar',
   lastKnownPhase: 'Último estado leído. Ya no se actualiza sola: consulta el estado.',
   unverifiedText:
@@ -285,6 +300,7 @@ const ES: PosMessages = {
   heldTitle: 'El checkout de esta venta sigue abierto',
   heldText: (time) =>
     `El cliente todavía puede pagarlo hasta ${time}. No abras otro checkout para esta venta: si paga los dos, se cobraría dos veces.`,
+  heldTextProtected: (time) => `El cliente todavía puede pagarlo hasta ${time}.`,
   heldCustomer:
     'Pide al cliente que termine el pago en la pantalla donde lo abrió. Este estado se actualiza solo; si deja de hacerlo, usa «Consultar estado».',
   heldWait: (time) =>
@@ -294,6 +310,25 @@ const ES: PosMessages = {
     'Otro checkout de esta venta sigue abierto, en proceso o sin verificar. No abras uno nuevo hasta que ese termine o expire.',
   recoveryBlockedPaid:
     'Otro checkout de esta venta ya fue aprobado: la venta está cobrada. No la cobres de nuevo.',
+  saleUnverified:
+    'No pudimos verificar los demás checkouts de esta venta. Consulta el estado antes de volver a cobrar.',
+  legacyNoRecovery:
+    'Esta venta es anterior al registro de checkouts del servidor: no podemos verificar si otro checkout suyo sigue abierto. Revisa Pagos antes de volver a cobrar; si hace falta, crea un cobro nuevo.',
+  protectedNote:
+    'Venta protegida: el servidor solo permite un cobro por venta, aunque haya varios checkouts abiertos.',
+  saleInFlightElsewhere:
+    'Otro checkout de esta venta tiene un pago en curso. No presentes este: espera el resultado.',
+  heldProtected:
+    'Si el cliente no puede volver a ese checkout, abre uno sustituto: esta venta está protegida y el servidor solo permite un cobro, así que el primero que se pague bloquea al otro.',
+  substituteCheckout: 'Abrir checkout sustituto',
+  attemptsScopePartial: (since) =>
+    `Registro del servidor desde ${since}: los checkouts abiertos antes no están vinculados a la venta y no aparecen aquí.`,
+  attemptsTruncated: 'Se muestran los más recientes.',
+  colSale: 'Venta',
+  saleCheckouts: (n) => `${n} checkouts en la ventana`,
+  saleUnlinked: 'Sin venta vinculada',
+  recentUnlinkedNote:
+    'Los cobros anteriores al registro de ventas del servidor aparecen «sin venta vinculada»: no se pueden agrupar por venta ni recuperar desde el POS.',
 };
 
 const EN: PosMessages = {
@@ -350,6 +385,8 @@ const EN: PosMessages = {
     origin_not_allowed: 'Request blocked for security. Reload the page.',
     idempotency_key_reuse: 'The sale changed since the last attempt. Submit it again.',
     merchant_not_found: 'The merchant does not exist or is not active.',
+    sale_already_charged:
+      'This sale already has an approved or in-progress payment: no other checkout was opened.',
   },
   presentTitle: 'Present the checkout to the customer',
   presentText:
@@ -435,8 +472,8 @@ const EN: PosMessages = {
   paymentOutsideWindow: 'Payment outside the read window',
   attemptsTitle: 'Checkouts for this sale',
   attemptsScope:
-    'Opened from this tab. The API does not link a sale to all of its sessions (G3): those opened in another tab, window or device do not show here.',
-  attemptLabel: (n) => `Attempt ${n}`,
+    "All of this sale's checkouts according to the server, opened from any tab or device.",
+  attemptLabel: (n) => `Checkout ${n}`,
   attemptCurrent: 'current',
   attemptPending: 'not checked',
   recoveryTitle: 'Recover the sale',
@@ -448,7 +485,7 @@ const EN: PosMessages = {
     canceled: 'Open a new checkout for the same sale: no new sale is created.',
   },
   reopenNoLink:
-    'This charge was opened without a reference to its sale in this tab, and the API cannot look it up (G3). To charge again, create a new charge.',
+    "This charge predates the server's sale registry: we do not know which sale it belongs to. Review Payments before charging again; if needed, create a new charge.",
   unverifiedTitle: 'Outcome not verified',
   lastKnownPhase: 'Last status read. It no longer updates by itself: check the status.',
   unverifiedText:
@@ -458,6 +495,7 @@ const EN: PosMessages = {
   heldTitle: "This sale's checkout is still open",
   heldText: (time) =>
     `The customer can still pay it until ${time}. Do not open another checkout for this sale: if they pay both, they would be charged twice.`,
+  heldTextProtected: (time) => `The customer can still pay it until ${time}.`,
   heldCustomer:
     'Ask the customer to finish paying on the screen where they opened it. This status updates by itself; if it stops, use «Check status».',
   heldWait: (time) =>
@@ -467,6 +505,25 @@ const EN: PosMessages = {
     'Another checkout for this sale is still open, processing or unverified. Do not open a new one until it finishes or expires.',
   recoveryBlockedPaid:
     'Another checkout for this sale was already approved: the sale is paid. Do not charge it again.',
+  saleUnverified:
+    "We could not verify this sale's other checkouts. Check the status before charging again.",
+  legacyNoRecovery:
+    "This sale predates the server's checkout registry: we cannot verify whether another of its checkouts is still open. Review Payments before charging again; if needed, create a new charge.",
+  protectedNote:
+    'Protected sale: the server allows only one charge per sale, even with several open checkouts.',
+  saleInFlightElsewhere:
+    'Another checkout for this sale has a payment in progress. Do not present this one: wait for the outcome.',
+  heldProtected:
+    'If the customer cannot get back to that checkout, open a replacement: this sale is protected and the server allows only one charge, so whichever is paid first blocks the other.',
+  substituteCheckout: 'Open replacement checkout',
+  attemptsScopePartial: (since) =>
+    `Server registry since ${since}: checkouts opened earlier are not linked to the sale and do not show here.`,
+  attemptsTruncated: 'Showing the most recent ones.',
+  colSale: 'Sale',
+  saleCheckouts: (n) => `${n} checkouts in the window`,
+  saleUnlinked: 'No linked sale',
+  recentUnlinkedNote:
+    "Charges that predate the server's sale registry show as «no linked sale»: they cannot be grouped by sale or recovered from the POS.",
 };
 
 export const POS_MESSAGES: Record<Locale, PosMessages> = { es: ES, en: EN };

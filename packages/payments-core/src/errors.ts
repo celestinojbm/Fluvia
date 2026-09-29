@@ -39,6 +39,24 @@ export class CheckoutSessionInvalidCustomerError extends PaymentsCoreError {
   }
 }
 
+/**
+ * POS — una venta (payment link de cobro único) admite como máximo UN cobro:
+ * ya hay un intent de la venta cobrando (processing, desenlace incierto
+ * incluido) o cobrado. Guard de servicio bajo lock del link; el índice único
+ * `payment_intents_single_charge_uq` (0046) es la garantía final del motor.
+ */
+export class SaleAlreadyChargedError extends PaymentsCoreError {
+  constructor() {
+    super('This sale already has a payment in progress or completed');
+  }
+}
+
+/** Violación del índice único del invariante (23505) ⇒ error de dominio. */
+export function isSingleChargeViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; constraint?: unknown } | null;
+  return e?.code === '23505' && e.constraint === 'payment_intents_single_charge_uq';
+}
+
 export class PaymentLinkNotFoundError extends PaymentsCoreError {
   constructor() {
     super('Payment link not found');

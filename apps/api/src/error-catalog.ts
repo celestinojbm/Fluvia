@@ -190,6 +190,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'A request with this idempotency key is still being processed; retry shortly',
   },
+  sale_already_charged: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale already has a payment in progress or completed',
+  },
   invalid_state_transition: {
     status: 409,
     type: 'conflict_error',
@@ -326,6 +331,8 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // payment links F3-06
   PaymentLinkNotFoundError: 'not_found',
   PaymentLinkInvalidMerchantError: 'validation_error',
+  // POS: una venta de cobro único, como máximo un cobro (0046)
+  SaleAlreadyChargedError: 'sale_already_charged',
   // webhooks salientes F3-07
   WebhookEndpointNotFoundError: 'not_found',
   InvalidWebhookTopicError: 'validation_error',

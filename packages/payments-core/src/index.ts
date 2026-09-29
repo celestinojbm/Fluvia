@@ -35,10 +35,14 @@ export {
   PaymentsCoreError,
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
+  SaleAlreadyChargedError,
+  isSingleChargeViolation,
 } from './errors.js';
 export {
   PaymentLinkService,
   type CreatePaymentLinkInput,
+  type PaymentLinkSaleDto,
+  type SaleCheckoutDto,
   type LinkSessionResult,
   type PaymentLinkDto,
 } from './payment-links.js';

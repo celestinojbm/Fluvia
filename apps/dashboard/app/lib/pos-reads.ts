@@ -28,6 +28,8 @@ export interface RecentCharge {
     amount: number;
     currency: string;
     status: string;
+    /** Venta del cobro (0046); null = cobro anterior al vínculo. */
+    payment_link_id: string | null;
   } | null;
 }
 
@@ -81,7 +83,9 @@ function pickListIntent(v: unknown): NonNullable<RecentCharge['payment']> | null
   const { id, merchant_id, amount, currency, status } = v;
   if (!str(id) || !UUID_RE.test(id) || !str(merchant_id) || !int(amount)) return null;
   if (!str(currency) || !str(status)) return null;
-  return { id, merchant_id, amount, currency, status };
+  const link = v.payment_link_id;
+  if (link !== undefined && link !== null && !(str(link) && UUID_RE.test(link))) return null;
+  return { id, merchant_id, amount, currency, status, payment_link_id: link ?? null };
 }
 
 export async function fetchRecentCharges(opts: {

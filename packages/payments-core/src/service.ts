@@ -28,6 +28,8 @@ export interface CreateIntentInput {
   description?: string;
   captureMethod?: 'automatic' | 'manual';
   metadata?: Record<string, string>;
+  /** Link que originó el intent (vínculo persistente venta → intents, 0046). */
+  paymentLinkId?: string;
 }
 
 export interface PaymentIntentDto {
@@ -42,6 +44,8 @@ export interface PaymentIntentDto {
   amountRefunded: string;
   version: string;
   failureCode: string | null;
+  /** Link de origen; null = intent directo o anterior al vínculo (0046). */
+  paymentLinkId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,13 +67,14 @@ interface IntentRow {
   amount_refunded: string;
   version: string;
   failure_code: string | null;
+  payment_link_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
 
 const INTENT_COLUMNS = `id, tenant_id, merchant_id, amount::text, currency, status,
   capture_method, amount_captured::text, amount_refunded::text, version::text,
-  failure_code, created_at, updated_at`;
+  failure_code, payment_link_id, created_at, updated_at`;
 
 function toDto(r: IntentRow): PaymentIntentDto {
   return {
@@ -84,6 +89,7 @@ function toDto(r: IntentRow): PaymentIntentDto {
     amountRefunded: r.amount_refunded,
     version: r.version,
     failureCode: r.failure_code,
+    paymentLinkId: r.payment_link_id,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
   };
@@ -107,8 +113,9 @@ export class PaymentIntentService {
     {
       const res = await c.query<IntentRow>(
         `INSERT INTO payment_intents
-           (tenant_id, merchant_id, amount, currency, description, capture_method, metadata, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'created')
+           (tenant_id, merchant_id, amount, currency, description, capture_method, metadata,
+            payment_link_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'created')
          RETURNING ${INTENT_COLUMNS}`,
         [
           input.tenantId,
@@ -118,6 +125,7 @@ export class PaymentIntentService {
           input.description ?? null,
           input.captureMethod ?? 'automatic',
           JSON.stringify(input.metadata ?? {}),
+          input.paymentLinkId ?? null,
         ]
       );
       const dto = toDto(res.rows[0]!);

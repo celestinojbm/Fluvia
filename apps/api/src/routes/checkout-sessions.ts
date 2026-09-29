@@ -57,6 +57,8 @@ function hostedView(v: HostedCheckoutView) {
       amount: Number(v.paymentIntent.amount),
       currency: v.paymentIntent.currency,
     },
+    // Venta de cobro único ya cobrada/cobrando por otro checkout: este no cobra.
+    sale_closed: v.saleClosed,
   };
 }
 

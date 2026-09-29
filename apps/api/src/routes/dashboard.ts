@@ -36,7 +36,7 @@ import { CreateRefundSchema, publicRefund } from './refunds.js';
 import { publicPayout } from './payouts.js';
 import { publicDispute } from './disputes.js';
 import { publicSession } from './checkout-sessions.js';
-import { CreatePaymentLinkSchema, publicLink } from './payment-links.js';
+import { CreatePaymentLinkSchema, publicLink, publicSale } from './payment-links.js';
 import { CreateEndpointSchema } from './webhook-endpoints.js';
 import { publicAttempt, publicEvent } from './webhook-events.js';
 import { publicEntry, publicReport } from './settlements.js';
@@ -55,6 +55,11 @@ import { publicCase } from './cases.js';
  */
 
 const OrgParam = z.object({ orgId: z.string().uuid() });
+// El plano de sesión (POS) puede crear ventas de cobro único; el plano de API
+// key conserva su forma (links multiuso) — `single_charge` es solo de aquí.
+const CreateOrgPaymentLinkSchema = CreatePaymentLinkSchema.extend({
+  single_charge: z.boolean().optional(),
+}).strict();
 const IdParams = z.object({ orgId: z.string().uuid(), id: z.string().uuid() });
 const LimitQuery = z
   .object({ limit: z.coerce.number().int().min(1).max(100).default(25) })
@@ -315,6 +320,13 @@ export function registerDashboardRoutes(
     const { id } = IdParams.parse(req.params);
     return publicLink(await paymentLinkService.get(tenant(req), id));
   });
+  // Venta (POS): el link + TODOS sus checkouts vinculados (0046) y el estado
+  // del cobro derivado por el servidor. Lectura por sesión (`payments:read`),
+  // org de la membresía + RLS: un link de otra org es not_found.
+  app.get('/v1/organizations/:orgId/payment_links/:id/sale', guard, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicSale(await paymentLinkService.getSale(tenant(req), id));
+  });
   // Acción de OPERACIÓN por sesión (F6.5A-bis, G2): CREAR un payment link.
   // Espeja `POST /v1/payment_links` del plano de API key — misma validación
   // (schema compartido), mismo serializer, misma creación idempotente. Un link
@@ -323,7 +335,7 @@ export function registerDashboardRoutes(
   app.post('/v1/organizations/:orgId/payment_links', manage, async (req, reply) => {
     OrgParam.parse(req.params);
     const key = assertValidIdempotencyKey(req.headers['idempotency-key']);
-    const body = CreatePaymentLinkSchema.parse(req.body);
+    const body = CreateOrgPaymentLinkSchema.parse(req.body);
     const tenantId = tenant(req);
     const context = userAuditContext(req);
 
@@ -339,6 +351,7 @@ export function registerDashboardRoutes(
           currency: body.currency,
           description: body.description,
           metadata: body.metadata,
+          singleCharge: body.single_charge,
         });
         const serialized = publicLink(link);
         await insertAuditEvent(client, {
@@ -354,6 +367,7 @@ export function registerDashboardRoutes(
             amount: serialized.amount,
             currency: serialized.currency,
             status: serialized.status,
+            single_charge: serialized.single_charge,
           },
         });
         return { status: 201, body: serialized };

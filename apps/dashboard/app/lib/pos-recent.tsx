@@ -186,6 +186,16 @@ export function PosRecentCharges({
   );
   const filtering = phase !== '' || merchantId !== '';
   const shown = filtered.slice(0, visible);
+  // Checkouts por venta DENTRO de la ventana leída (vínculo persistente 0046).
+  const perSale = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of data?.rows ?? []) {
+      const l = r.payment?.payment_link_id;
+      if (l) m.set(l, (m.get(l) ?? 0) + 1);
+    }
+    return m;
+  }, [data]);
+  const hasUnlinked = (data?.rows ?? []).some((r) => r.payment && !r.payment.payment_link_id);
   const blocking = load === 'auth' || load === 'forbidden';
 
   const lang = en ? 'lang=en&' : '';
@@ -209,6 +219,11 @@ export function PosRecentCharges({
         </button>
       </div>
       <p className="hint">{t.recentScope}</p>
+      {hasUnlinked && (
+        <p className="hint" data-testid="pos-recent-legacy">
+          {t.recentUnlinkedNote}
+        </p>
+      )}
 
       {load === 'auth' && (
         <p className="error" role="alert">
@@ -317,7 +332,8 @@ export function PosRecentCharges({
                   const label = hydrated
                     ? when(session.created_at, locale)
                     : session.created_at.slice(0, 16).replace('T', ' ');
-                  const href = `/o/${orgId}/pos?${lang}session=${session.id}`;
+                  const saleId = payment?.payment_link_id ?? null;
+                  const href = `/o/${orgId}/pos?${lang}session=${session.id}${saleId ? `&link=${saleId}` : ''}`;
                   return (
                     <li
                       key={session.id}
@@ -343,6 +359,19 @@ export function PosRecentCharges({
                         {payment && (
                           <span>
                             {t.colPayment}: <code>{payment.status}</code>
+                          </span>
+                        )}
+                        {payment && (
+                          <span data-testid="pos-recent-sale">
+                            {saleId ? (
+                              <>
+                                {t.colSale}: <code>••{saleId.slice(-4)}</code>
+                                {(perSale.get(saleId) ?? 0) > 1 &&
+                                  ` · ${t.saleCheckouts(perSale.get(saleId)!)}`}
+                              </>
+                            ) : (
+                              t.saleUnlinked
+                            )}
                           </span>
                         )}
                       </div>
