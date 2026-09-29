@@ -75,6 +75,38 @@ h1 {
   color: var(--fg);
   background: #eef2f6;
 }
+.status-warn {
+  color: #5c3d00; /* 8.6:1 sobre #fff4d6 */
+  background: #fff4d6;
+}
+
+.secondary {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 0.5rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--bg);
+  border: 2px solid var(--brand);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.secondary:disabled {
+  color: var(--muted);
+  border-color: var(--muted);
+  cursor: progress;
+}
+.pay {
+  font-family: inherit;
+}
+
+@media (max-width: 480px) {
+  .checkout {
+    margin: 1rem;
+    padding: 1.25rem;
+  }
+}
 
 fieldset {
   border: 1px solid #d0d5dd;

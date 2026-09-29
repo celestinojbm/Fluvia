@@ -26,6 +26,10 @@ interface Messages {
   paymentFailed: string;
   paymentPending: string;
   loadError: string;
+  retry: string;
+  paymentUncertain: string;
+  checkStatus: string;
+  checking: string;
   notFound: string;
   sandboxNotice: string;
 }
@@ -37,15 +41,20 @@ export const MESSAGES: Record<Locale, Messages> = {
     methodLegend: 'Elige un método de pago (sandbox)',
     methodApprove: 'Tarjeta de prueba (aprobada)',
     methodDecline: 'Tarjeta de prueba (rechazada)',
-    methodAsync: 'PSE de prueba (asíncrono)',
+    methodAsync: 'Transferencia de prueba (asíncrona)',
     pay: 'Pagar',
     paying: 'Procesando…',
     statusOpen: 'Pago pendiente',
     statusCompleted: '¡Pago completado! Puedes cerrar esta ventana.',
     statusExpired: 'Esta sesión de pago expiró.',
-    paymentFailed: 'El pago fue rechazado. Inténtalo con otro método.',
-    paymentPending: 'Tu pago se está procesando. Te avisaremos cuando se confirme.',
+    paymentFailed: 'El pago fue rechazado. Pide al comercio un nuevo enlace de pago.',
+    paymentPending: 'Tu pago se está procesando. Esta página se actualiza sola.',
     loadError: 'No pudimos cargar el pago. Reintenta en unos segundos.',
+    retry: 'Reintentar',
+    paymentUncertain:
+      'No pudimos confirmar el resultado del pago. No lo repitas: consulta el estado primero.',
+    checkStatus: 'Consultar estado',
+    checking: 'Consultando…',
     notFound: 'Enlace de pago inválido o expirado.',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
   },
@@ -55,15 +64,20 @@ export const MESSAGES: Record<Locale, Messages> = {
     methodLegend: 'Choose a payment method (sandbox)',
     methodApprove: 'Test card (approved)',
     methodDecline: 'Test card (declined)',
-    methodAsync: 'Test PSE (asynchronous)',
+    methodAsync: 'Test bank transfer (asynchronous)',
     pay: 'Pay',
     paying: 'Processing…',
     statusOpen: 'Payment pending',
     statusCompleted: 'Payment complete! You can close this window.',
     statusExpired: 'This payment session has expired.',
-    paymentFailed: 'The payment was declined. Try another method.',
-    paymentPending: 'Your payment is processing. We will confirm shortly.',
+    paymentFailed: 'The payment was declined. Ask the merchant for a new payment link.',
+    paymentPending: 'Your payment is processing. This page updates by itself.',
     loadError: 'We could not load the payment. Retry in a few seconds.',
+    retry: 'Retry',
+    paymentUncertain:
+      'We could not confirm the payment outcome. Do not repeat it: check the status first.',
+    checkStatus: 'Check status',
+    checking: 'Checking…',
     notFound: 'Invalid or expired payment link.',
     sandboxNotice: 'Test environment — no real money moves.',
   },

@@ -1,5 +1,6 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { DashboardData } from './api';
+import { POS_MESSAGES } from './pos-messages';
 import { ResendButton } from './resend-button';
 
 /**
@@ -111,6 +112,9 @@ export function DashboardView({
           <p className="org">{orgName}</p>
         </div>
         <nav className="dash-nav">
+          <a className="nav-cta" href={`/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`}>
+            {POS_MESSAGES[locale].navLabel}
+          </a>
           <a href={`/o/${orgId}/payments`}>{t.payments}</a>
           <a href={`/o/${orgId}/refunds`}>{t.sectionRefunds}</a>
           <a href={`/o/${orgId}/checkout-sessions`}>{t.sectionSessions}</a>

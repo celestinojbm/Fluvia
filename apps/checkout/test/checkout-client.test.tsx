@@ -95,6 +95,102 @@ describe('CheckoutClient', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('rechazado'));
   });
 
+  it('declined: does not promise another method in the same session (intent failed is terminal)', async () => {
+    mockFetch((url) =>
+      url.includes('/confirm')
+        ? {
+            id: 's1',
+            status: 'open',
+            payment_intent: { id: 'pi1', status: 'failed', amount: 50_000, currency: 'COP' },
+          }
+        : OPEN_VIEW
+    );
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    await userEvent.click(screen.getByRole('button', { name: 'Pagar' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('Pide al comercio un nuevo enlace')
+    );
+    expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
+  });
+
+  it('confirm with an unknown outcome (5xx) never invites paying again: check status first', async () => {
+    let confirmed = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/confirm')) {
+          confirmed = true;
+          return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({}) });
+        }
+        const view = confirmed ? COMPLETED_VIEW : OPEN_VIEW;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(view) });
+      })
+    );
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    await userEvent.click(screen.getByRole('button', { name: 'Pagar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No lo repitas');
+    expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Consultar estado' }));
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('Pago completado'));
+  });
+
+  it('a double submit sends a single confirm', async () => {
+    let release: (v: unknown) => void = () => {};
+    const confirmCalls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/confirm')) {
+          confirmCalls.push(url);
+          return new Promise((r) => {
+            release = r;
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(OPEN_VIEW) });
+      })
+    );
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    const form = screen.getByRole('button', { name: 'Pagar' }).closest('form')!;
+    form.requestSubmit();
+    form.requestSubmit();
+    expect(confirmCalls).toHaveLength(1);
+    release({ ok: true, status: 200, json: () => Promise.resolve(COMPLETED_VIEW) });
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('Pago completado'));
+  });
+
+  it('load error offers a retry; a malformed id (400) reads as an invalid link', async () => {
+    let fail = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        fail
+          ? Promise.reject(new TypeError('network'))
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(OPEN_VIEW) })
+      )
+    );
+    const { unmount } = render(<CheckoutClient sessionId="s1" locale="es" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos cargar');
+    fail = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(await screen.findByTestId('amount')).toBeInTheDocument();
+    unmount();
+
+    mockFetch(() => ({}), 400);
+    render(<CheckoutClient sessionId="bad" locale="es" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('inválido');
+  });
+
+  it('async method label is country-neutral', async () => {
+    mockFetch(() => OPEN_VIEW);
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    expect(screen.getByRole('radio', { name: /Transferencia de prueba/ })).toBeInTheDocument();
+    expect(screen.queryByText(/PSE/)).toBeNull();
+  });
+
   it('has no structural accessibility violations (axe)', async () => {
     mockFetch(() => OPEN_VIEW);
     const { container } = render(<CheckoutClient sessionId="s1" locale="es" />);
