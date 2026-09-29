@@ -9,8 +9,7 @@ import {
 import { UUID_RE } from '../../../lib/pos-contract';
 import { POS_MESSAGES } from '../../../lib/pos-messages';
 import { fetchRecentCharges } from '../../../lib/pos-reads';
-import { PosRecentCharges } from '../../../lib/pos-recent';
-import { PosTerminal } from '../../../lib/pos-terminal';
+import { PosWorkspace } from '../../../lib/pos-workspace';
 import { normalizeLocale } from '../../../messages';
 
 export const dynamic = 'force-dynamic';
@@ -64,16 +63,15 @@ export default async function PosPage({
           {t.back}
         </a>
       </header>
-      <div className="pos-grid">
-        <PosTerminal
-          orgId={orgId}
-          locale={locale}
-          merchants={active}
-          canCharge={canManageReconciliation(org?.role)}
-          resume={resume}
-        />
-        <PosRecentCharges result={recent} orgId={orgId} locale={locale} />
-      </div>
+      <PosWorkspace
+        orgId={orgId}
+        locale={locale}
+        merchants={active}
+        allMerchants={merchants.map((m) => ({ id: m.id, name: m.name }))}
+        canCharge={canManageReconciliation(org?.role)}
+        resume={resume}
+        recent={recent}
+      />
       <p className="notice">{t.sandboxNotice}</p>
     </main>
   );

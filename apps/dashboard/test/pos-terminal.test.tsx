@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { PosTerminal } from '../app/lib/pos-terminal';
+import { recordAttempt } from '../app/lib/pos-attempts';
 import type { Merchant } from '../app/lib/api';
 
 /**
@@ -86,6 +87,7 @@ function renderPos(props: Partial<React.ComponentProps<typeof PosTerminal>> = {}
 
 beforeEach(() => {
   calls = [];
+  window.sessionStorage.clear();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -272,7 +274,9 @@ describe('PosTerminal — reanudación y lectura', () => {
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
     expect(await screen.findByText('Esperando al cliente')).toBeInTheDocument();
     expect(screen.getByText(/no se conserva al recargar/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Abrir checkout nuevo' })).toBeInTheDocument();
+    // El checkout anterior sigue pagable: abrir otro exige confirmar el riesgo.
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Abrir otro checkout…' })).toBeInTheDocument();
   });
 
   it('404 al consultar ⇒ «no encontrado», nunca un estado inventado', async () => {
@@ -299,5 +303,238 @@ describe('PosTerminal — reanudación y lectura', () => {
     expect(await screen.findByText('Pago en proceso')).toBeInTheDocument();
     expect(screen.getByText(/No cobres de nuevo/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+  });
+});
+
+// ── Incremento 2: rechazo → recuperación, incertidumbre ──────────────────────
+
+const SID2 = '3f0c1a2b-4c5d-4e6f-8a9b-0c1d2e3f4a5b';
+const PI2 = '6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d';
+const openOk2: Handler = () =>
+  res(201, { checkout_session_id: SID2, checkout_url: `http://localhost:3100/c/${SID2}#cs_y` });
+
+function statusFor(
+  sid: string,
+  pi: string,
+  sessionStatus: string,
+  intentStatus: string,
+  extra = {}
+) {
+  const s = status(sessionStatus, intentStatus, extra);
+  return { session: { ...s.session, id: sid }, payment: { ...s.payment, id: pi } };
+}
+
+/** Estado por sesión (la URL dice cuál): el intento 1 queda rechazado. */
+function statusBySession(second: unknown) {
+  return (url: string) =>
+    url.endsWith(SID2)
+      ? res(200, second)
+      : res(200, statusFor(SID, PI, 'open', 'failed', { failure_code: 'card_declined' }));
+}
+
+function mockFetchByUrl(routes: {
+  link?: Handler[];
+  open?: Handler[];
+  status: (url: string) => Response | Promise<Response>;
+}) {
+  const queues = { link: [...(routes.link ?? [])], open: [...(routes.open ?? [])] };
+  const next = (q: Handler[], init?: RequestInit) => (q.length > 1 ? q.shift()! : q[0]!)(init);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url.endsWith('/payment-links')) return next(queues.link, init);
+      if (url.endsWith('/pos/checkout')) return next(queues.open, init);
+      if (url.includes('/pos/sessions/')) return routes.status(url);
+      throw new Error(`unexpected ${url}`);
+    })
+  );
+}
+
+describe('PosTerminal — rechazo y recuperación', () => {
+  it('rechazo ⇒ recuperar ⇒ checkout nuevo de la MISMA venta: 1 venta, 2 sesiones distintas', async () => {
+    mockFetchByUrl({
+      link: [linkOk],
+      open: [openOk, openOk2],
+      status: statusBySession(statusFor(SID2, PI2, 'open', 'requires_payment_method')),
+    });
+    const { container } = renderPos();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '12.50' } });
+    await userEvent.click(screen.getByRole('button', { name: /Cobrar US\$\s12,50/ }));
+
+    // Pantalla de rechazo ANTES de recuperar: código, guía y acción clara.
+    expect(await screen.findByText('Pago rechazado')).toBeInTheDocument();
+    const recovery = screen.getByTestId('pos-recovery');
+    expect(recovery).toHaveTextContent('Recuperar la venta');
+    expect(recovery).toHaveTextContent('Es la misma venta: no se crea otra.');
+    expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeInTheDocument();
+    expect((await axe.run(container)).violations).toEqual([]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir checkout nuevo' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'awaiting_payment')
+    );
+    expect(posts('/payment-links')).toHaveLength(1);
+    expect(posts('/pos/checkout')).toHaveLength(2);
+    for (const c of posts('/pos/checkout')) {
+      expect(JSON.parse(String(c.init!.body))).toEqual({ payment_link_id: LINK });
+    }
+    expect(screen.getByRole('link', { name: 'Abrir checkout' })).toHaveAttribute(
+      'href',
+      `http://localhost:3100/c/${SID2}#cs_y`
+    );
+    expect(window.location.search).toContain(`session=${SID2}`);
+    expect(window.location.search).toContain(`link=${LINK}`);
+
+    // Relación venta→intentos (registrada en este navegador), con estado real.
+    const attempts = screen.getByTestId('pos-attempts');
+    await within(attempts).findByText('Pago rechazado');
+    expect(within(attempts).getByText('Esperando al cliente')).toBeInTheDocument();
+    expect(
+      within(attempts)
+        .getByText(/Intento 2/)
+        .closest('li')
+    ).toHaveAttribute('aria-current', 'step');
+    expect(attempts).toHaveTextContent('Abiertos desde este navegador');
+    expect(window.sessionStorage.getItem(`fluvia.pos.sales.v1:${ORG}`)).not.toContain('cs_');
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+
+  it('abrir el checkout nuevo muestra la venta (no un formulario vacío) y enfoca el título', async () => {
+    let release!: () => void;
+    mockFetchByUrl({
+      open: [
+        () =>
+          new Promise<Response>((r) => {
+            release = () =>
+              r(
+                new Response(
+                  JSON.stringify({
+                    checkout_session_id: SID2,
+                    checkout_url: `http://localhost:3100/c/${SID2}#cs_y`,
+                  }),
+                  { status: 201 }
+                )
+              );
+          }),
+      ],
+      status: statusBySession(statusFor(SID2, PI2, 'open', 'created')),
+    });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
+    expect(screen.queryByLabelText('Importe')).toBeNull();
+    expect(screen.getByText('Abriendo checkout…')).toBeInTheDocument();
+    expect(screen.getByText(/US\$\s12,50/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Estado del cobro' })).toHaveFocus();
+    await act(async () => release());
+    await waitFor(() =>
+      expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'awaiting_payment')
+    );
+  });
+
+  it('expirado ⇒ recuperable para la misma venta', async () => {
+    mockFetch({ status: [() => res(200, status('expired', 'requires_payment_method'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByText('Checkout expirado')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-recovery')).toHaveTextContent('El checkout caducó sin pago');
+    expect(screen.getByRole('button', { name: 'Abrir checkout nuevo' })).toBeInTheDocument();
+  });
+
+  it('rechazo sin venta conocida (seguido desde la lista) ⇒ lo explica, sin reabrir a ciegas', async () => {
+    mockFetch({ status: [() => res(200, status('open', 'failed'))] });
+    renderPos({ resume: { sessionId: SID, linkId: null } });
+    expect(await screen.findByText('Pago rechazado')).toBeInTheDocument();
+    expect(screen.getByTestId('pos-recovery')).toHaveTextContent(
+      'la API no permite averiguarla (G3)'
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeInTheDocument();
+  });
+
+  it('venta registrada en este navegador ⇒ se recupera aunque se siga sin ?link=', async () => {
+    recordAttempt(ORG, LINK, SID);
+    mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'failed'))] });
+    renderPos({ resume: { sessionId: SID, linkId: null } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
+    await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
+    expect(JSON.parse(String(posts('/pos/checkout')[0]!.init!.body))).toEqual({
+      payment_link_id: LINK,
+    });
+  });
+
+  it('en proceso ⇒ ni checkout nuevo ni «Nuevo cobro»; explica por qué', async () => {
+    mockFetch({ status: [() => res(200, status('open', 'processing'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByText('Pago en proceso')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nuevo cobro' })).toBeNull();
+    expect(screen.getByTestId('pos-processing-block')).toHaveTextContent(
+      'podría cobrarse dos veces'
+    );
+    // Tampoco se presenta de nuevo el checkout de un pago en vuelo.
+    expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
+  });
+
+  it('en proceso con la URL aún en memoria ⇒ no se vuelve a presentar el checkout', async () => {
+    mockFetch({
+      link: [linkOk],
+      open: [openOk],
+      status: [() => res(200, status('open', 'processing'))],
+    });
+    renderPos();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '12.50' } });
+    await userEvent.click(screen.getByRole('button', { name: /Cobrar US\$\s12,50/ }));
+    expect(await screen.findByText('Pago en proceso')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copiar enlace' })).toBeNull();
+  });
+
+  it('estado no reconocido ⇒ sin repetir el cobro', async () => {
+    mockFetch({ status: [() => res(200, status('open', 'weird_state'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByText('Estado no reconocido')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nuevo cobro' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Consultar estado' })).toBeInTheDocument();
+  });
+
+  it('lectura perdida tras «esperando» ⇒ resultado sin verificar y sin repetir el cobro', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockFetch({
+        status: [() => res(200, status('open', 'created')), () => res(503, {})],
+      });
+      renderPos({ resume: { sessionId: SID, linkId: LINK } });
+      expect(await screen.findByText('Esperando al cliente')).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+      });
+      expect(await screen.findByTestId('pos-unverified')).toHaveTextContent(
+        'Resultado sin verificar'
+      );
+      expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Nuevo cobro' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Consultar estado' })).toBeInTheDocument();
+      expect(screen.getByText(/Último estado leído/)).toBeInTheDocument();
+      expect(screen.queryByText(/se actualiza sola\./)).toBeNull();
+      expect(screen.queryByText(/abre un checkout nuevo/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('esperando sin URL ⇒ abrir otro exige confirmar el riesgo de doble cobro', async () => {
+    mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'created'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir otro checkout…' }));
+    const warn = screen.getByRole('alert');
+    expect(warn).toHaveTextContent('se cobrará dos veces');
+    expect(warn).toHaveFocus();
+    expect(posts('/pos/checkout')).toHaveLength(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(posts('/pos/checkout')).toHaveLength(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir otro checkout…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Entiendo, abrir otro' }));
+    await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
   });
 });
