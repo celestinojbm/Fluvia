@@ -90,6 +90,7 @@ export type PosErrorCode =
   | 'upstream_unavailable'
   | 'checkout_open_uncertain'
   | 'sale_already_charged'
+  | 'not_charged'
   | 'origin_not_allowed';
 
 function isObj(v: unknown): v is Record<string, unknown> {

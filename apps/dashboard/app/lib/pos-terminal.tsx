@@ -17,6 +17,7 @@ import {
 } from './pos-contract';
 import { parseMajorAmount, POS_CURRENCIES } from './pos-money';
 import { POS_MESSAGES, posErrorText } from './pos-messages';
+import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 import { PosRefundPanel } from './pos-refund';
 
 /**
@@ -791,6 +792,15 @@ export function PosTerminal({
             >
               {t.refreshStatus}
             </button>
+          )}
+          {phase === 'succeeded' && status && (
+            <a
+              className="btn btn-secondary"
+              href={`/o/${orgId}/pos/receipts/${status.payment.id}${locale === 'en' ? '?lang=en' : ''}`}
+              data-testid="pos-receipt-link"
+            >
+              {POS_RECEIPT_MESSAGES[locale].open}
+            </a>
           )}
           {status && (
             <a

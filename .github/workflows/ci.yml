@@ -187,3 +187,37 @@ jobs:
           fail-build: true
           severity-cutoff: high
           output-format: table
+
+  e2e:
+    # E2E de navegador del justificante del POS: dashboard REAL (`next build` +
+    # `next start`) contra la API SINTÉTICA versionada (apps/dashboard/e2e/
+    # synthetic-api.mjs). 390/768/1440 px, teclado, impresión (pie de página
+    # leído del PDF real de Chromium) y >100 devoluciones. La verificación
+    # contra PG/Redis/API/MockProvider reales es local: apps/dashboard/e2e/real-stack/.
+    name: E2E navegador (justificante del POS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (reproducible)
+        run: pnpm install --frozen-lockfile
+
+      - name: Chromium de Playwright (versión del lockfile)
+        run: pnpm --filter @fluvia/dashboard exec playwright install --with-deps chromium
+
+      - name: Build del dashboard (next build)
+        run: pnpm --filter @fluvia/dashboard exec next build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: E2E del justificante
+        run: pnpm --filter @fluvia/dashboard e2e
+        env:
+          CI: 'true'

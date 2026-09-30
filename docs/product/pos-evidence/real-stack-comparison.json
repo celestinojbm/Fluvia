@@ -1,0 +1,89 @@
+[
+  {
+    "step": "a-cobro-confirmado",
+    "api": {
+      "captured": 50000,
+      "refunded": 0,
+      "status": "Cobro confirmado",
+      "refunds": []
+    },
+    "receipt": {
+      "captured": 50000,
+      "refunded": 0,
+      "status": "Cobro confirmado",
+      "refunds": []
+    }
+  },
+  {
+    "step": "b-parcial-confirmada",
+    "api": {
+      "captured": 50000,
+      "refunded": 12000,
+      "status": "Cobro confirmado · devolución parcial",
+      "refunds": [
+        {
+          "status": "succeeded",
+          "amount": 12000
+        }
+      ]
+    },
+    "receipt": {
+      "captured": 50000,
+      "refunded": 12000,
+      "status": "Cobro confirmado · devolución parcial",
+      "refunds": [
+        {
+          "status": "succeeded",
+          "text": "$ 12.000Devuelta30/09/2026, 11:12 a. m.Importe devuelto al método de pago de prueba.",
+          "amount": 12000
+        }
+      ]
+    }
+  },
+  {
+    "step": "c-indeterminate",
+    "api": {
+      "captured": 50000,
+      "refunded": 12000,
+      "status": "Cobro confirmado · devolución parcial",
+      "refunds": [
+        {
+          "status": "indeterminate",
+          "amount": 8000
+        },
+        {
+          "status": "succeeded",
+          "amount": 12000
+        }
+      ]
+    },
+    "receipt": {
+      "captured": 50000,
+      "refunded": 12000,
+      "status": "Cobro confirmado · devolución parcial",
+      "refunds": [
+        {
+          "status": "indeterminate",
+          "text": "$ 8.000Pendiente de verificación30/09/2026, 11:12 a. m.El proveedor no confirmó el resultado. No se da por devuelta hasta que se verifique.",
+          "amount": 8000
+        },
+        {
+          "status": "succeeded",
+          "text": "$ 12.000Devuelta30/09/2026, 11:12 a. m.Importe devuelto al método de pago de prueba.",
+          "amount": 12000
+        }
+      ]
+    }
+  },
+  {
+    "step": "d-mas-de-100",
+    "api": {
+      "amount_refunded": 12100,
+      "window": 100
+    },
+    "receipt": {
+      "breakdownItems": 0,
+      "truncatedNote": true
+    }
+  }
+]

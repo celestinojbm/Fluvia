@@ -313,6 +313,11 @@ describe('Terminal: devolver NO reabre la venta (invariante #58)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'succeeded')
     );
+    // Justificante accesible desde el terminal para un cobro aprobado.
+    expect(screen.getByTestId('pos-receipt-link')).toHaveAttribute(
+      'href',
+      `/o/${ORG}/pos/receipts/${PI}`
+    );
     await user.click(await screen.findByRole('button', { name: 'Devolver…' }));
     await user.click(screen.getByRole('button', { name: 'Revisar devolución' }));
     await user.click(screen.getByRole('button', { name: /^Devolver / }));
@@ -363,6 +368,7 @@ describe('Terminal: devolver NO reabre la venta (invariante #58)', () => {
       expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'failed')
     );
     expect(screen.queryByTestId('pos-refund')).toBeNull();
+    expect(screen.queryByTestId('pos-receipt-link')).toBeNull();
   });
 });
 

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatAmount, type Locale } from '../messages';
 import { classifySale, type SalePhase } from './pos-contract';
 import { POS_MESSAGES } from './pos-messages';
+import { isChargedStatus } from './pos-receipt-contract';
+import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 import { POS_REFUND_MESSAGES } from './pos-refund-messages';
 import type { RecentCharge, RecentChargesResult, RecentWindow } from './pos-reads';
 
@@ -105,6 +107,7 @@ export function PosRecentCharges({
 }: PosRecentChargesProps) {
   const t = POS_MESSAGES[locale];
   const tr = POS_REFUND_MESSAGES[locale];
+  const trc = POS_RECEIPT_MESSAGES[locale];
   const en = locale === 'en';
   const [data, setData] = useState<{ rows: RecentCharge[]; window: RecentWindow } | null>(
     initial.ok ? { rows: initial.rows, window: initial.window } : null
@@ -414,6 +417,15 @@ export function PosRecentCharges({
                             }}
                           >
                             {t.track}
+                          </a>
+                        )}
+                        {payment && isChargedStatus(payment.status) && (
+                          <a
+                            href={`/o/${orgId}/pos/receipts/${payment.id}${en ? '?lang=en' : ''}`}
+                            aria-label={`${trc.open} · ${label}`}
+                            data-testid="pos-recent-receipt"
+                          >
+                            {trc.open}
                           </a>
                         )}
                         {payment && (
