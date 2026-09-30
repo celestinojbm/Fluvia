@@ -125,3 +125,12 @@ export function pdfText(pdf: Buffer): string {
   }
   return lines.join('\n');
 }
+
+/**
+ * Texto sin espacios en blanco. Chrome y `headless_shell` segmentan distinto
+ * (por palabra o por glifo, con los espacios como posicionamiento y no como
+ * caracteres): las comprobaciones se hacen sobre esta forma compacta.
+ */
+export function pdfCompactText(pdf: Buffer): string {
+  return pdfText(pdf).replace(/\s+/g, '');
+}

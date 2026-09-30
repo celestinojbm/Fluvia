@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { pdfText } from './pdf-text';
+import { pdfCompactText } from './pdf-text';
 
 /**
  * E2E de navegador del justificante del POS (CI). Dashboard real (`next start`)
@@ -281,8 +281,8 @@ test.describe('pie de página impreso (PDF real de Chromium)', () => {
 
   test('menú del navegador (sin control de la app): el pie lleva ids', async ({ page }) => {
     await openReceipt(page, 2);
-    const text = pdfText(await page.pdf(pdfOpts));
-    expect(text).toContain('Importe cobrado');
+    const text = pdfCompactText(await page.pdf(pdfOpts));
+    expect(text).toContain('Importecobrado');
     // Chromium toma la URL al INICIAR la impresión, antes de `beforeprint`:
     // cambiarla en ese evento no la saca del pie. Si esto deja de fallar
     // (cambio de Chromium), revisar docs/product/pos-sandbox.md.
@@ -294,8 +294,8 @@ test.describe('pie de página impreso (PDF real de Chromium)', () => {
     // Mismo orden que el botón: hide() y después la impresión.
     await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
     expect(new URL(page.url()).pathname).toBe('/');
-    const text = pdfText(await page.pdf(pdfOpts));
-    expect(text).toContain('Importe cobrado');
+    const text = pdfCompactText(await page.pdf(pdfOpts));
+    expect(text).toContain('Importecobrado');
     expect(text).toContain('http://127.0.0.1:3210/');
     expect(text).not.toMatch(UUID);
     // `afterprint` (lo dispara Chromium al terminar) restaura la URL.
