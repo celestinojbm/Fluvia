@@ -17,6 +17,7 @@ import {
 } from './pos-contract';
 import { parseMajorAmount, POS_CURRENCIES } from './pos-money';
 import { POS_MESSAGES, posErrorText } from './pos-messages';
+import { PosRefundPanel } from './pos-refund';
 
 /**
  * Terminal POS sandbox (cliente). Una venta a la vez:
@@ -148,6 +149,8 @@ export interface PosActivity {
   sessionId: string | null;
   phase: SalePhase | null;
   locked: boolean;
+  /** Estado del pago + devuelto: cambia con una devolución sin cambiar la fase. */
+  revision?: string | null;
 }
 
 export function PosTerminal({
@@ -448,9 +451,16 @@ export function PosTerminal({
     step.kind === 'open_uncertain';
   const activityRef = useRef(onActivity);
   activityRef.current = onActivity;
+  const revision = status ? `${status.payment.status}:${status.payment.amount_refunded}` : null;
   useEffect(() => {
-    activityRef.current?.({ sessionId: trackingId, phase: phaseNow, locked: pendingSale });
-  }, [trackingId, phaseNow, pendingSale]);
+    activityRef.current?.({
+      sessionId: trackingId,
+      phase: phaseNow,
+      locked: pendingSale,
+      revision,
+    });
+  }, [trackingId, phaseNow, pendingSale, revision]);
+  const refreshStatus = useCallback(() => setPollNonce((n) => n + 1), []);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -735,6 +745,18 @@ export function PosTerminal({
               </div>
             )}
           </div>
+        )}
+
+        {phase === 'succeeded' && status && (
+          <PosRefundPanel
+            key={status.payment.id}
+            orgId={orgId}
+            locale={locale}
+            payment={status.payment}
+            canRefund={canCharge}
+            verified={verified}
+            onChanged={refreshStatus}
+          />
         )}
 
         {status && (

@@ -840,6 +840,140 @@ describe('venta POS de cobro único por sesión (single_charge + lectura de vent
     expect(pi.json().payment_link_id).toBe(link.id);
   });
 
+  it('devolver una venta POS cobrada (parcial y total) NO la reabre: sigue cobrada y sin otro checkout', async () => {
+    const owner = await sessionUser('owner', orgA);
+    // Comercio FRESCO: su disponible es 0 exacto (otros tests liberan fondos a merchantA).
+    const merchant = await createMerchant(orgA);
+    const link = (
+      await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/payment_links`,
+        headers: { ...owner.headers, 'idempotency-key': `pos-${randomUUID()}` },
+        payload: { merchant_id: merchant, amount: 7_000, currency: 'COP', single_charge: true },
+      })
+    ).json() as { id: string };
+    const a = await openCheckout(link.id);
+    expect((await confirm(a)).statusCode).toBe(200);
+    const saleOf = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/v1/organizations/${orgA}/payment_links/${link.id}/sale`,
+          headers: owner.headers,
+        })
+      ).json() as { charge: string; charge_payment_intent_id: string; succeeded_count: number };
+    const intentId = (await saleOf()).charge_payment_intent_id;
+    const refundOnce = (amount: number, key = `pos-refund-${randomUUID()}`) =>
+      app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/refunds`,
+        headers: { ...owner.headers, 'idempotency-key': key },
+        payload: { payment_intent_id: intentId, amount, reason: 'pos return' },
+      });
+
+    const readRefunds = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/v1/organizations/${orgA}/refunds?payment_intent_id=${intentId}&limit=100`,
+          headers: owner.headers,
+        })
+      ).json().data as Array<{
+        id: string;
+        status: string;
+        amount: number;
+        failure_code: string | null;
+      }>;
+
+    // Sin fondos liberados al disponible del comercio, la devolución se CANCELA
+    // antes de tocar al proveedor (desenlace conocido: nada se devolvió) y el
+    // cupo vuelve íntegro. Es lo que ve el cajero en un comercio recién cobrado.
+    const noFunds = await refundOnce(7_000);
+    expect(noFunds.statusCode).toBe(201);
+    const [canceled] = await readRefunds();
+    expect(canceled).toMatchObject({
+      status: 'canceled',
+      failure_code: 'insufficient_merchant_balance',
+    });
+    // Liberación de la liquidación al disponible (lo que hace el seed de demo):
+    // se libera lo PENDIENTE (neto de comisiones). La devolución debita el
+    // importe bruto del disponible del comercio.
+    const chart = await posting.ensureChart(orgA, merchant, 'COP');
+    const ledger = new LedgerService(appPool);
+    const releasePending = async (sourceId: string) => {
+      const pending = (await ledger.getBalance(orgA, chart['merchant.pending'])).available;
+      await posting.releaseSettlement({
+        tenantId: orgA,
+        merchantId: merchant,
+        idempotencyKey: `settle:${sourceId}`,
+        sourceType: 'settlement',
+        sourceId,
+        amount: Money.of(pending, 'COP'),
+      });
+    };
+    await releasePending(intentId);
+
+    // Parcial: la fase 2 corre con el MockProvider dentro del request.
+    const partial = await refundOnce(3_000);
+    expect(partial.statusCode).toBe(201);
+    const afterPartial = (await readRefunds()).filter((r) => r.status !== 'canceled');
+    expect(afterPartial).toHaveLength(1);
+    expect(afterPartial[0]!.status).toBe('succeeded');
+    const pi = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/v1/organizations/${orgA}/payment_intents/${intentId}`,
+          headers: owner.headers,
+        })
+      ).json() as { status: string; amount_captured: number; amount_refunded: number };
+    expect(await pi()).toMatchObject({
+      status: 'partially_refunded',
+      amount_captured: 7_000,
+      amount_refunded: 3_000,
+    });
+    // Más de lo que queda ⇒ 422 sin crear nada.
+    const over = await refundOnce(4_001);
+    expect(over.statusCode).toBe(422);
+    expect(over.json().error.code).toBe('refund_amount_exceeds_remaining');
+    // Otra venta del comercio aporta disponible para devolver el resto bruto.
+    const other = (
+      await app.inject({
+        method: 'POST',
+        url: `/v1/organizations/${orgA}/payment_links`,
+        headers: { ...owner.headers, 'idempotency-key': `pos-${randomUUID()}` },
+        payload: { merchant_id: merchant, amount: 7_000, currency: 'COP', single_charge: true },
+      })
+    ).json() as { id: string };
+    expect((await confirm(await openCheckout(other.id))).statusCode).toBe(200);
+    await releasePending(`other:${other.id}`);
+    // El resto, con la MISMA key dos veces (reintento del POS) ⇒ un solo refund.
+    const key = `pos-refund-${randomUUID()}`;
+    const rest = await refundOnce(4_000, key);
+    const replay = await refundOnce(4_000, key);
+    expect(replay.json().id).toBe(rest.json().id);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    expect((await readRefunds()).filter((r) => r.status === 'succeeded')).toHaveLength(2);
+    expect(await pi()).toMatchObject({ status: 'refunded', amount_refunded: 7_000 });
+
+    // Invariante #58: la venta sigue cobrada una vez y no admite otro checkout.
+    expect(await saleOf()).toMatchObject({ charge: 'charged', succeeded_count: 1 });
+    const again = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_links/${link.id}/sessions`,
+    });
+    expect(again.statusCode).toBe(409);
+    // Un analista (payments:read) lee las devoluciones pero no puede crearlas.
+    const analyst = await sessionUser('analyst', orgA);
+    const denied = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/refunds`,
+      headers: { ...analyst.headers, 'idempotency-key': `pos-refund-${randomUUID()}` },
+      payload: { payment_intent_id: intentId, amount: 1 },
+    });
+    expect(denied.statusCode).toBe(403);
+  });
+
   it('la lectura de venta es por org: otra org ⇒ 404; sin sesión ⇒ 401', async () => {
     const owner = await sessionUser('owner', orgA);
     const link = (await createSale(owner.headers)).json() as { id: string };

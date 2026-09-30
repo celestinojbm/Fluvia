@@ -47,6 +47,8 @@ export interface PosSaleStatus {
     status: string;
     failure_code: string | null;
     amount_refunded: number;
+    /** Capturado (unidades menores); null si la API no lo trajo (no se infiere). */
+    amount_captured: number | null;
     /** Venta (payment link) del cobro; null = cobro anterior al vínculo. */
     payment_link_id: string | null;
   };
@@ -120,6 +122,8 @@ export function pickPayment(v: unknown): PosSaleStatus['payment'] | null {
   if (!str(status) || !strOrNull(failure_code) || !int(amount_refunded)) return null;
   const payment_link_id = uuidOrNull(v.payment_link_id);
   if (payment_link_id === false) return null;
+  const captured = v.amount_captured;
+  if (captured !== undefined && captured !== null && !int(captured)) return null;
   return {
     id,
     merchant_id,
@@ -128,6 +132,7 @@ export function pickPayment(v: unknown): PosSaleStatus['payment'] | null {
     status,
     failure_code,
     amount_refunded,
+    amount_captured: captured ?? null,
     payment_link_id,
   };
 }
