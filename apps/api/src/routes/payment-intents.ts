@@ -67,6 +67,9 @@ export function publicIntent(intent: PaymentIntentDto) {
     amount_captured: Number(intent.amountCaptured),
     amount_refunded: Number(intent.amountRefunded),
     failure_code: intent.failureCode,
+    // Vínculo persistente con su payment link (0046); null = intent directo o
+    // anterior al vínculo.
+    payment_link_id: intent.paymentLinkId,
     created_at: intent.createdAt,
   };
 }

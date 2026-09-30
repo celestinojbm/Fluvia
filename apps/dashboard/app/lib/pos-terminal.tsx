@@ -10,10 +10,11 @@ import {
   isTerminalPhase,
   UUID_RE,
   type PosCheckoutOpened,
+  type PosSale,
+  type PosSaleCheckout,
   type PosSaleStatus,
   type SalePhase,
 } from './pos-contract';
-import { attemptsFor, linkForSession, recordAttempt } from './pos-attempts';
 import { parseMajorAmount, POS_CURRENCIES } from './pos-money';
 import { POS_MESSAGES, posErrorText } from './pos-messages';
 
@@ -30,7 +31,33 @@ import { POS_MESSAGES, posErrorText } from './pos-messages';
  *    muestra como tal y solo se repite por acción EXPLÍCITA del operador.
  *  - El estado mostrado sale SIEMPRE de la API (sesión + intent); un fallo de
  *    lectura nunca se presenta como estado del pago.
+ *  - La VENTA (link + todos sus checkouts + estado del cobro) sale del servidor
+ *    (vínculo persistente 0046), no de esta pestaña. Las ventas del POS son de
+ *    cobro único: el backend garantiza como máximo un cobro exitoso, así que
+ *    un checkout sustituto es seguro. Las ventas antiguas (sin esa política o
+ *    con historial parcial) conservan la contención: nunca dos pagables.
  */
+
+type SaleRead = { kind: 'idle' } | { kind: 'ok'; sale: PosSale } | { kind: 'error' };
+
+const SALE_REFRESH_MS = 10_000;
+
+/** Fases en las que un checkout ya no puede cobrar y no cobró. */
+const SETTLED_UNPAID: ReadonlySet<SalePhase> = new Set<SalePhase>([
+  'failed',
+  'expired',
+  'canceled',
+]);
+
+/** Fase de un checkout de la venta (sin sesión ⇒ solo cuenta el intent). */
+function checkoutPhase(c: PosSaleCheckout): SalePhase {
+  return classifySale(c.session?.status ?? 'open', c.payment_status);
+}
+
+/** Clave estable del estado leído (relee la venta solo si cambia). */
+function phaseKey(s: PosSaleStatus | null): string {
+  return s ? `${s.session.status}/${s.payment.status}` : '';
+}
 
 const POLL_MS = 2500;
 const MAX_POLLS = 240; // ~10 min
@@ -152,8 +179,8 @@ export function PosTerminal({
   const [pollNonce, setPollNonce] = useState(0);
   /** Importe de la venta en curso (para los pasos sin formulario). */
   const [sale, setSale] = useState<{ amount: number; currency: string } | null>(null);
-  const [confirmReopen, setConfirmReopen] = useState(false);
-  const [attempts, setAttempts] = useState<string[]>([]);
+  /** Venta leída del servidor (fuente de verdad de sus checkouts y su cobro). */
+  const [saleRead, setSaleRead] = useState<SaleRead>({ kind: 'idle' });
 
   const inFlight = useRef(false);
   const idem = useRef<{ key: string; fingerprint: string } | null>(null);
@@ -206,12 +233,10 @@ export function PosTerminal({
           UUID_RE.test(sid) &&
           typeof url === 'string'
         ) {
-          recordAttempt(orgId, linkId, sid);
-          setAttempts((prev) => [...prev.filter((x) => x !== sid), sid]);
+          setSaleRead({ kind: 'idle' });
           setStatus(null);
           setPoll({ kind: 'idle' });
           setLastChecked(null);
-          setConfirmReopen(false);
           setStep({ kind: 'tracking', linkId, sessionId: sid, checkoutUrl: url });
           try {
             window.history.replaceState(null, '', posHref(orgId, locale, sid, linkId));
@@ -246,6 +271,8 @@ export function PosTerminal({
         amount: parsed.minor,
         currency,
         ...(concept.trim() ? { description: concept.trim() } : {}),
+        // Venta del POS = cobro único: el backend impide un segundo cobro.
+        single_charge: true,
       };
       const fingerprint = JSON.stringify(payload);
       if (!idem.current || idem.current.fingerprint !== fingerprint) {
@@ -304,8 +331,7 @@ export function PosTerminal({
     setPoll({ kind: 'idle' });
     setLastChecked(null);
     setSale(null);
-    setAttempts([]);
-    setConfirmReopen(false);
+    setSaleRead({ kind: 'idle' });
     setStep({ kind: 'entry' });
     try {
       window.history.replaceState(null, '', posHref(orgId, locale));
@@ -367,32 +393,44 @@ export function PosTerminal({
     };
   }, [trackingId, org, pollNonce]);
 
-  // Venta de la sesión seguida: si se reanudó sin `?link=` (p. ej. desde
-  // «Cobros recientes»), se busca en el registro de ESTE navegador; si no está,
-  // queda sin venta (no se adivina: la API no relaciona sesión→venta, G3).
+  // Venta de la sesión seguida: la dice el SERVIDOR (`payment_link_id` del
+  // intent, 0046) — también si se reanudó desde «Cobros recientes» u otra
+  // pestaña. Si el `?link=` de la URL no coincide, manda el servidor. Un cobro
+  // sin vínculo (anterior a 0046) queda sin venta: no se adivina.
+  const serverLinkId = status?.payment.payment_link_id ?? null;
   const trackLinkId = step.kind === 'tracking' ? step.linkId : null;
   useEffect(() => {
-    if (step.kind !== 'tracking') return;
-    if (step.linkId === null) {
-      const found = linkForSession(orgId, step.sessionId);
-      if (found) {
-        setStep({ ...step, linkId: found });
-        try {
-          window.history.replaceState(null, '', posHref(orgId, locale, step.sessionId, found));
-        } catch {
-          /* noop */
-        }
-      }
-      return;
+    if (step.kind !== 'tracking' || !serverLinkId || serverLinkId === step.linkId) return;
+    setStep({ ...step, linkId: serverLinkId });
+    setSaleRead({ kind: 'idle' });
+    try {
+      window.history.replaceState(null, '', posHref(orgId, locale, step.sessionId, serverLinkId));
+    } catch {
+      /* noop */
     }
-    const known = attemptsFor(orgId, step.linkId);
-    setAttempts((prev) => {
-      const merged = [...known];
-      for (const x of prev) if (!merged.includes(x)) merged.push(x);
-      if (!merged.includes(step.sessionId)) merged.push(step.sessionId);
-      return merged;
+  }, [serverLinkId, trackingId, trackLinkId, orgId, locale]);
+
+  // Lectura de la venta: al empezar, al cambiar la fase leída, al consultar a
+  // mano y, como mucho, cada SALE_REFRESH_MS mientras se sigue el cobro (otro
+  // checkout de la venta puede cambiar sin que cambie este).
+  const statusKey = phaseKey(status);
+  const saleTick = lastChecked ? Math.floor(Date.parse(lastChecked) / SALE_REFRESH_MS) : 0;
+  useEffect(() => {
+    if (!trackingId || !trackLinkId) return;
+    let cancelled = false;
+    void call(`/api/orgs/${org}/pos/sales/${encodeURIComponent(trackLinkId)}`).then((r) => {
+      if (cancelled) return;
+      const sale = r.kind === 'ok' ? (r.body as PosSale | null) : null;
+      setSaleRead(
+        sale && sale.link_id === trackLinkId && Array.isArray(sale.checkouts)
+          ? { kind: 'ok', sale }
+          : { kind: 'error' }
+      );
     });
-  }, [trackingId, trackLinkId, orgId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [trackingId, trackLinkId, org, statusKey, saleTick, pollNonce]);
 
   // Mantener el importe de la venta a partir del estado verificado.
   useEffect(() => {
@@ -443,12 +481,57 @@ export function PosTerminal({
     // no se ofrece repetir el cobro aunque la fase anterior lo permitiera.
     const verified = status !== null && poll.kind === 'ok';
     const recoverable = phase === 'failed' || phase === 'expired' || phase === 'canceled';
-    const canReopen = canCharge && linkId !== null && verified && recoverable;
-    // Esperando pago sin URL (recarga): el checkout anterior sigue pagable
-    // hasta expirar ⇒ abrir otro exige confirmar el riesgo de doble cobro.
-    const canReopenAwaiting =
-      canCharge && linkId !== null && verified && phase === 'awaiting_payment' && !step.checkoutUrl;
+    // ── La venta según el servidor ──────────────────────────────────────────
+    const saleOk = saleRead.kind === 'ok' ? saleRead.sale : null;
+    const myIntent = status?.payment.id ?? null;
+    const inSale =
+      !!saleOk &&
+      (saleOk.history === 'partial' ||
+        saleOk.checkouts.some((c) => c.session?.id === step.sessionId));
+    // Venta verificada = se leyó bien y contiene este checkout.
+    const saleVerified = linkId !== null && !!saleOk && inSale;
+    // Venta protegida por el backend: como máximo un cobro exitoso (0046).
+    const protectedSale = saleVerified && saleOk!.single_charge && saleOk!.history === 'complete';
+    const otherPaid =
+      saleVerified && saleOk!.charge === 'charged' && saleOk!.charge_payment_intent_id !== myIntent;
+    const otherInFlight =
+      saleVerified &&
+      saleOk!.charge === 'in_progress' &&
+      saleOk!.charge_payment_intent_id !== myIntent;
+    const otherOpen =
+      saleVerified &&
+      saleOk!.checkouts.some(
+        (c) => c.session?.id !== step.sessionId && !SETTLED_UNPAID.has(checkoutPhase(c))
+      );
+    // Recuperar (checkout nuevo de la MISMA venta) tras un desenlace sin cobro:
+    //  - venta protegida: basta con que nadie haya cobrado ni esté cobrando;
+    //  - venta sin protección (antigua/multiuso): además ningún otro checkout
+    //    puede seguir pagable y el historial debe ser completo.
+    const saleAllowsRecovery =
+      saleVerified &&
+      !otherPaid &&
+      !otherInFlight &&
+      (protectedSale || (saleOk!.history === 'complete' && !otherOpen));
+    const canReopen = canCharge && linkId !== null && verified && recoverable && saleAllowsRecovery;
     const stoppedUnverified = poll.kind === 'stopped' && !(phase && isTerminalPhase(phase));
+    // Esperando pago sin URL (recarga/otra pestaña): el checkout sigue pagable
+    // hasta expirar. NO se ofrece un checkout sustituto (dos pagables ⇒ riesgo
+    // de doble cobro); se guía al operario con el estado verificado.
+    const held =
+      phase === 'awaiting_payment' &&
+      !step.checkoutUrl &&
+      !stoppedUnverified &&
+      !otherPaid &&
+      !otherInFlight;
+    // Checkout sustituto (URL perdida): SOLO en ventas protegidas por el
+    // backend y sin cobro en curso — el primero que se pague bloquea al otro.
+    const canSubstitute =
+      canCharge &&
+      linkId !== null &&
+      verified &&
+      held &&
+      protectedSale &&
+      saleOk!.charge === 'none';
     // «En proceso», estado no reconocido o no verificado: no se ofrece cobrar
     // de nuevo (ni otro checkout ni una venta nueva).
     const blockNext =
@@ -457,6 +540,20 @@ export function PosTerminal({
       stoppedUnverified ||
       poll.kind === 'auth_lost' ||
       (status === null && poll.kind !== 'not_found');
+    // Por qué NO se ofrece recuperar (texto único y concreto para el operario).
+    const recoveryNote = !recoverable
+      ? null
+      : saleRead.kind === 'error' || (saleRead.kind === 'ok' && !inSale)
+        ? t.saleUnverified
+        : saleRead.kind === 'idle'
+          ? null
+          : otherPaid
+            ? t.recoveryBlockedPaid
+            : otherInFlight || (!protectedSale && otherOpen)
+              ? t.recoveryBlockedOther
+              : !protectedSale && saleOk?.history === 'partial'
+                ? t.legacyNoRecovery
+                : null;
     const tone =
       phase === 'succeeded'
         ? 'ok'
@@ -467,7 +564,11 @@ export function PosTerminal({
             : 'neutral';
     // Consulta manual: solo cuando el seguimiento automático se detuvo o el
     // estado no es reconocible (los terminales ya no cambian de fase).
-    const manualRefresh = poll.kind === 'stopped' || phase === 'unknown';
+    const manualRefresh =
+      poll.kind === 'stopped' ||
+      phase === 'unknown' ||
+      held ||
+      (linkId !== null && saleRead.kind === 'error');
 
     return (
       <section className="card pos-panel" aria-labelledby="pos-status-title">
@@ -493,7 +594,11 @@ export function PosTerminal({
             <p className="pos-status-label">{phase ? t.phase[phase] : t.refreshing}</p>
             {phase && (
               <p className="pos-status-detail">
-                {stoppedUnverified ? t.lastKnownPhase : t.phaseDetail[phase]}
+                {stoppedUnverified
+                  ? t.lastKnownPhase
+                  : phase === 'awaiting_payment' && otherPaid
+                    ? t.superseded
+                    : t.phaseDetail[phase]}
               </p>
             )}
             {phase === 'unknown' && status && (
@@ -543,6 +648,16 @@ export function PosTerminal({
             ) : (
               <>
                 <p>{t.recoveryText[phase]}</p>
+                {verified && recoveryNote && (
+                  <p
+                    className="pos-alert pos-alert-warn"
+                    role="alert"
+                    data-testid="pos-recovery-block"
+                  >
+                    {recoveryNote}
+                  </p>
+                )}
+                {canReopen && protectedSale && <p className="hint">{t.protectedNote}</p>}
                 {canReopen && (
                   <button
                     type="button"
@@ -557,8 +672,16 @@ export function PosTerminal({
           </div>
         )}
 
+        {phase === 'awaiting_payment' && (otherPaid || otherInFlight) && (
+          <div className="pos-alert pos-alert-warn" role="alert" data-testid="pos-sale-closed">
+            <p>{otherPaid ? t.recoveryBlockedPaid : t.saleInFlightElsewhere}</p>
+          </div>
+        )}
+
         {phase === 'awaiting_payment' &&
           !stoppedUnverified &&
+          !otherPaid &&
+          !otherInFlight &&
           (step.checkoutUrl ? (
             <div className="pos-present">
               <h3>{t.presentTitle}</h3>
@@ -583,38 +706,36 @@ export function PosTerminal({
             <p className="hint">{t.urlLostText}</p>
           ))}
 
-        {canReopenAwaiting &&
-          status &&
-          (confirmReopen ? (
-            <div className="pos-alert pos-alert-warn" role="alert" tabIndex={-1} ref={alertRef}>
-              <p>{t.reopenAwaitingWarn(dateTimeOf(status.session.expires_at, locale))}</p>
+        {held && status && (
+          <div className="pos-alert pos-alert-warn pos-held" data-testid="pos-held">
+            <p className="pos-alert-title">{t.heldTitle}</p>
+            <p>
+              {(protectedSale ? t.heldTextProtected : t.heldText)(
+                dateTimeOf(status.session.expires_at, locale)
+              )}
+            </p>
+            <ul>
+              <li>{t.heldCustomer}</li>
+              {protectedSale ? (
+                <li>{t.heldProtected}</li>
+              ) : (
+                <li>{t.heldWait(dateTimeOf(status.session.expires_at, locale))}</li>
+              )}
+              {canCharge && <li>{t.heldOtherSale}</li>}
+            </ul>
+            {canSubstitute && (
               <div className="pos-actions">
-                <button type="button" className="btn" onClick={() => void reopen(linkId!)}>
-                  {t.reopenConfirm}
-                </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setConfirmReopen(false)}
+                  onClick={() => void reopen(linkId!)}
                 >
-                  {t.reopenCancel}
+                  {t.substituteCheckout}
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="pos-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setConfirmReopen(true);
-                  setTimeout(() => alertRef.current?.focus(), 0);
-                }}
-              >
-                {t.reopenAwaiting}
-              </button>
-            </div>
-          ))}
+            )}
+          </div>
+        )}
 
         {status && (
           <dl className="kv pos-refs">
@@ -635,15 +756,8 @@ export function PosTerminal({
           </dl>
         )}
 
-        {linkId !== null && attempts.length > 1 && (
-          <PosAttempts
-            orgId={orgId}
-            locale={locale}
-            attempts={attempts}
-            current={step.sessionId}
-            currentPhase={phase}
-            currentCreatedAt={status?.session.created_at ?? null}
-          />
+        {saleVerified && (saleOk!.checkouts.length > 1 || saleOk!.history === 'partial') && (
+          <PosAttempts locale={locale} sale={saleOk!} current={step.sessionId} />
         )}
 
         <div className="pos-actions">
@@ -667,7 +781,9 @@ export function PosTerminal({
           {canCharge && !blockNext && (
             <button
               type="button"
-              className={phase === 'succeeded' ? 'btn btn-primary' : 'btn btn-secondary'}
+              className={
+                phase === 'succeeded' || otherPaid ? 'btn btn-primary' : 'btn btn-secondary'
+              }
               onClick={newSale}
             >
               {t.nextSale}
@@ -718,11 +834,13 @@ export function PosTerminal({
           <div className="pos-alert pos-alert-bad" role="alert" tabIndex={-1} ref={alertRef}>
             <p>{posErrorText(t, step.code, t.openFailed)}</p>
             <div className="pos-actions">
-              {step.code !== 'link_unavailable' && step.code !== 'insufficient_permissions' && (
-                <button type="button" className="btn" onClick={() => void reopen(step.linkId)}>
-                  {t.openAgain}
-                </button>
-              )}
+              {step.code !== 'link_unavailable' &&
+                step.code !== 'insufficient_permissions' &&
+                step.code !== 'sale_already_charged' && (
+                  <button type="button" className="btn" onClick={() => void reopen(step.linkId)}>
+                    {t.openAgain}
+                  </button>
+                )}
               <button type="button" className="btn btn-secondary" onClick={newSale}>
                 {t.nextSale}
               </button>
@@ -899,79 +1017,44 @@ export function PosTerminal({
 }
 
 /**
- * Checkouts de la venta abiertos desde ESTE navegador (registro local; la API
- * no relaciona venta→sesiones, G3). El estado de cada intento anterior se lee
- * UNA vez del BFF de estado (dato real); si falla, se dice «sin consultar».
+ * Checkouts de la venta según el SERVIDOR (vínculo persistente 0046): todos,
+ * abiertos desde cualquier pestaña o dispositivo, con su estado real. Una
+ * venta anterior al vínculo declara su historial PARCIAL.
  */
 const MAX_ATTEMPTS_SHOWN = 5;
 
 function PosAttempts({
-  orgId,
   locale,
-  attempts,
+  sale,
   current,
-  currentPhase,
-  currentCreatedAt,
 }: {
-  orgId: string;
   locale: Locale;
-  attempts: string[];
+  sale: PosSale;
   current: string;
-  currentPhase: SalePhase | null;
-  currentCreatedAt: string | null;
 }) {
   const t = POS_MESSAGES[locale];
-  const shown = attempts.slice(-MAX_ATTEMPTS_SHOWN);
-  const offset = attempts.length - shown.length;
-  const [seen, setSeen] = useState<Record<string, { phase: SalePhase; at: string } | 'error'>>({});
-  const key = shown.join(',');
-  useEffect(() => {
-    let cancelled = false;
-    for (const sid of key.split(',')) {
-      if (!sid || sid === current) continue;
-      void call(
-        `/api/orgs/${encodeURIComponent(orgId)}/pos/sessions/${encodeURIComponent(sid)}`
-      ).then((r) => {
-        if (cancelled) return;
-        const s = r.kind === 'ok' ? (r.body as PosSaleStatus | null) : null;
-        setSeen((prev) => ({
-          ...prev,
-          [sid]:
-            s?.session && s.payment
-              ? {
-                  phase: classifySale(s.session.status, s.payment.status),
-                  at: s.session.created_at,
-                }
-              : 'error',
-        }));
-      });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [key, current, orgId]);
+  const all = sale.checkouts;
+  const shown = all.slice(-MAX_ATTEMPTS_SHOWN);
+  const offset = all.length - shown.length;
 
   return (
     <div className="pos-attempts" data-testid="pos-attempts">
       <h3>{t.attemptsTitle}</h3>
-      <p className="hint">{t.attemptsScope}</p>
+      <p className="hint">
+        {sale.history === 'complete'
+          ? t.attemptsScope
+          : t.attemptsScopePartial(dateTimeOf(sale.tracking_since, locale))}
+        {sale.truncated ? ` ${t.attemptsTruncated}` : ''}
+      </p>
       <ol start={offset + 1}>
-        {shown.map((sid, i) => {
-          const isCurrent = sid === current;
-          const info = isCurrent
-            ? currentPhase
-              ? { phase: currentPhase, at: currentCreatedAt }
-              : null
-            : seen[sid];
-          const phase = info && info !== 'error' ? info.phase : null;
-          const at = info && info !== 'error' ? info.at : null;
+        {shown.map((c, i) => {
+          const isCurrent = c.session?.id === current;
+          const phase = checkoutPhase(c);
           return (
-            <li key={sid} aria-current={isCurrent ? 'step' : undefined}>
+            <li key={c.payment_intent_id} aria-current={isCurrent ? 'step' : undefined}>
               <span className="pos-attempt-n">{t.attemptLabel(offset + i + 1)}</span>
-              {at && <span className="pos-attempt-at">{timeOf(at, locale)}</span>}
-              <span className={`badge pos-phase-${phase ?? 'unknown'}`}>
-                {phase ? t.phase[phase] : t.attemptPending}
-              </span>
+              <span className="pos-attempt-at">{timeOf(c.created_at, locale)}</span>
+              <span className={`badge pos-phase-${phase}`}>{t.phase[phase]}</span>
               {isCurrent && <span className="pos-attempt-current">({t.attemptCurrent})</span>}
             </li>
           );

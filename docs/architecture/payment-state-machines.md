@@ -33,6 +33,8 @@ stateDiagram-v2
     succeeded --> refunded : refund total
 ```
 
+**Restricción por política, no por estado (0047).** Para intents de una venta POS de cobro único (`single_charge_link_id` no nulo) el motor añade, sobre este mapa, una regla del trigger `fluvia_single_charge_release_guard`: un intent que ya retiene la venta (todo estado salvo `created`/`requires_*`/`failed`/`canceled`, p. ej. `authorized`) **no puede pasar a `canceled`** mientras no exista anulación verificada del proveedor, y **solo pasa a `failed`** con un rechazo resuelto del proveedor (attempt `failed` y ningún attempt vivo o cobrado). El mapa de transiciones no cambia (los links multiuso conservan `authorized --> canceled`), por eso doc ↔ TS ↔ DDL siguen idénticos.
+
 Terminales: `failed`, `canceled`, `refunded`. Nota: `failed` del intent es terminal; el **reintento** se modela creando un nuevo attempt desde `requires_confirmation`/`processing` según método — el intent solo pasa a `failed` cuando la política de reintentos se agota o el fallo es definitivo.
 
 ## 2. Payment Attempt (uno por intento real contra el proveedor)

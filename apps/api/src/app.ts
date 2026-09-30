@@ -30,6 +30,8 @@ import {
   PayoutService,
   RefundService,
   ResilientProvider,
+  isSaleReleaseUnverified,
+  isSingleChargeViolation,
 } from '@fluvia/payments-core';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
@@ -416,6 +418,24 @@ export function buildApp({
           err.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))
         )
       );
+    }
+
+    // Garantía final del motor (índice único 0046): si un camino se saltara el
+    // guard de servicio, el 23505 se traduce al mismo conflicto de dominio.
+    if (isSingleChargeViolation(err)) {
+      req.log.warn({ err }, 'single-charge index rejected a second charge');
+      return reply
+        .code(ERROR_CATALOG.sale_already_charged.status)
+        .send(errorBody('sale_already_charged', req.id));
+    }
+
+    // Guard del motor (0047): una venta de cobro único no se libera sin un
+    // hecho verificado del proveedor, venga del camino que venga.
+    if (isSaleReleaseUnverified(err)) {
+      req.log.warn({ err }, 'single-charge release guard rejected a local release');
+      return reply
+        .code(ERROR_CATALOG.sale_release_unverified.status)
+        .send(errorBody('sale_release_unverified', req.id));
     }
 
     const code = DOMAIN_ERROR_CODES[err.name];

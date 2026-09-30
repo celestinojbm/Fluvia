@@ -136,6 +136,44 @@ describe('CheckoutClient', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('Pago completado'));
   });
 
+  it('another checkout of the same sale already charged: no form, clear message (es)', async () => {
+    mockFetch(() => ({ ...OPEN_VIEW, sale_closed: true }));
+    const { container } = render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    expect(screen.getByTestId('status')).toHaveTextContent(
+      'ya tiene otro pago aprobado o en curso'
+    );
+    expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+
+  it('confirm 409 sale_already_charged is CERTAIN: reloads the view, never «uncertain»', async () => {
+    let rejected = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/confirm')) {
+          rejected = true;
+          return Promise.resolve({
+            ok: false,
+            status: 409,
+            json: () => Promise.resolve({ error: { code: 'sale_already_charged' } }),
+          });
+        }
+        const view = rejected ? { ...OPEN_VIEW, sale_closed: true } : OPEN_VIEW;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(view) });
+      })
+    );
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await screen.findByTestId('amount');
+    await userEvent.click(screen.getByRole('button', { name: 'Pagar' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('ya tiene otro pago')
+    );
+    expect(screen.queryByText(/No lo repitas/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
+  });
+
   it('a double submit sends a single confirm', async () => {
     let release: (v: unknown) => void = () => {};
     const confirmCalls: string[] = [];

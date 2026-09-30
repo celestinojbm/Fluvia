@@ -1,7 +1,11 @@
 import { withTenantTransaction, type Pool } from '@fluvia/db';
 import type { PostingService } from '@fluvia/ledger';
 import { Money } from '@fluvia/money';
-import { InvalidStateTransitionError, PaymentIntentNotFoundError } from './errors.js';
+import {
+  InvalidStateTransitionError,
+  PaymentIntentNotFoundError,
+  SaleAlreadyChargedError,
+} from './errors.js';
 import type { IntentStatus } from './fsm.js';
 import type { PaymentProvider } from './provider.js';
 import { CircuitOpenError } from './resilience.js';
@@ -40,6 +44,20 @@ const CONFIRM_PATHS: Partial<Record<IntentStatus, IntentStatus[]>> = {
   requires_confirmation: ['processing'],
 };
 
+/**
+ * Estados que NO retienen una venta de cobro único: aún no cobra (created,
+ * requires_*) o ya no puede cobrar (failed, canceled). Cualquier otro —
+ * processing con desenlace incierto incluido — la retiene. Espejo exacto del
+ * predicado del índice `payment_intents_single_charge_uq` (0046).
+ */
+export const SALE_RELEASING_STATUSES: readonly IntentStatus[] = [
+  'created',
+  'requires_payment_method',
+  'requires_confirmation',
+  'failed',
+  'canceled',
+];
+
 export interface ConfirmBeginResult {
   intent: PaymentIntentDto;
   attemptId: string;
@@ -59,14 +77,39 @@ export class PaymentConfirmationService {
 
   /** Fase 1 — client-bound: compone con la capa de idempotencia (F2-09). */
   async beginIn(c: TxClient, tenantId: string, intentId: string): Promise<ConfirmBeginResult> {
-    const cur = await c.query<{ status: IntentStatus; amount: string; currency: string }>(
-      `SELECT status, amount::text, currency FROM payment_intents WHERE id = $1 FOR UPDATE`,
+    const cur = await c.query<{
+      status: IntentStatus;
+      amount: string;
+      currency: string;
+      single_charge_link_id: string | null;
+    }>(
+      `SELECT status, amount::text, currency, single_charge_link_id
+       FROM payment_intents WHERE id = $1 FOR UPDATE`,
       [intentId]
     );
     const row = cur.rows[0];
     if (!row) throw new PaymentIntentNotFoundError();
     const steps = CONFIRM_PATHS[row.status];
     if (!steps) throw new InvalidStateTransitionError(row.status, 'processing');
+
+    // Venta de cobro único (POS, 0046): el lock del LINK serializa las
+    // confirmaciones de todos sus intents; con él tomado, la lectura ve el
+    // estado confirmado de los hermanos (READ COMMITTED: snapshot por
+    // sentencia). Si otro intent de la venta retiene el cobro, no se inicia
+    // nada — ni attempt ni llamada al proveedor. El índice único del motor es
+    // la garantía final si un camino se saltara este guard.
+    if (row.single_charge_link_id) {
+      await c.query(`SELECT 1 FROM payment_links WHERE id = $1 FOR UPDATE`, [
+        row.single_charge_link_id,
+      ]);
+      const held = await c.query(
+        `SELECT 1 FROM payment_intents
+         WHERE single_charge_link_id = $1 AND id <> $2 AND NOT (status = ANY($3::text[]))
+         LIMIT 1`,
+        [row.single_charge_link_id, intentId, SALE_RELEASING_STATUSES]
+      );
+      if ((held.rowCount ?? 0) > 0) throw new SaleAlreadyChargedError();
+    }
 
     let intent: PaymentIntentDto | undefined;
     for (const to of steps) {

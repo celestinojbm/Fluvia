@@ -304,6 +304,41 @@ describe('PosRecentCharges', () => {
     expect(r.violations).toEqual([]);
   });
 
+  it('vincula cada cobro con su venta (servidor) y declara los cobros antiguos sin venta', async () => {
+    const SALE = 'b4247b5e-dadc-473b-a79f-0159205c9a92';
+    const { container } = render(
+      <PosRecentCharges
+        orgId={ORG}
+        locale="es"
+        merchants={MERCHANTS}
+        initial={okResult(
+          [session(1, 'open'), session(2, 'open'), session(3, 'completed')],
+          [
+            { ...intent(1, 'failed'), payment_link_id: SALE },
+            { ...intent(2, 'requires_payment_method'), payment_link_id: SALE },
+            intent(3, 'succeeded'),
+          ]
+        )}
+      />
+    );
+    const sales = screen.getAllByTestId('pos-recent-sale').map((e) => e.textContent);
+    expect(sales.filter((x) => x?.includes('••9a92'))).toHaveLength(2);
+    expect(sales.filter((x) => x?.includes('2 checkouts en la ventana'))).toHaveLength(2);
+    expect(sales).toContain('Sin venta vinculada');
+    expect(screen.getByTestId('pos-recent-legacy')).toHaveTextContent(
+      'anteriores al registro de ventas del servidor'
+    );
+    // «Seguir» lleva la venta del servidor al terminal.
+    const tracks = screen.getAllByRole('link', { name: /^Seguir/ });
+    expect(tracks.some((l) => l.getAttribute('href')?.includes(`link=${SALE}`))).toBe(true);
+    expect((await axe.run(container)).violations).toEqual([]);
+  });
+
+  it('un vínculo de venta malformado descarta el intent (no se inventa una venta)', () => {
+    const r = joinRecentCharges([session(1)], [{ ...intent(1, 'failed'), payment_link_id: 'x' }]);
+    expect(r.rows[0]!.payment).toBeNull();
+  });
+
   it('ventana truncada: lo dice y, al filtrar, remite a Pagos', async () => {
     const sessions = Array.from({ length: RECENT_WINDOW }, (_, i) => session(i));
     const intents = sessions.map((_, i) => intent(i, i === 5 ? 'failed' : 'succeeded'));
