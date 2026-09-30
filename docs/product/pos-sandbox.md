@@ -48,7 +48,7 @@ Checkout alojado: si la venta de cobro único ya tiene otro pago aprobado o en c
 - **Checkouts antiguos**: los intents creados antes de `0046` no tienen `payment_link_id` ni `single_charge_link_id`: el índice no los cubre y no se infiere su venta (no hay backfill). Los links antiguos quedan multiuso (`single_charge = false`) y con historial **parcial** (`checkout_tracking_since` = instante de la migración): el POS no ofrece sustituto ni recuperación para ellos y lo explica; «Cobros recientes» los marca «Sin venta vinculada».
 - **Abrir checkout**: el endpoint público **no es idempotente**. Resultado incierto ⇒ se dice explícitamente y **no se reintenta solo**; el operador decide abrir otro. Un checkout abierto y no pagado no cobra nada y expira (watchdog de checkout).
 - **Estado**: un fallo de lectura nunca se muestra como estado del pago (404 «no encontrado», 401 «inicia sesión», 5xx «no pudimos actualizar»). Solo `succeeded` (y sus refunds) cuenta como cobrado; `processing` advierte «no cobres de nuevo».
-- **CSRF**: los dos POST del recorrido pasan por `assertTrustedMutationRequest` (same-origin estricto). Se añadió a `payment-links` (deuda registrada en HANDOFF, cerrada **solo para esa ruta**; `refunds`, `operational-cases/*`, `case-adjustments/*`, `disputes/*/evidence` siguen pendientes de su propia autorización).
+- **CSRF**: los dos POST del recorrido pasan por `assertTrustedMutationRequest` (same-origin estricto). Se añadió a `payment-links` (deuda registrada en HANDOFF, cerrada **solo para esa ruta**; `refunds` quedó cubierta en el incremento de devolución; `operational-cases/*`, `case-adjustments/*`, `disputes/*/evidence` siguen pendientes de su propia autorización).
 - **Aislamiento**: el BFF de apertura jamás usa el endpoint público con un link que no haya leído antes por el plano de sesión de esa org; toda lectura pasa por RLS + membresía (otra org ⇒ 404).
 
 ## 4. Contratos que faltan (no simulados)
@@ -108,3 +108,48 @@ Límites conocidos: el terminal no detecta la caducidad de la sesión mientras m
 | [12 · 1440](pos-evidence/12-terminal-venta-cobrada-por-otro-1440.png) · [390](pos-evidence/12-terminal-venta-cobrada-por-otro-390.png) | Terminal: la venta se cobró con otro checkout; checkouts de la venta según el servidor |
 | [13 · 1440](pos-evidence/13-venta-antigua-sin-sustituto-1440.png) · [390](pos-evidence/13-venta-antigua-sin-sustituto-390.png) | Venta antigua: historial parcial, sin sustituto |
 | [14 · 1440](pos-evidence/14-cobros-recientes-venta-1440.png) | Cobros recientes con su venta vinculada |
+
+### Incremento «devolución de una venta» (PR apilado sobre `integration/fluvia-pos-candidato`)
+
+**Por qué este recorrido.** Tras #55–#58 el POS cobra de principio a fin, pero una venta cobrada no tenía salida operativa: si el cliente devuelve el producto, el cajero debía salir del POS a la página genérica del pago, cuyo formulario pide **unidades menores** (no lo que el cajero ve), no sigue el desenlace (recarga la página), no distingue un resultado incierto de un fallo y su BFF no tenía guard CSRF. La API ya tenía el contrato completo por sesión (`POST/GET /v1/organizations/:orgId/refunds`), así que no hacía falta ninguna API nueva.
+
+Recorrido: **Cobro aprobado → «Devolver…» → todo o una parte (+ motivo) → confirmar → registrar → desenlace**, desde el terminal y desde «Cobros recientes → Seguir».
+
+| Pantalla | Acción | API (navegador → BFF → API) | Estado / regla | Prueba |
+| --- | --- | --- | --- | --- |
+| Terminal, cobro `succeeded`/`partially_refunded`/`refunded` | Ver devoluciones y cupo | `GET /api/orgs/:orgId/pos/payments/:id/refunds` → `GET /v1/organizations/:orgId/refunds?payment_intent_id=&limit=100` (+ `amount_captured`/`amount_refunded` del intent ya leído) | Cupo = capturado − devuelto − (created + processing + **indeterminate**); lista todo-o-nada | `pos-refund-bff.test.ts`, `pos-refund.test.tsx` |
+| Terminal | «Devolver…» → total/parcial → revisar | — (validación local con `parseMajorAmount`, misma regla de visualización que el cobro) | Parcial > cupo ⇒ error asociado al campo, sin llamada | `pos-refund.test.tsx`, captura 21 |
+| Confirmación | «Devolver X» | `POST /api/orgs/:orgId/refunds` (CSRF + `Idempotency-Key`) → `POST /v1/organizations/:orgId/refunds` (`reconciliation:manage`, auditado) | Importe **explícito** también en «todo»; una key por borrador; candado contra doble envío | `pos-refund.test.tsx`, `dashboard-routes.test.ts` (PG real) |
+| Resultado | Seguimiento | relectura del listado cada 2 s (tope 20) + relectura del cobro | `succeeded` / `failed` / `canceled` / `indeterminate` (no se repite) / sin desenlace tras el tope ⇒ «Consultar devoluciones» | `pos-refund-states.test.tsx`, capturas 23, 26 |
+| Resultado incierto | «Reintentar de forma segura» | mismo POST, **misma key** | Red/5xx ⇒ «No sabemos si se registró»; borrador bloqueado; Escape no lo descarta | tests + navegador (2 POST, misma key), captura 24 |
+| Lectura fallida | «Reintentar» | GET anterior | Datos previos marcados como desactualizados; **sin acción** hasta leer bien | captura 25 |
+| Sesión caducada | Enlace «Vuelve a iniciar sesión» | 401 del BFF | «La devolución no se registró»; deja de consultar | captura 29 |
+| Sin saldo del comercio | — | el API cancela antes de tocar al proveedor (`insufficient_merchant_balance`) | Explicado al cajero; el cupo vuelve | `dashboard-routes.test.ts`, captura 28 |
+| Cobros recientes | Marca «Devuelta» / «Devolución parcial» | listados existentes | Se refresca también cuando cambia `amount_refunded` sin cambiar la fase | captura 27 |
+
+**Invariante #58.** Una devolución no libera la venta: el intent reembolsado sigue reteniendo el cobro único (0046). El terminal sigue en «aprobado», no ofrece recuperar ni checkout sustituto y no llama a `/pos/checkout`; en PG real, tras devolverla entera, `POST /v1/payment_links/:id/sessions` sigue respondiendo 409 y la venta `charge: charged, succeeded_count: 1`.
+
+**Límites reales.**
+
+1. **Saldo del comercio.** La devolución debita `merchant.available`; los fondos de un cobro quedan en `pending` y **ningún camino de producto los libera** (solo el seed y los tests llaman a `releaseSettlement`). En un comercio recién creado toda devolución termina `canceled` (`insufficient_merchant_balance`). El seed de demo tiene disponible solo en COP; una venta en USD no se puede devolver. Además la devolución debita el **bruto** y la liquidación libera el **neto** de comisiones: devolver una venta entera necesita saldo de otras.
+2. **`indeterminate` no reserva cupo en el servicio.** `RefundService.beginIn` solo descuenta `created`/`processing`; el POS descuenta también `indeterminate` y bloquea registrar otra, pero la API (o la página de pago) sí lo permitiría. Lo contiene el guard de no-negatividad del ledger, no el cupo. Propuesta (no implementada): incluir `indeterminate` en el remanente del servicio.
+3. **El MockProvider aprueba siempre las devoluciones**: `failed`/`indeterminate` desde el proveedor solo se prueban con fetch simulado (jsdom), no en navegador.
+4. **Ventana de 100 devoluciones** por cobro, sin cursor: si se llena, el POS no calcula el cupo y remite al detalle del pago.
+5. Resultado incierto con la petición aún en vuelo: una relectura puede no verla todavía; por eso la key se conserva por borrador (importe + motivo) hasta un éxito, y rehacer el mismo borrador la reutiliza.
+6. La página genérica del pago conserva su formulario en unidades menores (fuera de alcance); ahora pasa por el mismo guard CSRF.
+7. Moneda/exponente: se usa la regla de visualización existente (PEND-008 sin decidir); no se tocan país, impuestos ni reglas de COP (PEND-007).
+
+**Verificación en navegador** (local: PG 16, Redis, API/worker `NODE_ENV=local`, checkout y dashboard `next start`, seed de demo, MockProvider). Recorrido a 390/768/1440 px sin scroll horizontal (comprobado `scrollWidth ≤ clientWidth` en cada captura), tramo parcial completo **solo con teclado** a 390 px (foco en la opción, flecha ⇒ importe, Enter ⇒ confirmación enfocada, Tab+Enter ⇒ devolver). Capturas saneadas (ids → `••••` + 4 últimos, URL de checkout y correos eliminados):
+
+| Captura | Estado |
+| --- | --- |
+| [20 · 1440](pos-evidence/20-cobro-aprobado-devolucion-1440.png) · [768](pos-evidence/20-cobro-aprobado-devolucion-768.png) · [390](pos-evidence/20-cobro-aprobado-devolucion-390.png) | Cobro aprobado con panel de devolución |
+| [21 · 390](pos-evidence/21-parcial-importe-excesivo-390.png) | Parcial por encima del cupo (error en el campo) |
+| [22 · 390](pos-evidence/22-confirmar-parcial-390.png) · [1440](pos-evidence/22-confirmar-parcial-1440.png) | Confirmación |
+| [23 · 390](pos-evidence/23-parcial-devuelta-390.png) · [768](pos-evidence/23-parcial-devuelta-768.png) · [1440](pos-evidence/23-parcial-devuelta-1440.png) | Parcial completada; «Devolución parcial» en recientes |
+| [24 · 1440](pos-evidence/24-devolucion-incierta-1440.png) · [390](pos-evidence/24-devolucion-incierta-390.png) | Resultado incierto (red cortada) |
+| [25 · 1440](pos-evidence/25-lectura-fallida-desactualizada-1440.png) | Lectura fallida: datos desactualizados, sin acción |
+| [26 · 1440](pos-evidence/26-devuelta-por-completo-1440.png) · [390](pos-evidence/26-devuelta-por-completo-390.png) | Devuelta por completo: sin recuperar ni otro checkout |
+| [27 · 1440](pos-evidence/27-cobros-recientes-devuelta-1440.png) | Cobros recientes con marca de devolución |
+| [28 · 1440](pos-evidence/28-sin-saldo-cancelada-1440.png) · [390](pos-evidence/28-sin-saldo-cancelada-390.png) | Sin saldo disponible: cancelada y explicada |
+| [29 · 390](pos-evidence/29-sesion-caducada-390.png) · [1440](pos-evidence/29-sesion-caducada-1440.png) | Sesión caducada al registrar |

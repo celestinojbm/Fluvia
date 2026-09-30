@@ -46,15 +46,26 @@ export function PosWorkspace({
 
   // Refresca la lista solo cuando cambia el cobro seguido o su fase
   // verificada (no al montar sin cobro, ni por el bloqueo del borrador).
-  const last = useRef<{ sessionId: string | null; phase: SalePhase | null }>({
+  const last = useRef<{
+    sessionId: string | null;
+    phase: SalePhase | null;
+    revision: string | null;
+  }>({
     sessionId: null,
     phase: null,
+    revision: null,
   });
   const onActivity = useCallback((ev: PosActivity) => {
     setActivity(ev);
     const prev = last.current;
-    last.current = { sessionId: ev.sessionId, phase: ev.phase };
-    if (ev.sessionId !== null && (ev.sessionId !== prev.sessionId || ev.phase !== prev.phase)) {
+    const revision = ev.revision ?? null;
+    last.current = { sessionId: ev.sessionId, phase: ev.phase, revision };
+    // Una devolución cambia el pago sin cambiar la fase («aprobado»).
+    const refundChanged = prev.revision !== null && revision !== null && revision !== prev.revision;
+    if (
+      ev.sessionId !== null &&
+      (ev.sessionId !== prev.sessionId || ev.phase !== prev.phase || refundChanged)
+    ) {
       setSignal((n) => n + 1);
     }
   }, []);

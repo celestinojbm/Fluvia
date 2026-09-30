@@ -1118,3 +1118,130 @@ a.btn {
     justify-content: center;
   }
 }
+
+/* POS: devolución de un cobro */
+.pos-refund {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.pos-refund h3 {
+  margin: 0 0 0.35rem;
+}
+.pos-refund-summary {
+  margin: 0.75rem 0;
+}
+.pos-choice {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0.75rem;
+}
+.pos-choice label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+.pos-refund-confirm {
+  margin-top: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  background: #f4f6fa;
+}
+.pos-refund-confirm p {
+  margin: 0 0 0.35rem;
+}
+.pos-alert-ok {
+  color: var(--ok);
+  background: #e7f4ec;
+}
+.pos-refund-list-title {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+.pos-refund-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pos-refund-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+.pos-refund-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pos-refund-succeeded {
+  color: var(--ok);
+  background: #e7f4ec;
+}
+.pos-refund-failed,
+.pos-refund-canceled {
+  color: var(--bad);
+  background: #fbeaea;
+}
+.pos-refund-created,
+.pos-refund-processing {
+  color: #1d3f66;
+  background: #eaf2fb;
+}
+.pos-refund-indeterminate,
+.pos-refund-badge {
+  color: #5c3d00;
+  background: #fff4d6;
+}
+.pos-stale {
+  opacity: 0.7;
+}
+.pos-wrap {
+  overflow-wrap: anywhere;
+}
+.pos-refund-item[aria-current='true'] {
+  background: #f4f6fa;
+}
+.pos-refund [tabindex='-1']:focus {
+  outline: none;
+}
+.pos-refund [tabindex='-1']:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+.pos-choice input[type='radio'] {
+  /* `form input` (global) da 100% de ancho y 44px de alto: no aplica a radios. */
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+.pos-choice label {
+  margin: 0;
+  color: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pos-refund-form legend {
+  padding: 0;
+  font-weight: 700;
+}
+.pos-refund-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+}
+.pos-refund-summary dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 600px) {
+  .pos-refund-item .hint {
+    flex-basis: 100%;
+  }
+}

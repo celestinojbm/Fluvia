@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatAmount, type Locale } from '../messages';
 import { classifySale, type SalePhase } from './pos-contract';
 import { POS_MESSAGES } from './pos-messages';
+import { POS_REFUND_MESSAGES } from './pos-refund-messages';
 import type { RecentCharge, RecentChargesResult, RecentWindow } from './pos-reads';
 
 /**
@@ -103,6 +104,7 @@ export function PosRecentCharges({
   onTrack,
 }: PosRecentChargesProps) {
   const t = POS_MESSAGES[locale];
+  const tr = POS_REFUND_MESSAGES[locale];
   const en = locale === 'en';
   const [data, setData] = useState<{ rows: RecentCharge[]; window: RecentWindow } | null>(
     initial.ok ? { rows: initial.rows, window: initial.window } : null
@@ -345,6 +347,12 @@ export function PosRecentCharges({
                           {payment ? formatAmount(payment.amount, payment.currency, locale) : '—'}
                         </span>
                         <span className={`badge pos-phase-${p}`}>{t.phase[p]}</span>
+                        {(payment?.status === 'refunded' ||
+                          payment?.status === 'partially_refunded') && (
+                          <span className="badge pos-refund-badge" data-testid="pos-recent-refund">
+                            {payment.status === 'refunded' ? tr.badgeRefunded : tr.badgePartial}
+                          </span>
+                        )}
                       </div>
                       <div className="pos-recent-meta">
                         <span>{label}</span>
