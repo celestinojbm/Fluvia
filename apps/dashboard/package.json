@@ -6,7 +6,8 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "dev": "next dev -p 3200",
-    "start": "next start -p 3200"
+    "start": "next start -p 3200",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "next": "^15.5.26",

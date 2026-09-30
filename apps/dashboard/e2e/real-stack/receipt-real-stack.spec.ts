@@ -9,7 +9,11 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
  * Recorrido desde el POS, como un cajero:
  *  (a) venta COP → checkout alojado → el comprador paga (tok_approve) → aprobado;
  *  (b) devolución parcial CONFIRMADA (el MockProvider aprueba);
- *  (c) devolución parcial con timeout del proveedor ⇒ `indeterminate`.
+ *  (c) devolución parcial con timeout del proveedor ⇒ `indeterminate`;
+ *  (d) 100 devoluciones más (API real, 1 unidad cada una): la lista supera la
+ *      ventana de 100 de la API (las MÁS RECIENTES) y la `indeterminate` de (c)
+ *      queda fuera: el justificante no debe mostrar desglose ni en pantalla
+ *      ni en papel.
  * Tras cada paso se abre el justificante y su TEXTO se compara con las
  * lecturas REALES de la API (`payment_intents/:id`, `refunds?payment_intent_id=`)
  * hechas con la misma sesión. Nada de stub.
@@ -212,6 +216,63 @@ test('(c) devolución indeterminate: pendiente de verificación, no suma como de
         fullPage: true,
       });
     }
+  }
+  await page.close();
+});
+
+test('(d) más de 100 devoluciones reales: sin desglose, total de la API', async () => {
+  test.skip(!FLAG, 'depende de (c)');
+  const cookie = (await ctx.cookies()).find((c) => c.name === 'fluvia_session')!;
+  for (let i = 0; i < 100; i++) {
+    const res = await fetch(`${API}/v1/organizations/${ORG}/refunds`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${cookie.value}`,
+        'content-type': 'application/json',
+        'idempotency-key': crypto.randomUUID(),
+      },
+      body: JSON.stringify({ payment_intent_id: paymentId, amount: 1 }),
+    });
+    expect(res.status).toBe(201);
+  }
+  const intent = await apiRead(`/payment_intents/${paymentId}`);
+  const window100 = (await apiRead(`/refunds?payment_intent_id=${paymentId}&limit=100`)) as {
+    data: Array<{ status: string }>;
+  };
+  // La API real: 100 en la ventana, ninguna es la indeterminate antigua.
+  expect(window100.data).toHaveLength(100);
+  expect(window100.data.some((r) => r.status === 'indeterminate')).toBe(false);
+  expect(intent.amount_refunded).toBe(12000 + 100);
+
+  const page = await ctx.newPage();
+  await page.goto(`${APP}/o/${ORG}/pos/receipts/${paymentId}`);
+  const note = page.getByTestId('pos-receipt-truncated');
+  await expect(note).toContainText('NO incluye el desglose');
+  await expect(page.getByTestId('pos-receipt-refund')).toHaveCount(0);
+  expect(digits(await page.getByTestId('pos-receipt-refunded').textContent())).toBe(12100);
+  expect(await page.locator('body').innerText()).not.toMatch(UUID);
+  log.push({
+    step: 'd-mas-de-100',
+    api: { amount_refunded: intent.amount_refunded, window: window100.data.length },
+    receipt: { breakdownItems: 0, truncatedNote: true },
+  });
+  if (EVIDENCE) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({
+        path: `${EVIDENCE}/52-real-mas-de-100-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
+  await page.emulateMedia({ media: 'print' });
+  await expect(note).toBeVisible();
+  await expect(page.getByTestId('pos-receipt-refund')).toHaveCount(0);
+  if (EVIDENCE) {
+    await page.screenshot({
+      path: `${EVIDENCE}/53-real-impresion-mas-de-100-1440.png`,
+      fullPage: true,
+    });
   }
   await page.close();
 });

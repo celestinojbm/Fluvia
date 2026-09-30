@@ -1,3 +1,5 @@
 .next/
 next-env.d.ts.timestamp
 *.tsbuildinfo
+test-results/
+playwright-report/
