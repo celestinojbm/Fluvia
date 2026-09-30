@@ -19,7 +19,12 @@ interface HostedView {
   payment_intent: { id: string; status: string; amount: number; currency: string };
 }
 
-type Phase = 'loading' | 'ready' | 'paying' | 'error' | 'not_found';
+// `uncertain`: el confirm no devolvió una vista válida (red/5xx/4xx). El pago
+// pudo haberse procesado: jamás se invita a pagar otra vez sin consultar antes.
+type Phase = 'loading' | 'ready' | 'paying' | 'uncertain' | 'error' | 'not_found';
+
+const PENDING_POLL_MS = 3000;
+const PENDING_MAX_POLLS = 40;
 
 const METHOD_TOKENS = [
   { token: 'tok_approve', key: 'methodApprove' as const },
@@ -32,7 +37,9 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   const [phase, setPhase] = useState<Phase>('loading');
   const [view, setView] = useState<HostedView | null>(null);
   const [token, setToken] = useState('tok_approve');
+  const [checking, setChecking] = useState(false);
   const statusRef = useRef<HTMLParagraphElement>(null);
+  const payingRef = useRef(false);
 
   const clientSecret = useCallback(() => {
     if (typeof window === 'undefined') return '';
@@ -44,7 +51,8 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       const res = await fetch(`/api/checkout/${sessionId}/status`, {
         headers: { 'x-checkout-client-secret': clientSecret() },
       });
-      if (res.status === 404) return setPhase('not_found');
+      // 400 = id con formato inválido: para el comprador es un enlace inválido.
+      if (res.status === 404 || res.status === 400) return setPhase('not_found');
       if (!res.ok) return setPhase('error');
       setView((await res.json()) as HostedView);
       setPhase('ready');
@@ -57,7 +65,17 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
     void load();
   }, [load]);
 
+  const recheck = useCallback(async () => {
+    setChecking(true);
+    await load();
+    setChecking(false);
+    statusRef.current?.focus();
+  }, [load]);
+
   const pay = useCallback(async () => {
+    // Candado síncrono: un doble envío no genera dos confirmaciones.
+    if (payingRef.current) return;
+    payingRef.current = true;
     setPhase('paying');
     try {
       const res = await fetch(`/api/checkout/${sessionId}/confirm`, {
@@ -69,14 +87,36 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         body: JSON.stringify({ payment_method_token: token }),
       });
       if (res.status === 404) return setPhase('not_found');
-      if (!res.ok) return setPhase('error');
+      if (!res.ok) return setPhase('uncertain');
       setView((await res.json()) as HostedView);
       setPhase('ready');
       statusRef.current?.focus();
     } catch {
-      setPhase('error');
+      setPhase('uncertain');
+    } finally {
+      payingRef.current = false;
     }
   }, [sessionId, token, clientSecret]);
+
+  // Pago asíncrono en curso: se re-consulta el estado (acotado) hasta que el
+  // proveedor simulado lo resuelva; nunca se asume el desenlace.
+  const pendingNow =
+    phase === 'ready' &&
+    view?.status === 'open' &&
+    (view.payment_intent.status === 'processing' || view.payment_intent.status === 'submitted');
+  const pendingPolls = useRef(0);
+  useEffect(() => {
+    if (!pendingNow) {
+      pendingPolls.current = 0;
+      return;
+    }
+    if (pendingPolls.current >= PENDING_MAX_POLLS) return;
+    const timer = setTimeout(() => {
+      pendingPolls.current += 1;
+      void load();
+    }, PENDING_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [pendingNow, view, load]);
 
   if (phase === 'loading') {
     return (
@@ -95,6 +135,20 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       </main>
     );
   }
+  if (phase === 'uncertain') {
+    return (
+      <main className="checkout">
+        <h1>{t.title}</h1>
+        <p className="status status-warn" role="alert">
+          {t.paymentUncertain}
+        </p>
+        <button type="button" className="pay" onClick={() => void recheck()} disabled={checking}>
+          {checking ? t.checking : t.checkStatus}
+        </button>
+        <p className="notice">{t.sandboxNotice}</p>
+      </main>
+    );
+  }
   if (phase === 'error' || !view) {
     return (
       <main className="checkout">
@@ -102,6 +156,9 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         <p className="error" role="alert">
           {t.loadError}
         </p>
+        <button type="button" className="pay" onClick={() => void recheck()} disabled={checking}>
+          {checking ? t.checking : t.retry}
+        </button>
       </main>
     );
   }
@@ -141,6 +198,17 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       >
         {statusMessage}
       </p>
+
+      {pending && (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => void recheck()}
+          disabled={checking}
+        >
+          {checking ? t.checking : t.checkStatus}
+        </button>
+      )}
 
       {canPay && (
         <form
