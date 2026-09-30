@@ -1356,9 +1356,23 @@ a.btn {
     justify-content: center;
   }
 }
+.print-only {
+  display: none;
+}
 @media print {
   body {
     background: #fff;
+  }
+  .print-only {
+    display: block;
+  }
+  /* Justificante desactualizado: en papel solo sale el aviso, nunca los datos. */
+  .pos-stale-receipt > :not(.pos-print-stale) {
+    display: none !important;
+  }
+  .pos-print-stale {
+    font-weight: 700;
+    color: #000;
   }
   .no-print {
     display: none !important;

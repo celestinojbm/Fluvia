@@ -155,7 +155,10 @@ export async function GET(
     payment,
     merchant_name: merchantName,
     sale,
-    refunds: snapshot.refunds,
+    // Lista truncada: la API devuelve solo las 100 MÁS RECIENTES; un
+    // desglose parcial podría ocultar una devolución `indeterminate` antigua.
+    // No se entrega desglose: solo el total de la API y el aviso.
+    refunds: snapshot.truncated ? [] : snapshot.refunds,
     refunds_truncated: snapshot.truncated,
   };
   return NextResponse.json(receipt, { status: 200, headers: { 'cache-control': 'no-store' } });

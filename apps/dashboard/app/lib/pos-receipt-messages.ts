@@ -28,6 +28,8 @@ export interface PosReceiptMessages {
   referenceHint: string;
   readAt: (time: string) => string;
   print: string;
+  printHint: string;
+  printStale: string;
   back: string;
   open: string;
   loading: string;
@@ -78,6 +80,10 @@ const ES: PosReceiptMessages = {
   referenceHint: 'Últimos 8 caracteres del identificador del cobro.',
   readAt: (t) => `Consultado: ${t}`,
   print: 'Imprimir justificante',
+  printStale:
+    'JUSTIFICANTE NO VÁLIDO: la última lectura falló y estos datos pueden estar desactualizados. Vuelve a leerlo antes de imprimir.',
+  printHint:
+    'Al imprimir, la dirección de esta página se sustituye por una sin identificadores. Aun así, desactiva «Encabezados y pies de página» en el diálogo de impresión: esa casilla la controla el navegador, no la aplicación.',
   back: 'Volver al POS',
   open: 'Ver justificante',
   loading: 'Cargando justificante…',
@@ -114,7 +120,7 @@ const ES: PosReceiptMessages = {
   openBanner:
     'Hay devoluciones en curso. Aún no cuentan como devueltas; actualiza el justificante más tarde.',
   truncatedNote:
-    'Este cobro tiene más devoluciones de las que se pueden leer de una vez: la lista puede estar incompleta. El importe devuelto es el que informa la API.',
+    'Este cobro tiene 100 devoluciones o más y la API solo entrega las 100 más recientes, así que este justificante NO incluye el desglose. «Devuelto (confirmado)» es el total que informa la API. Desde aquí no se puede saber si hay devoluciones en curso o pendientes de verificación: consulta el detalle del pago.',
   refresh: 'Actualizar',
   refreshing: 'Actualizando…',
   updated: 'Justificante actualizado.',
@@ -148,6 +154,10 @@ const EN: PosReceiptMessages = {
   referenceHint: 'Last 8 characters of the charge identifier.',
   readAt: (t) => `Read at: ${t}`,
   print: 'Print receipt',
+  printStale:
+    'RECEIPT NOT VALID: the last read failed and this data may be out of date. Read it again before printing.',
+  printHint:
+    'When printing, this page address is replaced with one without identifiers. Still, turn off "Headers and footers" in the print dialog: that setting belongs to the browser, not the app.',
   back: 'Back to POS',
   open: 'View receipt',
   loading: 'Loading receipt…',
@@ -183,7 +193,7 @@ const EN: PosReceiptMessages = {
     'Some refunds are pending verification. This receipt does NOT count them as refunded: the refunded amount only includes confirmed ones.',
   openBanner: 'Some refunds are in progress. They do not count as refunded yet; refresh later.',
   truncatedNote:
-    'This charge has more refunds than can be read at once: the list may be incomplete. The refunded amount is the one reported by the API.',
+    'This charge has 100 or more refunds and the API only returns the 100 most recent, so this receipt does NOT include the breakdown. "Refunded (confirmed)" is the total reported by the API. From here it cannot be known whether refunds are in progress or pending verification: check the payment detail.',
   refresh: 'Refresh',
   refreshing: 'Refreshing…',
   updated: 'Receipt refreshed.',

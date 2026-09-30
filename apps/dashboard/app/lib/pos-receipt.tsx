@@ -9,6 +9,7 @@ import {
   receiptRef,
   type PosReceipt,
 } from './pos-receipt-contract';
+import { installPrintUrlGuard, type PrintUrlGuard } from './pos-print-url';
 import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 
 /**
@@ -116,10 +117,21 @@ export function PosReceiptView({
     if (phase !== 'idle' && phase !== 'loading' && userRead.current) alertRef.current?.focus();
   }, [phase]);
 
+  // La URL (con ids completos) no debe llegar al pie de página impreso.
+  const printGuard = useRef<PrintUrlGuard | null>(null);
+  const printable = useRef(false);
+  useEffect(() => {
+    const g = installPrintUrlGuard(window, { canPrint: () => printable.current });
+    printGuard.current = g;
+    return () => g.dispose();
+  }, []);
+  const print = () => printGuard.current?.print();
+
   const posHref = `/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`;
   const busy = phase === 'loading';
 
   if (!data) {
+    printable.current = false;
     if (phase === 'loading') {
       return (
         <section className="card pos-receipt" aria-busy="true" aria-labelledby="pos-receipt-title">
@@ -172,6 +184,8 @@ export function PosReceiptView({
   }
 
   const { receipt, at } = data;
+  // Solo una lectura fresca y completa se imprime (botón y Ctrl/Cmd+P).
+  printable.current = phase === 'idle';
   const { payment, sale, refunds } = receipt;
   const money = (n: number) => formatAmount(n, payment.currency, locale);
   const stale = phase === 'error';
@@ -187,12 +201,19 @@ export function PosReceiptView({
       data-testid="pos-receipt"
     >
       <header className="pos-receipt-head">
-        <h2 id="pos-receipt-title">{refunds.length > 0 ? t.docTitleRefunds : t.docTitle}</h2>
+        <h2 id="pos-receipt-title">
+          {refunds.length > 0 || receipt.refunds_truncated ? t.docTitleRefunds : t.docTitle}
+        </h2>
         <p className="pos-receipt-disclaimer" data-testid="pos-receipt-not-fiscal">
           {t.notFiscal} {t.sandbox}
         </p>
       </header>
 
+      {stale && (
+        <p className="pos-print-stale print-only" data-testid="pos-receipt-print-stale">
+          {t.printStale}
+        </p>
+      )}
       {stale && (
         <div
           id={staleId}
@@ -267,39 +288,48 @@ export function PosReceiptView({
           <dt>{t.refundedConfirmed}</dt>
           <dd data-testid="pos-receipt-refunded">{money(payment.amount_refunded)}</dd>
         </dl>
-        {uncertain && (
-          <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-uncertain">
-            {t.uncertainBanner}
-          </p>
-        )}
-        {open && (
-          <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-open">
-            {t.openBanner}
-          </p>
-        )}
-        {receipt.refunds_truncated && (
-          <p className="hint" data-testid="pos-receipt-truncated">
+        {receipt.refunds_truncated ? (
+          <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-truncated">
             {t.truncatedNote}
           </p>
-        )}
-        {refunds.length === 0 ? (
-          <p className="hint">{t.refundsNone}</p>
         ) : (
-          <ul className="pos-receipt-refund-list">
-            {refunds.map((r) => (
-              <li
-                key={r.id}
-                className="pos-receipt-refund"
-                data-testid="pos-receipt-refund"
-                data-status={r.status}
-              >
-                <span className="pos-refund-amount">{money(r.amount)}</span>
-                <span className={`badge pos-refund-${r.status}`}>{t.refundStatus[r.status]}</span>
-                <span className="pos-receipt-refund-at">{dateTimeOf(r.created_at, locale)}</span>
-                <span className="hint pos-receipt-refund-detail">{t.refundDetail[r.status]}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {uncertain && (
+              <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-uncertain">
+                {t.uncertainBanner}
+              </p>
+            )}
+            {open && (
+              <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-open">
+                {t.openBanner}
+              </p>
+            )}
+            {refunds.length === 0 ? (
+              <p className="hint">{t.refundsNone}</p>
+            ) : (
+              <ul className="pos-receipt-refund-list">
+                {refunds.map((r) => (
+                  <li
+                    key={r.id}
+                    className="pos-receipt-refund"
+                    data-testid="pos-receipt-refund"
+                    data-status={r.status}
+                  >
+                    <span className="pos-refund-amount">{money(r.amount)}</span>
+                    <span className={`badge pos-refund-${r.status}`}>
+                      {t.refundStatus[r.status]}
+                    </span>
+                    <span className="pos-receipt-refund-at">
+                      {dateTimeOf(r.created_at, locale)}
+                    </span>
+                    <span className="hint pos-receipt-refund-detail">
+                      {t.refundDetail[r.status]}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </section>
 
@@ -308,13 +338,16 @@ export function PosReceiptView({
         {announce}
       </p>
 
+      <p className="hint no-print" id="pos-receipt-print-hint" data-testid="pos-receipt-print-hint">
+        {t.printHint}
+      </p>
       <div className="pos-actions no-print">
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => window.print()}
+          onClick={print}
           disabled={stale || busy}
-          aria-describedby={stale ? staleId : undefined}
+          aria-describedby={stale ? `${staleId} pos-receipt-print-hint` : 'pos-receipt-print-hint'}
         >
           {t.print}
         </button>

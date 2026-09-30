@@ -74,7 +74,11 @@ export interface PosReceipt {
   sale: ReceiptSale | null;
   /** Más recientes primero. */
   refunds: ReceiptRefund[];
-  /** La ventana de 100 se llenó: la lista puede estar incompleta. */
+  /**
+   * La ventana de 100 se llenó (la API devuelve las 100 MÁS RECIENTES): no
+   * hay desglose (`refunds` vacío) porque uno parcial podría ocultar una
+   * devolución pendiente antigua. Solo vale el total `amount_refunded`.
+   */
   refunds_truncated: boolean;
 }
 
@@ -232,6 +236,8 @@ export function parseReceipt(v: unknown): PosReceipt | null {
       created_at: r.created_at,
     });
   }
+  // Un desglose junto a `refunds_truncated` sería parcial: se rechaza.
+  if (v.refunds_truncated && refunds.length > 0) return null;
   if (!refundsConsistent(payment, refunds, v.refunds_truncated)) return null;
   return {
     payment,

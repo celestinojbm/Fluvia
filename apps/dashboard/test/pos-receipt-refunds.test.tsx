@@ -183,7 +183,12 @@ describe('BFF del justificante — devoluciones', () => {
     });
     const r = await call();
     expect(r.status).toBe(200);
-    expect((await r.json()).refunds_truncated).toBe(true);
+    const body = await r.json();
+    expect(body.refunds_truncated).toBe(true);
+    // Nunca un desglose parcial: la API da las 100 MÁS RECIENTES y una
+    // devolución pendiente antigua quedaría fuera.
+    expect(body.refunds).toEqual([]);
+    expect(body.payment.amount_refunded).toBe(9999);
   });
 
   it('lista malformada, de otro cobro o fallida ⇒ 502; 401 ⇒ 401', async () => {
@@ -318,10 +323,31 @@ describe('PosReceiptView — devoluciones', () => {
     expect(screen.getByTestId('pos-receipt-refund')).toHaveTextContent('aún no se ha devuelto');
   });
 
-  it('lista truncada se declara', async () => {
-    mockBff(() => res(200, receipt({ truncated: true })));
-    renderView();
-    expect(await screen.findByTestId('pos-receipt-truncated')).toHaveTextContent('incompleta');
+  it('lista truncada: sin desglose ni avisos derivados de él; solo el total de la API', async () => {
+    mockBff(() =>
+      res(200, receipt({ truncated: true, status: 'partially_refunded', refunded: 9999 }))
+    );
+    const { container } = renderView();
+    const note = await screen.findByTestId('pos-receipt-truncated');
+    expect(note).toHaveTextContent('NO incluye el desglose');
+    expect(note).toHaveTextContent('100 devoluciones o más');
+    expect(
+      screen.getByRole('heading', { name: 'Justificante de cobro y devoluciones' })
+    ).toBeInTheDocument();
+    expect(note).toHaveTextContent('no se puede saber si hay devoluciones en curso o pendientes');
+    // El aviso se imprime (no lleva .no-print) y no hay lista ni «sin devoluciones».
+    expect(note.closest('.no-print')).toBeNull();
+    expect(screen.queryByTestId('pos-receipt-refund')).toBeNull();
+    expect(screen.queryByText('Sin devoluciones registradas.')).toBeNull();
+    expect(screen.queryByTestId('pos-receipt-uncertain')).toBeNull();
+    expect(screen.getByTestId('pos-receipt-refunded')).toHaveTextContent(/99[.,]99/);
+    const r = await axe.run(container, { rules: { region: { enabled: false } } });
+    expect(r.violations).toEqual([]);
+  });
+
+  it('parseReceipt rechaza un desglose junto a refunds_truncated (sería parcial)', () => {
+    const partial = receipt({ truncated: true, refunds: [bffRefund(1, 500, 'succeeded')] });
+    expect(parseReceipt(partial)).toBeNull();
   });
 
   it('respuesta con totales incoherentes no se muestra (parseReceipt)', async () => {
@@ -367,7 +393,10 @@ describe('PosReceiptView — estados y teclado', () => {
     await waitFor(() => expect(alert).toHaveFocus());
     const print = screen.getByRole('button', { name: 'Imprimir justificante' });
     expect(print).toBeDisabled();
-    expect(print).toHaveAttribute('aria-describedby', 'pos-receipt-stale');
+    // En papel (menú del navegador) solo saldría el aviso de NO válido.
+    expect(screen.getByTestId('pos-receipt-print-stale')).toHaveTextContent('NO VÁLIDO');
+    expect(screen.getByTestId('pos-receipt-print-stale')).toHaveClass('print-only');
+    expect(print).toHaveAttribute('aria-describedby', 'pos-receipt-stale pos-receipt-print-hint');
     // Los datos previos siguen a la vista (marcados), no se inventa nada nuevo.
     expect(screen.getByTestId('pos-receipt')).toHaveClass('pos-stale-receipt');
     await user.click(within(alert).getByRole('button', { name: 'Reintentar' }));
