@@ -69,6 +69,12 @@ export function isSaleReleaseUnverified(err: unknown): boolean {
   return typeof m === 'string' && m.startsWith('FLUVIA_SALE_RELEASE_UNVERIFIED');
 }
 
+/** Rechazo del trigger `fluvia_refund_live_reservation_guard` (0048). */
+export function isRefundExceedsRemaining(err: unknown): boolean {
+  const m = (err as { message?: unknown } | null)?.message;
+  return typeof m === 'string' && m.startsWith('FLUVIA_REFUND_EXCEEDS_REMAINING');
+}
+
 /** Violación del índice único del invariante (23505) ⇒ error de dominio. */
 export function isSingleChargeViolation(err: unknown): boolean {
   const e = err as { code?: unknown; constraint?: unknown } | null;

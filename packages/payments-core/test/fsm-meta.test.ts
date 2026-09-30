@@ -82,10 +82,18 @@ beforeAll(async () => {
     [org, intentId]
   );
   attemptId = a.rows[0]!.id;
+  // 0048: un refund solo nace con cupo vivo sobre un cobro CAPTURADO. Su intent
+  // es propio (succeeded) para no alterar la matriz de `intentId`.
+  const refundable = await ctx.admin.query<{ id: string }>(
+    `INSERT INTO payment_intents
+       (tenant_id, merchant_id, amount, currency, status, capture_method, amount_captured, succeeded_at)
+     VALUES ($1, $2, 100000, 'COP', 'succeeded', 'automatic', 100000, now()) RETURNING id`,
+    [org, merchantId]
+  );
   const r = await ctx.admin.query<{ id: string }>(
     `INSERT INTO refunds (tenant_id, payment_intent_id, amount, currency, provider)
      VALUES ($1, $2, 100000, 'COP', 'mock') RETURNING id`,
-    [org, intentId]
+    [org, refundable.rows[0]!.id]
   );
   refundId = r.rows[0]!.id;
   const cs = await ctx.admin.query<{ id: string }>(

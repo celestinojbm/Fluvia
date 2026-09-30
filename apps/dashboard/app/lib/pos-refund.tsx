@@ -28,6 +28,10 @@ import { POS_REFUND_MESSAGES, refundErrorText } from './pos-refund-messages';
  *    cambió entretanto, el API responde 422 en vez de devolver otra cifra.
  *  - UNA `Idempotency-Key` por borrador (importe + motivo): reintentar tras un
  *    resultado incierto no duplica; el borrador queda bloqueado mientras tanto.
+ *  - «No se registró» solo se afirma si NINGÚN envío de esa key pudo cursarse.
+ *    Si un envío anterior quedó incierto y el siguiente falla (401 incluido),
+ *    el desenlace NO está verificado: no se ofrece repetir ni editar, solo
+ *    consultar el estado real; cerrar exige una lectura posterior.
  *  - Candado síncrono contra el doble envío.
  *  - Solo se ofrece devolver con una lectura FRESCA y correcta: datos
  *    desactualizados, sesión caducada o sin acceso ⇒ se muestran, sin acción.
@@ -53,6 +57,9 @@ type Step =
   | { kind: 'submitting'; amount: number }
   | { kind: 'uncertain'; amount: number }
   | { kind: 'failed'; amount: number; code?: string }
+  /** Un envío previo de ESTA key quedó incierto y el siguiente falló: el
+   *  primero pudo registrarse. `since`: hora del fallo (cerrar exige leer después). */
+  | { kind: 'unverified'; amount: number; code?: string; since: number }
   | { kind: 'tracking'; refundId: string };
 
 const POLL_MS = 2_000;
@@ -138,7 +145,8 @@ export function PosRefundPanel({
   const [stalled, setStalled] = useState(false);
 
   const inFlight = useRef(false);
-  const idem = useRef<{ key: string; fingerprint: string } | null>(null);
+  /** `uncertain`: algún envío de esta key pudo cursarse sin respuesta. */
+  const idem = useRef<{ key: string; fingerprint: string; uncertain: boolean } | null>(null);
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
   const startRef = useRef<HTMLButtonElement>(null);
@@ -215,7 +223,8 @@ export function PosRefundPanel({
       if (mode === 'partial') amountRef.current?.focus();
       else firstChoiceRef.current?.focus();
     } else if (step.kind === 'confirm') confirmRef.current?.focus();
-    else if (step.kind === 'uncertain' || step.kind === 'failed') alertRef.current?.focus();
+    else if (step.kind === 'uncertain' || step.kind === 'failed' || step.kind === 'unverified')
+      alertRef.current?.focus();
     else if (step.kind === 'tracking') resultRef.current?.focus();
     // `mode` solo decide el destino al abrir el formulario (no es dependencia).
   }, [step.kind]);
@@ -292,7 +301,7 @@ export function PosRefundPanel({
         };
         const fingerprint = JSON.stringify(payload);
         if (!idem.current || idem.current.fingerprint !== fingerprint) {
-          idem.current = { key: crypto.randomUUID(), fingerprint };
+          idem.current = { key: crypto.randomUUID(), fingerprint, uncertain: false };
         }
         setStep({ kind: 'submitting', amount });
         const r = await call(`/api/orgs/${org}/refunds`, {
@@ -315,16 +324,27 @@ export function PosRefundPanel({
             onChangedRef.current?.();
             return;
           }
+          idem.current.uncertain = true;
           setStep({ kind: 'uncertain', amount });
           return;
         }
         if (r.kind === 'network' || r.status >= 500) {
+          idem.current.uncertain = true;
           setStep({ kind: 'uncertain', amount });
           return;
         }
-        if (r.code === 'idempotency_key_reuse') idem.current = null;
-        // 401 del BFF sin sobre del API ⇒ sesión caducada (nada se registró).
         const code = r.code ?? (r.status === 401 ? 'invalid_session' : undefined);
+        if (idem.current.uncertain) {
+          // Este envío se rechazó, pero uno ANTERIOR con la misma key pudo
+          // cursarse: afirmar «no se registró» sería falso. Se conserva la key
+          // (un reintento en esta sesión haría replay) y solo se ofrece consultar.
+          setStep({ kind: 'unverified', amount, code, since: Date.now() });
+          if (code !== 'invalid_session') reread();
+          return;
+        }
+        if (r.code === 'idempotency_key_reuse') idem.current = null;
+        // Ningún envío de esta key pudo cursarse: un 401 (BFF sin cookie o
+        // sesión rechazada ANTES del handler) garantiza que nada se registró.
         setStep({ kind: 'failed', amount, code });
         // El servidor pudo cambiar (otra devolución, estado del cobro).
         if (code !== 'invalid_session') reread();
@@ -345,10 +365,18 @@ export function PosRefundPanel({
   }, []);
 
   const refunds = list?.refunds ?? [];
-  const locked = step.kind === 'submitting' || step.kind === 'uncertain' || step.kind === 'confirm';
+  const locked =
+    step.kind === 'submitting' ||
+    step.kind === 'uncertain' ||
+    step.kind === 'unverified' ||
+    step.kind === 'confirm';
   const editing = step.kind !== 'closed' && step.kind !== 'tracking';
   const sessionLost =
-    read.status === 'auth' || (step.kind === 'failed' && step.code === 'invalid_session');
+    read.status === 'auth' ||
+    ((step.kind === 'failed' || step.kind === 'unverified') && step.code === 'invalid_session');
+  // Cerrar un desenlace no verificado exige una lectura correcta POSTERIOR.
+  const checkedAfter =
+    step.kind === 'unverified' && fresh && read.at !== null && read.at > step.since;
   const resultTone =
     tracked?.status === 'succeeded'
       ? 'pos-alert-ok'
@@ -388,7 +416,12 @@ export function PosRefundPanel({
       {sessionLost && (
         <div className="pos-alert pos-alert-bad" role="alert" data-testid="pos-refund-auth">
           <p>
-            {t.authLost} {step.kind === 'failed' ? t.authNothingRecorded : ''}
+            {t.authLost}{' '}
+            {step.kind === 'failed'
+              ? t.authNothingRecorded
+              : step.kind === 'unverified'
+                ? t.authUnverified
+                : ''}
           </p>
           <a href="/login">{t.signIn}</a>
         </div>
@@ -648,6 +681,43 @@ export function PosRefundPanel({
                   {t.back}
                 </button>
               </div>
+            </div>
+          )}
+
+          {step.kind === 'unverified' && (
+            <div
+              className="pos-alert pos-alert-warn"
+              role="alert"
+              ref={alertRef}
+              tabIndex={-1}
+              data-testid="pos-refund-unverified"
+            >
+              <p className="pos-alert-title">{t.unverifiedTitle}</p>
+              <p>{t.unverifiedText}</p>
+              {step.code && step.code !== 'invalid_session' && t.errorCodes[step.code] && (
+                <p className="hint">{t.unverifiedLastError(t.errorCodes[step.code])}</p>
+              )}
+              <div className="pos-actions">
+                {step.code !== 'invalid_session' && (
+                  <button type="button" className="btn" onClick={reread} disabled={read.refreshing}>
+                    {read.refreshing ? t.refreshing : t.checkRefunds}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => reset(true)}
+                  disabled={!checkedAfter}
+                  aria-describedby={checkedAfter ? undefined : 'pos-refund-unverified-close'}
+                >
+                  {t.closeAfterCheck}
+                </button>
+              </div>
+              {!checkedAfter && (
+                <p id="pos-refund-unverified-close" className="hint">
+                  {t.closeNeedsCheck}
+                </p>
+              )}
             </div>
           )}
 

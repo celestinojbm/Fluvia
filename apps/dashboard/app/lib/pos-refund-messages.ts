@@ -63,6 +63,13 @@ export interface PosRefundMessages {
   retry: string;
   authLost: string;
   authNothingRecorded: string;
+  /** 401 tras un envío incierto de la misma devolución: NO se afirma nada. */
+  authUnverified: string;
+  unverifiedTitle: string;
+  unverifiedText: string;
+  unverifiedLastError: (text: string) => string;
+  closeAfterCheck: string;
+  closeNeedsCheck: string;
   signIn: string;
   stale: (time: string) => string;
   refreshing: string;
@@ -168,6 +175,14 @@ const ES: PosRefundMessages = {
   retry: 'Reintentar',
   authLost: 'Tu sesión caducó.',
   authNothingRecorded: 'La devolución no se registró.',
+  authUnverified:
+    'No sabemos si la devolución se registró: un intento anterior pudo llegar al servidor. Inicia sesión y consulta las devoluciones de este cobro antes de volver a intentarlo.',
+  unverifiedTitle: 'No podemos confirmar si la devolución se registró',
+  unverifiedText:
+    'Un intento anterior quedó sin respuesta y pudo registrarse. No la repitas: consulta las devoluciones de este cobro y comprueba si ya aparece.',
+  unverifiedLastError: (text) => `Último intento: ${text}`,
+  closeAfterCheck: 'Cerrar',
+  closeNeedsCheck: 'Consulta las devoluciones antes de cerrar.',
   signIn: 'Vuelve a iniciar sesión',
   stale: (time) =>
     `No pudimos actualizar las devoluciones. Lo que ves es de las ${time} y puede estar desactualizado: no se ofrece devolver hasta leerlas de nuevo.`,
@@ -281,6 +296,14 @@ const EN: PosRefundMessages = {
   retry: 'Retry',
   authLost: 'Your session expired.',
   authNothingRecorded: 'The refund was not recorded.',
+  authUnverified:
+    'We do not know whether the refund was recorded: an earlier attempt may have reached the server. Sign in and check the refunds of this charge before trying again.',
+  unverifiedTitle: 'We cannot confirm whether the refund was recorded',
+  unverifiedText:
+    'An earlier attempt got no response and may have been recorded. Do not repeat it: check the refunds of this charge and see whether it is already there.',
+  unverifiedLastError: (text) => `Last attempt: ${text}`,
+  closeAfterCheck: 'Close',
+  closeNeedsCheck: 'Check the refunds before closing.',
   signIn: 'Sign in again',
   stale: (time) =>
     `We could not update the refunds. What you see is from ${time} and may be out of date: refunding is not offered until they are read again.`,
