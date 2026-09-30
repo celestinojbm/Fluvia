@@ -7,7 +7,10 @@ import {
   CheckoutSessionNotFoundError,
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
+  SaleAlreadyChargedError,
+  isSingleChargeViolation,
 } from './errors.js';
+import { SALE_RELEASING_STATUSES } from './confirmation.js';
 import type { IntentStatus } from './fsm.js';
 import type { TxClient } from './service.js';
 
@@ -75,6 +78,11 @@ export interface HostedCheckoutView {
   successUrl: string | null;
   cancelUrl: string | null;
   paymentIntent: { id: string; status: string; amount: string; currency: string };
+  /**
+   * Venta de cobro único (POS) cuyo cobro ya retiene OTRO checkout (en curso o
+   * cobrado): este checkout ya no puede cobrar. Sin datos del otro checkout.
+   */
+  saleClosed: boolean;
 }
 
 export interface CreateCheckoutSessionInput {
@@ -264,28 +272,46 @@ export class CheckoutSessionService {
     const confirmation = this.confirmation;
     const tenantId = await this.authenticate(sessionId, clientSecret);
 
-    // Fase 1 bajo lock de la sesión: decide si hay algo que confirmar.
+    // Fase 1 bajo lock de la sesión: decide si hay algo que confirmar. Una
+    // venta de cobro único ya retenida por otro checkout falla aquí (409), sin
+    // attempt ni llamada al proveedor.
     const phase1 = await withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<{
         status: string;
         payment_intent_id: string;
-        intent_status: string;
+        expired_now: boolean;
       }>(
-        `SELECT cs.status, cs.payment_intent_id, i.status AS intent_status
-         FROM checkout_sessions cs
-         JOIN payment_intents i ON i.id = cs.payment_intent_id
-         WHERE cs.id = $1
-         FOR UPDATE OF cs`,
+        `SELECT status, payment_intent_id, (expires_at <= now()) AS expired_now
+         FROM checkout_sessions WHERE id = $1
+         FOR UPDATE`,
         [sessionId]
       );
-      const row = res.rows[0];
-      if (!row) throw new CheckoutSessionNotFoundError();
-      // Sesión ya terminal, o intent ya en curso/resuelto: nada que iniciar.
-      if (row.status !== 'open' || !INTENT_CONFIRMABLE.has(row.intent_status as IntentStatus)) {
+      const locked = res.rows[0];
+      if (!locked) throw new CheckoutSessionNotFoundError();
+      // El intent se lee en una sentencia POSTERIOR al lock: con READ COMMITTED
+      // ve lo que confirmó el doble submit que tenía el lock (un JOIN en la
+      // misma sentencia devolvería el intent de la instantánea previa a la
+      // espera y reintentaría confirmar un intent ya en processing).
+      const intent = await c.query<{ status: string }>(
+        `SELECT status FROM payment_intents WHERE id = $1`,
+        [locked.payment_intent_id]
+      );
+      const row = { ...locked, intent_status: intent.rows[0]?.status ?? '' };
+      // Sesión ya terminal, TTL vencido (aunque el barrido aún no la marcara:
+      // lo que el operador ve como «expirado» jamás cobra), o intent ya en
+      // curso/resuelto: nada que iniciar.
+      if (
+        row.status !== 'open' ||
+        row.expired_now ||
+        !INTENT_CONFIRMABLE.has(row.intent_status as IntentStatus)
+      ) {
         return { attemptId: null as string | null };
       }
       const begun = await confirmation.beginIn(c, tenantId, row.payment_intent_id);
       return { attemptId: begun.attemptId };
+    }).catch((err: unknown) => {
+      if (isSingleChargeViolation(err)) throw new SaleAlreadyChargedError();
+      throw err;
     });
 
     // Fase 2 FUERA de toda tx (Nivel A): solo si iniciamos una confirmación.
@@ -320,15 +346,21 @@ export class CheckoutSessionService {
       intent_amount: string;
       intent_currency: string;
       expired_now: boolean;
+      sale_closed: boolean;
     }>(
       `SELECT cs.id, cs.payment_intent_id, cs.status, cs.success_url, cs.cancel_url, cs.expires_at,
               i.status AS intent_status, i.amount::text AS intent_amount, i.currency AS intent_currency,
-              (cs.expires_at <= now()) AS expired_now
+              (cs.expires_at <= now()) AS expired_now,
+              (i.single_charge_link_id IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM payment_intents o
+                 WHERE o.single_charge_link_id = i.single_charge_link_id
+                   AND o.id <> i.id AND NOT (o.status = ANY($2::text[]))
+              )) AS sale_closed
        FROM checkout_sessions cs
        JOIN payment_intents i ON i.id = cs.payment_intent_id
        WHERE cs.id = $1
        FOR UPDATE OF cs`,
-      [sessionId]
+      [sessionId, SALE_RELEASING_STATUSES]
     );
     const row = res.rows[0];
     if (!row) throw new CheckoutSessionNotFoundError();
@@ -366,6 +398,7 @@ export class CheckoutSessionService {
         amount: row.intent_amount,
         currency: row.intent_currency.trim(),
       },
+      saleClosed: row.sale_closed,
     };
   }
 

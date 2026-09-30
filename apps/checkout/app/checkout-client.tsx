@@ -17,6 +17,8 @@ interface HostedView {
   id: string;
   status: 'open' | 'completed' | 'expired';
   payment_intent: { id: string; status: string; amount: number; currency: string };
+  /** Venta de cobro único ya cobrada/cobrando por OTRO checkout: este no cobra. */
+  sale_closed?: boolean;
 }
 
 // `uncertain`: el confirm no devolvió una vista válida (red/5xx/4xx). El pago
@@ -87,6 +89,17 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         body: JSON.stringify({ payment_method_token: token }),
       });
       if (res.status === 404) return setPhase('not_found');
+      if (res.status === 409) {
+        // Rechazo CIERTO del servidor (nada se envió al proveedor): la venta ya
+        // tiene otro pago. Se relee la vista, que lo explica sin formulario.
+        const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)
+          ?.error?.code;
+        if (code === 'sale_already_charged') {
+          await load();
+          statusRef.current?.focus();
+          return;
+        }
+      }
       if (!res.ok) return setPhase('uncertain');
       setView((await res.json()) as HostedView);
       setPhase('ready');
@@ -96,7 +109,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
     } finally {
       payingRef.current = false;
     }
-  }, [sessionId, token, clientSecret]);
+  }, [sessionId, token, clientSecret, load]);
 
   // Pago asíncrono en curso: se re-consulta el estado (acotado) hasta que el
   // proveedor simulado lo resuelva; nunca se asume el desenlace.
@@ -169,13 +182,15 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   const failed = intentStatus === 'failed';
   const pending =
     view.status === 'open' && (intentStatus === 'processing' || intentStatus === 'submitted');
-  const canPay = view.status === 'open' && !failed && !pending;
+  const saleClosed = view.status === 'open' && !failed && !pending && view.sale_closed === true;
+  const canPay = view.status === 'open' && !failed && !pending && !saleClosed;
 
   let statusMessage = t.statusOpen;
   if (done) statusMessage = t.statusCompleted;
   else if (expired) statusMessage = t.statusExpired;
   else if (failed) statusMessage = t.paymentFailed;
   else if (pending) statusMessage = t.paymentPending;
+  else if (saleClosed) statusMessage = t.saleClosed;
 
   return (
     <main className="checkout" aria-labelledby="checkout-title">
@@ -191,7 +206,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       <p
         ref={statusRef}
         tabIndex={-1}
-        className={`status status-${done ? 'ok' : expired || failed ? 'bad' : 'neutral'}`}
+        className={`status status-${done ? 'ok' : expired || failed ? 'bad' : saleClosed ? 'warn' : 'neutral'}`}
         role="status"
         aria-live="polite"
         data-testid="status"

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../app/lib/csrf-header';
 import { POST as openPOST } from '../app/api/orgs/[orgId]/pos/checkout/route';
 import { GET as statusGET } from '../app/api/orgs/[orgId]/pos/sessions/[sessionId]/route';
+import { GET as saleGET } from '../app/api/orgs/[orgId]/pos/sales/[linkId]/route';
 import { POST as linkPOST } from '../app/api/orgs/[orgId]/payment-links/route';
 
 /**
@@ -196,6 +197,16 @@ describe('POST /api/orgs/:orgId/pos/checkout', () => {
     routeFetch({ [ORGS_PATH]: ORGS_OK, [LINK_PATH]: LINK_OK, [OPEN_PATH]: () => json(429, {}) });
     expect((await openPOST(openReq(legit()), openCtx)).status).toBe(429);
   });
+  it('venta de cobro único ya cobrada/cobrando ⇒ 409 sale_already_charged (certeza: nada creado)', async () => {
+    routeFetch({
+      [ORGS_PATH]: ORGS_OK,
+      [LINK_PATH]: LINK_OK,
+      [OPEN_PATH]: () => json(409, { error: { code: 'sale_already_charged' } }),
+    });
+    const res = await openPOST(openReq(legit()), openCtx);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe('sale_already_charged');
+  });
 });
 
 describe('GET /api/orgs/:orgId/pos/sessions/:id', () => {
@@ -223,6 +234,21 @@ describe('GET /api/orgs/:orgId/pos/sessions/:id', () => {
     amount_refunded: 0,
     capture_method: 'automatic',
   };
+
+  it('expone la venta del intent (payment_link_id) y rechaza un vínculo malformado', async () => {
+    routeFetch({
+      [S_PATH]: () => json(200, SESSION),
+      [P_PATH]: () => json(200, { ...INTENT, payment_link_id: LINK }),
+    });
+    expect((await (await statusGET(req(), ctx)).json()).payment.payment_link_id).toBe(LINK);
+    routeFetch({ [S_PATH]: () => json(200, SESSION), [P_PATH]: () => json(200, INTENT) });
+    expect((await (await statusGET(req(), ctx)).json()).payment.payment_link_id).toBeNull();
+    routeFetch({
+      [S_PATH]: () => json(200, SESSION),
+      [P_PATH]: () => json(200, { ...INTENT, payment_link_id: 'not-a-uuid' }),
+    });
+    expect((await statusGET(req(), ctx)).status).toBe(502);
+  });
 
   it('combina sesión + intent por whitelist', async () => {
     routeFetch({ [S_PATH]: () => json(200, SESSION), [P_PATH]: () => json(200, INTENT) });
@@ -299,5 +325,85 @@ describe('POST /api/orgs/:orgId/payment-links (guard CSRF)', () => {
     expect(res.status).toBe(201);
     const init = f.mock.calls[0]![1] as RequestInit;
     expect((init.headers as Record<string, string>)['idempotency-key']).toBe('k-1');
+  });
+});
+
+describe('GET /api/orgs/:orgId/pos/sales/:linkId', () => {
+  const ctx = { params: Promise.resolve({ orgId: ORG, linkId: LINK }) };
+  const req = () => new Request(`${BASE}/api/orgs/${ORG}/pos/sales/${LINK}`);
+  const SALE_PATH = `GET /v1/organizations/${ORG}/payment_links/${LINK}/sale`;
+  const SALE = {
+    object: 'payment_link_sale',
+    payment_link: {
+      id: LINK,
+      status: 'active',
+      single_charge: true,
+      checkout_tracking_since: '2026-09-29T00:00:00Z',
+      url: 'http://leak/l/x',
+      metadata: { secret: 'leak-me-not' },
+    },
+    charge: 'charged',
+    charge_payment_intent_id: PI,
+    succeeded_count: 1,
+    history: 'complete',
+    truncated: false,
+    checkouts: [
+      {
+        payment_intent_id: PI,
+        payment_intent_status: 'succeeded',
+        failure_code: null,
+        amount_refunded: 0,
+        created_at: '2026-09-29T00:00:00Z',
+        checkout_session: {
+          id: SID,
+          status: 'completed',
+          expires_at: '2026-09-30T00:00:00Z',
+          completed_at: '2026-09-29T00:01:00Z',
+          created_at: '2026-09-29T00:00:00Z',
+        },
+      },
+    ],
+  };
+
+  it('whitelist de la venta: estado del cobro y checkouts, sin URL ni metadata', async () => {
+    routeFetch({ [SALE_PATH]: () => json(200, SALE) });
+    const res = await saleGET(req(), ctx);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      link_id: LINK,
+      single_charge: true,
+      charge: 'charged',
+      charge_payment_intent_id: PI,
+      history: 'complete',
+    });
+    expect(body.checkouts[0].session.id).toBe(SID);
+    expect(JSON.stringify(body)).not.toContain('leak');
+  });
+
+  it('otra org/inexistente ⇒ 404; sesión caducada ⇒ 401; sin cookie ⇒ 401 sin llamar', async () => {
+    routeFetch({ [SALE_PATH]: () => json(404, {}) });
+    expect((await saleGET(req(), ctx)).status).toBe(404);
+    routeFetch({ [SALE_PATH]: () => json(403, {}) });
+    expect((await saleGET(req(), ctx)).status).toBe(404);
+    routeFetch({ [SALE_PATH]: () => json(401, {}) });
+    expect((await saleGET(req(), ctx)).status).toBe(401);
+    const f = routeFetch({});
+    cookieState.value = null;
+    expect((await saleGET(req(), ctx)).status).toBe(401);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('fallo o respuesta malformada ⇒ 502, jamás una venta inventada', async () => {
+    routeFetch({ [SALE_PATH]: () => Promise.reject(new Error('x')) });
+    expect((await saleGET(req(), ctx)).status).toBe(502);
+    routeFetch({ [SALE_PATH]: () => json(200, { ...SALE, charge: 'maybe' }) });
+    expect((await saleGET(req(), ctx)).status).toBe(502);
+    routeFetch({
+      [SALE_PATH]: () => json(200, { ...SALE, payment_link: { ...SALE.payment_link, id: PI } }),
+    });
+    expect((await saleGET(req(), ctx)).status).toBe(502);
+    const bad = { params: Promise.resolve({ orgId: ORG, linkId: '../x' }) };
+    expect((await saleGET(req(), bad)).status).toBe(400);
   });
 });

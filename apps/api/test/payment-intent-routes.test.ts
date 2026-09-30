@@ -406,3 +406,82 @@ describe('GET + cancel + aislamiento', () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+// ── POS (0047): cancelar una autorización viva de una venta de cobro único ───
+
+describe('POST /v1/payment_intents/:id/cancel sobre una venta de cobro único', () => {
+  async function saleWithAuthorizedIntent(singleCharge: boolean) {
+    const link = await adminPool.query<{ id: string }>(
+      `INSERT INTO payment_links (tenant_id, merchant_id, amount, currency, single_charge)
+       VALUES ($1, $2, 5000, 'COP', $3) RETURNING id`,
+      [orgA, merchantA, singleCharge]
+    );
+    const linkId = link.rows[0]!.id;
+    const open = async () =>
+      (
+        await app.inject({ method: 'POST', url: `/v1/payment_links/${linkId}/sessions` })
+      ).json() as {
+        checkout_session_id: string;
+        client_secret: string;
+      };
+    const a = await open();
+    const b = await open();
+    const intent = await adminPool.query<{ payment_intent_id: string }>(
+      `SELECT payment_intent_id FROM checkout_sessions WHERE id = $1`,
+      [a.checkout_session_id]
+    );
+    const intentA = intent.rows[0]!.payment_intent_id;
+    // `authorized` no es alcanzable por el código actual: se llega por
+    // transiciones que la FSM permite (el trigger de la FSM las valida).
+    for (const to of [
+      'requires_payment_method',
+      'requires_confirmation',
+      'processing',
+      'authorized',
+    ]) {
+      await adminPool.query(`UPDATE payment_intents SET status = $2 WHERE id = $1`, [intentA, to]);
+    }
+    return { intentA, b };
+  }
+  const confirm = (s: { checkout_session_id: string; client_secret: string }) =>
+    app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${s.checkout_session_id}/confirm`,
+      headers: { 'x-checkout-client-secret': s.client_secret },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+
+  it('venta POS: 409 sale_release_unverified, la autorización sigue viva y el segundo cobro es 409', async () => {
+    const { intentA, b } = await saleWithAuthorizedIntent(true);
+    const cancel = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${intentA}/cancel`,
+      headers: { ...auth(keyA), 'idempotency-key': `pos-cancel-${randomUUID()}` },
+    });
+    expect(cancel.statusCode).toBe(409);
+    expect(cancel.json().error.code).toBe('sale_release_unverified');
+    const got = await app.inject({
+      method: 'GET',
+      url: `/v1/payment_intents/${intentA}`,
+      headers: auth(keyA),
+    });
+    expect(got.json().status).toBe('authorized');
+    const second = await confirm(b);
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe('sale_already_charged');
+  });
+
+  it('link multiuso: la cancelación funciona como siempre y otro checkout puede cobrar', async () => {
+    const { intentA, b } = await saleWithAuthorizedIntent(false);
+    const cancel = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_intents/${intentA}/cancel`,
+      headers: { ...auth(keyA), 'idempotency-key': `mu-cancel-${randomUUID()}` },
+    });
+    expect(cancel.statusCode).toBe(200);
+    expect(cancel.json().status).toBe('canceled');
+    const second = await confirm(b);
+    expect(second.statusCode).toBe(200);
+    expect(second.json().payment_intent.status).toBe('succeeded');
+  });
+});

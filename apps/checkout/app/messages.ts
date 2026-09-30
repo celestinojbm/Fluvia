@@ -25,6 +25,7 @@ interface Messages {
   statusExpired: string;
   paymentFailed: string;
   paymentPending: string;
+  saleClosed: string;
   loadError: string;
   retry: string;
   paymentUncertain: string;
@@ -49,6 +50,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     statusExpired: 'Esta sesión de pago expiró.',
     paymentFailed: 'El pago fue rechazado. Pide al comercio un nuevo enlace de pago.',
     paymentPending: 'Tu pago se está procesando. Esta página se actualiza sola.',
+    saleClosed:
+      'Esta compra ya tiene otro pago aprobado o en curso. No pagues aquí: si tienes dudas, consulta con el comercio.',
     loadError: 'No pudimos cargar el pago. Reintenta en unos segundos.',
     retry: 'Reintentar',
     paymentUncertain:
@@ -72,6 +75,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     statusExpired: 'This payment session has expired.',
     paymentFailed: 'The payment was declined. Ask the merchant for a new payment link.',
     paymentPending: 'Your payment is processing. This page updates by itself.',
+    saleClosed:
+      'This purchase already has another approved or in-progress payment. Do not pay here: if in doubt, ask the merchant.',
     loadError: 'We could not load the payment. Retry in a few seconds.',
     retry: 'Retry',
     paymentUncertain:

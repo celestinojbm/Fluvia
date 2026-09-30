@@ -3,7 +3,6 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { PosTerminal } from '../app/lib/pos-terminal';
-import { recordAttempt } from '../app/lib/pos-attempts';
 import type { Merchant } from '../app/lib/api';
 
 /**
@@ -44,8 +43,62 @@ function status(sessionStatus: string, intentStatus: string, extra: Record<strin
       status: intentStatus,
       failure_code: null,
       amount_refunded: 0,
+      payment_link_id: LINK,
       ...extra,
     },
+  };
+}
+
+// ── Simulador de la venta del servidor (BFF /pos/sales/:id) ─────────────────
+// Construye la venta con los checkouts cuyo estado el terminal ya leyó (como
+// haría el vínculo persistente), salvo que el test fije otra.
+type StatusBody = ReturnType<typeof status>;
+let seen: Map<string, StatusBody>;
+let saleOpts: { single: boolean; history: 'complete' | 'partial'; extra: StatusBody[] };
+
+async function remember(r: Response): Promise<Response> {
+  try {
+    const b = (await r.clone().json()) as StatusBody;
+    if (b?.session?.id) seen.set(b.session.id, b);
+  } catch {
+    /* no JSON */
+  }
+  return r;
+}
+
+function simulatedSale() {
+  const all = [...saleOpts.extra, ...seen.values()].filter(
+    (b, i, arr) => arr.findIndex((x) => x.session.id === b.session.id) === i
+  );
+  const paid = all.find((b) =>
+    ['succeeded', 'partially_refunded', 'refunded'].includes(b.payment.status)
+  );
+  const holding = all.find(
+    (b) =>
+      ![
+        'created',
+        'requires_payment_method',
+        'requires_confirmation',
+        'failed',
+        'canceled',
+      ].includes(b.payment.status)
+  );
+  return {
+    link_id: LINK,
+    single_charge: saleOpts.single,
+    link_status: 'active',
+    charge: paid ? 'charged' : holding ? 'in_progress' : 'none',
+    charge_payment_intent_id: (paid ?? holding)?.payment.id ?? null,
+    succeeded_count: paid ? 1 : 0,
+    history: saleOpts.history,
+    tracking_since: '2026-09-29T15:00:00Z',
+    truncated: false,
+    checkouts: all.map((b) => ({
+      payment_intent_id: b.payment.id,
+      payment_status: b.payment.status,
+      created_at: b.session.created_at,
+      session: { id: b.session.id, status: b.session.status, expires_at: b.session.expires_at },
+    })),
   };
 }
 
@@ -53,7 +106,12 @@ type Handler = (init?: RequestInit) => Promise<Response> | Response;
 const res = (s: number, body: unknown) => new Response(JSON.stringify(body), { status: s });
 
 let calls: Array<{ url: string; init?: RequestInit }>;
-function mockFetch(routes: { link?: Handler[]; open?: Handler[]; status?: Handler[] }) {
+function mockFetch(routes: {
+  link?: Handler[];
+  open?: Handler[];
+  status?: Handler[];
+  sale?: (url: string) => Response | Promise<Response>;
+}) {
   const queues = {
     link: [...(routes.link ?? [])],
     open: [...(routes.open ?? [])],
@@ -66,7 +124,9 @@ function mockFetch(routes: { link?: Handler[]; open?: Handler[]; status?: Handle
       calls.push({ url, init });
       if (url.endsWith('/payment-links')) return next(queues.link, init);
       if (url.endsWith('/pos/checkout')) return next(queues.open, init);
-      if (url.includes('/pos/sessions/')) return next(queues.status, init);
+      if (url.includes('/pos/sessions/')) return remember(await next(queues.status, init));
+      if (url.includes('/pos/sales/'))
+        return routes.sale ? routes.sale(url) : res(200, simulatedSale());
       throw new Error(`unexpected ${url}`);
     })
   );
@@ -87,6 +147,8 @@ function renderPos(props: Partial<React.ComponentProps<typeof PosTerminal>> = {}
 
 beforeEach(() => {
   calls = [];
+  seen = new Map();
+  saleOpts = { single: true, history: 'complete', extra: [] };
   window.sessionStorage.clear();
 });
 afterEach(() => {
@@ -150,7 +212,12 @@ describe('PosTerminal — recorrido', () => {
     expect(posts('/payment-links')).toHaveLength(1);
     expect(posts('/pos/checkout')).toHaveLength(1);
     const body = JSON.parse(String(posts('/payment-links')[0]!.init!.body));
-    expect(body).toEqual({ merchant_id: MERCHANT.id, amount: 1250, currency: 'USD' });
+    expect(body).toEqual({
+      merchant_id: MERCHANT.id,
+      amount: 1250,
+      currency: 'USD',
+      single_charge: true,
+    });
     const headers = posts('/payment-links')[0]!.init!.headers as Record<string, string>;
     expect(headers['x-fluvia-csrf']).toBe('1');
     expect(headers['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
@@ -193,7 +260,7 @@ describe('PosTerminal — recorrido', () => {
     await userEvent.click(screen.getByRole('button', { name: /Cobrar US\$\s12,50/ }));
     expect(await screen.findByText('Pago rechazado')).toBeInTheDocument();
     expect(screen.getByText('Código: card_declined')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Abrir checkout nuevo' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
     await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(2));
     expect(posts('/payment-links')).toHaveLength(1);
     expect(JSON.parse(String(posts('/pos/checkout')[1]!.init!.body))).toEqual({
@@ -274,9 +341,10 @@ describe('PosTerminal — reanudación y lectura', () => {
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
     expect(await screen.findByText('Esperando al cliente')).toBeInTheDocument();
     expect(screen.getByText(/no se conserva al recargar/)).toBeInTheDocument();
-    // El checkout anterior sigue pagable: abrir otro exige confirmar el riesgo.
-    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Abrir otro checkout…' })).toBeInTheDocument();
+    // El checkout sigue pagable: la salida guiada lo dice. (El sustituto solo
+    // aparece en ventas protegidas y tras leer la venta: ver más abajo.)
+    expect(screen.getByTestId('pos-held')).toHaveTextContent('sigue abierto');
+    expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
   });
 
   it('404 al consultar ⇒ «no encontrado», nunca un estado inventado', async () => {
@@ -336,6 +404,7 @@ function mockFetchByUrl(routes: {
   link?: Handler[];
   open?: Handler[];
   status: (url: string) => Response | Promise<Response>;
+  sale?: (url: string) => Response | Promise<Response>;
 }) {
   const queues = { link: [...(routes.link ?? [])], open: [...(routes.open ?? [])] };
   const next = (q: Handler[], init?: RequestInit) => (q.length > 1 ? q.shift()! : q[0]!)(init);
@@ -345,7 +414,9 @@ function mockFetchByUrl(routes: {
       calls.push({ url, init });
       if (url.endsWith('/payment-links')) return next(queues.link, init);
       if (url.endsWith('/pos/checkout')) return next(queues.open, init);
-      if (url.includes('/pos/sessions/')) return routes.status(url);
+      if (url.includes('/pos/sessions/')) return remember(await routes.status(url));
+      if (url.includes('/pos/sales/'))
+        return routes.sale ? routes.sale(url) : res(200, simulatedSale());
       throw new Error(`unexpected ${url}`);
     })
   );
@@ -370,7 +441,7 @@ describe('PosTerminal — rechazo y recuperación', () => {
     expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeInTheDocument();
     expect((await axe.run(container)).violations).toEqual([]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Abrir checkout nuevo' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
     await waitFor(() =>
       expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', 'awaiting_payment')
     );
@@ -386,17 +457,18 @@ describe('PosTerminal — rechazo y recuperación', () => {
     expect(window.location.search).toContain(`session=${SID2}`);
     expect(window.location.search).toContain(`link=${LINK}`);
 
-    // Relación venta→intentos (registrada en este navegador), con estado real.
-    const attempts = screen.getByTestId('pos-attempts');
+    // Relación venta→checkouts según el SERVIDOR (vínculo persistente), con estado real.
+    const attempts = await screen.findByTestId('pos-attempts');
     await within(attempts).findByText('Pago rechazado');
     expect(within(attempts).getByText('Esperando al cliente')).toBeInTheDocument();
     expect(
       within(attempts)
-        .getByText(/Intento 2/)
+        .getByText(/Checkout 2/)
         .closest('li')
     ).toHaveAttribute('aria-current', 'step');
-    expect(attempts).toHaveTextContent('Abiertos desde este navegador');
-    expect(window.sessionStorage.getItem(`fluvia.pos.sales.v1:${ORG}`)).not.toContain('cs_');
+    expect(attempts).toHaveTextContent('según el servidor');
+    // Nada de la venta ni del secreto se guarda en el navegador.
+    expect(window.sessionStorage.length).toBe(0);
     expect((await axe.run(container)).violations).toEqual([]);
   });
 
@@ -437,22 +509,22 @@ describe('PosTerminal — rechazo y recuperación', () => {
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
     expect(await screen.findByText('Checkout expirado')).toBeInTheDocument();
     expect(screen.getByTestId('pos-recovery')).toHaveTextContent('El checkout caducó sin pago');
-    expect(screen.getByRole('button', { name: 'Abrir checkout nuevo' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Abrir checkout nuevo' })).toBeInTheDocument();
   });
 
-  it('rechazo sin venta conocida (seguido desde la lista) ⇒ lo explica, sin reabrir a ciegas', async () => {
-    mockFetch({ status: [() => res(200, status('open', 'failed'))] });
+  it('cobro sin vínculo (anterior al registro) ⇒ lo explica, sin reabrir a ciegas', async () => {
+    mockFetch({ status: [() => res(200, status('open', 'failed', { payment_link_id: null }))] });
     renderPos({ resume: { sessionId: SID, linkId: null } });
     expect(await screen.findByText('Pago rechazado')).toBeInTheDocument();
     expect(screen.getByTestId('pos-recovery')).toHaveTextContent(
-      'la API no permite averiguarla (G3)'
+      'anterior al registro de ventas del servidor'
     );
     expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeInTheDocument();
+    expect(calls.some((c) => c.url.includes('/pos/sales/'))).toBe(false);
   });
 
-  it('venta registrada en este navegador ⇒ se recupera aunque se siga sin ?link=', async () => {
-    recordAttempt(ORG, LINK, SID);
+  it('seguido sin ?link= (desde la lista u otra pestaña) ⇒ la venta la dice el servidor', async () => {
     mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'failed'))] });
     renderPos({ resume: { sessionId: SID, linkId: null } });
     await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
@@ -460,6 +532,15 @@ describe('PosTerminal — rechazo y recuperación', () => {
     expect(JSON.parse(String(posts('/pos/checkout')[0]!.init!.body))).toEqual({
       payment_link_id: LINK,
     });
+    expect(calls.some((c) => c.url.endsWith(`/pos/sales/${LINK}`))).toBe(true);
+  });
+
+  it('?link= manipulado ⇒ manda el vínculo del servidor', async () => {
+    const OTHER = '9d9d9d9d-1111-4222-8333-444455556666';
+    mockFetch({ status: [() => res(200, status('open', 'failed'))] });
+    renderPos({ resume: { sessionId: SID, linkId: OTHER } });
+    await screen.findByRole('button', { name: 'Abrir checkout nuevo' });
+    expect(window.location.search).toContain(`link=${LINK}`);
   });
 
   it('en proceso ⇒ ni checkout nuevo ni «Nuevo cobro»; explica por qué', async () => {
@@ -523,18 +604,175 @@ describe('PosTerminal — rechazo y recuperación', () => {
     }
   });
 
-  it('esperando sin URL ⇒ abrir otro exige confirmar el riesgo de doble cobro', async () => {
-    mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'created'))] });
+  it('venta ANTIGUA (sin cobro único) esperando sin URL ⇒ sin checkout sustituto; salida guiada', async () => {
+    saleOpts.single = false;
+    mockFetch({
+      open: [openOk2],
+      status: [
+        () => res(200, status('open', 'created')),
+        () => res(200, status('open', 'requires_payment_method')),
+      ],
+    });
+    const { container } = renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    const held = await screen.findByTestId('pos-held');
+    expect(held).toHaveTextContent('El checkout de esta venta sigue abierto');
+    expect(held).toHaveTextContent('se cobraría dos veces');
+    expect(held).toHaveTextContent('espera a que expire');
+    expect(held).toHaveTextContent('«Nuevo cobro» es solo para otra venta distinta');
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/pos/sales/'))).toBe(true));
+    // Ningún camino abre un segundo checkout pagable de una venta sin protección.
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Consultar estado' })).toBeInTheDocument();
+    expect((await axe.run(container)).violations).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Consultar estado' }));
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(posts('/pos/checkout')).toHaveLength(0);
+  });
+
+  it('venta antigua esperando sin URL ⇒ al expirar (verificado) se recupera la misma venta', async () => {
+    saleOpts.single = false;
+    mockFetch({
+      open: [openOk2],
+      status: [
+        () => res(200, status('open', 'created')),
+        () => res(200, status('expired', 'requires_payment_method')),
+      ],
+    });
     renderPos({ resume: { sessionId: SID, linkId: LINK } });
-    await userEvent.click(await screen.findByRole('button', { name: 'Abrir otro checkout…' }));
-    const warn = screen.getByRole('alert');
-    expect(warn).toHaveTextContent('se cobrará dos veces');
-    expect(warn).toHaveFocus();
-    expect(posts('/pos/checkout')).toHaveLength(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(posts('/pos/checkout')).toHaveLength(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Abrir otro checkout…' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Entiendo, abrir otro' }));
+    expect(await screen.findByTestId('pos-held')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Consultar estado' }));
+    expect(await screen.findByText('Checkout expirado')).toBeInTheDocument();
+    expect(screen.queryByTestId('pos-held')).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
     await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
+  });
+
+  it('venta PROTEGIDA esperando sin URL ⇒ checkout sustituto seguro (el backend garantiza un cobro)', async () => {
+    mockFetch({ open: [openOk2], status: [() => res(200, status('open', 'created'))] });
+    const { container } = renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    const btn = await screen.findByRole('button', { name: 'Abrir checkout sustituto' });
+    const held = screen.getByTestId('pos-held');
+    expect(held).toHaveTextContent('el primero que se pague bloquea al otro');
+    expect(held).not.toHaveTextContent('se cobraría dos veces');
+    expect((await axe.run(container)).violations).toEqual([]);
+    await userEvent.click(btn);
+    await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
+    expect(JSON.parse(String(posts('/pos/checkout')[0]!.init!.body))).toEqual({
+      payment_link_id: LINK,
+    });
+  });
+
+  it('venta protegida pero la lectura de la venta falla ⇒ ni sustituto ni recuperación', async () => {
+    mockFetch({
+      status: [() => res(200, status('open', 'failed'))],
+      sale: () => res(502, { error: { code: 'upstream_unavailable' } }),
+    });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByTestId('pos-recovery-block')).toHaveTextContent(
+      'No pudimos verificar los demás checkouts'
+    );
+    expect(screen.queryByRole('button', { name: /checkout/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Consultar estado' })).toBeInTheDocument();
+  });
+
+  it('el servidor rechaza abrir otro checkout (venta ya cobrada) ⇒ error definitivo sin reintento', async () => {
+    mockFetch({
+      open: [() => res(409, { ok: false, error: { code: 'sale_already_charged' } })],
+      status: [() => res(200, status('open', 'failed'))],
+    });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
+    expect(
+      await screen.findByText(/ya tiene un pago aprobado o en curso: no se abrió otro checkout/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Abrir un checkout nuevo/ })).toBeNull();
+  });
+});
+
+// ── Dos checkouts de la misma venta (estado leído del servidor) ─────────────
+
+describe('PosTerminal — dos checkouts de la misma venta', () => {
+  /** Checkout 1 (SID) en `first`; checkout 2 (SID2, el seguido) rechazado. */
+  function twoCheckouts(first: StatusBody, single = true) {
+    saleOpts = { single, history: 'complete', extra: [first] };
+    mockFetchByUrl({
+      open: [openOk],
+      status: (url) =>
+        url.endsWith(SID2)
+          ? res(200, statusFor(SID2, PI2, 'open', 'failed', { failure_code: 'card_declined' }))
+          : res(200, first),
+    });
+    renderPos({ resume: { sessionId: SID2, linkId: LINK } });
+  }
+  const phaseIs = (p: string) =>
+    waitFor(() => expect(screen.getByTestId('pos-phase')).toHaveAttribute('data-phase', p));
+
+  it('venta antigua: el otro checkout sigue pagable ⇒ el rechazo del actual NO permite abrir otro', async () => {
+    twoCheckouts(statusFor(SID, PI, 'open', 'requires_payment_method'), false);
+    await phaseIs('failed');
+    await within(await screen.findByTestId('pos-attempts')).findByText('Esperando al cliente');
+    expect(await screen.findByTestId('pos-recovery-block')).toHaveTextContent(
+      'Otro checkout de esta venta sigue abierto'
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+    expect(posts('/pos/checkout')).toHaveLength(0);
+  });
+
+  it('venta protegida: el otro sigue pagable ⇒ recuperar es seguro (un solo cobro posible)', async () => {
+    twoCheckouts(statusFor(SID, PI, 'open', 'requires_payment_method'));
+    await phaseIs('failed');
+    await within(await screen.findByTestId('pos-attempts')).findByText('Esperando al cliente');
+    expect(screen.getByText(/Venta protegida/)).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Abrir checkout nuevo' }));
+    await waitFor(() => expect(posts('/pos/checkout')).toHaveLength(1));
+  });
+
+  it('el otro checkout ya cobró ⇒ la venta está cobrada; no se ofrece recobrar', async () => {
+    twoCheckouts(statusFor(SID, PI, 'completed', 'succeeded'));
+    await phaseIs('failed');
+    await within(await screen.findByTestId('pos-attempts')).findByText('Pago aprobado');
+    expect(await screen.findByTestId('pos-recovery-block')).toHaveTextContent(
+      'la venta está cobrada'
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+  });
+
+  it('el otro checkout está en proceso (resultado incierto) ⇒ no se reabre', async () => {
+    twoCheckouts(statusFor(SID, PI, 'open', 'processing'));
+    await phaseIs('failed');
+    expect(await screen.findByTestId('pos-recovery-block')).toHaveTextContent(
+      'en proceso o sin verificar'
+    );
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
+  });
+
+  it('esperando mientras OTRO checkout ya cobró ⇒ no se presenta este checkout', async () => {
+    saleOpts = {
+      single: true,
+      history: 'complete',
+      extra: [statusFor(SID2, PI2, 'completed', 'succeeded')],
+    };
+    mockFetch({
+      link: [linkOk],
+      open: [openOk],
+      status: [() => res(200, status('open', 'created'))],
+    });
+    renderPos();
+    fireEvent.change(screen.getByLabelText('Importe'), { target: { value: '12.50' } });
+    await userEvent.click(screen.getByRole('button', { name: /Cobrar US\$\s12,50/ }));
+    expect(await screen.findByTestId('pos-sale-closed')).toHaveTextContent('la venta está cobrada');
+    expect(screen.getByTestId('pos-phase')).toHaveTextContent('ya no puede cobrar');
+    expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
+  });
+
+  it('venta antigua con historial PARCIAL ⇒ no se recupera; lo explica', async () => {
+    saleOpts = { single: false, history: 'partial', extra: [] };
+    mockFetch({ status: [() => res(200, status('open', 'failed'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByTestId('pos-recovery-block')).toHaveTextContent(
+      'anterior al registro de checkouts del servidor'
+    );
+    expect(screen.getByTestId('pos-attempts')).toHaveTextContent('Registro del servidor desde');
+    expect(screen.queryByRole('button', { name: 'Abrir checkout nuevo' })).toBeNull();
   });
 });

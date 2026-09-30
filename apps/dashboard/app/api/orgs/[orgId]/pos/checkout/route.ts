@@ -18,6 +18,7 @@ import { UUID_RE, type PosErrorCode } from '../../../../../lib/pos-contract';
  *  4. PROPIEDAD: el link se lee por el plano de SESIÓN de esta org (RLS +
  *     membresía). Solo si existe aquí y está `active` se abre la sesión — el
  *     BFF jamás usa el endpoint público para un link ajeno.
+ *     Una venta de cobro único ya cobrada o cobrando ⇒ 409 `sale_already_charged`.
  *  5. Apertura con contrato ESTRICTO (status 200 exacto, body validado). Esta
  *     llamada NO es idempotente: ante un resultado incierto (red, 5xx, 2xx
  *     malformado) se responde `checkout_open_uncertain` y NO se reintenta
@@ -115,6 +116,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
   }
   // Rechazos ANTES del handler: con certeza no se creó nada.
   if (openRes.status === 404) return fail('link_unavailable', 409);
+  // Venta de cobro único ya cobrada o cobrando (0046): el servidor no abre un
+  // checkout que jamás podría cobrar.
+  if (openRes.status === 409) return fail('sale_already_charged', 409);
   if (openRes.status === 429) return fail('rate_limited', 429);
   if (openRes.status === 400) return fail('validation_error', 400);
   if (openRes.status !== 200) return fail('checkout_open_uncertain', 502);
