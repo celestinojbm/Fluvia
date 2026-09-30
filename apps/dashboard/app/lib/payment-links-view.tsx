@@ -2,6 +2,7 @@ import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Merchant, PaymentLink } from './api';
 import { CopyUrlButton } from './copy-button';
 import { CreatePaymentLinkForm } from './payment-actions';
+import { StatusBadge } from './status-labels';
 
 /**
  * Vistas de payment links (F6.5A + F6.5A-bis). Lectura por sesión
@@ -16,7 +17,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export function PaymentLinksList({
@@ -80,7 +81,7 @@ export function PaymentLinksList({
                     </td>
                     <td>{formatAmount(l.amount, l.currency, locale)}</td>
                     <td>
-                      <span className={`badge badge-${l.status}`}>{l.status}</span>
+                      <StatusBadge kind="link" status={l.status} locale={locale} />
                     </td>
                     <td>{when(l.created_at)}</td>
                   </tr>
@@ -128,7 +129,7 @@ export function PaymentLinkDetail({
           <p className="org">
             <a href={`/o/${orgId}/payment-links`}>{t.backToDashboard}</a> ·{' '}
             {formatAmount(link.amount, link.currency, locale)} ·{' '}
-            <span className={`badge badge-${link.status}`}>{link.status}</span>
+            <StatusBadge kind="link" status={link.status} locale={locale} showCode />
           </p>
         </div>
         <a className="signout" href={signOutHref}>

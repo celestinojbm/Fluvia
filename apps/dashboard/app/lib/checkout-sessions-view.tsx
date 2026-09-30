@@ -1,6 +1,7 @@
 import { MESSAGES, type Locale } from '../messages';
 import type { CheckoutSession } from './api';
 import { CopyUrlButton } from './copy-button';
+import { StatusBadge } from './status-labels';
 
 /**
  * Vistas de sesiones de checkout (F6.5A) — SOLO LECTURA por sesión
@@ -12,7 +13,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export function CheckoutSessionsList({
@@ -71,7 +72,7 @@ export function CheckoutSessionsList({
                       </a>
                     </td>
                     <td>
-                      <span className={`badge badge-${s.status}`}>{s.status}</span>
+                      <StatusBadge kind="session" status={s.status} locale={locale} />
                     </td>
                     <td>{when(s.created_at)}</td>
                     <td>{when(s.expires_at)}</td>
@@ -113,7 +114,7 @@ export function CheckoutSessionDetail({
           <h1 id="session-detail-title">{t.sessionDetailTitle}</h1>
           <p className="org">
             <a href={`/o/${orgId}/checkout-sessions`}>{t.backToDashboard}</a> ·{' '}
-            <span className={`badge badge-${session.status}`}>{session.status}</span>
+            <StatusBadge kind="session" status={session.status} locale={locale} showCode />
           </p>
         </div>
         <a className="signout" href={signOutHref}>

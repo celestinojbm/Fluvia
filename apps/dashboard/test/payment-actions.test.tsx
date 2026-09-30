@@ -46,14 +46,14 @@ describe('CreateRefundForm', () => {
 
     await userEvent.type(screen.getByLabelText('Monto'), '20000');
     await userEvent.type(screen.getByLabelText('Motivo'), 'cliente lo pidió');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear reembolso' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar devolución' }));
     // Confirmación explícita ANTES de tocar la red.
     expect(fn).not.toHaveBeenCalled();
-    expect(screen.getByText(/¿Confirmar el reembolso por/)).toBeInTheDocument();
+    expect(screen.getByText(/¿Confirmar la devolución de/)).toBeInTheDocument();
     expect(screen.getByText('$ 20.000')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
-    await waitFor(() => expect(screen.getByText('Reembolso creado ✓')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Devolución registrada ✓')).toBeInTheDocument());
 
     expect(fn).toHaveBeenCalledTimes(1);
     const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
@@ -71,7 +71,7 @@ describe('CreateRefundForm', () => {
     const fn = mockFetch(409, { error: { code: 'refund_amount_exceeds_remaining' } });
     render(<CreateRefundForm orgId="o1" paymentIntentId="pi_1" currency="COP" locale="es" />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Crear reembolso' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar devolución' }));
     expect(screen.getByText(/todo lo restante\?/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
@@ -85,6 +85,36 @@ describe('CreateRefundForm', () => {
     // El cuerpo sin monto no lleva `amount` (reembolso total remanente).
     const bodyOf = (call: unknown[]) => JSON.parse(String((call[1] as RequestInit).body));
     expect(bodyOf(fn.mock.calls[0]!)).toEqual({ payment_intent_id: 'pi_1' });
+  });
+
+  it('reads the amount in MAJOR units like the POS (USD 12,50 → 1250) and rejects bad input before confirming', async () => {
+    const fn = mockFetch(201, { id: 're_1', object: 'refund' });
+    vi.stubGlobal('location', { reload: vi.fn() } as unknown as Location);
+    render(<CreateRefundForm orgId="o1" paymentIntentId="pi_1" currency="USD" locale="es" />);
+
+    const input = screen.getByLabelText('Monto');
+    await userEvent.type(input, '12.505');
+    expect(screen.getByRole('alert')).toHaveTextContent('Esta moneda no admite tantos decimales.');
+    expect(screen.getByRole('button', { name: 'Revisar devolución' })).toBeDisabled();
+
+    await userEvent.clear(input);
+    await userEvent.type(input, '12,50');
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar devolución' }));
+    expect(screen.getByText('US$ 12,50')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await waitFor(() => expect(fn).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(String((fn.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(body).toEqual({ payment_intent_id: 'pi_1', amount: 1250 });
+  });
+
+  it('explains a known API error in plain language and keeps the technical code', async () => {
+    mockFetch(409, { error: { code: 'refund_amount_exceeds_remaining' } });
+    render(<CreateRefundForm orgId="o1" paymentIntentId="pi_1" currency="COP" locale="es" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar devolución' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/supera lo que queda por devolver/);
+    expect(alert.querySelector('code')?.textContent).toBe('refund_amount_exceeds_remaining');
   });
 
   it('has no structural accessibility violations (axe)', async () => {

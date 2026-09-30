@@ -8,6 +8,7 @@ import { isChargedStatus } from './pos-receipt-contract';
 import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 import { POS_REFUND_MESSAGES } from './pos-refund-messages';
 import type { RecentCharge, RecentChargesResult, RecentWindow } from './pos-reads';
+import { statusLabel } from './status-labels';
 
 /**
  * Panel «Cobros recientes» del POS (cliente). Cada fila es una sesión de
@@ -364,12 +365,12 @@ export function PosRecentCharges({
                             ? (names.get(payment.merchant_id) ?? t.unknownMerchant)
                             : t.paymentOutsideWindow}
                         </span>
-                        <span>
-                          {t.colCheckout}: <code>{session.status}</code>
+                        <span data-status={session.status} title={session.status}>
+                          {statusLabel('session', session.status, locale)}
                         </span>
                         {payment && (
-                          <span>
-                            {t.colPayment}: <code>{payment.status}</code>
+                          <span data-status={payment.status} title={payment.status}>
+                            {t.colPayment}: {statusLabel('intent', payment.status, locale)}
                           </span>
                         )}
                         {payment && (

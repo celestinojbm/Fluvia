@@ -35,10 +35,10 @@ describe('PaymentLinksList', () => {
     const link = screen.getByRole('link', { name: /pl_abcd/ });
     expect(link.getAttribute('href')).toBe('/o/o1/payment-links/pl_abcdef123456');
     expect(screen.getByText('$ 25.000')).toBeInTheDocument();
-    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByText('Activo')).toHaveAttribute('data-status', 'active');
 
     rerender(<PaymentLinksList links={[]} orgId="o1" locale="es" signOutHref="/logout" />);
-    expect(screen.getByText('Sin payment links.')).toBeInTheDocument();
+    expect(screen.getByText('Sin enlaces de pago.')).toBeInTheDocument();
   });
 
   it('renders no mutating controls for roles without reconciliation:manage', () => {

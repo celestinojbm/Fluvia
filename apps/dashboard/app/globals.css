@@ -1407,3 +1407,10 @@ a.btn {
     break-inside: avoid;
   }
 }
+
+/* Código técnico junto a una etiqueta legible (detalle): secundario, no compite. */
+.status-code {
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: transparent;
+}

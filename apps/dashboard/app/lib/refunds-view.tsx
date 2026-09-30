@@ -1,5 +1,6 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Refund } from './api';
+import { StatusBadge } from './status-labels';
 
 /**
  * Vistas de reembolsos (F6.5A) — presentación pura, lectura por sesión
@@ -11,7 +12,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export function RefundsList({
@@ -71,7 +72,7 @@ export function RefundsList({
                     </td>
                     <td>{formatAmount(r.amount, r.currency, locale)}</td>
                     <td>
-                      <span className={`badge badge-${r.status}`}>{r.status}</span>
+                      <StatusBadge kind="refund" status={r.status} locale={locale} />
                     </td>
                     <td>{when(r.created_at)}</td>
                   </tr>
@@ -114,7 +115,7 @@ export function RefundDetail({
           <p className="org">
             <a href={`/o/${orgId}/refunds`}>{t.backToDashboard}</a> ·{' '}
             {formatAmount(refund.amount, refund.currency, locale)} ·{' '}
-            <span className={`badge badge-${refund.status}`}>{refund.status}</span>
+            <StatusBadge kind="refund" status={refund.status} locale={locale} showCode />
           </p>
         </div>
         <a className="signout" href={signOutHref}>

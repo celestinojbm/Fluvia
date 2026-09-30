@@ -47,7 +47,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('DashboardView', () => {
   it('renders every section, formats amounts, and shows empty states (es)', () => {
-    render(<DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />);
+    render(
+      <DashboardView data={DATA} locale="es" orgId="o1" orgName="Org A" signOutHref="/logout" />
+    );
     expect(screen.getByRole('heading', { name: 'Panel de operación' })).toBeInTheDocument();
     expect(screen.getByText('Org A')).toBeInTheDocument();
     // Payment intents: monto formateado COP (exponente 0).
@@ -65,13 +67,13 @@ describe('DashboardView', () => {
     );
     // Nav global hacia las nuevas páginas.
     expect(screen.getByRole('link', { name: 'Pagos' }).getAttribute('href')).toBe('/o/o1/payments');
-    expect(screen.getByRole('link', { name: 'Reembolsos' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Devoluciones' }).getAttribute('href')).toBe(
       '/o/o1/refunds'
     );
     expect(screen.getByRole('link', { name: 'Sesiones de checkout' }).getAttribute('href')).toBe(
       '/o/o1/checkout-sessions'
     );
-    expect(screen.getByRole('link', { name: 'Payment links' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Enlaces de pago' }).getAttribute('href')).toBe(
       '/o/o1/payment-links'
     );
     // Cada fila enlaza al detalle de su recurso.
@@ -87,7 +89,9 @@ describe('DashboardView', () => {
   });
 
   it('renders English section titles for locale=en', () => {
-    render(<DashboardView data={DATA} locale="en" orgId="o1" orgName="Org A" signOutHref="/logout" />);
+    render(
+      <DashboardView data={DATA} locale="en" orgId="o1" orgName="Org A" signOutHref="/logout" />
+    );
     expect(screen.getByRole('heading', { name: 'Operations dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Webhook queue/ })).toBeInTheDocument();
   });
