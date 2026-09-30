@@ -113,7 +113,7 @@ export function CheckoutSessionDetail({
         <div>
           <h1 id="session-detail-title">{t.sessionDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/checkout-sessions`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/checkout-sessions`}>{t.backToList}</a> ·{' '}
             <StatusBadge kind="session" status={session.status} locale={locale} showCode />
           </p>
         </div>

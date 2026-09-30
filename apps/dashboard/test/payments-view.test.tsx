@@ -119,7 +119,7 @@ describe('PaymentDetail', () => {
         signOutHref="/logout"
       />
     );
-    const timeline = screen.getByRole('list');
+    const timeline = screen.getByRole('list', { name: 'Línea de tiempo' });
     const items = within(timeline).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
       expect.stringContaining('Pago creado'),

@@ -2,7 +2,9 @@ import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { CheckoutSession, PaymentIntent, Refund, TimelineKind } from './api';
 import { paymentTimeline } from './api';
 import { CreateRefundForm } from './payment-actions';
+import { isChargedStatus } from './pos-receipt-contract';
 import { captureMethodLabel, StatusBadge, type StatusKind } from './status-labels';
+import { FlowNav } from './flow-nav';
 
 /**
  * Vistas de pagos (F6.5A) — presentación pura (server components, renderizables
@@ -40,6 +42,7 @@ export function PaymentsList({
   const t = MESSAGES[locale];
   return (
     <main className="dash" aria-labelledby="payments-title">
+      <FlowNav orgId={orgId} locale={locale} current="payments" signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="payments-title">{t.paymentsTitle}</h1>
@@ -47,9 +50,6 @@ export function PaymentsList({
             <a href={`/o/${orgId}`}>{t.backToDashboard}</a>
           </p>
         </div>
-        <a className="signout" href={signOutHref}>
-          {t.signOut}
-        </a>
       </header>
 
       <section className="card">
@@ -124,6 +124,12 @@ export function PaymentDetail({
     refund_created: t.tlRefundCreated,
   };
   const timeline = paymentTimeline(intent, refunds, sessions);
+  // Continuidad del recorrido: justificante solo de un cobro CONFIRMADO (misma
+  // regla que el BFF del justificante) y el POS sigue el checkout más reciente.
+  const charged = isChargedStatus(intent.status);
+  const latestSession =
+    [...sessions].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+  const lang = locale === 'en' ? '?lang=en' : '';
   const rows: Array<{ label: string; value: string }> = [
     { label: t.colPayment, value: intent.id },
     { label: t.colMerchant, value: intent.merchant_id },
@@ -136,19 +142,40 @@ export function PaymentDetail({
   ];
   return (
     <main className="dash" aria-labelledby="payment-detail-title">
+      <FlowNav orgId={orgId} locale={locale} current={null} signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="payment-detail-title">{t.paymentDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/payments`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/payments`}>{t.backToList}</a> ·{' '}
             {formatAmount(intent.amount, intent.currency, locale)} ·{' '}
             <StatusBadge kind="intent" status={intent.status} locale={locale} showCode />
           </p>
         </div>
-        <a className="signout" href={signOutHref}>
-          {t.signOut}
-        </a>
       </header>
+
+      {(charged || latestSession) && (
+        <div className="flow-actions" role="group" aria-label={t.detailActionsLabel}>
+          {charged && (
+            <a
+              className="btn btn-secondary"
+              href={`/o/${orgId}/pos/receipts/${intent.id}${lang}`}
+              data-testid="payment-receipt-link"
+            >
+              {t.detailReceipt}
+            </a>
+          )}
+          {latestSession && (
+            <a
+              className="btn btn-secondary"
+              href={`/o/${orgId}/pos?${locale === 'en' ? 'lang=en&' : ''}session=${latestSession.id}`}
+              data-testid="payment-pos-link"
+            >
+              {t.detailOpenPos}
+            </a>
+          )}
+        </div>
+      )}
 
       <section className="card">
         <div className="table-wrap">
@@ -170,7 +197,7 @@ export function PaymentDetail({
 
       <section className="card" aria-labelledby="payment-timeline-title">
         <h2 id="payment-timeline-title">{t.timelineTitle}</h2>
-        <ol className="timeline">
+        <ol className="timeline" aria-labelledby="payment-timeline-title">
           {timeline.map((e, i) => (
             <li key={`${e.kind}-${e.refId}-${i}`}>
               <span className="tl-when">{when(e.at)}</span>

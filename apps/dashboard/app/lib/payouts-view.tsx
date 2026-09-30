@@ -112,7 +112,7 @@ export function PayoutsDetail({
         <div>
           <h1 id="payout-detail-title">{t.payouts}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/payouts`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/payouts`}>{t.backToList}</a> ·{' '}
             {formatAmount(payout.amount, payout.currency, locale)} ·{' '}
             <span className={`badge badge-${payout.status}`}>{payout.status}</span>
           </p>

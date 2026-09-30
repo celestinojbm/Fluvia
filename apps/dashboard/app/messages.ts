@@ -74,6 +74,11 @@ interface Messages {
   disputeEvidenceHint: string;
   disputeEvidenceSubmitted: string;
   backToDashboard: string;
+  backToList: string;
+  moreNavLabel: string;
+  detailReceipt: string;
+  detailOpenPos: string;
+  detailActionsLabel: string;
   sandboxNotice: string;
   // casos operativos + ajustes (F4-03c-ii)
   cases: string;
@@ -414,6 +419,11 @@ export const MESSAGES: Record<Locale, Messages> = {
       'Marca que el comercio respondió con evidencia (open → en revisión). No decide el desenlace: won/lost llega solo por el banco antes de que venza el plazo.',
     disputeEvidenceSubmitted: 'Evidencia enviada — en revisión por el banco.',
     backToDashboard: '← Volver al panel',
+    backToList: '← Volver a la lista',
+    moreNavLabel: 'Más secciones de operación',
+    detailReceipt: 'Ver justificante',
+    detailOpenPos: 'Abrir en el POS',
+    detailActionsLabel: 'Acciones de este pago',
     sandboxNotice: 'Entorno de pruebas — no se mueve dinero real.',
     cases: 'Casos',
     casesTitle: 'Casos operativos',
@@ -757,6 +767,11 @@ export const MESSAGES: Record<Locale, Messages> = {
       'Marks that the merchant responded with evidence (open → under review). It does not decide the outcome: won/lost comes only from the bank before the deadline.',
     disputeEvidenceSubmitted: 'Evidence submitted — under review by the bank.',
     backToDashboard: '← Back to dashboard',
+    backToList: '← Back to the list',
+    moreNavLabel: 'More operations sections',
+    detailReceipt: 'View receipt',
+    detailOpenPos: 'Open in the POS',
+    detailActionsLabel: 'Actions for this payment',
     sandboxNotice: 'Test environment — no real money moves.',
     cases: 'Cases',
     casesTitle: 'Operational cases',

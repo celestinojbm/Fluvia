@@ -1,6 +1,6 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { DashboardData } from './api';
-import { POS_MESSAGES } from './pos-messages';
+import { FlowNav } from './flow-nav';
 import { ResendButton } from './resend-button';
 import { StatusBadge, type StatusKind } from './status-labels';
 
@@ -111,17 +111,13 @@ export function DashboardView({
 
   return (
     <main className="dash" aria-labelledby="dash-title">
+      <FlowNav orgId={orgId} locale={locale} current="panel" signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="dash-title">{t.dashboardTitle}</h1>
           <p className="org">{orgName}</p>
         </div>
-        <nav className="dash-nav">
-          <a className="nav-cta" href={`/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`}>
-            {POS_MESSAGES[locale].navLabel}
-          </a>
-          <a href={`/o/${orgId}/payments`}>{t.payments}</a>
-          <a href={`/o/${orgId}/refunds`}>{t.sectionRefunds}</a>
+        <nav className="dash-nav" aria-label={t.moreNavLabel}>
           <a href={`/o/${orgId}/checkout-sessions`}>{t.sectionSessions}</a>
           <a href={`/o/${orgId}/payment-links`}>{t.sectionLinks}</a>
           <a href={`/o/${orgId}/merchants`}>{t.merchants}</a>
@@ -133,9 +129,6 @@ export function DashboardView({
           {canManageWebhooks && <a href={`/o/${orgId}/webhook-endpoints`}>{t.webhookEndpoints}</a>}
           {canReadKeys && <a href={`/o/${orgId}/api-keys`}>{t.apiKeys}</a>}
           {canReadAudit && <a href={`/o/${orgId}/events`}>{t.events}</a>}
-          <a className="signout" href={signOutHref}>
-            {t.signOut}
-          </a>
         </nav>
       </header>
 

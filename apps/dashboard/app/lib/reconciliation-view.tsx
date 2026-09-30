@@ -123,7 +123,7 @@ export function ReconciliationDetail({
         <div>
           <h1 id="recon-detail-title">{t.reconciliation}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/reconciliation`}>{t.backToDashboard}</a> · {report.provider} ·{' '}
+            <a href={`/o/${orgId}/reconciliation`}>{t.backToList}</a> · {report.provider} ·{' '}
             {when(report.period_start)} → {when(report.period_end)} ·{' '}
             <span className={`badge badge-${report.status}`}>{report.status}</span>
           </p>

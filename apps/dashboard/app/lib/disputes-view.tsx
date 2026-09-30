@@ -125,7 +125,7 @@ export function DisputesDetail({
         <div>
           <h1 id="dispute-detail-title">{t.disputes}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/disputes`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/disputes`}>{t.backToList}</a> ·{' '}
             {formatAmount(dispute.amount, dispute.currency, locale)} ·{' '}
             <span className={`badge badge-${dispute.status}`}>{dispute.status}</span>
           </p>

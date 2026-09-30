@@ -1414,3 +1414,59 @@ a.btn {
   color: var(--muted);
   background: transparent;
 }
+
+/* Navegación común del recorrido (panel → cobrar → pagos → devoluciones). */
+.flow-nav {
+  margin-bottom: 1rem;
+}
+.flow-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.flow-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+.flow-nav a:hover {
+  text-decoration: underline;
+}
+.flow-nav a[aria-current='page'] {
+  color: var(--fg);
+  background: #e3ebf5;
+  text-decoration: none;
+}
+.flow-nav a.flow-cta:not([aria-current='page']) {
+  color: #ffffff;
+  background: var(--brand);
+}
+.flow-nav a:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+.flow-nav .flow-signout {
+  margin-left: auto;
+}
+.flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+}
+@media (max-width: 640px) {
+  /* Detalle (tabla de filas): los ids largos parten línea en vez de cortarse. */
+  .table-wrap th[scope='row'] + td code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+}

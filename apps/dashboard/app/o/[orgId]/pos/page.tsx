@@ -8,6 +8,7 @@ import {
 } from '../../../lib/api';
 import { UUID_RE } from '../../../lib/pos-contract';
 import { POS_MESSAGES } from '../../../lib/pos-messages';
+import { FlowNav } from '../../../lib/flow-nav';
 import { fetchRecentCharges } from '../../../lib/pos-reads';
 import { PosWorkspace } from '../../../lib/pos-workspace';
 import { normalizeLocale } from '../../../messages';
@@ -52,6 +53,7 @@ export default async function PosPage({
 
   return (
     <main className="dash pos" aria-labelledby="pos-title">
+      <FlowNav orgId={orgId} locale={locale} current="pos" />
       <header className="dash-head">
         <div>
           <h1 id="pos-title">{t.title}</h1>
@@ -59,9 +61,6 @@ export default async function PosPage({
             {org?.name ?? orgId} · {t.subtitle}
           </p>
         </div>
-        <a className="signout" href={`/o/${orgId}${locale === 'en' ? '?lang=en' : ''}`}>
-          {t.back}
-        </a>
       </header>
       <PosWorkspace
         orgId={orgId}

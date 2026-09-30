@@ -135,7 +135,7 @@ export function WebhookEventDetailView({
         <div>
           <h1 id="whe-detail-title">{t.webhookEventDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/webhook-events`}>{t.backToDashboard}</a> · {event.topic} ·{' '}
+            <a href={`/o/${orgId}/webhook-events`}>{t.backToList}</a> · {event.topic} ·{' '}
             <span className={`badge badge-${event.status}`}>{event.status}</span>
           </p>
         </div>

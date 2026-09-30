@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { apiBase, fetchOrganizations } from '../../../../../lib/api';
+import { FlowNav } from '../../../../../lib/flow-nav';
 import { UUID_RE } from '../../../../../lib/pos-contract';
 import { PosReceiptView } from '../../../../../lib/pos-receipt';
 import { POS_RECEIPT_MESSAGES } from '../../../../../lib/pos-receipt-messages';
@@ -34,14 +35,12 @@ export default async function PosReceiptPage({
 
   return (
     <main className="dash pos pos-receipt-page" aria-label={t.docTitle}>
+      <FlowNav orgId={orgId} locale={locale} current={null} />
       <header className="dash-head no-print">
         <div>
           <h1>{t.pageTitle}</h1>
           {org && <p className="org">{org.name}</p>}
         </div>
-        <a className="signout" href={`/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`}>
-          {t.back}
-        </a>
       </header>
       <PosReceiptView
         orgId={orgId}

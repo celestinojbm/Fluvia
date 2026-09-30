@@ -127,7 +127,7 @@ export function PaymentLinkDetail({
         <div>
           <h1 id="link-detail-title">{t.linkDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/payment-links`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/payment-links`}>{t.backToList}</a> ·{' '}
             {formatAmount(link.amount, link.currency, locale)} ·{' '}
             <StatusBadge kind="link" status={link.status} locale={locale} showCode />
           </p>
