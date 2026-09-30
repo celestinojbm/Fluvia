@@ -49,7 +49,7 @@ Redis 7.0.15, Node 22.22.2, pnpm 10.33.0. MockProvider únicamente.
 | `pnpm licenses:check --strict` | OK — 128 paquetes prod, sin prohibidas/desconocidas |
 | `pnpm audit --audit-level high` (pnpm 11.13.0, como CI) | **exit 0** — 4 moderate (fastify ×2, vitest, @vitest/mocker), 0 high/critical |
 | Mismo audit sobre la base `ed2f368` | exit 1 — 38 (11 moderate, 25 high, 2 critical): **heredado**; #56 lo corrige |
-| SBOM (syft) / grype | No ejecutable en local (binarios no disponibles); lo cubre el CI del candidato |
+| SBOM (syft) / grype | No ejecutable en local; ver CI del candidato |
 
 `docs/compliance/license-exceptions.json` y `.grype.yaml` no cambian respecto a la base.
 
@@ -77,7 +77,28 @@ Redis 7.0.15, Node 22.22.2, pnpm 10.33.0. MockProvider únicamente.
 3. Las 4 moderate (fastify <5.12.1, vitest <4.1.11) no rompen el gate (umbral High) y
    no se han aceptado ni silenciado.
 
+## CI del candidato (GitHub Actions, head `462563fe36`)
+
+Runs `36661293924` (push) y `36661327721` (pull_request): los 4 checks en **verde**.
+
+- Calidad: install, lint, format, typecheck, migraciones + no-op, suite, invariantes,
+  drills worker-down / restore / load-chaos — OK.
+- Seguridad: gitleaks OK · `pnpm audit` exit 0 (4 moderate) · licencias strict OK ·
+  SBOM syft 1.42.3 generado (`fluvia-sbom.spdx.json`) · grype 0.97.1 (DB 2026-09-29):
+  4 matches, todos Medium (fastify ×2, vitest, @vitest/mocker) ⇒ sin High/Critical.
+
+Heredado vs. nuevo:
+
+- **Heredado**: el `Dependency audit` rojo de #55/#57/#58 (p. ej. #58, job `109710115814`:
+  38 vulnerabilidades, 25 high, 2 critical) es el mismo resultado que da la base
+  `ed2f368` hoy; lo corrige #56. El último CI de la base es del 2026-07-17 (verde): las
+  advisories se publicaron después.
+- **Nuevo en la combinación**: ninguno.
+- Cobertura a vigilar: gitleaks corre con `--no-merges --first-parent`, así que en este
+  PR escaneó **1 commit** (el de docs); los commits de #55–#58 solo quedan cubiertos por
+  el gitleaks de sus propios PRs.
+
 ## Checkpoint
 
-Hecho: A, B, C (PR draft), D local completo salvo SBOM/grype, E pendiente del CI remoto.
-Siguiente paso: leer el CI del candidato y separar fallos heredados vs. nuevos.
+Hecho: A, B, C, D y E. Pendiente: nada de este encargo. Decisiones abiertas del
+propietario: void verificado (observación 1), PEND-007/PEND-008.
