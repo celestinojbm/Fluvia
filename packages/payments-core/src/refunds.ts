@@ -7,6 +7,7 @@ import {
   PaymentIntentNotFoundError,
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
+  isRefundExceedsRemaining,
 } from './errors.js';
 import type { PaymentProvider } from './provider.js';
 import { CircuitOpenError } from './resilience.js';
@@ -17,7 +18,8 @@ import type { PaymentIntentService, TxClient } from './service.js';
  *
  *   Fase 1 (beginIn, DENTRO de la tx de la idempotency key): bajo lock del
  *   intent se valida el estado (succeeded|partially_refunded) y el monto
- *   contra lo REMANENTE (capturado − aplicado − refunds en vuelo) y nace la
+ *   contra lo REMANENTE (capturado − aplicado − refunds VIVOS: created,
+ *   processing e indeterminate; 0048 lo re-exige en el motor) y nace la
  *   fila `refund` en `created`. La respuesta del endpoint ES este estado:
  *   el refund es asincrono por contrato (replay exacto).
  *
@@ -52,8 +54,15 @@ import type { PaymentIntentService, TxClient } from './service.js';
  * webhooks de refund del proveedor y un watchdog que barra refunds
  * `processing`/`indeterminate` envejecidos llegan en un incremento posterior
  * (F4 conciliacion). Hoy `execute` se dispara una vez desde el endpoint; un
- * refund atascado conserva su cupo (conservador: jamas sobre-reembolsa).
+ * refund atascado (created/processing/indeterminate) conserva su cupo
+ * (conservador: jamas sobre-reembolsa).
  */
+
+/**
+ * Estados que RESERVAN cupo del cobro: el dinero aún puede salir. Espejo exacto
+ * del trigger `fluvia_refund_live_reservation_guard` (0048).
+ */
+const LIVE_REFUND_STATUSES: readonly string[] = ['created', 'processing', 'indeterminate'];
 
 export interface RefundDto {
   id: string;
@@ -143,12 +152,16 @@ export class RefundService {
       throw new InvalidStateTransitionError(intent.status, 'refunded');
     }
 
-    // Remanente REAL bajo el lock del intent: capturado − aplicado − en vuelo
-    // (created/processing reservan cupo; failed/canceled lo devuelven).
+    // Remanente REAL bajo el lock del intent: capturado − aplicado − VIVOS.
+    // created/processing/indeterminate reservan cupo; failed/canceled lo
+    // devuelven. `indeterminate` CUENTA: el proveedor pudo haberlo ejecutado y
+    // su reserva contable sigue retenida — liberar su cupo permitiría una
+    // segunda devolución del mismo dinero (reproducido; 0048 lo cierra también
+    // en el motor para cualquier punto de entrada).
     const inFlight = await c.query<{ total: string }>(
       `SELECT COALESCE(SUM(amount), 0)::text AS total FROM refunds
-       WHERE payment_intent_id = $1 AND status IN ('created', 'processing')`,
-      [input.paymentIntentId]
+       WHERE payment_intent_id = $1 AND status = ANY($2::text[])`,
+      [input.paymentIntentId, LIVE_REFUND_STATUSES]
     );
     const remaining =
       BigInt(intent.amount_captured) -
@@ -159,19 +172,29 @@ export class RefundService {
       throw new RefundAmountExceedsRemainingError(requested.toString(), remaining.toString());
     }
 
-    const res = await c.query<RefundRow>(
-      `INSERT INTO refunds (tenant_id, payment_intent_id, amount, currency, reason, provider)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING ${REFUND_COLUMNS}`,
-      [
-        tenantId,
-        input.paymentIntentId,
-        requested.toString(),
-        intent.currency,
-        input.reason ?? null,
-        this.provider.name,
-      ]
-    );
+    // Garantía final del motor (0048): el trigger re-evalua el cupo vivo bajo
+    // el mismo lock; si un camino se saltara la cuenta de arriba, su rechazo
+    // se traduce al MISMO error de dominio (422), nunca a un 500.
+    const res = await c
+      .query<RefundRow>(
+        `INSERT INTO refunds (tenant_id, payment_intent_id, amount, currency, reason, provider)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING ${REFUND_COLUMNS}`,
+        [
+          tenantId,
+          input.paymentIntentId,
+          requested.toString(),
+          intent.currency,
+          input.reason ?? null,
+          this.provider.name,
+        ]
+      )
+      .catch((err: unknown) => {
+        if (isRefundExceedsRemaining(err)) {
+          throw new RefundAmountExceedsRemainingError(requested.toString(), remaining.toString());
+        }
+        throw err;
+      });
     const dto = toDto(res.rows[0]!);
     await this.emit(c, dto, 'created');
     return dto;

@@ -154,6 +154,100 @@ describe('sesión caducada y sin acceso', () => {
     expect(reads()).toBe(1);
   });
 
+  // Límite del mensaje: «no se registró» solo es afirmable si NINGÚN envío de la
+  // misma key pudo cursarse. Tras un resultado incierto, un 401 en el reintento
+  // no prueba nada sobre el primer envío.
+  it('incierto ⇒ reintento con 401 ⇒ NO afirma «no se registró»; pide sesión y consultar, sin repetir', async () => {
+    const user = userEvent.setup();
+    mockFetch(
+      [listOf()],
+      [
+        () => Promise.reject(new TypeError('network down')),
+        () => res(401, { ok: false, error: { code: 'invalid_session' } }),
+      ]
+    );
+    renderPanel();
+    await user.click(await screen.findByRole('button', { name: 'Devolver…' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar devolución' }));
+    await user.click(screen.getByRole('button', { name: /^Devolver / }));
+    await user.click(await screen.findByRole('button', { name: 'Reintentar de forma segura' }));
+
+    const unverified = await screen.findByTestId('pos-refund-unverified');
+    expect(unverified).toHaveFocus();
+    expect(unverified).toHaveTextContent('No podemos confirmar si la devolución se registró');
+    const auth = screen.getByTestId('pos-refund-auth');
+    expect(auth).not.toHaveTextContent('no se registró');
+    expect(auth).toHaveTextContent(/No sabemos si la devolución se registró/);
+    expect(auth).toHaveTextContent(
+      /consulta las devoluciones de este cobro antes de volver a intentarlo/
+    );
+    expect(screen.getByRole('link', { name: 'Vuelve a iniciar sesión' })).toBeInTheDocument();
+    expect(screen.queryByTestId('pos-refund-failed')).toBeNull();
+    // Ni repetir ni editar el borrador; cerrar exige una lectura posterior.
+    expect(screen.queryByRole('button', { name: 'Reintentar de forma segura' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Devolver / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Volver y editar' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeDisabled();
+    // Los dos envíos usaron la MISMA Idempotency-Key.
+    const posts = calls.filter((c) => c.init?.method === 'POST');
+    expect(posts).toHaveLength(2);
+    const keyOf = (c: (typeof posts)[number]) =>
+      (c.init!.headers as Record<string, string>)['idempotency-key'];
+    expect(keyOf(posts[0]!)).toBe(keyOf(posts[1]!));
+    expect(reads()).toBe(1); // sin sesión no se relee
+  });
+
+  it('incierto ⇒ reintento rechazado (422) ⇒ sin verificar: relee, no ofrece repetir y solo cierra tras leer', async () => {
+    const user = userEvent.setup();
+    let releaseRead: (r: Response) => void = () => {};
+    mockFetch(
+      [
+        listOf(),
+        () => new Promise<Response>((r) => (releaseRead = r)),
+        listOf(refund({ status: 'succeeded' })),
+      ],
+      [
+        () => res(502, { ok: false, error: { code: 'upstream_unavailable' } }),
+        () => res(422, { error: { code: 'refund_amount_exceeds_remaining' } }),
+      ]
+    );
+    renderPanel();
+    await user.click(await screen.findByRole('button', { name: 'Devolver…' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar devolución' }));
+    await user.click(screen.getByRole('button', { name: /^Devolver / }));
+    await user.click(await screen.findByRole('button', { name: 'Reintentar de forma segura' }));
+
+    const unverified = await screen.findByTestId('pos-refund-unverified');
+    expect(unverified).toHaveTextContent(/pudo registrarse/);
+    expect(unverified).toHaveTextContent(/Último intento: El importe supera/);
+    expect(screen.queryByTestId('pos-refund-failed')).toBeNull();
+    expect(screen.queryByText('No se pudo registrar la devolución.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reintentar de forma segura' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Volver y editar' })).toBeNull();
+    // Relectura automática en vuelo: cerrar sigue deshabilitado.
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toBeDisabled();
+    await act(async () => releaseRead(res(200, { refunds: [refund()], truncated: false })));
+    // Tras una lectura correcta posterior se puede cerrar y ver el estado real.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cerrar' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByTestId('pos-refund-unverified')).toBeNull();
+    expect(screen.getByTestId('pos-refund-list')).toBeInTheDocument();
+    await expectNoAxeViolations(screen.getByTestId('pos-refund'));
+  });
+
+  it('401 en el PRIMER envío (nada cursado) sigue afirmando «no se registró»', async () => {
+    const user = userEvent.setup();
+    mockFetch([listOf()], [() => res(401, { ok: false, error: { code: 'invalid_session' } })]);
+    renderPanel();
+    await user.click(await screen.findByRole('button', { name: 'Devolver…' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar devolución' }));
+    await user.click(screen.getByRole('button', { name: /^Devolver / }));
+    expect(await screen.findByTestId('pos-refund-auth')).toHaveTextContent(
+      'La devolución no se registró.'
+    );
+    expect(screen.queryByTestId('pos-refund-unverified')).toBeNull();
+  });
+
   it('403/404 al leer ⇒ sin acceso', async () => {
     mockFetch([() => res(404, { ok: false, error: { code: 'not_found' } })]);
     renderPanel();
