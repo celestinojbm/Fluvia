@@ -7,7 +7,11 @@ export interface TxClient {
 import { buildEnvelope } from '@fluvia/events';
 import type { Money } from '@fluvia/money';
 import { INTENT_TRANSITIONS, canTransition, type IntentStatus } from './fsm.js';
-import { InvalidStateTransitionError, PaymentIntentNotFoundError } from './errors.js';
+import {
+  InvalidStateTransitionError,
+  PaymentIntentNotFoundError,
+  SaleReleaseUnverifiedError,
+} from './errors.js';
 
 /**
  * Servicio de transiciones de payment intents (F3-01).
@@ -28,6 +32,8 @@ export interface CreateIntentInput {
   description?: string;
   captureMethod?: 'automatic' | 'manual';
   metadata?: Record<string, string>;
+  /** Link que originó el intent (vínculo persistente venta → intents, 0046). */
+  paymentLinkId?: string;
 }
 
 export interface PaymentIntentDto {
@@ -42,6 +48,8 @@ export interface PaymentIntentDto {
   amountRefunded: string;
   version: string;
   failureCode: string | null;
+  /** Link de origen; null = intent directo o anterior al vínculo (0046). */
+  paymentLinkId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,13 +71,14 @@ interface IntentRow {
   amount_refunded: string;
   version: string;
   failure_code: string | null;
+  payment_link_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
 
 const INTENT_COLUMNS = `id, tenant_id, merchant_id, amount::text, currency, status,
   capture_method, amount_captured::text, amount_refunded::text, version::text,
-  failure_code, created_at, updated_at`;
+  failure_code, payment_link_id, created_at, updated_at`;
 
 function toDto(r: IntentRow): PaymentIntentDto {
   return {
@@ -84,10 +93,18 @@ function toDto(r: IntentRow): PaymentIntentDto {
     amountRefunded: r.amount_refunded,
     version: r.version,
     failureCode: r.failure_code,
+    paymentLinkId: r.payment_link_id,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
   };
 }
+
+/** Estados en los que el intent aún no cobra ni retiene nada en el proveedor. */
+const PRE_CHARGE: ReadonlySet<IntentStatus> = new Set<IntentStatus>([
+  'created',
+  'requires_payment_method',
+  'requires_confirmation',
+]);
 
 export class PaymentIntentService {
   constructor(
@@ -107,8 +124,9 @@ export class PaymentIntentService {
     {
       const res = await c.query<IntentRow>(
         `INSERT INTO payment_intents
-           (tenant_id, merchant_id, amount, currency, description, capture_method, metadata, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'created')
+           (tenant_id, merchant_id, amount, currency, description, capture_method, metadata,
+            payment_link_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'created')
          RETURNING ${INTENT_COLUMNS}`,
         [
           input.tenantId,
@@ -118,6 +136,7 @@ export class PaymentIntentService {
           input.description ?? null,
           input.captureMethod ?? 'automatic',
           JSON.stringify(input.metadata ?? {}),
+          input.paymentLinkId ?? null,
         ]
       );
       const dto = toDto(res.rows[0]!);
@@ -168,6 +187,17 @@ export class PaymentIntentService {
       if (!row) throw new PaymentIntentNotFoundError();
       if (!canTransition(INTENT_TRANSITIONS, row.status, to)) {
         throw new InvalidStateTransitionError(row.status, to);
+      }
+      // Venta de cobro único (0046/0047): cancelar LOCALMENTE un intent que ya
+      // retiene la venta (p. ej. `authorized`: fondos retenidos en el
+      // proveedor) la liberaría sin anulación verificada. Error de dominio
+      // limpio; el trigger del motor es la garantía para cualquier otro camino.
+      if (to === 'canceled' && !PRE_CHARGE.has(row.status)) {
+        const sc = await c.query<{ single_charge_link_id: string | null }>(
+          `SELECT single_charge_link_id FROM payment_intents WHERE id = $1`,
+          [intentId]
+        );
+        if (sc.rows[0]?.single_charge_link_id) throw new SaleReleaseUnverifiedError();
       }
 
       const res = await c.query<IntentRow>(

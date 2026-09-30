@@ -6,7 +6,11 @@ import {
   computeRequestHash,
 } from '@fluvia/idempotency';
 import { ResourceMetadataSchema } from '@fluvia/identity';
-import { PaymentLinkService, type PaymentLinkDto } from '@fluvia/payments-core';
+import {
+  PaymentLinkService,
+  type PaymentLinkDto,
+  type PaymentLinkSaleDto,
+} from '@fluvia/payments-core';
 import type { Security } from '../security.js';
 
 /**
@@ -49,8 +53,39 @@ export function publicLink(l: PaymentLinkDto) {
     status: l.status,
     url: l.url,
     metadata: l.metadata,
+    single_charge: l.singleCharge,
+    checkout_tracking_since: l.checkoutTrackingSince,
     created_at: l.createdAt,
     disabled_at: l.disabledAt,
+  };
+}
+
+/** Venta = link + checkouts vinculados + estado del cobro (plano de sesión). */
+export function publicSale(s: PaymentLinkSaleDto) {
+  return {
+    object: 'payment_link_sale',
+    payment_link: publicLink(s.link),
+    charge: s.charge,
+    charge_payment_intent_id: s.chargeIntentId,
+    succeeded_count: s.succeededCount,
+    history: s.history,
+    truncated: s.truncated,
+    checkouts: s.checkouts.map((c) => ({
+      payment_intent_id: c.paymentIntentId,
+      payment_intent_status: c.intentStatus,
+      failure_code: c.failureCode,
+      amount_refunded: Number(c.amountRefunded),
+      created_at: c.createdAt,
+      checkout_session: c.session
+        ? {
+            id: c.session.id,
+            status: c.session.status,
+            expires_at: c.session.expiresAt,
+            completed_at: c.session.completedAt,
+            created_at: c.session.createdAt,
+          }
+        : null,
+    })),
   };
 }
 

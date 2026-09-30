@@ -733,6 +733,133 @@ describe('crear payment link por sesión (F6.5A-bis G2, reconciliation:manage)',
   });
 });
 
+// ── POS: venta de cobro único (0046) ─────────────────────────────────────────
+
+describe('venta POS de cobro único por sesión (single_charge + lectura de venta)', () => {
+  async function createSale(headers: Record<string, string>, key = `pos-${randomUUID()}`) {
+    const payload = { merchant_id: merchantA, amount: 7_000, currency: 'COP', single_charge: true };
+    return app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: { ...headers, 'idempotency-key': key },
+      payload,
+    });
+  }
+  const openCheckout = async (linkId: string) =>
+    (await app.inject({ method: 'POST', url: `/v1/payment_links/${linkId}/sessions` })).json() as {
+      checkout_session_id: string;
+      client_secret: string;
+    };
+  const confirm = (s: { checkout_session_id: string; client_secret: string }) =>
+    app.inject({
+      method: 'POST',
+      url: `/v1/checkout_sessions/${s.checkout_session_id}/confirm`,
+      headers: { 'x-checkout-client-secret': s.client_secret },
+      payload: { payment_method_token: 'tok_approve' },
+    });
+
+  it('crea la venta de forma idempotente con la política; el plano de API key no la acepta', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const key = `pos-${randomUUID()}`;
+    const first = await createSale(owner.headers, key);
+    expect(first.statusCode).toBe(201);
+    expect(first.json().single_charge).toBe(true);
+    const replay = await createSale(owner.headers, key);
+    expect(replay.json().id).toBe(first.json().id);
+    expect(replay.headers['idempotency-replayed']).toBe('true');
+    // Misma key con otra política = otro request ⇒ conflicto, no una venta nueva.
+    const other = await app.inject({
+      method: 'POST',
+      url: `/v1/organizations/${orgA}/payment_links`,
+      headers: { ...owner.headers, 'idempotency-key': key },
+      payload: { merchant_id: merchantA, amount: 7_000, currency: 'COP', single_charge: false },
+    });
+    expect(other.statusCode).toBeGreaterThanOrEqual(400);
+    expect(other.statusCode).toBeLessThan(500);
+
+    const viaKey = await app.inject({
+      method: 'POST',
+      url: '/v1/payment_links',
+      headers: { ...apiAuth(keyA), 'idempotency-key': `key-${randomUUID()}` },
+      payload: { merchant_id: merchantA, amount: 7_000, currency: 'COP', single_charge: true },
+    });
+    expect(viaKey.statusCode).toBe(400);
+  });
+
+  it('dos checkouts de la venta: uno cobra, el otro 409 sale_already_charged; la venta lo refleja', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const link = (await createSale(owner.headers)).json() as { id: string };
+    const a = await openCheckout(link.id);
+    const b = await openCheckout(link.id);
+    const [ra, rb] = await Promise.all([confirm(a), confirm(b)]);
+    const codes = [ra.statusCode, rb.statusCode].sort();
+    expect(codes).toEqual([200, 409]);
+    const loser = ra.statusCode === 409 ? ra : rb;
+    expect(loser.json().error.code).toBe('sale_already_charged');
+    const loserSession = ra.statusCode === 409 ? a : b;
+    const status = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${loserSession.checkout_session_id}/status`,
+      headers: { 'x-checkout-client-secret': loserSession.client_secret },
+    });
+    expect(status.json().sale_closed).toBe(true);
+
+    // Tras cobrar, abrir otro checkout de la venta es 409.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/v1/payment_links/${link.id}/sessions`,
+    });
+    expect(again.statusCode).toBe(409);
+
+    const analyst = await sessionUser('analyst', orgA);
+    const sale = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_links/${link.id}/sale`,
+      headers: analyst.headers,
+    });
+    expect(sale.statusCode).toBe(200);
+    const body = sale.json();
+    expect(body).toMatchObject({
+      object: 'payment_link_sale',
+      charge: 'charged',
+      succeeded_count: 1,
+      history: 'complete',
+    });
+    expect(body.payment_link.single_charge).toBe(true);
+    expect(body.checkouts).toHaveLength(2);
+    const ids = (body.checkouts as Array<{ checkout_session: { id: string } }>).map(
+      (c) => c.checkout_session.id
+    );
+    expect(ids.sort()).toEqual([a.checkout_session_id, b.checkout_session_id].sort());
+    // El intent expone su venta (para seguir desde el historial).
+    const pi = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_intents/${body.charge_payment_intent_id}`,
+      headers: analyst.headers,
+    });
+    expect(pi.json().payment_link_id).toBe(link.id);
+  });
+
+  it('la lectura de venta es por org: otra org ⇒ 404; sin sesión ⇒ 401', async () => {
+    const owner = await sessionUser('owner', orgA);
+    const link = (await createSale(owner.headers)).json() as { id: string };
+    const outsider = await sessionUser('owner', orgB);
+    for (const org of [orgA, orgB]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/v1/organizations/${org}/payment_links/${link.id}/sale`,
+        headers: outsider.headers,
+      });
+      expect(res.statusCode, org).toBe(404);
+    }
+    const anon = await app.inject({
+      method: 'GET',
+      url: `/v1/organizations/${orgA}/payment_links/${link.id}/sale`,
+    });
+    expect(anon.statusCode).toBe(401);
+  });
+});
+
 // ── F6.5B1 — webhook endpoints por sesión (webhooks:manage) ───────────────────
 
 describe('gestión de webhook endpoints por sesión (F6.5B1)', () => {
