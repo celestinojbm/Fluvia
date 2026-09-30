@@ -1301,6 +1301,48 @@ a.btn {
 .pos-receipt-read {
   font-size: 0.85rem;
 }
+.pos-receipt-refunds {
+  margin: 0 0 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+.pos-receipt-refunds h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.pos-receipt-refund-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pos-receipt-refund {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+.pos-receipt-refund-at {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.pos-receipt-refund-detail {
+  flex-basis: 100%;
+  margin: 0;
+}
+.pos-stale-receipt .pos-receipt-total,
+.pos-stale-receipt .pos-receipt-kv,
+.pos-stale-receipt .pos-receipt-refund-list {
+  opacity: 0.7;
+}
+.pos-receipt [tabindex='-1']:focus {
+  outline: none;
+}
+.pos-receipt [tabindex='-1']:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
 @media (max-width: 600px) {
   .pos-receipt-kv {
     grid-template-columns: minmax(0, 1fr);
@@ -1337,9 +1379,17 @@ a.btn {
   .pos-receipt-total-label {
     color: #000;
   }
-  .pos-receipt-disclaimer {
+  .pos-receipt-disclaimer,
+  .pos-receipt .pos-alert,
+  .pos-receipt .badge {
     background: none;
-    border-left-color: #000;
+    border-color: #000;
     color: #000;
+  }
+  .pos-receipt .badge {
+    border: 1px solid #000;
+  }
+  .pos-receipt-refund {
+    break-inside: avoid;
   }
 }

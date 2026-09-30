@@ -153,3 +153,71 @@ Recorrido: **Cobro aprobado → «Devolver…» → todo o una parte (+ motivo) 
 | [27 · 1440](pos-evidence/27-cobros-recientes-devuelta-1440.png) | Cobros recientes con marca de devolución |
 | [28 · 1440](pos-evidence/28-sin-saldo-cancelada-1440.png) · [390](pos-evidence/28-sin-saldo-cancelada-390.png) | Sin saldo disponible: cancelada y explicada |
 | [29 · 390](pos-evidence/29-sesion-caducada-390.png) · [1440](pos-evidence/29-sesion-caducada-1440.png) | Sesión caducada al registrar |
+
+### Incremento «justificante de cobro y devolución» (PR apilado sobre `claude/pos-refund-integrity`)
+
+**Qué es y qué no.** Un **justificante operativo** del sandbox de un cobro confirmado y de sus devoluciones, para enseñarlo o imprimirlo en el mostrador. **No es una factura ni un documento fiscal**: no lleva numeración fiscal, impuestos, datos del comprador ni requisitos legales de ningún país (PEND-007 y PEND-008 siguen abiertas). No se envía por correo, no usa un proveedor real, no libera fondos ni añade reglas de país, moneda o COP.
+
+Recorrido: **Terminal (cobro aprobado) o «Cobros recientes» → «Ver justificante» → `/o/:orgId/pos/receipts/:paymentId` → «Imprimir justificante»**.
+
+**Lecturas canónicas usadas** (todas existentes, plano de sesión; no hay endpoint nuevo en la API). El navegador solo llama al BFF nuevo `GET /api/orgs/:orgId/pos/payments/:paymentId/receipt`, que compone:
+
+| Lectura del BFF | Permiso | Para qué |
+| --- | --- | --- |
+| `GET /v1/organizations/:orgId/payment_intents/:id` (×2, antes y después de la lista) | `payments:read` | importe, `amount_captured`, `amount_refunded`, moneda, estado, comercio, venta, `created_at` |
+| `GET /v1/organizations/:orgId/refunds?payment_intent_id=&limit=100` | `payments:read` | importe, estado y fecha de cada devolución (validación todo-o-nada de `pickRefundList`) |
+| `GET /v1/organizations/:orgId/merchants/:merchantId` | `merchants:read` (todo rol) | nombre del comercio |
+| `GET /v1/organizations/:orgId/payment_links/:id/sale` (solo si hay venta) | `payments:read` | concepto (`description` del link) y `completed_at` del checkout que cobró **este** intent |
+| `GET /v1/organizations` (server component de la página) | sesión | nombre de la organización |
+
+Reglas del BFF: whitelist; **todo o nada** (cualquier lectura fallida o incoherente ⇒ 502, nunca un justificante a medias); 401 ⇒ `invalid_session`; 403/404 del cobro ⇒ `not_found`; intent que la API no da por cobrado (`succeeded`/`partially_refunded`/`refunded`) ⇒ **409 `not_charged`**. **Instantánea coherente**: cobro → devoluciones → cobro; si el cobro cambió entre medias se repite (máx. 3) y si no se estabiliza, 502. Con la lista completa, Σ devoluciones `succeeded` debe ser igual a `amount_refunded` (así lo garantiza `RefundService`, que suma en la misma transacción que pasa la devolución a `succeeded`); si no cuadra, 502. Es una **comprobación**, no un dato mostrado.
+
+**Dato mostrado → fuente → estado → prueba**
+
+| Dato mostrado | Fuente | Estado / regla | Prueba |
+| --- | --- | --- | --- |
+| Importe cobrado | `payment_intent.amount_captured` | obligatorio; sin él no hay justificante | `pos-receipt.test.tsx` (contrato, vista) |
+| Importe de la venta | `payment_intent.amount` | solo si difiere del capturado | `pos-receipt.test.tsx` |
+| Estado | `payment_intent.status` | `succeeded` «Cobro confirmado» · `partially_refunded` «… devolución parcial» · `refunded` «… devuelto por completo»; otro ⇒ 409, sin justificante | BFF `it.each`, vista, capturas 30–32, 37 |
+| Organización | `GET /v1/organizations` → `name` | se omite si no está | vista |
+| Comercio | `merchants/:id` → `name` | debe ser el `merchant_id` del cobro; si no, 502 | BFF «TODO o NADA» |
+| Concepto | `sale.payment_link.description` | vacío ⇒ «Sin concepto»; sin venta ⇒ «Cobro sin venta vinculada» | contrato, vista |
+| Cobro iniciado | `payment_intent.created_at` | tal cual | vista |
+| Checkout completado | `sale.checkouts[intent].checkout_session.completed_at` | solo con venta; `null` ⇒ «No informado por la API». No se presenta como «hora del cobro» (el intent no tiene `succeeded_at`) | contrato |
+| Referencia | 8 últimos caracteres del id del cobro | nunca el id completo | `receiptRef`, vista (sin UUID en el DOM) |
+| Devuelto (confirmado) | `payment_intent.amount_refunded` | solo liquidadas; no se calculan netos ni pendientes | refunds-test parcial/total/indeterminate |
+| Cada devolución: importe, fecha | `refund.amount`, `refund.created_at` | tal cual; `reason` y `failure_code` **no** salen (nota interna del cajero, puede llevar datos personales) | BFF «quita motivo y failure_code» |
+| Cada devolución: estado | `refund.status` | `succeeded` «Devuelta» · `created`/`processing` «En curso» (aún no devuelta) · **`indeterminate` «Pendiente de verificación»**, jamás contada como devuelta · `failed`/`canceled` «No devuelta» | `pos-receipt-refunds.test.tsx`, capturas 31, 33, 34 |
+| Aviso de pendientes | hay alguna `indeterminate` / `created`/`processing` | «NO las cuenta como devueltas» / «aún no cuentan» | refunds-test, capturas 33, 34 |
+| Lista incompleta | lista de 100 (ventana llena) | se declara; no se exige el cuadre | refunds-test «truncada» |
+| Consultado | hora del navegador al recibir la lectura | metadato de la lectura, no dato de la API | vista |
+
+**Estados de la vista**: cargando (`aria-busy`, captura 39); error sin datos con «Reintentar»; relectura fallida ⇒ datos previos marcados como **desactualizados** y **«Imprimir» deshabilitado** hasta leer bien (foco en el aviso, captura 35); sesión caducada ⇒ **se retiran los datos** y se ofrece iniciar sesión (captura 36); sin acceso / no encontrado; no confirmado (captura 37). «Actualizar» relee sin recargar y anuncia «Justificante actualizado» (`role=status`). Teclado: Tab recorre Imprimir → Actualizar → Volver; Enter actualiza; un fallo tras una acción del usuario recibe el foco. Móvil: la lista clave/valor pasa a una columna y los botones ocupan el ancho. Impresión (`@media print`): oculta navegación, avisos de pantalla y botones; blanco y negro; cada devolución sin cortes de página.
+
+**Verificación en navegador.** `next build` + `next start` del dashboard real contra una **API sintética** (stub HTTP local con datos inventados que responde a los mismos GET del plano de sesión; no se usó PG ni el stack real en este incremento). Para cada captura se comprobó `scrollWidth ≤ clientWidth` y, en las páginas del justificante, que el texto visible no contiene ningún UUID ni URL. En el terminal y «Cobros recientes» (que ya mostraban ids por diseño anterior) los ids se sanearon en la captura (`••••` + 4 últimos). Recorrido «Actualizar» con fallo hecho **solo con teclado** a 390 y 1440 px.
+
+| Captura | Estado |
+| --- | --- |
+| [30 · 390](pos-evidence/30-justificante-cobro-390.png) · [768](pos-evidence/30-justificante-cobro-768.png) · [1440](pos-evidence/30-justificante-cobro-1440.png) | Cobro confirmado, con venta y concepto |
+| [31 · 390](pos-evidence/31-justificante-parcial-390.png) · [768](pos-evidence/31-justificante-parcial-768.png) · [1440](pos-evidence/31-justificante-parcial-1440.png) | Devolución parcial + una cancelada |
+| [32 · 390](pos-evidence/32-justificante-devuelto-total-390.png) · [1440](pos-evidence/32-justificante-devuelto-total-1440.png) | Devuelto por completo |
+| [33 · 390](pos-evidence/33-justificante-pendiente-verificacion-390.png) · [768](pos-evidence/33-justificante-pendiente-verificacion-768.png) · [1440](pos-evidence/33-justificante-pendiente-verificacion-1440.png) | Devolución `indeterminate`: pendiente de verificación |
+| [34 · 1440](pos-evidence/34-justificante-devolucion-en-curso-1440.png) | Devolución en curso |
+| [35 · 390](pos-evidence/35-lectura-fallida-desactualizado-390.png) · [1440](pos-evidence/35-lectura-fallida-desactualizado-1440.png) | Relectura fallida: desactualizado, sin imprimir |
+| [36 · 390](pos-evidence/36-sesion-caducada-390.png) · [1440](pos-evidence/36-sesion-caducada-1440.png) | Sesión caducada: datos retirados |
+| [37 · 1440](pos-evidence/37-sin-justificante-no-confirmado-1440.png) | Cobro rechazado: sin justificante |
+| [38 · 390](pos-evidence/38-impresion-390.png) · [1440](pos-evidence/38-impresion-1440.png) | Vista de impresión (medio `print` emulado) |
+| [39 · 390](pos-evidence/39-cargando-390.png) | Cargando |
+| [40 · 390](pos-evidence/40-terminal-ver-justificante-390.png) · [1440](pos-evidence/40-terminal-ver-justificante-1440.png) | Terminal: «Ver justificante» en un cobro aprobado |
+| [41 · 1440](pos-evidence/41-cobros-recientes-justificante-1440.png) | «Cobros recientes»: justificante solo en cobros confirmados |
+
+**Límites reales.**
+
+1. **No es fiscal** y no lo pretende: sin numeración, impuestos, datos del comprador ni validez legal. Cualquier uso como factura exigiría decisiones de país (PEND-007/008) fuera de alcance.
+2. **Pie de página del navegador**: al imprimir, Chrome/Firefox pueden añadir por defecto la URL de la página, que contiene el **id completo del cobro**. El justificante no puede impedirlo; el operador debe desactivar «Encabezados y pies de página» en el diálogo de impresión. La captura 38 es el medio `print` emulado, no el diálogo real.
+3. **No hay hora de cobro**: el intent no expone `succeeded_at`. Se muestran `created_at` del intent y `completed_at` del checkout (este se fija cuando la sesión observa el intent `succeeded`, puede ir algo después del cobro).
+4. **Instantánea, no seguimiento**: el justificante no sondea; una devolución `indeterminate` o en curso se refleja al pulsar «Actualizar». Se puede imprimir con devoluciones pendientes: el papel dice «pendiente de verificación».
+5. **Ventana de 100 devoluciones** sin cursor: con más, la lista puede estar incompleta (se declara) y no se comprueba el cuadre con `amount_refunded`.
+6. **Fallo total ante una lectura secundaria**: si el comercio o la venta no se pueden leer, no hay justificante (502) aunque el cobro sí se lea. Es deliberado (nada a medias).
+7. **Capturas contra API sintética**, no contra el stack real con PG/MockProvider; el stub y el script de captura no se versionan. Los tests de CI (jsdom) cubren el BFF y la vista con fetch simulado; no hay E2E de navegador en CI.
+8. `indeterminate` sigue sin reservar cupo en el servicio (límite 2 del incremento anterior); el justificante solo lo refleja.

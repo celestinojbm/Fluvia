@@ -1,4 +1,5 @@
 import { UUID_RE } from './pos-contract';
+import { pickRefundList, type RefundStatus } from './pos-refund-contract';
 
 /**
  * Justificante de un cobro del POS — contrato PURO (lo importan el BFF y el
@@ -14,6 +15,17 @@ import { UUID_RE } from './pos-contract';
  *    cobró ESTE intent.
  *  - Comercio = `GET /v1/organizations/:orgId/merchants/:id` (`merchants:read`,
  *    todo rol) → nombre.
+ *  - Devoluciones = `GET /v1/organizations/:orgId/refunds?payment_intent_id=&limit=100`
+ *    (`payments:read`) → importe, estado y fecha de cada una. `reason` y
+ *    `failure_code` NO se incluyen: son notas internas (el motivo lo escribe
+ *    el cajero y puede llevar datos personales) y un justificante se entrega
+ *    al cliente.
+ *
+ * Totales: SOLO los que da la API (`amount_captured`, `amount_refunded`). El
+ * justificante no calcula netos ni «pendientes». `amount_refunded` solo crece
+ * cuando una devolución pasa a `succeeded` (misma transacción, RefundService),
+ * así que con la lista completa la suma de las `succeeded` DEBE coincidir: el
+ * BFF lo comprueba y, si no, no emite justificante (lectura incoherente).
  *
  * Solo hay justificante de un cobro CONFIRMADO por la API: intent en
  * `succeeded`, `partially_refunded` o `refunded` (los dos últimos siguen siendo
@@ -45,12 +57,80 @@ export interface ReceiptSale {
   checkout_completed_at: string | null;
 }
 
+/** Devolución tal y como la muestra el justificante (sin `reason` ni `failure_code`). */
+export interface ReceiptRefund {
+  id: string;
+  amount: number;
+  currency: string;
+  status: RefundStatus;
+  created_at: string;
+}
+
 /** Respuesta del BFF del justificante (200). */
 export interface PosReceipt {
   payment: ReceiptPayment;
   merchant_name: string;
   /** null = cobro sin venta vinculada (anterior al vínculo 0046). */
   sale: ReceiptSale | null;
+  /** Más recientes primero. */
+  refunds: ReceiptRefund[];
+  /** La ventana de 100 se llenó: la lista puede estar incompleta. */
+  refunds_truncated: boolean;
+}
+
+const REFUND_STATUSES = new Set<string>([
+  'created',
+  'processing',
+  'indeterminate',
+  'succeeded',
+  'failed',
+  'canceled',
+]);
+
+/**
+ * Lista del API (`{ data }`) → devoluciones del justificante. Reutiliza la
+ * validación TODO o NADA del POS (`pickRefundList`) y quita `reason`/`failure_code`.
+ */
+export function pickReceiptRefunds(
+  v: unknown,
+  paymentIntentId: string
+): { refunds: ReceiptRefund[]; truncated: boolean } | null {
+  const list = pickRefundList(v, paymentIntentId);
+  if (!list) return null;
+  return {
+    refunds: list.refunds.map((r) => ({
+      id: r.id,
+      amount: r.amount,
+      currency: r.currency,
+      status: r.status,
+      created_at: r.created_at,
+    })),
+    truncated: list.truncated,
+  };
+}
+
+/**
+ * Coherencia de la lectura: moneda del cobro en todas las devoluciones y, con
+ * la lista completa, Σ `succeeded` == `amount_refunded`. Es una COMPROBACIÓN,
+ * no un dato mostrado: el importe devuelto que se muestra es el de la API.
+ */
+export function refundsConsistent(
+  payment: Pick<ReceiptPayment, 'currency' | 'amount_refunded'>,
+  refunds: ReceiptRefund[],
+  truncated: boolean
+): boolean {
+  if (refunds.some((r) => r.currency !== payment.currency)) return false;
+  if (truncated) return true;
+  const settled = refunds.filter((r) => r.status === 'succeeded').reduce((n, r) => n + r.amount, 0);
+  return settled === payment.amount_refunded;
+}
+
+export function hasUncertainRefund(refunds: ReceiptRefund[]): boolean {
+  return refunds.some((r) => r.status === 'indeterminate');
+}
+
+export function hasOpenRefund(refunds: ReceiptRefund[]): boolean {
+  return refunds.some((r) => r.status === 'created' || r.status === 'processing');
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -136,7 +216,30 @@ export function parseReceipt(v: unknown): PosReceipt | null {
     if (d === false || c === false) return null;
     sale = { description: d, checkout_completed_at: c };
   }
-  return { payment, merchant_name: v.merchant_name, sale };
+  if (!Array.isArray(v.refunds) || typeof v.refunds_truncated !== 'boolean') return null;
+  const refunds: ReceiptRefund[] = [];
+  for (const r of v.refunds) {
+    if (!isObj(r) || !str(r.id) || !UUID_RE.test(r.id) || !int(r.amount) || r.amount <= 0) {
+      return null;
+    }
+    if (!str(r.currency) || !str(r.status) || !REFUND_STATUSES.has(r.status)) return null;
+    if (!str(r.created_at)) return null;
+    refunds.push({
+      id: r.id,
+      amount: r.amount,
+      currency: r.currency,
+      status: r.status as RefundStatus,
+      created_at: r.created_at,
+    });
+  }
+  if (!refundsConsistent(payment, refunds, v.refunds_truncated)) return null;
+  return {
+    payment,
+    merchant_name: v.merchant_name,
+    sale,
+    refunds,
+    refunds_truncated: v.refunds_truncated,
+  };
 }
 
 /**

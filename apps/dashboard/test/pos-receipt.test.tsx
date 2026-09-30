@@ -105,10 +105,18 @@ const sale = (over: Record<string, unknown> = {}) => ({
 
 const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 
-type Api = { intent?: () => Response; merchant?: () => Response; sale?: () => Response };
+type H = () => Response;
+type Api = { intent?: H | H[]; merchant?: H; sale?: H; refunds?: H | H[] };
+const seqOf = (h: H | H[] | undefined, dflt: H) => {
+  const q = Array.isArray(h) ? [...h] : [h ?? dflt];
+  return () => (q.length > 1 ? q.shift()! : q[0]!)();
+};
 function mockApi(a: Api = {}) {
+  const nextIntent = seqOf(a.intent, () => res(200, intent()));
+  const nextRefunds = seqOf(a.refunds, () => res(200, { object: 'list', data: [] }));
   const f = vi.fn(async (url: string, _init?: RequestInit) => {
-    if (url.endsWith(`/payment_intents/${PI}`)) return (a.intent ?? (() => res(200, intent())))();
+    if (url.endsWith(`/payment_intents/${PI}`)) return nextIntent();
+    if (url.includes(`/refunds?`)) return nextRefunds();
     if (url.endsWith(`/merchants/${MER}`)) return (a.merchant ?? (() => res(200, merchant())))();
     if (url.endsWith(`/payment_links/${LINK}/sale`)) return (a.sale ?? (() => res(200, sale())))();
     throw new Error(`unexpected ${url}`);
@@ -197,6 +205,8 @@ describe('BFF GET /api/orgs/:orgId/pos/payments/:id/receipt', () => {
       },
       merchant_name: 'Tienda Sintética',
       sale: { description: 'Café y bollería', checkout_completed_at: '2026-09-30T14:02:00Z' },
+      refunds: [],
+      refunds_truncated: false,
     });
     expect(JSON.stringify(body)).not.toMatch(/http|client_secret|metadata/);
     const urls = f.mock.calls.map((c) => String(c[0]));
@@ -229,7 +239,21 @@ describe('BFF GET /api/orgs/:orgId/pos/payments/:id/receipt', () => {
   );
 
   it.each(['partially_refunded', 'refunded'])('cobro %s sigue teniendo justificante', async (s) => {
-    mockApi({ intent: () => res(200, intent({ status: s, amount_refunded: 500 })) });
+    const settled = {
+      id: '0b8e7c6d-5a4b-4c3d-8e2f-1a0b9c8d7e6f',
+      object: 'refund',
+      payment_intent_id: PI,
+      amount: 500,
+      currency: 'USD',
+      status: 'succeeded',
+      reason: null,
+      failure_code: null,
+      created_at: '2026-09-30T15:00:00Z',
+    };
+    mockApi({
+      intent: () => res(200, intent({ status: s, amount_refunded: 500 })),
+      refunds: () => res(200, { object: 'list', data: [settled] }),
+    });
     expect((await call()).status).toBe(200);
   });
 
@@ -290,6 +314,8 @@ const receiptBody = (over: Record<string, unknown> = {}) => ({
   },
   merchant_name: 'Tienda Sintética',
   sale: { description: 'Café y bollería', checkout_completed_at: '2026-09-30T14:02:00Z' },
+  refunds: [],
+  refunds_truncated: false,
   ...over,
 });
 

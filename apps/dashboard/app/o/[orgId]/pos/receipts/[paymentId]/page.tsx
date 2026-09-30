@@ -36,7 +36,7 @@ export default async function PosReceiptPage({
     <main className="dash pos pos-receipt-page" aria-label={t.docTitle}>
       <header className="dash-head no-print">
         <div>
-          <h1>{t.docTitle}</h1>
+          <h1>{t.pageTitle}</h1>
           {org && <p className="org">{org.name}</p>}
         </div>
         <a className="signout" href={`/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`}>

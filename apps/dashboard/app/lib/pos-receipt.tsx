@@ -2,26 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatAmount, type Locale } from '../messages';
-import { parseReceipt, receiptRef, type PosReceipt } from './pos-receipt-contract';
+import {
+  hasOpenRefund,
+  hasUncertainRefund,
+  parseReceipt,
+  receiptRef,
+  type PosReceipt,
+} from './pos-receipt-contract';
 import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 
 /**
  * Justificante de un cobro confirmado del POS (cliente). Lee el BFF
  * `GET /api/orgs/:orgId/pos/payments/:id/receipt` y muestra SOLO lo que este
- * devuelve (nada inferido ni recompuesto). Imprimible con `window.print()`:
- * las hojas de estilo de impresión ocultan la navegación y los controles.
+ * devuelve (nada inferido ni recompuesto): el importe devuelto es el
+ * `amount_refunded` de la API y cada devolución lleva su estado tal cual; una
+ * `indeterminate` se muestra como «pendiente de verificación», jamás como
+ * devuelta. Imprimible con `window.print()` (los estilos de impresión ocultan
+ * navegación y controles).
  *
- * Nunca muestra ids completos: la referencia son los 8 últimos caracteres del
- * cobro.
+ * Estados: carga; error sin datos (reintentar); relectura fallida con datos
+ * (se conservan marcados como desactualizados y NO se pueden imprimir);
+ * sesión caducada o sin acceso (los datos se retiran). Nunca muestra ids
+ * completos: la referencia son los 8 últimos caracteres del cobro.
  */
 
-type Load =
-  | { kind: 'loading' }
-  | { kind: 'ok'; receipt: PosReceipt; at: number }
-  | { kind: 'error' }
-  | { kind: 'auth' }
-  | { kind: 'not_found' }
-  | { kind: 'not_charged' };
+type Phase = 'loading' | 'idle' | 'error' | 'auth' | 'not_found' | 'not_charged';
 
 function dateTimeOf(iso: string | number, locale: Locale): string {
   try {
@@ -31,6 +36,14 @@ function dateTimeOf(iso: string | number, locale: Locale): string {
     });
   } catch {
     return String(iso);
+  }
+}
+
+function timeOf(ms: number, locale: Locale): string {
+  try {
+    return new Date(ms).toLocaleTimeString(locale === 'en' ? 'en-US' : 'es-CO');
+  } catch {
+    return '';
   }
 }
 
@@ -46,79 +59,107 @@ export function PosReceiptView({
   locale: Locale;
 }) {
   const t = POS_RECEIPT_MESSAGES[locale];
-  const [load, setLoad] = useState<Load>({ kind: 'loading' });
+  const [data, setData] = useState<{ receipt: PosReceipt; at: number } | null>(null);
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [announce, setAnnounce] = useState('');
   const seq = useRef(0);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const userRead = useRef(false);
 
-  const read = useCallback(async () => {
-    const my = ++seq.current;
-    setLoad({ kind: 'loading' });
-    let res: Response;
-    try {
-      res = await fetch(
-        `/api/orgs/${encodeURIComponent(orgId)}/pos/payments/${encodeURIComponent(paymentId)}/receipt`,
-        { cache: 'no-store' }
-      );
-    } catch {
-      if (my === seq.current) setLoad({ kind: 'error' });
-      return;
-    }
-    if (my !== seq.current) return;
-    if (res.status === 401) return setLoad({ kind: 'auth' });
-    if (res.status === 404 || res.status === 403) return setLoad({ kind: 'not_found' });
-    if (res.status === 409) return setLoad({ kind: 'not_charged' });
-    let body: unknown = null;
-    try {
-      body = await res.json();
-    } catch {
-      /* sin JSON */
-    }
-    if (my !== seq.current) return;
-    const receipt = res.status === 200 ? parseReceipt(body) : null;
-    if (!receipt || receipt.payment.id !== paymentId) return setLoad({ kind: 'error' });
-    setLoad({ kind: 'ok', receipt, at: Date.now() });
-  }, [orgId, paymentId]);
+  const read = useCallback(
+    async (byUser: boolean) => {
+      const my = ++seq.current;
+      userRead.current = byUser;
+      setPhase('loading');
+      setAnnounce('');
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/orgs/${encodeURIComponent(orgId)}/pos/payments/${encodeURIComponent(paymentId)}/receipt`,
+          { cache: 'no-store' }
+        );
+      } catch {
+        if (my === seq.current) setPhase('error');
+        return;
+      }
+      if (my !== seq.current) return;
+      // Sesión caducada o sin acceso: se retiran los datos (no se deja un
+      // justificante a la vista de quien esté en el terminal).
+      if (res.status === 401 || res.status === 403 || res.status === 404 || res.status === 409) {
+        setData(null);
+        setPhase(res.status === 401 ? 'auth' : res.status === 409 ? 'not_charged' : 'not_found');
+        return;
+      }
+      let body: unknown = null;
+      try {
+        body = await res.json();
+      } catch {
+        /* sin JSON */
+      }
+      if (my !== seq.current) return;
+      const receipt = res.status === 200 ? parseReceipt(body) : null;
+      if (!receipt || receipt.payment.id !== paymentId) return setPhase('error');
+      setData({ receipt, at: Date.now() });
+      setPhase('idle');
+      if (byUser) setAnnounce(t.updated);
+    },
+    [orgId, paymentId, t.updated]
+  );
 
   useEffect(() => {
-    void read();
+    void read(false);
   }, [read]);
 
+  // Un fallo tras una acción del usuario se enfoca para que el lector de
+  // pantalla y el teclado lleguen al mensaje y a «Reintentar».
+  useEffect(() => {
+    if (phase !== 'idle' && phase !== 'loading' && userRead.current) alertRef.current?.focus();
+  }, [phase]);
+
   const posHref = `/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`;
+  const busy = phase === 'loading';
 
-  if (load.kind === 'loading') {
-    return (
-      <section className="card pos-receipt" aria-busy="true" aria-labelledby="pos-receipt-title">
-        <h2 id="pos-receipt-title">{t.docTitle}</h2>
-        <p className="hint" role="status">
-          {t.loading}
-        </p>
-      </section>
-    );
-  }
-
-  if (load.kind !== 'ok') {
+  if (!data) {
+    if (phase === 'loading') {
+      return (
+        <section className="card pos-receipt" aria-busy="true" aria-labelledby="pos-receipt-title">
+          <h2 id="pos-receipt-title">{t.docTitle}</h2>
+          <p className="hint" role="status">
+            {t.loading}
+          </p>
+        </section>
+      );
+    }
     const text =
-      load.kind === 'auth'
+      phase === 'auth'
         ? t.authLost
-        : load.kind === 'not_found'
+        : phase === 'not_found'
           ? t.notFound
-          : load.kind === 'not_charged'
+          : phase === 'not_charged'
             ? t.notCharged
             : t.loadError;
     return (
       <section className="card pos-receipt" aria-labelledby="pos-receipt-title">
         <h2 id="pos-receipt-title">{t.docTitle}</h2>
-        <div className="pos-alert pos-alert-bad" role="alert">
+        <div
+          className="pos-alert pos-alert-bad"
+          role="alert"
+          tabIndex={-1}
+          ref={alertRef}
+          data-testid="pos-receipt-alert"
+          data-kind={phase}
+        >
           <p>
             {text}
-            {load.kind === 'auth' && (
+            {phase === 'auth' && (
               <>
                 {' '}
                 <a href="/login">{t.signIn}</a>
               </>
             )}
           </p>
-          {load.kind === 'error' && (
-            <button type="button" className="btn btn-secondary" onClick={() => void read()}>
+          {phase === 'error' && (
+            <button type="button" className="btn btn-secondary" onClick={() => void read(true)}>
               {t.retry}
             </button>
           )}
@@ -130,18 +171,44 @@ export function PosReceiptView({
     );
   }
 
-  const { receipt, at } = load;
-  const { payment, sale } = receipt;
+  const { receipt, at } = data;
+  const { payment, sale, refunds } = receipt;
   const money = (n: number) => formatAmount(n, payment.currency, locale);
+  const stale = phase === 'error';
+  const uncertain = hasUncertainRefund(refunds);
+  const open = hasOpenRefund(refunds);
+  const staleId = 'pos-receipt-stale';
 
   return (
-    <article className="card pos-receipt" aria-labelledby="pos-receipt-title">
+    <article
+      className={`card pos-receipt${stale ? ' pos-stale-receipt' : ''}`}
+      aria-labelledby="pos-receipt-title"
+      aria-busy={busy}
+      data-testid="pos-receipt"
+    >
       <header className="pos-receipt-head">
-        <h2 id="pos-receipt-title">{t.docTitle}</h2>
+        <h2 id="pos-receipt-title">{refunds.length > 0 ? t.docTitleRefunds : t.docTitle}</h2>
         <p className="pos-receipt-disclaimer" data-testid="pos-receipt-not-fiscal">
           {t.notFiscal} {t.sandbox}
         </p>
       </header>
+
+      {stale && (
+        <div
+          id={staleId}
+          className="pos-alert pos-alert-bad no-print"
+          role="alert"
+          tabIndex={-1}
+          ref={alertRef}
+          data-testid="pos-receipt-alert"
+          data-kind="stale"
+        >
+          <p>{t.stale(timeOf(at, locale))}</p>
+          <button type="button" className="btn btn-secondary" onClick={() => void read(true)}>
+            {t.retry}
+          </button>
+        </div>
+      )}
 
       <p className="pos-receipt-total">
         <span className="pos-receipt-total-label">{t.amountCharged}</span>
@@ -194,11 +261,70 @@ export function PosReceiptView({
         </dd>
       </dl>
 
+      <section className="pos-receipt-refunds" aria-labelledby="pos-receipt-refunds-title">
+        <h3 id="pos-receipt-refunds-title">{t.refundsTitle}</h3>
+        <dl className="pos-receipt-kv">
+          <dt>{t.refundedConfirmed}</dt>
+          <dd data-testid="pos-receipt-refunded">{money(payment.amount_refunded)}</dd>
+        </dl>
+        {uncertain && (
+          <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-uncertain">
+            {t.uncertainBanner}
+          </p>
+        )}
+        {open && (
+          <p className="pos-alert pos-alert-warn" data-testid="pos-receipt-open">
+            {t.openBanner}
+          </p>
+        )}
+        {receipt.refunds_truncated && (
+          <p className="hint" data-testid="pos-receipt-truncated">
+            {t.truncatedNote}
+          </p>
+        )}
+        {refunds.length === 0 ? (
+          <p className="hint">{t.refundsNone}</p>
+        ) : (
+          <ul className="pos-receipt-refund-list">
+            {refunds.map((r) => (
+              <li
+                key={r.id}
+                className="pos-receipt-refund"
+                data-testid="pos-receipt-refund"
+                data-status={r.status}
+              >
+                <span className="pos-refund-amount">{money(r.amount)}</span>
+                <span className={`badge pos-refund-${r.status}`}>{t.refundStatus[r.status]}</span>
+                <span className="pos-receipt-refund-at">{dateTimeOf(r.created_at, locale)}</span>
+                <span className="hint pos-receipt-refund-detail">{t.refundDetail[r.status]}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <p className="hint pos-receipt-read">{t.readAt(dateTimeOf(at, locale))}</p>
+      <p className="sr-only" role="status" aria-live="polite">
+        {announce}
+      </p>
 
       <div className="pos-actions no-print">
-        <button type="button" className="btn btn-primary" onClick={() => window.print()}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => window.print()}
+          disabled={stale || busy}
+          aria-describedby={stale ? staleId : undefined}
+        >
           {t.print}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void read(true)}
+          disabled={busy}
+        >
+          {busy ? t.refreshing : t.refresh}
         </button>
         <a className="btn btn-secondary" href={posHref}>
           {t.back}
