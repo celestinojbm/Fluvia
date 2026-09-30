@@ -222,10 +222,8 @@ export function CaseDetail({
         <div>
           <h1 id="case-title">{t.caseDetail}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/cases${locale === 'en' ? '?lang=en' : ''}`}>
-              {t.backToDashboard}
-            </a>{' '}
-            · <code>{shortId(kase.id)}</code> · <SeverityBadge sev={kase.severity} t={t} />{' '}
+            <a href={`/o/${orgId}/cases${locale === 'en' ? '?lang=en' : ''}`}>{t.backToList}</a> ·{' '}
+            <code>{shortId(kase.id)}</code> · <SeverityBadge sev={kase.severity} t={t} />{' '}
             <StatusBadge status={kase.status} />
           </p>
         </div>

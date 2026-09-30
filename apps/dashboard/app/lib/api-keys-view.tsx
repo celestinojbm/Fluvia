@@ -13,7 +13,7 @@ import { CreateApiKeyForm, RevokeKeyButton } from './api-key-actions';
  */
 
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export function ApiKeysList({

@@ -5,6 +5,8 @@ import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Merchant } from './api';
 import { CopyUrlButton } from './copy-button';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
+import { parseMajorAmount } from './pos-money';
+import { POS_REFUND_MESSAGES } from './pos-refund-messages';
 
 /**
  * Acciones de ESCRITURA del plano de sesión sobre pagos (F6.5A-bis). Cada
@@ -70,8 +72,12 @@ export function CreateRefundForm({
   const [idemKey, setIdemKey] = useState('');
   const [errorCode, setErrorCode] = useState<string | undefined>();
 
-  const amountNum = Number(amount);
-  const amountValid = amount === '' || (Number.isInteger(amountNum) && amountNum > 0);
+  // Unidades MAYORES, con la misma regla que el POS (`parseMajorAmount`): lo
+  // tecleado, lo mostrado y lo enviado coinciden. Vacío = todo lo restante.
+  const parsed = amount.trim() === '' ? null : parseMajorAmount(amount, currency);
+  const amountValid = parsed === null || parsed.ok;
+  const amountNum = parsed?.ok ? parsed.minor : 0;
+  const tr = POS_REFUND_MESSAGES[locale];
 
   function toConfirm(e: React.FormEvent) {
     e.preventDefault();
@@ -85,7 +91,7 @@ export function CreateRefundForm({
     setPhase('busy');
     const r = await postWithIdempotency(`/api/orgs/${encodeURIComponent(orgId)}/refunds`, idemKey, {
       payment_intent_id: paymentIntentId,
-      ...(amount === '' ? {} : { amount: amountNum }),
+      ...(parsed === null ? {} : { amount: amountNum }),
       ...(reason.trim() ? { reason: reason.trim() } : {}),
     });
     if (r.ok) {
@@ -104,7 +110,9 @@ export function CreateRefundForm({
       <div className="action-form" role="group" aria-label={t.createRefundTitle}>
         <p>
           {t.confirmRefundText}{' '}
-          <strong>{amount === '' ? t.amountFullRemaining : formatAmount(amountNum, currency, locale)}</strong>
+          <strong>
+            {parsed === null ? t.amountFullRemaining : formatAmount(amountNum, currency, locale)}
+          </strong>
         </p>
         <div className="action-inline">
           <button type="button" className="btn" onClick={confirm} disabled={phase === 'busy'}>
@@ -121,8 +129,13 @@ export function CreateRefundForm({
         </div>
         {phase === 'error' && (
           <p className="error" role="alert">
-            {t.actionError}
-            {errorCode ? ` (${errorCode})` : ''}
+            {(errorCode && tr.errorCodes[errorCode]) || t.actionError}
+            {errorCode ? (
+              <>
+                {' '}
+                <code className="status-code">{errorCode}</code>
+              </>
+            ) : null}
           </p>
         )}
       </div>
@@ -139,14 +152,19 @@ export function CreateRefundForm({
             <input
               id="refund-amount"
               name="amount"
-              type="number"
-              min={1}
-              step={1}
-              inputMode="numeric"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               aria-describedby="refund-amount-hint"
+              aria-invalid={!amountValid}
             />
+            {parsed && !parsed.ok && (
+              <p className="error" role="alert">
+                {tr.amountErrors[parsed.error]}
+              </p>
+            )}
             <p id="refund-amount-hint" className="hint">
               {t.refundAmountHint}
             </p>
@@ -241,7 +259,9 @@ export function CreatePaymentLinkForm({
       <div className="action-form" role="group" aria-label={t.createLinkTitle}>
         <p>
           {t.confirmLinkText}{' '}
-          <strong>{Number.isFinite(amountNum) ? formatAmount(amountNum, currency, locale) : ''}</strong>
+          <strong>
+            {Number.isFinite(amountNum) ? formatAmount(amountNum, currency, locale) : ''}
+          </strong>
         </p>
         <div className="action-inline">
           <button type="button" className="btn" onClick={confirm} disabled={phase === 'busy'}>

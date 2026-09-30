@@ -15,7 +15,7 @@ function shortId(v: string | null): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 19) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 19)} UTC` : '—';
 }
 
 export function WebhookEventsList({
@@ -135,7 +135,7 @@ export function WebhookEventDetailView({
         <div>
           <h1 id="whe-detail-title">{t.webhookEventDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/webhook-events`}>{t.backToDashboard}</a> · {event.topic} ·{' '}
+            <a href={`/o/${orgId}/webhook-events`}>{t.backToList}</a> · {event.topic} ·{' '}
             <span className={`badge badge-${event.status}`}>{event.status}</span>
           </p>
         </div>

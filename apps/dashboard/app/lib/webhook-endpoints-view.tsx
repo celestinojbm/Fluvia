@@ -25,7 +25,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 interface ActionResult {
@@ -276,7 +276,7 @@ export function WebhookEndpointDetailView({
         <div>
           <h1 id="whep-detail-title">{t.webhookEndpointDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/webhook-endpoints`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/webhook-endpoints`}>{t.backToList}</a> ·{' '}
             <span className={`badge badge-${endpoint.status}`}>{endpoint.status}</span> ·{' '}
             <a href={`/o/${orgId}/webhook-events`}>{t.viewRelatedEvents}</a>
           </p>

@@ -1,7 +1,8 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { DashboardData } from './api';
-import { POS_MESSAGES } from './pos-messages';
+import { FlowNav } from './flow-nav';
 import { ResendButton } from './resend-button';
+import { StatusBadge, type StatusKind } from './status-labels';
 
 /**
  * Vista del panel de operación (presentación pura, sin interactividad → server
@@ -24,7 +25,7 @@ function money(row: Record<string, unknown>, locale: Locale): string {
 }
 function when(v: unknown): string {
   const s = String(v ?? '');
-  return s ? s.replace('T', ' ').slice(0, 19) : '—';
+  return s ? `${s.replace('T', ' ').slice(0, 19)} UTC` : '—';
 }
 
 function Section({
@@ -100,23 +101,23 @@ export function DashboardView({
   canManageWebhooks?: boolean;
 }) {
   const t = MESSAGES[locale];
-  const statusBadge = (row: Record<string, unknown>) => (
-    <span className={`badge badge-${String(row.status ?? 'unknown')}`}>{String(row.status)}</span>
-  );
+  // Webhooks: superficie técnica, conserva el código. El resto, lenguaje del comercio.
+  const statusBadge = (row: Record<string, unknown>, kind?: StatusKind) =>
+    kind ? (
+      <StatusBadge kind={kind} status={String(row.status ?? 'unknown')} locale={locale} />
+    ) : (
+      <span className={`badge badge-${String(row.status ?? 'unknown')}`}>{String(row.status)}</span>
+    );
 
   return (
     <main className="dash" aria-labelledby="dash-title">
+      <FlowNav orgId={orgId} locale={locale} current="panel" signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="dash-title">{t.dashboardTitle}</h1>
           <p className="org">{orgName}</p>
         </div>
-        <nav className="dash-nav">
-          <a className="nav-cta" href={`/o/${orgId}/pos${locale === 'en' ? '?lang=en' : ''}`}>
-            {POS_MESSAGES[locale].navLabel}
-          </a>
-          <a href={`/o/${orgId}/payments`}>{t.payments}</a>
-          <a href={`/o/${orgId}/refunds`}>{t.sectionRefunds}</a>
+        <nav className="dash-nav" aria-label={t.moreNavLabel}>
           <a href={`/o/${orgId}/checkout-sessions`}>{t.sectionSessions}</a>
           <a href={`/o/${orgId}/payment-links`}>{t.sectionLinks}</a>
           <a href={`/o/${orgId}/merchants`}>{t.merchants}</a>
@@ -125,14 +126,9 @@ export function DashboardView({
           <a href={`/o/${orgId}/payouts`}>{t.payouts}</a>
           <a href={`/o/${orgId}/disputes`}>{t.disputes}</a>
           <a href={`/o/${orgId}/webhook-events`}>{t.webhooks}</a>
-          {canManageWebhooks && (
-            <a href={`/o/${orgId}/webhook-endpoints`}>{t.webhookEndpoints}</a>
-          )}
+          {canManageWebhooks && <a href={`/o/${orgId}/webhook-endpoints`}>{t.webhookEndpoints}</a>}
           {canReadKeys && <a href={`/o/${orgId}/api-keys`}>{t.apiKeys}</a>}
           {canReadAudit && <a href={`/o/${orgId}/events`}>{t.events}</a>}
-          <a className="signout" href={signOutHref}>
-            {t.signOut}
-          </a>
         </nav>
       </header>
 
@@ -146,7 +142,7 @@ export function DashboardView({
             <a key="id" href={`/o/${orgId}/payments/${String(r.id)}`}>
               <code>{shortId(r.id)}</code>
             </a>,
-            statusBadge(r),
+            statusBadge(r, 'intent'),
             money(r, locale),
             when(r.created_at),
           ],
@@ -163,7 +159,7 @@ export function DashboardView({
             <a key="id" href={`/o/${orgId}/refunds/${String(r.id)}`}>
               <code>{shortId(r.id)}</code>
             </a>,
-            statusBadge(r),
+            statusBadge(r, 'refund'),
             money(r, locale),
             when(r.created_at),
           ],
@@ -180,7 +176,7 @@ export function DashboardView({
             <a key="id" href={`/o/${orgId}/checkout-sessions/${String(r.id)}`}>
               <code>{shortId(r.id)}</code>
             </a>,
-            statusBadge(r),
+            statusBadge(r, 'session'),
             when(r.created_at),
           ],
         }))}
@@ -196,7 +192,7 @@ export function DashboardView({
             <a key="id" href={`/o/${orgId}/payment-links/${String(r.id)}`}>
               <code>{shortId(r.id)}</code>
             </a>,
-            statusBadge(r),
+            statusBadge(r, 'link'),
             money(r, locale),
             when(r.created_at),
           ],

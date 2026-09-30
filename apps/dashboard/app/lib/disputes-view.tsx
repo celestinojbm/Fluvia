@@ -17,7 +17,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 /** open / under_review: la disputa está viva y los fondos siguen apartados. */
 function isHeld(status: string): boolean {
@@ -125,7 +125,7 @@ export function DisputesDetail({
         <div>
           <h1 id="dispute-detail-title">{t.disputes}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/disputes`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/disputes`}>{t.backToList}</a> ·{' '}
             {formatAmount(dispute.amount, dispute.currency, locale)} ·{' '}
             <span className={`badge badge-${dispute.status}`}>{dispute.status}</span>
           </p>

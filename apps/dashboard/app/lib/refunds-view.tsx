@@ -1,5 +1,7 @@
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Refund } from './api';
+import { StatusBadge } from './status-labels';
+import { FlowNav } from './flow-nav';
 
 /**
  * Vistas de reembolsos (F6.5A) — presentación pura, lectura por sesión
@@ -11,7 +13,7 @@ function shortId(v: string): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string | null): string {
-  return v ? v.replace('T', ' ').slice(0, 16) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export function RefundsList({
@@ -28,6 +30,7 @@ export function RefundsList({
   const t = MESSAGES[locale];
   return (
     <main className="dash" aria-labelledby="refunds-title">
+      <FlowNav orgId={orgId} locale={locale} current="refunds" signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="refunds-title">{t.refundsTitle}</h1>
@@ -35,9 +38,6 @@ export function RefundsList({
             <a href={`/o/${orgId}`}>{t.backToDashboard}</a>
           </p>
         </div>
-        <a className="signout" href={signOutHref}>
-          {t.signOut}
-        </a>
       </header>
 
       <section className="card">
@@ -71,7 +71,7 @@ export function RefundsList({
                     </td>
                     <td>{formatAmount(r.amount, r.currency, locale)}</td>
                     <td>
-                      <span className={`badge badge-${r.status}`}>{r.status}</span>
+                      <StatusBadge kind="refund" status={r.status} locale={locale} />
                     </td>
                     <td>{when(r.created_at)}</td>
                   </tr>
@@ -108,18 +108,16 @@ export function RefundDetail({
   ];
   return (
     <main className="dash" aria-labelledby="refund-detail-title">
+      <FlowNav orgId={orgId} locale={locale} current={null} signOutHref={signOutHref} />
       <header className="dash-head">
         <div>
           <h1 id="refund-detail-title">{t.refundDetailTitle}</h1>
           <p className="org">
-            <a href={`/o/${orgId}/refunds`}>{t.backToDashboard}</a> ·{' '}
+            <a href={`/o/${orgId}/refunds`}>{t.backToList}</a> ·{' '}
             {formatAmount(refund.amount, refund.currency, locale)} ·{' '}
-            <span className={`badge badge-${refund.status}`}>{refund.status}</span>
+            <StatusBadge kind="refund" status={refund.status} locale={locale} showCode />
           </p>
         </div>
-        <a className="signout" href={signOutHref}>
-          {t.signOut}
-        </a>
       </header>
 
       <section className="card">

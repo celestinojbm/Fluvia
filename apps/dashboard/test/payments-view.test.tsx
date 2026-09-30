@@ -56,7 +56,8 @@ describe('PaymentsList', () => {
     const link = screen.getByRole('link', { name: /pi_abcd/ });
     expect(link.getAttribute('href')).toBe('/o/o1/payments/pi_abcdef123456');
     expect(screen.getByText('$ 90.000')).toBeInTheDocument();
-    expect(screen.getByText('succeeded')).toBeInTheDocument();
+    // Lenguaje del comercio; el código técnico se conserva en data-status.
+    expect(screen.getByText('Aprobado')).toHaveAttribute('data-status', 'succeeded');
 
     rerender(<PaymentsList intents={[]} orgId="o1" locale="es" signOutHref="/logout" />);
     expect(screen.getByText('Sin pagos.')).toBeInTheDocument();
@@ -81,14 +82,14 @@ describe('PaymentDetail', () => {
       />
     );
     expect(screen.getByText('pi_abcdef123456')).toBeInTheDocument();
-    expect(screen.getByText('automatic')).toBeInTheDocument();
+    expect(screen.getByText('Automática')).toBeInTheDocument();
     // Reembolso relacionado enlaza a su detalle; sesión relacionada al suyo.
     const refundLink = screen.getByRole('link', { name: /re_abcd/ });
     expect(refundLink.getAttribute('href')).toBe('/o/o1/refunds/re_abcdef123456');
     const sessionLink = screen.getByRole('link', { name: /cs_abcd/ });
     expect(sessionLink.getAttribute('href')).toBe('/o/o1/checkout-sessions/cs_abcdef123456');
     // Sin reconciliation:manage: hint honesto de rol, sin formulario.
-    expect(screen.getByText(/Tu rol no permite crear reembolsos/)).toBeInTheDocument();
+    expect(screen.getByText(/Tu rol no permite registrar devoluciones/)).toBeInTheDocument();
   });
 
   it('offers the create-refund form only to money-governing roles (canManage)', () => {
@@ -103,8 +104,8 @@ describe('PaymentDetail', () => {
         canManage
       />
     );
-    expect(screen.getByRole('button', { name: 'Crear reembolso' })).toBeInTheDocument();
-    expect(screen.queryByText(/Tu rol no permite crear reembolsos/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revisar devolución' })).toBeInTheDocument();
+    expect(screen.queryByText(/Tu rol no permite registrar devoluciones/)).not.toBeInTheDocument();
   });
 
   it('derives the timeline chronologically from persisted timestamps', () => {
@@ -118,13 +119,13 @@ describe('PaymentDetail', () => {
         signOutHref="/logout"
       />
     );
-    const timeline = screen.getByRole('list');
+    const timeline = screen.getByRole('list', { name: 'Línea de tiempo' });
     const items = within(timeline).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
       expect.stringContaining('Pago creado'),
       expect.stringContaining('Sesión de checkout creada'),
       expect.stringContaining('Sesión de checkout completada'),
-      expect.stringContaining('Reembolso creado'),
+      expect.stringContaining('Devolución registrada'),
     ]);
   });
 

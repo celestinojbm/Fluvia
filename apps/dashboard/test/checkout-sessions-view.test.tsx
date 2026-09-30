@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
-import {
-  CheckoutSessionDetail,
-  CheckoutSessionsList,
-} from '../app/lib/checkout-sessions-view';
+import { CheckoutSessionDetail, CheckoutSessionsList } from '../app/lib/checkout-sessions-view';
 import type { CheckoutSession } from '../app/lib/api';
 
 /**
@@ -47,11 +44,9 @@ describe('CheckoutSessionsList', () => {
     expect(sessionLink.getAttribute('href')).toBe('/o/o1/checkout-sessions/cs_abcdef123456');
     const paymentLink = screen.getByRole('link', { name: /pi_abcd/ });
     expect(paymentLink.getAttribute('href')).toBe('/o/o1/payments/pi_abcdef123456');
-    expect(screen.getByText('open')).toBeInTheDocument();
+    expect(screen.getByText('Checkout abierto')).toHaveAttribute('data-status', 'open');
 
-    rerender(
-      <CheckoutSessionsList sessions={[]} orgId="o1" locale="es" signOutHref="/logout" />
-    );
+    rerender(<CheckoutSessionsList sessions={[]} orgId="o1" locale="es" signOutHref="/logout" />);
     expect(screen.getByText('Sin sesiones de checkout.')).toBeInTheDocument();
   });
 });

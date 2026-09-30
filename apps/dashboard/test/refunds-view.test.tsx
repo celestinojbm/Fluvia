@@ -33,13 +33,13 @@ describe('RefundsList', () => {
     expect(screen.getByText('$ 40.000')).toBeInTheDocument();
 
     rerender(<RefundsList refunds={[]} orgId="o1" locale="es" signOutHref="/logout" />);
-    expect(screen.getByText('Sin reembolsos.')).toBeInTheDocument();
+    expect(screen.getByText('Sin devoluciones.')).toBeInTheDocument();
   });
 
   it('points to the payment detail for creation and renders no mutating controls', () => {
     render(<RefundsList refunds={[REFUND]} orgId="o1" locale="es" signOutHref="/logout" />);
     expect(
-      screen.getByText(/Los reembolsos se crean desde el detalle del pago/)
+      screen.getByText(/Las devoluciones se registran desde el detalle del pago/)
     ).toBeInTheDocument();
     expect(screen.queryAllByRole('button')).toEqual([]);
   });

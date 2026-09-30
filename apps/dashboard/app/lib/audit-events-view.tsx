@@ -12,7 +12,7 @@ function shortId(v: string | null): string {
   return v.length > 12 ? `${v.slice(0, 8)}…${v.slice(-4)}` : v;
 }
 function when(v: string): string {
-  return v ? v.replace('T', ' ').slice(0, 19) : '—';
+  return v ? `${v.replace('T', ' ').slice(0, 19)} UTC` : '—';
 }
 
 function riskLabel(risk: string, t: (typeof MESSAGES)[Locale]): string {
