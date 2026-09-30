@@ -1245,3 +1245,101 @@ a.btn {
     flex-basis: 100%;
   }
 }
+
+/* POS: justificante de cobro (operativo, no fiscal) */
+.pos-receipt-page {
+  max-width: 40rem;
+}
+.pos-receipt-head h2 {
+  margin: 0 0 0.35rem;
+}
+.pos-receipt-disclaimer {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 4px solid var(--warn);
+  background: #fff8e6;
+  color: #5c3d00;
+  font-size: 0.9rem;
+}
+.pos-receipt-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.pos-receipt-total-label {
+  color: var(--muted);
+  font-weight: 600;
+}
+.pos-receipt-total-amount {
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pos-receipt-kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.4rem 1rem;
+  margin: 0 0 1rem;
+}
+.pos-receipt-kv dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+.pos-receipt-kv dd {
+  margin: 0;
+}
+.pos-receipt-ref-hint {
+  display: block;
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+}
+.pos-receipt-read {
+  font-size: 0.85rem;
+}
+@media (max-width: 600px) {
+  .pos-receipt-kv {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+  .pos-receipt-kv dd {
+    margin-bottom: 0.5rem;
+  }
+  .pos-receipt .pos-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .pos-receipt-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  .pos-receipt {
+    box-shadow: none;
+    border: 1px solid #000;
+    padding: 1rem;
+    color: #000;
+  }
+  .pos-receipt .hint,
+  .pos-receipt-kv dt,
+  .pos-receipt-total-label {
+    color: #000;
+  }
+  .pos-receipt-disclaimer {
+    background: none;
+    border-left-color: #000;
+    color: #000;
+  }
+}
