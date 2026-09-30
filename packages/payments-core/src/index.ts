@@ -36,6 +36,8 @@ export {
   RefundAmountExceedsRemainingError,
   RefundNotFoundError,
   SaleAlreadyChargedError,
+  SaleReleaseUnverifiedError,
+  isSaleReleaseUnverified,
   isSingleChargeViolation,
 } from './errors.js';
 export {

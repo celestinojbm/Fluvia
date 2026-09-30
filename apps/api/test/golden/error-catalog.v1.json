@@ -147,6 +147,11 @@
       "type": "conflict_error",
       "message": "This sale already has a payment in progress or completed"
     },
+    "sale_release_unverified": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This sale cannot be released without a verified provider outcome"
+    },
     "invalid_state_transition": {
       "status": 409,
       "type": "conflict_error",
@@ -257,6 +262,7 @@
     "PaymentLinkNotFoundError": "not_found",
     "PaymentLinkInvalidMerchantError": "validation_error",
     "SaleAlreadyChargedError": "sale_already_charged",
+    "SaleReleaseUnverifiedError": "sale_release_unverified",
     "WebhookEndpointNotFoundError": "not_found",
     "InvalidWebhookTopicError": "validation_error",
     "UnsafeWebhookUrlError": "validation_error",

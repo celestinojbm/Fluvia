@@ -7,7 +7,11 @@ export interface TxClient {
 import { buildEnvelope } from '@fluvia/events';
 import type { Money } from '@fluvia/money';
 import { INTENT_TRANSITIONS, canTransition, type IntentStatus } from './fsm.js';
-import { InvalidStateTransitionError, PaymentIntentNotFoundError } from './errors.js';
+import {
+  InvalidStateTransitionError,
+  PaymentIntentNotFoundError,
+  SaleReleaseUnverifiedError,
+} from './errors.js';
 
 /**
  * Servicio de transiciones de payment intents (F3-01).
@@ -95,6 +99,13 @@ function toDto(r: IntentRow): PaymentIntentDto {
   };
 }
 
+/** Estados en los que el intent aún no cobra ni retiene nada en el proveedor. */
+const PRE_CHARGE: ReadonlySet<IntentStatus> = new Set<IntentStatus>([
+  'created',
+  'requires_payment_method',
+  'requires_confirmation',
+]);
+
 export class PaymentIntentService {
   constructor(
     /** Pool con rol fluvia_app (RLS forzado). */
@@ -176,6 +187,17 @@ export class PaymentIntentService {
       if (!row) throw new PaymentIntentNotFoundError();
       if (!canTransition(INTENT_TRANSITIONS, row.status, to)) {
         throw new InvalidStateTransitionError(row.status, to);
+      }
+      // Venta de cobro único (0046/0047): cancelar LOCALMENTE un intent que ya
+      // retiene la venta (p. ej. `authorized`: fondos retenidos en el
+      // proveedor) la liberaría sin anulación verificada. Error de dominio
+      // limpio; el trigger del motor es la garantía para cualquier otro camino.
+      if (to === 'canceled' && !PRE_CHARGE.has(row.status)) {
+        const sc = await c.query<{ single_charge_link_id: string | null }>(
+          `SELECT single_charge_link_id FROM payment_intents WHERE id = $1`,
+          [intentId]
+        );
+        if (sc.rows[0]?.single_charge_link_id) throw new SaleReleaseUnverifiedError();
       }
 
       const res = await c.query<IntentRow>(

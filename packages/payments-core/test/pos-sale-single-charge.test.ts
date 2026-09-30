@@ -341,7 +341,17 @@ describe('aislamiento entre organizaciones', () => {
         amount: Money.of(5_000n, 'COP'),
         paymentLinkId: link.id,
       })
-    ).rejects.toMatchObject({ code: '23503' });
+      // Primera barrera (0047): el link ajeno no es visible ⇒ falla cerrado.
+    ).rejects.toThrow(/FLUVIA_LINK_NOT_VISIBLE/);
+    // Ni siquiera el superusuario (sin RLS) puede: el link existe pero no es del
+    // tenant del intent — lo rechaza el trigger y, detrás, la FK (link, tenant).
+    await expect(
+      ctx.admin.query(
+        `INSERT INTO payment_intents (tenant_id, merchant_id, amount, currency, payment_link_id)
+         VALUES ($1, $2, 5000, 'COP', $3)`,
+        [orgB, mB.rows[0]!.id, link.id]
+      )
+    ).rejects.toThrow(/FLUVIA_LINK_NOT_VISIBLE|payment_intents_link_coherence_fk/);
   });
 });
 
@@ -367,5 +377,146 @@ describe('registros anteriores al vínculo', () => {
     expect(sale.history).toBe('partial');
     expect(sale.checkouts.map((x) => x.session?.id)).toEqual([s.checkoutSessionId]);
     expect(sale.checkouts.some((x) => x.paymentIntentId === legacy.id)).toBe(false);
+  });
+});
+
+// ── Hueco 1: cancelación LOCAL de un intent `authorized` ─────────────────────
+//
+// `authorized` retiene fondos en el proveedor. `authorized -> canceled` es una
+// transición LOCAL (sin anulación en el proveedor: el MockProvider no la
+// expone). Si liberara la venta, otro checkout podría cobrar con la retención
+// aún viva: el invariante valdría en la BD y no frente al proveedor.
+
+/** Lleva un intent a `authorized` por transiciones que la FSM permite. */
+async function authorize(intentId: string) {
+  await withTenantTransaction(ctx.app, org, async (c) => {
+    for (const to of [
+      'requires_payment_method',
+      'requires_confirmation',
+      'processing',
+      'authorized',
+    ] as const) {
+      await intents.transitionIn(c, intentId, to);
+    }
+  });
+}
+
+async function statusOf(intentId: string): Promise<string> {
+  const r = await ctx.admin.query<{ status: string }>(
+    `SELECT status FROM payment_intents WHERE id = $1`,
+    [intentId]
+  );
+  return r.rows[0]!.status;
+}
+
+describe('venta POS: una autorización viva no se libera con una cancelación local', () => {
+  it('servicio (camino de la ruta de cancelación) ⇒ rechazado; el segundo cobro es imposible', async () => {
+    const link = await newLink(true);
+    const a = await links.createSessionFromLink(link.id);
+    const b = await links.createSessionFromLink(link.id);
+    const intentA = await intentOfSession(a.checkoutSessionId);
+    await authorize(intentA);
+
+    await expect(intents.transition(org, intentA, 'canceled')).rejects.toMatchObject({
+      name: 'SaleReleaseUnverifiedError',
+    });
+    expect(await statusOf(intentA)).toBe('authorized');
+
+    await expect(confirm(b, 'tok_approve')).rejects.toBeInstanceOf(SaleAlreadyChargedError);
+    const intentB = await intentOfSession(b.checkoutSessionId);
+    expect(await succeededCaptures([intentA, intentB])).toBe(0);
+    expect(await attemptsOf([intentB])).toHaveLength(0);
+    expect((await links.getSale(org, link.id)).charge).toBe('in_progress');
+  });
+
+  it('UPDATE directo de SQL con el rol de la aplicación ⇒ rechazado por el motor', async () => {
+    const link = await newLink(true);
+    const a = await links.createSessionFromLink(link.id);
+    const b = await links.createSessionFromLink(link.id);
+    const intentA = await intentOfSession(a.checkoutSessionId);
+    await authorize(intentA);
+
+    await expect(
+      withTenantTransaction(ctx.app, org, (c) =>
+        c.query(
+          `UPDATE payment_intents SET status = 'canceled', canceled_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [intentA]
+        )
+      )
+    ).rejects.toThrow(/FLUVIA_SALE_RELEASE_UNVERIFIED/);
+    expect(await statusOf(intentA)).toBe('authorized');
+    await expect(confirm(b, 'tok_approve')).rejects.toBeInstanceOf(SaleAlreadyChargedError);
+    expect(await succeededCaptures([await intentOfSession(b.checkoutSessionId)])).toBe(0);
+  });
+
+  it('un `failed` local (sin rechazo verificado del proveedor) tampoco libera la venta', async () => {
+    const link = await newLink(true);
+    const a = await links.createSessionFromLink(link.id);
+    const b = await links.createSessionFromLink(link.id);
+    const va = await confirm(a, 'tok_timeout'); // attempt indeterminate, intent processing
+    await expect(
+      withTenantTransaction(ctx.app, org, (c) =>
+        intents.transitionIn(c, va.paymentIntent.id, 'failed', { failureCode: 'forced' })
+      )
+    ).rejects.toThrow(/FLUVIA_SALE_RELEASE_UNVERIFIED/);
+    expect(await statusOf(va.paymentIntent.id)).toBe('processing');
+    await expect(confirm(b, 'tok_approve')).rejects.toBeInstanceOf(SaleAlreadyChargedError);
+  });
+
+  it('link MULTIUSO: la cancelación de una autorización se comporta como siempre', async () => {
+    const link = await newLink(false);
+    const a = await links.createSessionFromLink(link.id);
+    const b = await links.createSessionFromLink(link.id);
+    const c2 = await links.createSessionFromLink(link.id);
+    const intentA = await intentOfSession(a.checkoutSessionId);
+    const intentB = await intentOfSession(b.checkoutSessionId);
+    await authorize(intentA);
+    await authorize(intentB);
+    expect((await intents.transition(org, intentA, 'canceled')).status).toBe('canceled');
+    await withTenantTransaction(ctx.app, org, (c) =>
+      c.query(`UPDATE payment_intents SET status = 'canceled' WHERE id = $1`, [intentB])
+    );
+    expect(await statusOf(intentB)).toBe('canceled');
+    expect((await confirm(c2, 'tok_approve')).paymentIntent.status).toBe('succeeded');
+  });
+});
+
+// ── Hueco 2: derivación del vínculo con un invocador que NO ve el link ───────
+
+describe('derivación de single_charge_link_id: falla cerrado si el link no es visible', () => {
+  it('un invocador cuya RLS oculta el link no puede crear un intent que escape del índice', async () => {
+    const link = await newLink(true);
+    const a = await links.createSessionFromLink(link.id);
+    await confirm(a, 'tok_approve'); // la venta ya cobró una vez
+
+    const role = `fluvia_blind_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const client = await ctx.admin.connect();
+    try {
+      await client.query('BEGIN');
+      // Invocador con permisos de escritura sobre intents pero SIN visibilidad
+      // del link (política restrictiva). Todo se revierte al final.
+      await client.query(`CREATE ROLE ${role} NOLOGIN`);
+      await client.query(`GRANT SELECT, INSERT ON payment_intents TO ${role}`);
+      await client.query(`GRANT SELECT ON payment_links TO ${role}`);
+      await client.query(
+        `CREATE POLICY ${role}_hide ON payment_links AS RESTRICTIVE FOR SELECT TO ${role} USING (false)`
+      );
+      await client.query(`SET LOCAL ROLE ${role}`);
+      await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [org]);
+      const escaped = client.query<{ single_charge_link_id: string | null }>(
+        `INSERT INTO payment_intents
+           (tenant_id, merchant_id, amount, currency, payment_link_id, status)
+         VALUES ($1, $2, 5000, 'COP', $3, 'succeeded')
+         RETURNING single_charge_link_id`,
+        [org, merchantId, link.id]
+      );
+      await expect(escaped).rejects.toThrow(/FLUVIA_LINK_NOT_VISIBLE/);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+    // La venta sigue con UN solo cobro.
+    expect((await links.getSale(org, link.id)).succeededCount).toBe(1);
   });
 });

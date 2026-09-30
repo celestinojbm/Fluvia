@@ -195,6 +195,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This sale already has a payment in progress or completed',
   },
+  sale_release_unverified: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale cannot be released without a verified provider outcome',
+  },
   invalid_state_transition: {
     status: 409,
     type: 'conflict_error',
@@ -333,6 +338,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   PaymentLinkInvalidMerchantError: 'validation_error',
   // POS: una venta de cobro único, como máximo un cobro (0046)
   SaleAlreadyChargedError: 'sale_already_charged',
+  SaleReleaseUnverifiedError: 'sale_release_unverified',
   // webhooks salientes F3-07
   WebhookEndpointNotFoundError: 'not_found',
   InvalidWebhookTopicError: 'validation_error',
