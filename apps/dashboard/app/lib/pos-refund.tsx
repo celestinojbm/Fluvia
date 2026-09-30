@@ -29,11 +29,22 @@ import { POS_REFUND_MESSAGES, refundErrorText } from './pos-refund-messages';
  *  - UNA `Idempotency-Key` por borrador (importe + motivo): reintentar tras un
  *    resultado incierto no duplica; el borrador queda bloqueado mientras tanto.
  *  - Candado síncrono contra el doble envío.
+ *  - Solo se ofrece devolver con una lectura FRESCA y correcta: datos
+ *    desactualizados, sesión caducada o sin acceso ⇒ se muestran, sin acción.
  *  - Devolver NO libera la venta (0046): el terminal sigue en «aprobado» y no
  *    ofrece recuperar ni abrir otro checkout.
  */
 
-type Read = { kind: 'loading' } | { kind: 'ok'; list: PosRefundList } | { kind: 'error' };
+type ReadStatus = 'loading' | 'ok' | 'error' | 'auth' | 'forbidden';
+interface Read {
+  status: ReadStatus;
+  /** Última lista leída correctamente (se conserva ante un fallo posterior). */
+  list: PosRefundList | null;
+  /** Hora de la última lectura correcta. */
+  at: number | null;
+  /** Hay una lectura en vuelo (sin vaciar lo que se ve). */
+  refreshing: boolean;
+}
 
 type Step =
   | { kind: 'closed' }
@@ -80,6 +91,14 @@ function when(iso: string, locale: Locale): string {
   }
 }
 
+function timeOf(ms: number, locale: Locale): string {
+  try {
+    return new Date(ms).toLocaleTimeString(locale === 'en' ? 'en-US' : 'es-CO');
+  } catch {
+    return '';
+  }
+}
+
 export interface PosRefundPanelProps {
   orgId: string;
   locale: Locale;
@@ -104,28 +123,54 @@ export function PosRefundPanel({
   const org = encodeURIComponent(orgId);
   const money = (minor: number) => formatAmount(minor, payment.currency, locale);
 
-  const [read, setRead] = useState<Read>({ kind: 'loading' });
+  const [read, setRead] = useState<Read>({
+    status: 'loading',
+    list: null,
+    at: null,
+    refreshing: true,
+  });
   const [readNonce, setReadNonce] = useState(0);
   const [step, setStep] = useState<Step>({ kind: 'closed' });
   const [mode, setMode] = useState<'full' | 'partial'>('full');
   const [amountText, setAmountText] = useState('');
   const [reason, setReason] = useState('');
   const [showAmountError, setShowAmountError] = useState(false);
+  const [stalled, setStalled] = useState(false);
 
   const inFlight = useRef(false);
   const idem = useRef<{ key: string; fingerprint: string } | null>(null);
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
+  const startRef = useRef<HTMLButtonElement>(null);
+  const firstChoiceRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLParagraphElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  const reread = useCallback(() => setReadNonce((n) => n + 1), []);
 
   // Lectura de las devoluciones: al montar, cuando cambia el cobro leído y a
-  // demanda. Todo o nada (el BFF invalida listas incompletas).
+  // demanda. Todo o nada (el BFF invalida listas incompletas). Un fallo NO
+  // vacía lo que se ve: se marca desactualizado y se retira la acción.
   const refundsUrl = `/api/orgs/${org}/pos/payments/${encodeURIComponent(payment.id)}/refunds`;
   useEffect(() => {
     let cancelled = false;
+    setRead((r) => ({ ...r, refreshing: true }));
     void call(refundsUrl).then((r) => {
       if (cancelled) return;
       const list = r.kind === 'ok' ? pickRefundList(r.body, payment.id) : null;
-      setRead(list ? { kind: 'ok', list } : { kind: 'error' });
+      if (list) {
+        setRead({ status: 'ok', list, at: Date.now(), refreshing: false });
+        return;
+      }
+      const status: ReadStatus =
+        r.kind === 'http' && r.status === 401
+          ? 'auth'
+          : r.kind === 'http' && (r.status === 403 || r.status === 404)
+            ? 'forbidden'
+            : 'error';
+      setRead((prev) => ({ ...prev, status, refreshing: false }));
     });
     return () => {
       cancelled = true;
@@ -135,18 +180,15 @@ export function PosRefundPanel({
   // Seguimiento de la devolución registrada hasta un desenlace del API.
   const trackingId = step.kind === 'tracking' ? step.refundId : null;
   const tracked =
-    trackingId && read.kind === 'ok'
-      ? (read.list.refunds.find((r) => r.id === trackingId) ?? null)
-      : null;
+    trackingId && read.list ? (read.list.refunds.find((r) => r.id === trackingId) ?? null) : null;
   const trackedStatus = tracked?.status ?? null;
+  const settled =
+    !!trackedStatus && (REFUND_TERMINAL.has(trackedStatus) || trackedStatus === 'indeterminate');
   const polls = useRef(0);
   const notified = useRef<string | null>(null);
   useEffect(() => {
-    if (!trackingId) return;
-    if (
-      trackedStatus &&
-      (REFUND_TERMINAL.has(trackedStatus) || trackedStatus === 'indeterminate')
-    ) {
+    if (!trackingId || read.refreshing) return;
+    if (settled) {
       // Una sola relectura del cobro por desenlace (amount_refunded / estado).
       if (notified.current !== trackingId) {
         notified.current = trackingId;
@@ -154,15 +196,32 @@ export function PosRefundPanel({
       }
       return;
     }
-    if (polls.current >= MAX_POLLS) return;
+    // Sesión caducada o sin acceso: no se sigue consultando.
+    if (read.status === 'auth' || read.status === 'forbidden') return;
+    if (polls.current >= MAX_POLLS) {
+      setStalled(true);
+      return;
+    }
     const timer = setTimeout(() => {
       polls.current += 1;
-      setReadNonce((n) => n + 1);
+      reread();
     }, POLL_MS);
     return () => clearTimeout(timer);
-  }, [trackingId, trackedStatus, read]);
+  }, [trackingId, settled, read, reread]);
 
-  const list = read.kind === 'ok' ? read.list : null;
+  // Foco (teclado y lector de pantalla) al cambiar de paso.
+  useEffect(() => {
+    if (step.kind === 'form') {
+      if (mode === 'partial') amountRef.current?.focus();
+      else firstChoiceRef.current?.focus();
+    } else if (step.kind === 'confirm') confirmRef.current?.focus();
+    else if (step.kind === 'uncertain' || step.kind === 'failed') alertRef.current?.focus();
+    else if (step.kind === 'tracking') resultRef.current?.focus();
+    // `mode` solo decide el destino al abrir el formulario (no es dependencia).
+  }, [step.kind]);
+
+  const fresh = read.status === 'ok' && !read.refreshing;
+  const list = read.list;
   const captured = payment.amount_captured;
   const summary = useMemo(
     () =>
@@ -191,14 +250,15 @@ export function PosRefundPanel({
           ? t.amountErrors.over_remaining(money(remaining))
           : null;
 
-  // Por qué no se ofrece devolver (texto único para el cajero).
+  // Por qué no se ofrece devolver (texto único para el cajero). Los estados de
+  // lectura (cargando, desactualizado, sesión, acceso) tienen su propio aviso.
   const blockReason: string | null = !canRefund
     ? t.noRole
     : !verified
       ? t.notVerified
       : captured === null
         ? t.noCaptured
-        : !list || !summary
+        : !fresh || !list || !summary
           ? null
           : list.truncated
             ? t.listTruncated
@@ -212,6 +272,7 @@ export function PosRefundPanel({
   const canStart =
     canRefund &&
     verified &&
+    fresh &&
     isRefundableStatus(payment.status) &&
     !!summary &&
     !!list &&
@@ -248,8 +309,9 @@ export function PosRefundPanel({
           if (refund && refund.payment_intent_id === payment.id) {
             idem.current = null;
             polls.current = 0;
+            setStalled(false);
             setStep({ kind: 'tracking', refundId: refund.id });
-            setReadNonce((n) => n + 1);
+            reread();
             onChangedRef.current?.();
             return;
           }
@@ -261,48 +323,87 @@ export function PosRefundPanel({
           return;
         }
         if (r.code === 'idempotency_key_reuse') idem.current = null;
-        setStep({ kind: 'failed', amount, code: r.code });
+        // 401 del BFF sin sobre del API ⇒ sesión caducada (nada se registró).
+        const code = r.code ?? (r.status === 401 ? 'invalid_session' : undefined);
+        setStep({ kind: 'failed', amount, code });
         // El servidor pudo cambiar (otra devolución, estado del cobro).
-        setReadNonce((n) => n + 1);
+        if (code !== 'invalid_session') reread();
       } finally {
         inFlight.current = false;
       }
     },
-    [org, payment.id, reason]
+    [org, payment.id, reason, reread]
   );
 
-  const reset = useCallback(() => {
+  const reset = useCallback((focusStart = false) => {
     setStep({ kind: 'closed' });
     setMode('full');
     setAmountText('');
     setReason('');
     setShowAmountError(false);
+    if (focusStart) setTimeout(() => startRef.current?.focus(), 0);
   }, []);
 
   const refunds = list?.refunds ?? [];
   const locked = step.kind === 'submitting' || step.kind === 'uncertain' || step.kind === 'confirm';
+  const editing = step.kind !== 'closed' && step.kind !== 'tracking';
+  const sessionLost =
+    read.status === 'auth' || (step.kind === 'failed' && step.code === 'invalid_session');
+  const resultTone =
+    tracked?.status === 'succeeded'
+      ? 'pos-alert-ok'
+      : tracked?.status === 'failed' || tracked?.status === 'canceled'
+        ? 'pos-alert-bad'
+        : 'pos-alert-warn';
 
   return (
-    <section className="pos-refund" aria-labelledby="pos-refund-title" data-testid="pos-refund">
+    <section
+      className="pos-refund"
+      aria-labelledby="pos-refund-title"
+      aria-busy={read.refreshing}
+      data-testid="pos-refund"
+    >
       <h3 id="pos-refund-title">{t.title}</h3>
       <p className="hint">{t.intro}</p>
 
-      {read.kind === 'loading' && <p className="hint">{t.loading}</p>}
-      {read.kind === 'error' && (
-        <div className="pos-alert pos-alert-bad" role="alert">
-          <p>{t.loadError}</p>
+      {/* Estados de lectura: cargando / desactualizado / sesión / acceso. */}
+      {read.status === 'loading' && (
+        <p className="hint" role="status" data-testid="pos-refund-loading">
+          {t.loading}
+        </p>
+      )}
+      {read.status === 'error' && (
+        <div className="pos-alert pos-alert-bad" role="alert" data-testid="pos-refund-read-error">
+          <p>{list && read.at ? t.stale(timeOf(read.at, locale)) : t.loadError}</p>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => setReadNonce((n) => n + 1)}
+            onClick={reread}
+            disabled={read.refreshing}
           >
-            {t.retry}
+            {read.refreshing ? t.refreshing : t.retry}
           </button>
         </div>
       )}
+      {sessionLost && (
+        <div className="pos-alert pos-alert-bad" role="alert" data-testid="pos-refund-auth">
+          <p>
+            {t.authLost} {step.kind === 'failed' ? t.authNothingRecorded : ''}
+          </p>
+          <a href="/login">{t.signIn}</a>
+        </div>
+      )}
+      {read.status === 'forbidden' && (
+        <p className="error" role="alert" data-testid="pos-refund-forbidden">
+          {t.forbidden}
+        </p>
+      )}
 
       {summary && (
-        <dl className="kv pos-refund-summary" data-testid="pos-refund-summary">
+        <dl
+          className={`kv pos-refund-summary${fresh ? '' : ' pos-stale'}`}
+          data-testid="pos-refund-summary"
+        >
           <dt>{t.summaryCaptured}</dt>
           <dd>{money(summary.captured)}</dd>
           <dt>{t.summaryRefunded}</dt>
@@ -320,34 +421,65 @@ export function PosRefundPanel({
         </dl>
       )}
 
-      {tracked && (
+      {step.kind === 'tracking' && (
         <div
-          className={`pos-alert ${tracked.status === 'succeeded' ? 'pos-alert-ok' : tracked.status === 'failed' || tracked.status === 'canceled' ? 'pos-alert-bad' : 'pos-alert-warn'}`}
+          ref={resultRef}
+          tabIndex={-1}
+          className={`pos-alert ${tracked ? resultTone : 'pos-alert-warn'}`}
           role="status"
+          aria-live="polite"
           data-testid="pos-refund-result"
-          data-status={tracked.status}
+          data-status={tracked?.status ?? 'pending'}
         >
-          <p className="pos-alert-title">{t.resultTitle[tracked.status]}</p>
-          <p>
-            {money(tracked.amount)} · {t.statusDetail[tracked.status]}
-          </p>
-          {tracked.failure_code && (
-            <p>{t.failureReasons[tracked.failure_code] ?? t.failureCode(tracked.failure_code)}</p>
+          {tracked ? (
+            <>
+              <p className="pos-alert-title">{t.resultTitle[tracked.status]}</p>
+              <p>
+                {money(tracked.amount)} · {t.statusDetail[tracked.status]}
+              </p>
+              {tracked.failure_code && (
+                <p>
+                  {t.failureReasons[tracked.failure_code] ?? t.failureCode(tracked.failure_code)}
+                </p>
+              )}
+              <p>{t.saleStaysClosed}</p>
+            </>
+          ) : (
+            <p className="pos-alert-title">{t.resultTitle.created}</p>
           )}
-          <p>{t.saleStaysClosed}</p>
+          {(stalled || tracked?.status === 'indeterminate') && (
+            <>
+              {stalled && <p data-testid="pos-refund-stalled">{t.stalledText}</p>}
+              <div className="pos-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={read.refreshing}
+                  onClick={() => {
+                    polls.current = 0;
+                    setStalled(false);
+                    reread();
+                  }}
+                >
+                  {read.refreshing ? t.refreshing : t.checkRefunds}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {blockReason && (step.kind === 'closed' || step.kind === 'tracking') && (
+      {blockReason && !editing && (
         <p className="hint" data-testid="pos-refund-block">
           {blockReason}
         </p>
       )}
 
-      {step.kind === 'closed' || step.kind === 'tracking' ? (
+      {!editing ? (
         canStart && (
           <div className="pos-actions">
             <button
+              ref={startRef}
               type="button"
               className="btn btn-secondary"
               onClick={() => {
@@ -363,11 +495,20 @@ export function PosRefundPanel({
         <form
           className="pos-form pos-refund-form"
           noValidate
+          aria-busy={step.kind === 'submitting'}
+          onKeyDown={(e) => {
+            // Escape cancela mientras nada está en vuelo ni es incierto.
+            if (e.key === 'Escape' && (step.kind === 'form' || step.kind === 'confirm')) {
+              e.preventDefault();
+              reset(true);
+            }
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             if (step.kind !== 'form') return;
             if (draftAmount === null || amountError) {
               setShowAmountError(true);
+              amountRef.current?.focus();
               return;
             }
             setStep({ kind: 'confirm', amount: draftAmount });
@@ -378,13 +519,14 @@ export function PosRefundPanel({
             <div className="pos-choice">
               <label>
                 <input
+                  ref={firstChoiceRef}
                   type="radio"
                   name="pos-refund-mode"
                   value="full"
                   checked={mode === 'full'}
                   onChange={() => setMode('full')}
-                />{' '}
-                {t.modeFull(money(remaining))}
+                />
+                <span>{t.modeFull(money(remaining))}</span>
               </label>
               <label>
                 <input
@@ -392,9 +534,12 @@ export function PosRefundPanel({
                   name="pos-refund-mode"
                   value="partial"
                   checked={mode === 'partial'}
-                  onChange={() => setMode('partial')}
-                />{' '}
-                {t.modePartial}
+                  onChange={() => {
+                    setMode('partial');
+                    setTimeout(() => amountRef.current?.focus(), 0);
+                  }}
+                />
+                <span>{t.modePartial}</span>
               </label>
             </div>
             {mode === 'partial' && (
@@ -402,11 +547,14 @@ export function PosRefundPanel({
                 <label htmlFor="pos-refund-amount">{t.amountLabel}</label>
                 <input
                   id="pos-refund-amount"
+                  ref={amountRef}
                   name="refund-amount"
                   inputMode={exponent === 0 ? 'numeric' : 'decimal'}
                   autoComplete="off"
+                  placeholder={exponent === 0 ? '0' : '0.00'}
                   value={amountText}
                   onChange={(e) => setAmountText(e.target.value)}
+                  onBlur={() => amountText !== '' && setShowAmountError(true)}
                   aria-invalid={showAmountError && !!amountError}
                   aria-describedby="pos-refund-amount-hint pos-refund-amount-error"
                 />
@@ -441,7 +589,7 @@ export function PosRefundPanel({
                 <button type="submit" className="btn btn-primary">
                   {t.review}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={reset}>
+                <button type="button" className="btn btn-secondary" onClick={() => reset(true)}>
                   {t.cancel}
                 </button>
               </div>
@@ -454,15 +602,31 @@ export function PosRefundPanel({
               role="group"
               aria-labelledby="pos-refund-confirm-title"
             >
-              <p id="pos-refund-confirm-title" className="pos-alert-title">
+              <p
+                id="pos-refund-confirm-title"
+                className="pos-alert-title"
+                ref={confirmRef}
+                tabIndex={-1}
+              >
                 {t.confirmTitle}
               </p>
               <p>{t.confirmText(money(step.amount), money(summary?.captured ?? payment.amount))}</p>
               <p>{t.confirmIrreversible}</p>
-              {step.kind === 'failed' && (
-                <p className="pos-alert pos-alert-bad" role="alert">
-                  {refundErrorText(t, step.code)}
+              {step.kind === 'submitting' && (
+                <p className="hint" role="status">
+                  {t.submitting}
                 </p>
+              )}
+              {step.kind === 'failed' && (
+                <div
+                  className="pos-alert pos-alert-bad"
+                  role="alert"
+                  ref={alertRef}
+                  tabIndex={-1}
+                  data-testid="pos-refund-failed"
+                >
+                  <p>{refundErrorText(t, step.code)}</p>
+                </div>
               )}
               <div className="pos-actions">
                 {step.kind !== 'failed' && (
@@ -488,12 +652,26 @@ export function PosRefundPanel({
           )}
 
           {step.kind === 'uncertain' && (
-            <div className="pos-alert pos-alert-warn" role="alert">
+            <div
+              className="pos-alert pos-alert-warn"
+              role="alert"
+              ref={alertRef}
+              tabIndex={-1}
+              data-testid="pos-refund-uncertain"
+            >
               <p className="pos-alert-title">{t.uncertainTitle}</p>
               <p>{t.uncertainText}</p>
               <div className="pos-actions">
                 <button type="button" className="btn" onClick={() => void submit(step.amount)}>
                   {t.retrySafe}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={reread}
+                  disabled={read.refreshing}
+                >
+                  {read.refreshing ? t.refreshing : t.checkRefunds}
                 </button>
               </div>
             </div>
@@ -504,9 +682,9 @@ export function PosRefundPanel({
       <h4 className="pos-refund-list-title">{t.listTitle}</h4>
       {list && refunds.length === 0 && <p className="hint">{t.listEmpty}</p>}
       {refunds.length > 0 && (
-        <ul className="pos-refund-list" data-testid="pos-refund-list">
+        <ul className={`pos-refund-list${fresh ? '' : ' pos-stale'}`} data-testid="pos-refund-list">
           {refunds.map((r) => (
-            <RefundRow key={r.id} refund={r} locale={locale} />
+            <RefundRow key={r.id} refund={r} locale={locale} current={r.id === trackingId} />
           ))}
         </ul>
       )}
@@ -514,18 +692,26 @@ export function PosRefundPanel({
   );
 }
 
-function RefundRow({ refund, locale }: { refund: PosRefund; locale: Locale }) {
+function RefundRow({
+  refund,
+  locale,
+  current,
+}: {
+  refund: PosRefund;
+  locale: Locale;
+  current: boolean;
+}) {
   const t = POS_REFUND_MESSAGES[locale];
   return (
-    <li className="pos-refund-item">
+    <li className="pos-refund-item" aria-current={current ? 'true' : undefined}>
       <span className="pos-refund-amount">
         {formatAmount(refund.amount, refund.currency, locale)}
       </span>
       <span className={`badge pos-refund-${refund.status}`}>{t.status[refund.status]}</span>
       <span className="hint">{when(refund.created_at, locale)}</span>
-      {refund.reason && <span className="hint">{t.reasonShown(refund.reason)}</span>}
+      {refund.reason && <span className="hint pos-wrap">{t.reasonShown(refund.reason)}</span>}
       {refund.failure_code && (
-        <span className="hint">
+        <span className="hint pos-wrap">
           {t.failureReasons[refund.failure_code] ?? t.failureCode(refund.failure_code)}
         </span>
       )}

@@ -62,7 +62,11 @@ export interface PosRefundMessages {
   loadError: string;
   retry: string;
   authLost: string;
+  authNothingRecorded: string;
   signIn: string;
+  stale: (time: string) => string;
+  refreshing: string;
+  stalledText: string;
   forbidden: string;
   resultTitle: Record<RefundStatus, string>;
   saleStaysClosed: string;
@@ -163,7 +167,12 @@ const ES: PosRefundMessages = {
   loadError: 'No pudimos leer las devoluciones de este cobro.',
   retry: 'Reintentar',
   authLost: 'Tu sesión caducó.',
+  authNothingRecorded: 'La devolución no se registró.',
   signIn: 'Vuelve a iniciar sesión',
+  stale: (time) =>
+    `No pudimos actualizar las devoluciones. Lo que ves es de las ${time} y puede estar desactualizado: no se ofrece devolver hasta leerlas de nuevo.`,
+  refreshing: 'Actualizando…',
+  stalledText: 'Aún no conocemos el desenlace. No la repitas: consulta de nuevo en unos segundos.',
   forbidden: 'No tienes acceso a las devoluciones de este cobro.',
   resultTitle: {
     created: 'Devolución registrada',
@@ -271,7 +280,12 @@ const EN: PosRefundMessages = {
   loadError: 'We could not read the refunds of this charge.',
   retry: 'Retry',
   authLost: 'Your session expired.',
+  authNothingRecorded: 'The refund was not recorded.',
   signIn: 'Sign in again',
+  stale: (time) =>
+    `We could not update the refunds. What you see is from ${time} and may be out of date: refunding is not offered until they are read again.`,
+  refreshing: 'Updating…',
+  stalledText: "We don't know the outcome yet. Do not repeat it: check again in a few seconds.",
   forbidden: 'You do not have access to the refunds of this charge.',
   resultTitle: {
     created: 'Refund recorded',
