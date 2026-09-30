@@ -61,7 +61,9 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => void shutdown(signal));
 }
 
-app.listen({ port: config.port, host: '0.0.0.0' }).catch((err) => {
+// `HOST` opcional: la demo local lo fija a 127.0.0.1 para no exponer la API en
+// la LAN. Sin la variable, el comportamiento es el de siempre (0.0.0.0).
+app.listen({ port: config.port, host: process.env.HOST || '0.0.0.0' }).catch((err) => {
   app.log.fatal({ err }, 'failed to start api');
   process.exit(1);
 });
