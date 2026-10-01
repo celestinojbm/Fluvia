@@ -251,7 +251,7 @@ describe('bolívares y venta anulada', () => {
     );
     render(<CheckoutClient sessionId="s1" locale="es" />);
     const amount = await screen.findByTestId('amount');
-    expect(amount.textContent!.replace(/ /g, ' ')).toBe('Bs. 3.703,98 VES');
+    expect(amount.textContent!.replace(/\u00a0/g, ' ')).toBe('Bs. 3.703,98 VES');
     expect(await screen.findByText('Café molido · 500 g', { exact: false })).toBeDefined();
     expect(document.querySelector('.co-merchant')!.textContent).toContain('Bodega Caracas');
   });
