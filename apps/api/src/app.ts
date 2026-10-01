@@ -34,6 +34,14 @@ import {
   isSingleChargeViolation,
 } from '@fluvia/payments-core';
 import { LedgerService, PostingService } from '@fluvia/ledger';
+import {
+  CatalogService,
+  CustomerDirectory,
+  InstallmentSandboxService,
+  OrderService,
+  SummaryService,
+  isInstallmentPlanActive,
+} from '@fluvia/commerce';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import type { RateLimiter } from './rate-limit.js';
@@ -55,6 +63,7 @@ import { registerWebhookEventRoutes } from './routes/webhook-events.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
+import { registerCommerceRoutes } from './routes/commerce.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { findCardData } from './card-data-guard.js';
@@ -400,6 +409,18 @@ export function buildApp({
       operationalCaseService,
       caseAdjustmentService,
     });
+    // Plataforma del comercio (sandbox): catálogo, pedidos (venta de cobro
+    // único por pedido), clientes, indicadores/caja y cuotas SIMULADAS.
+    const orderService = new OrderService(appPool, paymentLinkService);
+    registerCommerceRoutes(app, {
+      security,
+      idempotencyService,
+      catalogService: new CatalogService(appPool),
+      orderService,
+      customerDirectory: new CustomerDirectory(appPool),
+      summaryService: new SummaryService(appPool),
+      installmentService: new InstallmentSandboxService(appPool, orderService),
+    });
   }
 
   app.setNotFoundHandler((req, reply) => {
@@ -436,6 +457,15 @@ export function buildApp({
       return reply
         .code(ERROR_CATALOG.sale_release_unverified.status)
         .send(errorBody('sale_release_unverified', req.id));
+    }
+
+    // Guard del motor (0050): con un plan de cuotas SANDBOX vivo, la venta no
+    // empieza otro cobro (tarjeta/transferencia), venga del camino que venga.
+    if (isInstallmentPlanActive(err)) {
+      req.log.warn({ err }, 'sandbox installment plan blocked a charge');
+      return reply
+        .code(ERROR_CATALOG.installment_plan_active.status)
+        .send(errorBody('installment_plan_active', req.id));
     }
 
     const code = DOMAIN_ERROR_CODES[err.name];

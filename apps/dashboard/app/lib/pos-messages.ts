@@ -40,6 +40,11 @@ export interface PosMessages {
   openUncertainTitle: string;
   openUncertainText: string;
   openAgain: string;
+  readyTitle: string;
+  readyText: string;
+  readyOpen: string;
+  readyLater: string;
+  readyLaterHint: string;
   errorCodes: Record<string, string>;
   presentTitle: string;
   presentText: string;
@@ -95,7 +100,7 @@ export interface PosMessages {
   recentForbidden: string;
   retry: string;
   showMore: (n: number) => string;
-  trackLocked: string;
+  trackLocked: (action: string | null) => string;
   trackingNow: string;
   unknownMerchant: string;
   paymentOutsideWindow: string;
@@ -177,6 +182,13 @@ const ES: PosMessages = {
   openUncertainText:
     'La venta existe, pero se perdió la respuesta al abrir el checkout. Un checkout abierto y no pagado no cobra nada y expira solo. Puedes abrir uno nuevo para esta venta.',
   openAgain: 'Abrir un checkout nuevo para esta venta',
+  readyTitle: 'Venta lista para cobrar',
+  readyText:
+    'Abre el checkout y muéstraselo al cliente. La venta solo admite un cobro: aunque se abra otro checkout, el sistema impide cobrarla dos veces.',
+  readyOpen: 'Abrir checkout del cliente',
+  readyLater: 'Dejar esta venta para después',
+  readyLaterHint:
+    'Sin abrir checkout: la venta queda pendiente en Ventas y puedes cobrarla luego desde su detalle.',
   errorCodes: {
     validation_error: 'Datos no válidos. Revisa el importe y la moneda.',
     invalid_session: 'Tu sesión caducó. Vuelve a iniciar sesión.',
@@ -238,7 +250,7 @@ const ES: PosMessages = {
   saleRef: 'Sesión',
   paymentRef: 'Pago',
   noCancelNote:
-    'La API no permite cancelar un cobro abierto desde el panel: si el cliente no paga, el checkout expira solo.',
+    'La API no permite cancelar un cobro abierto desde el panel: si el cliente no paga, el checkout expira solo. Puedes seguir cobrando: «Nuevo cobro» deja este checkout abierto, no lo cancela.',
   recentTitle: 'Cobros recientes',
   recentScope:
     'Sesiones de checkout de la organización con el estado de su pago (datos de la API).',
@@ -273,7 +285,10 @@ const ES: PosMessages = {
   recentForbidden: 'No tienes acceso a los cobros de esta organización.',
   retry: 'Reintentar',
   showMore: (n) => `Mostrar ${n} más`,
-  trackLocked: 'Termina o descarta la venta en curso para seguir otro cobro.',
+  trackLocked: (action) =>
+    action
+      ? `El terminal tiene una venta sin checkout abierto. Para seguir otro cobro, abre su checkout o pulsa «${action}» en el terminal (la venta no se cobra ni se borra).`
+      : 'El terminal está creando o abriendo un cobro: espera a que termine para seguir otro.',
   trackingNow: 'En seguimiento',
   unknownMerchant: 'Comercio no disponible',
   paymentOutsideWindow: 'Pago fuera de la ventana leída',
@@ -376,6 +391,13 @@ const EN: PosMessages = {
   openUncertainText:
     'The sale exists, but the response to opening the checkout was lost. An open, unpaid checkout charges nothing and expires on its own. You can open a new one for this sale.',
   openAgain: 'Open a new checkout for this sale',
+  readyTitle: 'Sale ready to charge',
+  readyText:
+    'Open the checkout and show it to the customer. The sale accepts a single charge: even if another checkout is opened, the system prevents charging it twice.',
+  readyOpen: 'Open customer checkout',
+  readyLater: 'Leave this sale for later',
+  readyLaterHint:
+    'No checkout is opened: the sale stays pending in Sales and you can charge it later from its detail.',
   errorCodes: {
     validation_error: 'Invalid data. Check the amount and currency.',
     invalid_session: 'Your session expired. Sign in again.',
@@ -436,7 +458,7 @@ const EN: PosMessages = {
   saleRef: 'Session',
   paymentRef: 'Payment',
   noCancelNote:
-    'The API does not allow canceling an open charge from the dashboard: if the customer does not pay, the checkout expires on its own.',
+    'The API does not allow canceling an open charge from the dashboard: if the customer does not pay, the checkout expires on its own. You can keep charging: "New charge" leaves this checkout open, it does not cancel it.',
   recentTitle: 'Recent charges',
   recentScope: "The organization's checkout sessions with their payment status (API data).",
   recentEmpty: 'No charges yet. The first one will show up here.',
@@ -468,7 +490,10 @@ const EN: PosMessages = {
   recentForbidden: "You do not have access to this organization's charges.",
   retry: 'Retry',
   showMore: (n) => `Show ${n} more`,
-  trackLocked: 'Finish or discard the current sale to track another charge.',
+  trackLocked: (action) =>
+    action
+      ? `The terminal has a sale without an open checkout. To track another charge, open its checkout or press "${action}" in the terminal (the sale is neither charged nor deleted).`
+      : 'The terminal is creating or opening a charge: wait for it to finish to track another.',
   trackingNow: 'Tracking',
   unknownMerchant: 'Merchant unavailable',
   paymentOutsideWindow: 'Payment outside the read window',

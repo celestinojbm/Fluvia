@@ -55,6 +55,16 @@ export const AUDIT_ACTIONS = [
   'operational_case.adjustment_proposed',
   'operational_case.adjustment_applied',
   'operational_case.adjustment_rejected',
+  // Plataforma del comercio (sandbox): escrituras por SESIÓN de un operador
+  // humano, auditadas en la MISMA transacción del cambio.
+  'catalog_category.created',
+  'catalog_product.created',
+  'catalog_product.updated',
+  'customer.created',
+  'customer.updated',
+  'order.created',
+  // Cuotas SANDBOX: evento simulado disparado por un operador (no mueve dinero).
+  'installment_plan.simulated_event',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

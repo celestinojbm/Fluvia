@@ -11,6 +11,7 @@ import http from 'node:http';
 
 const PORT = Number(process.env.SYNTHETIC_API_PORT ?? 3999);
 export const ORG = 'aaaaaaaa-0000-4000-8000-00000000a001';
+const USER = 'cccccccc-0000-4000-8000-00000000c001';
 const MER = 'bbbbbbbb-0000-4000-8000-00000000b001';
 const u = (p, n) => `${p}-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const pi = (n) => u('cccccccc', n);
@@ -167,9 +168,35 @@ http
           },
         ],
       });
+    // Sesión del layout de la plataforma (contexto de organización y usuario).
+    if (p === '/v1/auth/session')
+      return send(res, 200, {
+        user_id: USER,
+        mfa: { enabled: false },
+        memberships: [
+          {
+            organization_id: ORG,
+            organization_name: 'Cafetería Sintética',
+            organization_slug: 'cafeteria-sintetica',
+            role: 'owner',
+          },
+        ],
+      });
     const base = `/v1/organizations/${ORG}`;
     if (!p.startsWith(base)) return send(res, 404, {});
     const r = p.slice(base.length);
+    if (r === '/members')
+      return send(res, 200, {
+        members: [
+          {
+            membership_id: 'bbbbbbbb-0000-4000-8000-00000000b001',
+            user_id: USER,
+            email: 'cajero@example.test',
+            role: 'owner',
+            since: T(8),
+          },
+        ],
+      });
     const receiptRead = /^\/(payment_intents\/|refunds$|merchants\/)/.test(r);
     if (receiptRead && mode === 'fail') return send(res, 503, {});
     if (receiptRead && mode === 'auth') return send(res, 401, {});

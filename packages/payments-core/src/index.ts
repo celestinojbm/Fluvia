@@ -72,7 +72,11 @@ export {
   type SubmitPaymentInput,
   type SubmitPayoutInput,
 } from './provider.js';
-export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmation.js';
+export {
+  PaymentConfirmationService,
+  SALE_RELEASING_STATUSES,
+  type ConfirmBeginResult,
+} from './confirmation.js';
 export { FlatBpsFeeSchedule, ZERO_FEE_SCHEDULE, type FeeSchedule } from './pricing.js';
 export { RefundService, type CreateRefundInput, type RefundDto } from './refunds.js';
 export { PayoutService, type CreatePayoutInput, type PayoutDto } from './payouts.js';

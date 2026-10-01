@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatAmount, MESSAGES, type Locale } from './messages';
+import {
+  InstallmentsOption,
+  OrderSummary,
+  PlanBox,
+  type CheckoutOrderView,
+} from './order-panels';
 
 /**
  * Página de checkout alojada (F3-05c-iv). Consume los route handlers
@@ -25,6 +31,14 @@ interface HostedView {
 // pudo haberse procesado: jamás se invita a pagar otra vez sin consultar antes.
 type Phase = 'loading' | 'ready' | 'paying' | 'uncertain' | 'error' | 'not_found';
 
+// Pedido de la compra (venta con productos). `none`: venta de importe libre
+// (sin pedido); `error`: no se pudo leer — el pago sigue siendo posible.
+type OrderRead =
+  | { kind: 'idle' }
+  | { kind: 'none' }
+  | { kind: 'error' }
+  | { kind: 'ok'; view: CheckoutOrderView };
+
 const PENDING_POLL_MS = 3000;
 const PENDING_MAX_POLLS = 40;
 
@@ -40,6 +54,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   const [view, setView] = useState<HostedView | null>(null);
   const [token, setToken] = useState('tok_approve');
   const [checking, setChecking] = useState(false);
+  const [order, setOrder] = useState<OrderRead>({ kind: 'idle' });
   const statusRef = useRef<HTMLParagraphElement>(null);
   const payingRef = useRef(false);
 
@@ -60,6 +75,24 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       setPhase('ready');
     } catch {
       setPhase('error');
+    }
+    try {
+      const r = await fetch(`/api/checkout/${sessionId}/order`, {
+        headers: { 'x-checkout-client-secret': clientSecret() },
+      });
+      if (r.status === 404) setOrder({ kind: 'none' });
+      else if (!r.ok) setOrder({ kind: 'error' });
+      else {
+        const body = (await r.json()) as Partial<CheckoutOrderView> | null;
+        // Forma inesperada ⇒ se trata como venta sin pedido (no rompe el pago).
+        setOrder(
+          body && body.order && Array.isArray(body.order.lines) && body.installments
+            ? { kind: 'ok', view: body as CheckoutOrderView }
+            : { kind: 'none' }
+        );
+      }
+    } catch {
+      setOrder({ kind: 'error' });
     }
   }, [sessionId, clientSecret]);
 
@@ -94,7 +127,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         // tiene otro pago. Se relee la vista, que lo explica sin formulario.
         const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)
           ?.error?.code;
-        if (code === 'sale_already_charged') {
+        if (code === 'sale_already_charged' || code === 'installment_plan_active') {
           await load();
           statusRef.current?.focus();
           return;
@@ -183,7 +216,13 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   const pending =
     view.status === 'open' && (intentStatus === 'processing' || intentStatus === 'submitted');
   const saleClosed = view.status === 'open' && !failed && !pending && view.sale_closed === true;
-  const canPay = view.status === 'open' && !failed && !pending && !saleClosed;
+  const orderView = order.kind === 'ok' ? order.view : null;
+  const plan = orderView?.installments.plan ?? null;
+  // Plan de cuotas SIMULADO vivo: la compra no se paga con otro método (lo
+  // impide el servidor) y tampoco queda pagada.
+  const planActive = plan !== null && plan.status !== 'declined';
+  const canPay = view.status === 'open' && !failed && !pending && !saleClosed && !planActive;
+  const planHref = `/c/${sessionId}/cuotas${locale === 'en' ? '?lang=en' : ''}#${encodeURIComponent(clientSecret())}`;
 
   let statusMessage = t.statusOpen;
   if (done) statusMessage = t.statusCompleted;
@@ -195,6 +234,8 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   return (
     <main className="checkout" aria-labelledby="checkout-title">
       <h1 id="checkout-title">{t.title}</h1>
+
+      {orderView ? <OrderSummary view={orderView} locale={locale} receipt={done} /> : null}
 
       <p className="amount">
         <span className="amount-label">{t.amountLabel}</span>
@@ -225,6 +266,8 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         </button>
       )}
 
+      {plan && !done ? <PlanBox plan={plan} locale={locale} planHref={planHref} /> : null}
+
       {canPay && (
         <form
           onSubmit={(e) => {
@@ -252,6 +295,16 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
           </button>
         </form>
       )}
+
+      {canPay && orderView?.installments.eligible ? (
+        <InstallmentsOption
+          sessionId={sessionId}
+          secret={clientSecret}
+          view={orderView}
+          locale={locale}
+          onCreated={() => void recheck()}
+        />
+      ) : null}
 
       <p className="notice">{t.sandboxNotice}</p>
     </main>

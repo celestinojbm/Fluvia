@@ -1,45 +1,83 @@
 #!/usr/bin/env bash
-# Demo LOCAL y PRIVADA del POS sandbox de Fluvia (código real + MockProvider).
+# Demo LOCAL y PRIVADA de Fluvia (código real + MockProvider + cuotas simuladas).
 #
-# Pensado para correr en la máquina del propietario (p. ej. la MSI) y abrirse
-# en ESA misma máquina: todo escucha SOLO en 127.0.0.1. No publica puertos en
-# la LAN, no abre túneles (ni Funnel), no toca servicios existentes del
-# HomeLab y no gasta nada. Datos: seed de demo determinista (sintético).
+# Pensado para la máquina del propietario y para abrirse en ESA máquina: todo
+# escucha SOLO en 127.0.0.1. No publica puertos en la LAN, no abre túneles (ni
+# Funnel), no toca servicios existentes del HomeLab y no gasta nada. Datos:
+# seed de demo determinista (sintético).
 #
-# Requisitos: bash, Node >= 20, pnpm 10, Docker (para PG 16 + Redis 7 en
-# contenedores propios `fluvia-demo-*`). Reversible: scripts/demo/stop-local-demo.sh
+# Requisitos: bash, Node >= 20, pnpm 10, Docker, curl.
 #
-# Uso (desde la raíz del repo):
-#   scripts/demo/start-local-demo.sh
-# Variables opcionales (por si algún puerto ya está ocupado):
-#   DEMO_PG_PORT=55432 DEMO_REDIS_PORT=56379 DEMO_API_PORT=3300
-#   DEMO_CHECKOUT_PORT=3301 DEMO_DASHBOARD_PORT=3302
+# Uso (desde la raíz del checkout de la instancia):
+#   scripts/demo/start-local-demo.sh            # instancia por defecto
+#   DEMO_PREFIX=fluvia-demo2 DEMO_PORT_BASE=3310 DEMO_PG_PORT=55433 \
+#     DEMO_REDIS_PORT=56380 scripts/demo/start-local-demo.sh   # segunda instancia
+#
+# Parametrización (ver scripts/demo/lib.sh): DEMO_PREFIX (contenedores,
+# volumen, estado, PID y logs), DEMO_PORT_BASE o DEMO_API_PORT /
+# DEMO_CHECKOUT_PORT / DEMO_DASHBOARD_PORT, DEMO_PG_PORT, DEMO_REDIS_PORT,
+# DEMO_DASHBOARD_ORIGIN, DEMO_CHECKOUT_ORIGIN. Los defectos son los de siempre
+# (fluvia-demo-*, 3300-3302, 55432/56379, .demo/), compatibles con la demo
+# que ya esté en marcha.
+#
+# Seguridad: no arranca si la instancia ya está en marcha, si un puerto está
+# ocupado, si un contenedor/volumen con su nombre pertenece a otra instancia,
+# o si una instancia no por defecto pide los puertos de la demo por defecto.
+# DEMO_PRINT_CONFIG=1 solo imprime la configuración resuelta y sale.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "$0")/lib.sh"
+demo_config
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-STATE="$ROOT/.demo"
-PG_PORT="${DEMO_PG_PORT:-55432}"
-REDIS_PORT="${DEMO_REDIS_PORT:-56379}"
-API_PORT="${DEMO_API_PORT:-3300}"
-CHECKOUT_PORT="${DEMO_CHECKOUT_PORT:-3301}"
-DASHBOARD_PORT="${DEMO_DASHBOARD_PORT:-3302}"
-H=127.0.0.1
+if [ "${DEMO_PRINT_CONFIG:-0}" = 1 ]; then
+  demo_print_config
+  exit 0
+fi
 
-need() { command -v "$1" >/dev/null || { echo "Falta $1" >&2; exit 1; }; }
+need() { command -v "$1" >/dev/null || die "Falta $1"; }
 need node; need pnpm; need docker; need curl
-mkdir -p "$STATE"
 
-echo "==> PostgreSQL 16 y Redis 7 en contenedores propios, solo en $H"
-docker volume create fluvia-demo-pgdata >/dev/null
-docker inspect fluvia-demo-pg >/dev/null 2>&1 ||
-  docker run -d --name fluvia-demo-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
-    -e POSTGRES_DB=fluvia -p "$H:$PG_PORT:5432" -v fluvia-demo-pgdata:/var/lib/postgresql/data \
-    postgres:16 >/dev/null
-docker inspect fluvia-demo-redis >/dev/null 2>&1 ||
-  docker run -d --name fluvia-demo-redis -p "$H:$REDIS_PORT:6379" redis:7 >/dev/null
-docker start fluvia-demo-pg fluvia-demo-redis >/dev/null
+demo_guard_default_ports
+echo "==> Instancia"
+demo_print_config | sed 's/^/   /'
+
+# Recursos con el nombre de esta instancia que pertenezcan a otra: no se tocan.
+if [ -d "$STATE" ]; then
+  verify_instance || die "el estado/recursos de '$PREFIX' no pertenecen a $ROOT; no se arranca nada"
+  [ -z "$(live_pids)" ] || die "la instancia '$PREFIX' ya está en marcha (PIDs en $STATE); párala antes"
+else
+  for c in "$PG_CONTAINER" "$REDIS_CONTAINER"; do
+    container_exists "$c" && { owns_resource container "$c" || die "el contenedor $c pertenece a otra instancia"; }
+  done
+  volume_exists "$VOLUME" && { owns_resource volume "$VOLUME" || die "el volumen $VOLUME pertenece a otra instancia"; }
+fi
+
+for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT"; do
+  port_busy "$p" && die "el puerto $p ya está en uso (¿otra demo u otro servicio?)"
+done
+container_exists "$PG_CONTAINER" || { port_busy "$PG_PORT" && die "el puerto $PG_PORT ya está en uso"; }
+container_exists "$REDIS_CONTAINER" || { port_busy "$REDIS_PORT" && die "el puerto $REDIS_PORT ya está en uso"; }
+
+mkdir -p "$STATE"
+printf 'prefix=%s\nroot=%s\n' "$PREFIX" "$ROOT" >"$MARKER"
+LABELS=(--label "fluvia.demo.prefix=$PREFIX" --label "fluvia.demo.root=$ROOT")
+
+echo "==> PostgreSQL 16 y Redis 7 en contenedores propios ($PREFIX-*), solo en $H"
+volume_exists "$VOLUME" || docker volume create "${LABELS[@]}" "$VOLUME" >/dev/null
+container_exists "$PG_CONTAINER" ||
+  docker run -d --name "$PG_CONTAINER" "${LABELS[@]}" -e POSTGRES_USER=postgres \
+    -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=fluvia -p "$H:$PG_PORT:5432" \
+    -v "$VOLUME":/var/lib/postgresql/data postgres:16 >/dev/null
+container_exists "$REDIS_CONTAINER" ||
+  docker run -d --name "$REDIS_CONTAINER" "${LABELS[@]}" -p "$H:$REDIS_PORT:6379" redis:7 >/dev/null
+docker start "$PG_CONTAINER" "$REDIS_CONTAINER" >/dev/null
+# Un contenedor reutilizado conserva su puerto: debe coincidir con el pedido.
+docker port "$PG_CONTAINER" 5432/tcp | grep -q ":$PG_PORT\$" ||
+  die "$PG_CONTAINER publica $(docker port "$PG_CONTAINER" 5432/tcp | head -1), no $H:$PG_PORT"
+docker port "$REDIS_CONTAINER" 6379/tcp | grep -q ":$REDIS_PORT\$" ||
+  die "$REDIS_CONTAINER publica $(docker port "$REDIS_CONTAINER" 6379/tcp | head -1), no $H:$REDIS_PORT"
 for _ in $(seq 1 60); do
-  docker exec fluvia-demo-pg pg_isready -U postgres -d fluvia >/dev/null 2>&1 && break
+  docker exec "$PG_CONTAINER" pg_isready -U postgres -d fluvia >/dev/null 2>&1 && break
   sleep 1
 done
 
@@ -71,35 +109,37 @@ start() { # nombre, dir, comando...
   # setsid ⇒ sesión y grupo propios; el pid guardado ES el líder del grupo
   # (stop-local-demo.sh para el grupo entero). Sin heredar la terminal.
   local name="$1" dir="$2"; shift 2
-  (cd "$dir" && setsid bash -c 'echo $$ >"$0"; exec "$@"' "$STATE/$name.pid" "$@" \
+  (cd "$ROOT/$dir" && setsid bash -c 'echo $$ >"$0"; exec "$@"' "$STATE/$name.pid" "$@" \
     >"$STATE/$name.log" 2>&1 </dev/null &)
 }
-start api apps/api env HOST=$H PORT="$API_PORT" CHECKOUT_BASE_URL="http://$H:$CHECKOUT_PORT" \
+start api apps/api env HOST=$H PORT="$API_PORT" CHECKOUT_BASE_URL="$CHECKOUT_ORIGIN" \
   npx tsx src/server.ts
 start checkout apps/checkout env FLUVIA_API_URL="http://$H:$API_PORT" \
   npx next start -H $H -p "$CHECKOUT_PORT"
 start dashboard apps/dashboard env FLUVIA_API_URL="http://$H:$API_PORT" \
-  FLUVIA_DASHBOARD_ORIGIN="http://$H:$DASHBOARD_PORT" npx next start -H $H -p "$DASHBOARD_PORT"
+  FLUVIA_DASHBOARD_ORIGIN="$DASHBOARD_ORIGIN" npx next start -H $H -p "$DASHBOARD_PORT"
 
 for url in "http://$H:$API_PORT/health" "http://$H:$CHECKOUT_PORT" "http://$H:$DASHBOARD_PORT/login"; do
   for _ in $(seq 1 90); do curl -s -o /dev/null "$url" && break; sleep 1; done
   curl -s -o /dev/null -w "   $url -> %{http_code}\n" "$url"
 done
 
+PFX=""
+[ "$IS_DEFAULT" = 1 ] || PFX="DEMO_PREFIX=$PREFIX "
 cat <<EOF
 
-Demo lista (privada: solo accesible desde ESTA máquina)
-  Abrir:        http://$H:$DASHBOARD_PORT/login     (usa 127.0.0.1, no «localhost»:
+Demo «$PREFIX» lista (privada: solo accesible desde ESTA máquina)
+  Abrir:        $DASHBOARD_ORIGIN/login     (usa 127.0.0.1, no «localhost»:
                 la protección CSRF compara el origen exacto)
   Usuario:      owner@demo.fluvia.test / demo-owner-password   (credenciales de DEMO)
-  Recorrido:    Panel → Cobrar → Abrir checkout → pagar con la tarjeta de prueba
-                → Cobros recientes → Detalle → Devolver… → Ver justificante
+  Recorrido:    Inicio → Nueva venta (catálogo, carrito, cliente) → Revisar →
+                Confirmar → Cobrar ahora → Abrir checkout → pagar (tarjeta de
+                prueba o «Pagar en cuotas», simulación) → Ventas → Ver justificante
 
 Saldo de DEMO: el seed deja 300.000 COP «disponibles» en el comercio Demo Store
 (releaseSettlement local). Es saldo sembrado para poder demostrar devoluciones,
-NO una liquidación de producto: ningún camino del producto libera fondos. Cuando
-se agote, las devoluciones terminan «Cancelada · sin saldo», que es el
-comportamiento real documentado.
+NO una liquidación de producto: ningún camino del producto libera fondos.
 
-Parar y borrar todo:  scripts/demo/stop-local-demo.sh
+Parar (CONSERVA los datos):   ${PFX}scripts/demo/stop-local-demo.sh
+Borrar los datos (aparte):    ${PFX}scripts/demo/purge-local-demo.sh --yes-delete-data
 EOF

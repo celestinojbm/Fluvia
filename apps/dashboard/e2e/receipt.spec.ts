@@ -157,6 +157,11 @@ for (const width of WIDTHS) {
     }) => {
       await openReceipt(page, 4);
       await mode('fail');
+      // La navegación lateral precede al contenido: «Saltar al contenido»
+      // (primer Tab) lleva el foco al área principal, como haría un cajero.
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeFocused();
+      await page.keyboard.press('Enter');
       let label = '';
       for (let i = 0; i < 15 && label !== 'Actualizar'; i++) {
         await page.keyboard.press('Tab');

@@ -137,15 +137,25 @@ test.afterAll(async () => {
   await ctx?.close();
 });
 
-test('0. panel → cobrar por la barra común', async () => {
+test('0. inicio → cobrar por la navegación lateral', async () => {
   await pos.goto(`${APP}/o/${ORG}`);
-  const nav = pos.getByRole('navigation', { name: 'Recorrido del comercio' });
-  await expect(nav.getByRole('link', { name: 'Panel' })).toHaveAttribute('aria-current', 'page');
+  // La barra del recorrido quedó sustituida por la navegación de la plataforma
+  // (en móvil, dentro del cajón «Abrir menú»).
+  await pos.getByRole('button', { name: 'Abrir menú' }).click();
+  const nav = pos.getByRole('navigation', { name: 'Navegación principal' });
+  await expect(nav.getByRole('link', { name: 'Inicio' })).toHaveAttribute('aria-current', 'page');
+  await pos.keyboard.press('Escape');
   await checkScreen(pos, '01-panel');
-  await nav.getByRole('link', { name: 'Cobrar' }).focus();
+  await pos.getByRole('button', { name: 'Abrir menú' }).click();
+  await nav.getByRole('link', { name: 'Cobrar (terminal)' }).focus();
   await pos.keyboard.press('Enter');
   await pos.waitForURL(/\/pos/);
-  await expect(nav.getByRole('link', { name: 'Cobrar' })).toHaveAttribute('aria-current', 'page');
+  await pos.getByRole('button', { name: 'Abrir menú' }).click();
+  await expect(nav.getByRole('link', { name: 'Cobrar (terminal)' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  );
+  await pos.keyboard.press('Escape');
   await checkScreen(pos, '02-pos-nueva-venta');
 });
 

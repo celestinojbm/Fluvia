@@ -272,6 +272,42 @@ export const ERROR_CATALOG = {
     type: 'internal_error',
     message: 'Internal server error',
   },
+  // Plataforma del comercio (sandbox).
+  catalog_version_conflict: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This product was modified by someone else; reload it and try again',
+  },
+  catalog_duplicate: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'A catalog item with this name or SKU already exists',
+  },
+  order_total_changed: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The order total changed while the cart was prepared; review the cart',
+  },
+  product_unavailable: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'A product in the order is not available for sale',
+  },
+  order_currency_mismatch: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'All products in an order must use the order currency',
+  },
+  installment_plan_not_allowed: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale cannot start an installment plan in its current state',
+  },
+  installment_plan_active: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale has an active installment plan (sandbox simulation)',
+  },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
@@ -367,6 +403,21 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   MfaNotEnabledError: 'mfa_not_enabled',
   StepUpRequiredError: 'mfa_step_up_required',
   RateLimitedError: 'rate_limited',
+  // Plataforma del comercio (sandbox).
+  ProductNotFoundError: 'not_found',
+  CategoryNotFoundError: 'not_found',
+  OrderNotFoundError: 'not_found',
+  CustomerNotVisibleError: 'not_found',
+  InstallmentPlanNotFoundError: 'not_found',
+  ProductVersionConflictError: 'catalog_version_conflict',
+  CatalogDuplicateError: 'catalog_duplicate',
+  ProductUnavailableError: 'product_unavailable',
+  OrderCurrencyMismatchError: 'order_currency_mismatch',
+  OrderTotalMismatchError: 'order_total_changed',
+  OrderAmountOutOfRangeError: 'validation_error',
+  InstallmentPlanNotAllowedError: 'installment_plan_not_allowed',
+  InstallmentInvalidStateError: 'invalid_state_transition',
+  InstallmentTermsNotAcceptedError: 'validation_error',
 };
 
 export interface PublicErrorBody {

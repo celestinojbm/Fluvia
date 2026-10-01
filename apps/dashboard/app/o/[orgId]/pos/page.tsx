@@ -9,6 +9,8 @@ import {
 import { UUID_RE } from '../../../lib/pos-contract';
 import { POS_MESSAGES } from '../../../lib/pos-messages';
 import { FlowNav } from '../../../lib/flow-nav';
+import { orgPath, readApi, type OrderDetail } from '../../../lib/commerce-api';
+import { OrderSummaryCard } from '../../../lib/order-summary';
 import { fetchRecentCharges } from '../../../lib/pos-reads';
 import { PosWorkspace } from '../../../lib/pos-workspace';
 import { normalizeLocale } from '../../../messages';
@@ -43,12 +45,24 @@ export default async function PosPage({
   ]);
   const org = orgs.find((o) => o.organization_id === orgId);
   const active = merchants.filter((m) => m.status === 'active');
-  const resume =
+  const linkId = typeof link === 'string' && UUID_RE.test(link) ? link : null;
+  // Venta con pedido (Nueva venta): el pedido lo dice el SERVIDOR por el link.
+  const orderRead = linkId
+    ? await readApi<OrderDetail>(token, orgPath(orgId, `/payment_links/${linkId}/order`))
+    : null;
+  const order = orderRead?.kind === 'ok' ? orderRead.data : null;
+  let resume =
     typeof session === 'string' && UUID_RE.test(session)
-      ? {
-          sessionId: session,
-          linkId: typeof link === 'string' && UUID_RE.test(link) ? link : null,
-        }
+      ? { sessionId: session, linkId }
+      : undefined;
+  // Pedido con checkouts ya abiertos (recarga, otra pestaña): se sigue el
+  // último en vez de ofrecer abrir otro.
+  if (!resume && order?.payment.latest_checkout_session_id) {
+    resume = { sessionId: order.payment.latest_checkout_session_id, linkId: order.payment_link_id };
+  }
+  const startLink =
+    !resume && order && order.payment.state === 'awaiting_payment' && !order.installments_sandbox
+      ? { linkId: order.payment_link_id, amount: order.total, currency: order.currency }
       : undefined;
 
   return (
@@ -62,6 +76,7 @@ export default async function PosPage({
           </p>
         </div>
       </header>
+      {order ? <OrderSummaryCard orgId={orgId} order={order} /> : null}
       <PosWorkspace
         orgId={orgId}
         locale={locale}
@@ -69,6 +84,7 @@ export default async function PosPage({
         allMerchants={merchants.map((m) => ({ id: m.id, name: m.name }))}
         canCharge={canManageReconciliation(org?.role)}
         resume={resume}
+        startLink={startLink}
         recent={recent}
       />
       <p className="notice">{t.sandboxNotice}</p>

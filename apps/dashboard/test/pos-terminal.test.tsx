@@ -347,6 +347,16 @@ describe('PosTerminal — reanudación y lectura', () => {
     expect(screen.queryByRole('link', { name: 'Abrir checkout' })).toBeNull();
   });
 
+  it('un checkout abierto NO bloquea el terminal: «Nuevo cobro» disponible y la nota lo dice', async () => {
+    mockFetch({ status: [() => res(200, status('open', 'created'))] });
+    renderPos({ resume: { sessionId: SID, linkId: LINK } });
+    expect(await screen.findByText('Esperando al cliente')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nuevo cobro' })).toBeEnabled();
+    expect(
+      screen.getByText(/«Nuevo cobro» deja este checkout abierto, no lo cancela/)
+    ).toBeInTheDocument();
+  });
+
   it('404 al consultar ⇒ «no encontrado», nunca un estado inventado', async () => {
     mockFetch({ status: [() => res(404, { error: { code: 'not_found' } })] });
     renderPos({ resume: { sessionId: SID, linkId: null } });

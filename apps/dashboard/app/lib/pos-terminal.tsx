@@ -67,6 +67,8 @@ const MAX_POLL_ERRORS = 5;
 
 type Step =
   | { kind: 'entry' }
+  /** Venta ya creada (p. ej. un pedido) a la espera de abrir su checkout. */
+  | { kind: 'ready'; linkId: string }
   | { kind: 'creating' }
   | { kind: 'create_failed'; code?: string }
   | { kind: 'create_uncertain' }
@@ -139,6 +141,12 @@ export interface PosTerminalProps {
   /** Reanudar el seguimiento tras recargar (`?session=&link=`). */
   resume?: { sessionId: string; linkId: string | null };
   /**
+   * Venta ya creada fuera del terminal (pedido de «Nueva venta»): el terminal
+   * empieza en «lista para cobrar» y abre el checkout de ESE link, sin
+   * formulario de importe (el importe lo fijó el servidor).
+   */
+  startLink?: { linkId: string; amount: number; currency: string };
+  /**
    * Aviso al contenedor cuando cambia lo que el terminal sigue: sesión, fase
    * verificada o si hay una venta sin cerrar (`locked`). Lo usa «Cobros
    * recientes» para refrescarse sin recargar la página.
@@ -150,6 +158,11 @@ export interface PosActivity {
   sessionId: string | null;
   phase: SalePhase | null;
   locked: boolean;
+  /**
+   * Con `locked`: etiqueta del botón del terminal que libera el bloqueo sin
+   * perder nada (o null si es una operación en curso que solo hay que esperar).
+   */
+  lockAction?: string | null;
   /** Estado del pago + devuelto: cambia con una devolución sin cambiar la fase. */
   revision?: string | null;
 }
@@ -160,6 +173,7 @@ export function PosTerminal({
   merchants,
   canCharge,
   resume,
+  startLink,
   onActivity,
 }: PosTerminalProps) {
   const t = POS_MESSAGES[locale];
@@ -175,14 +189,18 @@ export function PosTerminal({
   const [step, setStep] = useState<Step>(
     resume
       ? { kind: 'tracking', linkId: resume.linkId, sessionId: resume.sessionId, checkoutUrl: null }
-      : { kind: 'entry' }
+      : startLink
+        ? { kind: 'ready', linkId: startLink.linkId }
+        : { kind: 'entry' }
   );
   const [status, setStatus] = useState<PosSaleStatus | null>(null);
   const [poll, setPoll] = useState<Poll>({ kind: 'idle' });
   const [lastChecked, setLastChecked] = useState<string | null>(null);
   const [pollNonce, setPollNonce] = useState(0);
   /** Importe de la venta en curso (para los pasos sin formulario). */
-  const [sale, setSale] = useState<{ amount: number; currency: string } | null>(null);
+  const [sale, setSale] = useState<{ amount: number; currency: string } | null>(
+    startLink && !resume ? { amount: startLink.amount, currency: startLink.currency } : null
+  );
   /** Venta leída del servidor (fuente de verdad de sus checkouts y su cobro). */
   const [saleRead, setSaleRead] = useState<SaleRead>({ kind: 'idle' });
 
@@ -208,7 +226,7 @@ export function PosTerminal({
   // Foco a la alerta/estado al cambiar de paso (teclado y lector de pantalla).
   useEffect(() => {
     if (step.kind === 'tracking') statusHeadingRef.current?.focus();
-    else if (step.kind === 'opening') saleHeadingRef.current?.focus();
+    else if (step.kind === 'opening' || step.kind === 'ready') saleHeadingRef.current?.focus();
     else if (
       step.kind === 'create_failed' ||
       step.kind === 'create_uncertain' ||
@@ -447,20 +465,31 @@ export function PosTerminal({
     : null;
   const pendingSale =
     busy ||
+    step.kind === 'ready' ||
     step.kind === 'create_uncertain' ||
     step.kind === 'open_failed' ||
     step.kind === 'open_uncertain';
   const activityRef = useRef(onActivity);
   activityRef.current = onActivity;
   const revision = status ? `${status.payment.status}:${status.payment.amount_refunded}` : null;
+  const lockAction = !pendingSale
+    ? null
+    : step.kind === 'ready'
+      ? t.readyLater
+      : step.kind === 'create_uncertain'
+        ? t.discardDraft
+        : step.kind === 'open_failed' || step.kind === 'open_uncertain'
+          ? t.nextSale
+          : null;
   useEffect(() => {
     activityRef.current?.({
       sessionId: trackingId,
       phase: phaseNow,
       locked: pendingSale,
+      lockAction,
       revision,
     });
-  }, [trackingId, phaseNow, pendingSale, revision]);
+  }, [trackingId, phaseNow, pendingSale, lockAction, revision]);
   const refreshStatus = useCallback(() => setPollNonce((n) => n + 1), []);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -879,6 +908,30 @@ export function PosTerminal({
             </div>
           </div>
         );
+      case 'ready':
+        return (
+          <div className="pos-alert pos-alert-info" role="status">
+            <p className="pos-alert-title">{t.readyTitle}</p>
+            <p>{t.readyText}</p>
+            <div className="pos-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void reopen(step.linkId)}
+              >
+                {t.readyOpen}
+              </button>
+              {/* Salida sin efectos: la venta (pedido + link) ya está guardada
+                  y sigue pendiente; no hay checkout ni clave que perder. Es una
+                  navegación completa para que la página deje de mostrar el
+                  pedido junto a un terminal vacío. */}
+              <a className="btn btn-secondary" href={posHref(orgId, locale)}>
+                {t.readyLater}
+              </a>
+            </div>
+            <p className="hint">{t.readyLaterHint}</p>
+          </div>
+        );
       case 'open_uncertain':
         return (
           <div className="pos-alert pos-alert-warn" role="alert" tabIndex={-1} ref={alertRef}>
@@ -902,7 +955,10 @@ export function PosTerminal({
   // Checkout nuevo para una venta ya existente sin borrador en pantalla (tras
   // un rechazo/expiración o una recarga): no se muestra un formulario vacío.
   if (
-    (step.kind === 'opening' || step.kind === 'open_failed' || step.kind === 'open_uncertain') &&
+    (step.kind === 'opening' ||
+      step.kind === 'ready' ||
+      step.kind === 'open_failed' ||
+      step.kind === 'open_uncertain') &&
     !parsed.ok &&
     sale
   ) {

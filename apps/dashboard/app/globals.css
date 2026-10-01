@@ -5,7 +5,7 @@
   --bg: #ffffff;
   --fg: #1a1a1a; /* 15:1 sobre blanco */
   --muted: #595959; /* 7:1 */
-  --brand: #0b5cad; /* 5.9:1 */
+  --brand: #0a6470; /* 6.3:1 — «río», identidad Fluvia (antes #0b5cad) */
   --ok: #0f6b3d; /* 5.5:1 */
   --bad: #a4171a; /* 6.4:1 */
   --warn: #8a5a00; /* 4.9:1 */
@@ -85,7 +85,7 @@ form input {
   cursor: pointer;
 }
 .primary:hover {
-  background: #094a8c;
+  background: #074b54;
 }
 .primary:disabled {
   background: var(--muted);
@@ -233,7 +233,7 @@ code {
   cursor: pointer;
 }
 .resend:hover {
-  background: #094a8c;
+  background: #074b54;
 }
 .resend:disabled {
   background: var(--muted);
@@ -508,7 +508,7 @@ code {
   cursor: pointer;
 }
 .btn:hover {
-  background: #094a8c;
+  background: #074b54;
 }
 .btn:disabled {
   background: var(--muted);
@@ -668,7 +668,7 @@ code {
   text-decoration: none;
 }
 .dash-nav .nav-cta:hover {
-  background: #094a8c;
+  background: #074b54;
 }
 
 .pos-grid {
@@ -819,6 +819,10 @@ a.btn {
 .pos-alert-warn {
   color: #5c3d00; /* 8.6:1 sobre #fff4d6 */
   background: #fff4d6;
+}
+.pos-alert-info {
+  color: #073c43; /* 11:1 sobre #e3f1f2 */
+  background: #e3f1f2;
 }
 .pos-amount-display {
   margin: 0 0 0.75rem;

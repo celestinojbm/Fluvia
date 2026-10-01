@@ -93,6 +93,8 @@ export interface PosRecentChargesProps {
   activeSessionId?: string | null;
   /** El terminal tiene una venta sin cerrar: no se puede cambiar de cobro. */
   trackLocked?: boolean;
+  /** Botón del terminal que libera el bloqueo (ver `PosActivity.lockAction`). */
+  trackLockAction?: string | null;
   onTrack?: (sessionId: string) => void;
 }
 
@@ -104,6 +106,7 @@ export function PosRecentCharges({
   refreshSignal = 0,
   activeSessionId = null,
   trackLocked = false,
+  trackLockAction = null,
   onTrack,
 }: PosRecentChargesProps) {
   const t = POS_MESSAGES[locale];
@@ -327,7 +330,7 @@ export function PosRecentCharges({
               )}
               {trackLocked && (
                 <p id={trackHintId} className="hint">
-                  {t.trackLocked}
+                  {t.trackLocked(trackLockAction)}
                 </p>
               )}
               <ul className="pos-recent-list">
