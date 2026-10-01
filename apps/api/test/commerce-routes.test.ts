@@ -555,3 +555,159 @@ describe('bolívares (VES) por HTTP', () => {
     expect(mixed.json().error.code).toBe('order_currency_mismatch');
   });
 });
+
+describe('existencias, imágenes y anulación por HTTP', () => {
+  it('galería cerrada, entrada idempotente, reserva, sin stock ⇒ 422, anular libera', async () => {
+    const imgs = await app.inject({
+      method: 'GET',
+      url: `${base(orgA)}/catalog/images`,
+      headers: readOnly.headers,
+    });
+    expect(imgs.statusCode).toBe(200);
+    const gallery = imgs.json().data as Array<{ ref: string; license: string }>;
+    expect(gallery.length).toBeGreaterThan(5);
+    expect(new Set(gallery.map((g) => g.license))).toEqual(new Set(['CC0-1.0']));
+
+    const bad = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/catalog/products`,
+      headers: owner.headers,
+      payload: { name: 'X', price: 100, currency: 'VES', image_ref: 'https://evil.example/a.jpg' },
+    });
+    expect(bad.statusCode).toBe(400);
+
+    const p = await newProduct(1_000, {
+      currency: 'VES',
+      track_stock: true,
+      image_ref: gallery[0]!.ref,
+    });
+    const prod = (
+      await app.inject({
+        method: 'GET',
+        url: `${base(orgA)}/catalog/products/${p.id}`,
+        headers: owner.headers,
+      })
+    ).json();
+    expect(prod).toMatchObject({
+      track_stock: true,
+      image_ref: gallery[0]!.ref,
+      stock: { on_hand: 0 },
+    });
+
+    // Entrada: sin key ⇒ 400; con key ⇒ 201; reenvío ⇒ mismo movimiento (no suma dos veces).
+    const noKey = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/catalog/products/${p.id}/stock`,
+      headers: owner.headers,
+      payload: { kind: 'receipt', quantity: 3, reason: 'Compra a proveedor' },
+    });
+    expect(noKey.statusCode).toBe(400);
+    const key = `stk-${randomUUID()}`;
+    const send = () =>
+      app.inject({
+        method: 'POST',
+        url: `${base(orgA)}/catalog/products/${p.id}/stock`,
+        headers: { ...owner.headers, 'idempotency-key': key },
+        payload: { kind: 'receipt', quantity: 3, reason: 'Compra a proveedor' },
+      });
+    const first = await send();
+    const again = await send();
+    expect(first.statusCode).toBe(201);
+    expect(again.statusCode).toBe(201);
+    expect(again.headers['idempotency-replayed']).toBe('true');
+    expect(again.json().movement.id).toBe(first.json().movement.id);
+    expect(first.json().stock).toEqual({ on_hand: 3, reserved: 0, free: 3 });
+
+    // finance no edita existencias (merchants:write).
+    const finStock = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/catalog/products/${p.id}/stock`,
+      headers: { ...finance.headers, 'idempotency-key': `stk-${randomUUID()}` },
+      payload: { kind: 'receipt', quantity: 1, reason: 'Intento' },
+    });
+    expect(finStock.statusCode).toBe(403);
+
+    const { res: sale } = await newOrderIn('VES', [{ product_id: p.id, quantity: 2 }], 2_000);
+    expect(sale.statusCode).toBe(201);
+    expect(sale.json().stock).toEqual([{ product_id: p.id, quantity: 2, status: 'reserved' }]);
+    const { res: tooMuch } = await newOrderIn('VES', [{ product_id: p.id, quantity: 2 }], 2_000);
+    expect(tooMuch.statusCode).toBe(422);
+    expect(tooMuch.json().error.code).toBe('insufficient_stock');
+
+    // Ajuste por debajo de lo reservado ⇒ 409.
+    const below = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/catalog/products/${p.id}/stock`,
+      headers: { ...owner.headers, 'idempotency-key': `stk-${randomUUID()}` },
+      payload: { kind: 'adjustment', quantity: -2, reason: 'Conteo físico' },
+    });
+    expect(below.statusCode).toBe(409);
+    expect(below.json().error.code).toBe('inventory_conflict');
+
+    // read_only no anula; finance sí; reanular = replay.
+    const orderId = sale.json().id as string;
+    const ro = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/orders/${orderId}/cancel`,
+      headers: readOnly.headers,
+      payload: { reason: 'Cliente desistió' },
+    });
+    expect(ro.statusCode).toBe(403);
+    const cancel = () =>
+      app.inject({
+        method: 'POST',
+        url: `${base(orgA)}/orders/${orderId}/cancel`,
+        headers: finance.headers,
+        payload: { reason: 'Cliente desistió' },
+      });
+    const c1 = await cancel();
+    expect(c1.statusCode).toBe(200);
+    expect(c1.json()).toMatchObject({
+      payment: { state: 'cancelled' },
+      cancellation: { reason: 'Cliente desistió' },
+      stock: [{ status: 'released' }],
+    });
+    expect((await cancel()).headers['idempotency-replayed']).toBe('true');
+    const crossOrg = await app.inject({
+      method: 'POST',
+      url: `${base(orgB)}/orders/${orderId}/cancel`,
+      headers: ownerB.headers,
+      payload: { reason: 'ajena' },
+    });
+    expect(crossOrg.statusCode).toBe(404);
+
+    const moves = await app.inject({
+      method: 'GET',
+      url: `${base(orgA)}/catalog/products/${p.id}/movements`,
+      headers: readOnly.headers,
+    });
+    expect(moves.json().data.map((m: { kind: string }) => m.kind)).toEqual([
+      'release',
+      'reservation',
+      'receipt',
+    ]);
+    expect(moves.json().product.stock).toEqual({ on_hand: 3, reserved: 0, free: 3 });
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `${base(orgA)}/orders?state=cancelled`,
+      headers: readOnly.headers,
+    });
+    expect(list.json().data.map((o: { id: string }) => o.id)).toContain(orderId);
+  });
+});
+
+async function newOrderIn(
+  currency: string,
+  lines: Array<{ product_id: string; quantity: number }>,
+  total: number
+) {
+  const key = `ord-${randomUUID()}`;
+  const res = await app.inject({
+    method: 'POST',
+    url: `${base(orgA)}/orders`,
+    headers: { ...finance.headers, 'idempotency-key': key },
+    payload: { merchant_id: merchantA, currency, lines, expected_total: total },
+  });
+  return { res, key };
+}

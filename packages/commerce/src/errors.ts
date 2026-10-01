@@ -106,10 +106,66 @@ export class InstallmentTermsNotAcceptedError extends CommerceError {
   }
 }
 
+/** No hay existencias libres (existencia − reservado) para la cantidad pedida. */
+export class InsufficientStockError extends CommerceError {
+  constructor(
+    readonly productId: string,
+    readonly available: bigint
+  ) {
+    super(`Insufficient stock for product ${productId}`);
+  }
+}
+
+/** Un ajuste dejaría la existencia por debajo de lo reservado (o negativa). */
+export class InventoryConflictError extends CommerceError {
+  constructor() {
+    super('Stock cannot go below what is reserved for open sales');
+  }
+}
+
+/** El producto no controla existencias (activar «Controlar existencias» antes). */
+export class StockNotTrackedError extends CommerceError {
+  constructor() {
+    super('This product does not track stock');
+  }
+}
+
+/** Variante inválida: la base es otra variante, está archivada o tiene otra moneda. */
+export class CatalogVariantError extends CommerceError {
+  constructor() {
+    super('Invalid base product for a variant');
+  }
+}
+
+/** La venta no se puede anular: un cobro la retiene (en curso, incierto o hecho) o tiene un plan vivo. */
+export class OrderNotCancellableError extends CommerceError {
+  constructor() {
+    super('This sale cannot be cancelled in its current state');
+  }
+}
+
 /** Rechazo del trigger `fluvia_sandbox_plan_blocks_charge` (0050). */
 export function isInstallmentPlanActive(err: unknown): boolean {
   const m = (err as { message?: unknown } | null)?.message;
   return typeof m === 'string' && m.startsWith('FLUVIA_INSTALLMENT_PLAN_ACTIVE');
+}
+
+/** Rechazo de las guardas de 0051: la venta fue anulada por el comercio. */
+export function isOrderCancelled(err: unknown): boolean {
+  const m = (err as { message?: unknown } | null)?.message;
+  return typeof m === 'string' && m.startsWith('FLUVIA_ORDER_CANCELLED');
+}
+
+/** Prefijo del mensaje de una excepción del motor (p. ej. `FLUVIA_INVENTORY`). */
+export function hasEngineMessage(err: unknown, prefix: string): boolean {
+  const m = (err as { message?: unknown } | null)?.message;
+  return typeof m === 'string' && m.startsWith(prefix);
+}
+
+/** Violación de un CHECK concreto (23514). */
+export function isCheckViolation(err: unknown, constraint: string): boolean {
+  const e = err as { code?: unknown; constraint?: unknown } | null;
+  return e?.code === '23514' && e?.constraint === constraint;
 }
 
 /** Violación de unicidad (23505) sobre un índice concreto. */

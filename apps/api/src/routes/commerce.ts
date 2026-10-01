@@ -8,6 +8,8 @@ import {
   computeRequestHash,
 } from '@fluvia/idempotency';
 import {
+  DEMO_IMAGE_REFS,
+  DEMO_PRODUCT_IMAGES,
   INSTALLMENT_DEMO_TERMS,
   INSTALLMENT_SCENARIOS,
   OrderNotFoundError,
@@ -17,6 +19,7 @@ import {
   type CashSummary,
   type CatalogService,
   type CategoryDto,
+  type CommerceInsights,
   type CommerceSummary,
   type CurrencyFigure,
   type CustomerCardDto,
@@ -24,6 +27,8 @@ import {
   type InstallmentPlanDto,
   type InstallmentQuote,
   type InstallmentSandboxService,
+  type InventoryService,
+  type MovementDto,
   type OrderDetailDto,
   type OrderDto,
   type OrderPaymentState,
@@ -64,9 +69,13 @@ const ProductQuery = z
     category_id: z.string().uuid().optional(),
     sellable: z.enum(['true', 'false']).optional(),
     include_archived: z.enum(['true', 'false']).optional(),
+    low_stock: z.coerce.number().int().min(0).max(1_000_000).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(200),
   })
   .passthrough();
+
+const ImageRef = z.enum(DEMO_IMAGE_REFS as unknown as [string, ...string[]]);
+const VariantLabel = z.string().trim().min(1).max(40);
 
 const CreateCategoryBody = z.object({ name: z.string().trim().min(1).max(60) }).strict();
 const CreateProductBody = z
@@ -78,6 +87,10 @@ const CreateProductBody = z
     price: MinorAmount,
     currency: Currency,
     available: z.boolean().optional(),
+    image_ref: ImageRef.nullable().optional(),
+    variant_of: z.string().uuid().nullable().optional(),
+    variant_label: VariantLabel.nullable().optional(),
+    track_stock: z.boolean().optional(),
   })
   .strict();
 const UpdateProductBody = z
@@ -89,9 +102,27 @@ const UpdateProductBody = z
     price: MinorAmount.optional(),
     available: z.boolean().optional(),
     archived: z.boolean().optional(),
+    image_ref: ImageRef.nullable().optional(),
+    variant_label: VariantLabel.nullable().optional(),
+    track_stock: z.boolean().optional(),
     expected_version: z.number().int().min(1),
   })
   .strict();
+
+const StockChangeBody = z
+  .object({
+    kind: z.enum(['receipt', 'adjustment']),
+    quantity: z
+      .number()
+      .int()
+      .min(-1_000_000)
+      .max(1_000_000)
+      .refine((q) => q !== 0, 'quantity must not be zero'),
+    reason: z.string().trim().min(3).max(200),
+  })
+  .strict()
+  .refine((b) => b.kind !== 'receipt' || b.quantity > 0, 'a receipt adds stock (quantity > 0)');
+const CancelOrderBody = z.object({ reason: z.string().trim().min(3).max(200) }).strict();
 
 const CreateOrderBody = z
   .object({
@@ -123,6 +154,7 @@ const ORDER_STATES: readonly OrderPaymentState[] = [
   'paid',
   'partially_refunded',
   'refunded',
+  'cancelled',
 ];
 const OrdersQuery = z
   .object({
@@ -166,6 +198,15 @@ const PeriodQuery = z
   .passthrough()
   .refine((p) => !p.from || !p.to || p.from <= p.to, 'from must be <= to');
 
+const InsightsQuery = z
+  .object({
+    from: z.string().regex(ISO_DATE).optional(),
+    to: z.string().regex(ISO_DATE).optional(),
+    currency: Currency.optional(),
+  })
+  .passthrough()
+  .refine((p) => !p.from || !p.to || p.from <= p.to, 'from must be <= to');
+
 const SimulateDecisionBody = z.object({ decision: z.enum(['approved', 'declined']) }).strict();
 const SimulateInstallmentBody = z.object({ outcome: z.enum(['paid', 'overdue']) }).strict();
 const SeqParams = IdParams.extend({ seq: z.coerce.number().int().min(1).max(12) });
@@ -197,8 +238,30 @@ export function publicProduct(p: ProductDto) {
     available: p.available,
     archived: p.archived,
     version: p.version,
+    image_ref: p.imageRef,
+    variant_of: p.variantOf,
+    variant_label: p.variantLabel,
+    track_stock: p.trackStock,
+    stock: p.stock
+      ? { on_hand: n(p.stock.onHand), reserved: n(p.stock.reserved), free: n(p.stock.free) }
+      : null,
     created_at: p.createdAt,
     updated_at: p.updatedAt,
+  };
+}
+
+function publicMovement(m: MovementDto) {
+  return {
+    id: m.id,
+    object: 'inventory_movement',
+    product_id: m.productId,
+    kind: m.kind,
+    quantity: m.quantity,
+    order_id: m.orderId,
+    order_number: m.orderNumber,
+    reason: m.reason,
+    created_by_user_id: m.createdByUserId,
+    created_at: m.createdAt,
   };
 }
 
@@ -251,6 +314,13 @@ export function publicOrder(o: OrderDto) {
       latest_intent_status: o.payment.latestIntentStatus,
     },
     installments_sandbox: publicInstallmentsSummary(o),
+    cancellation: o.cancellation
+      ? {
+          reason: o.cancellation.reason,
+          cancelled_by_user_id: o.cancellation.byUserId,
+          created_at: o.cancellation.createdAt,
+        }
+      : null,
   };
 }
 
@@ -263,11 +333,20 @@ function publicLines(lines: OrderDetailDto['lines']) {
     unit_price: n(l.unitPrice),
     quantity: l.quantity,
     line_total: n(l.lineTotal),
+    variant_label: l.variantLabel,
   }));
 }
 
 export function publicOrderDetail(o: OrderDetailDto) {
-  return { ...publicOrder(o), lines: publicLines(o.lines) };
+  return {
+    ...publicOrder(o),
+    lines: publicLines(o.lines),
+    stock: o.stock.map((x) => ({
+      product_id: x.productId,
+      quantity: x.quantity,
+      status: x.status,
+    })),
+  };
 }
 
 function publicCustomer(c: CustomerCardDto) {
@@ -299,7 +378,40 @@ function publicSummary(s: CommerceSummary) {
     refunds_open: figures(s.refundsOpen),
     orders_created: figures(s.orders),
     orders_awaiting_payment: figures(s.ordersAwaitingPayment),
+    orders_cancelled: figures(s.ordersCancelled),
     installments_sandbox_approved: figures(s.installmentsSandbox),
+  };
+}
+
+function publicInsights(s: CommerceInsights) {
+  return {
+    object: 'commerce_insights',
+    period: { start: s.periodStart, end: s.periodEnd, timezone: 'UTC' },
+    currency: s.currency || null,
+    currencies: s.currencies,
+    active_days: s.activeDays,
+    series: s.series.map((p) => ({
+      day: p.day,
+      orders_count: p.ordersCount,
+      orders_amount: n(p.ordersAmount),
+      confirmed_count: p.confirmedCount,
+      confirmed_amount: n(p.confirmedAmount),
+      refunded_amount: n(p.refundedAmount),
+    })),
+    top_products: s.topProducts.map((t) => ({
+      product_id: t.productId,
+      name: t.name,
+      variant_label: t.variantLabel,
+      sku: t.sku,
+      quantity: t.quantity,
+      amount: n(t.amount),
+    })),
+    balances: s.balances.map((b) => ({
+      currency: b.currency,
+      pending: n(b.pending),
+      available: n(b.available),
+      reserve: n(b.reserve),
+    })),
   };
 }
 
@@ -393,7 +505,9 @@ function publicBuyerView(v: BuyerInstallmentsView) {
         unit_price: l.unit_price,
         quantity: l.quantity,
         line_total: l.line_total,
+        variant_label: l.variant_label,
       })),
+      cancelled: v.order.cancelled,
     },
     installments: {
       simulated: true as const,
@@ -439,6 +553,7 @@ export interface CommerceRoutesOptions {
   customerDirectory: CustomerDirectory;
   summaryService: SummaryService;
   installmentService: InstallmentSandboxService;
+  inventoryService: InventoryService;
 }
 
 export function registerCommerceRoutes(
@@ -451,6 +566,7 @@ export function registerCommerceRoutes(
     customerDirectory,
     summaryService,
     installmentService,
+    inventoryService,
   }: CommerceRoutesOptions
 ): void {
   const read = { preHandler: [security.session, security.org('payments:read')] };
@@ -519,6 +635,7 @@ export function registerCommerceRoutes(
       categoryId: q.category_id,
       sellableOnly: q.sellable === 'true',
       includeArchived: q.include_archived === 'true',
+      lowStock: q.low_stock,
       limit: q.limit,
     });
     return { object: 'list', data: list.map(publicProduct) };
@@ -537,6 +654,28 @@ export function registerCommerceRoutes(
     available: p.available,
     archived: p.archived,
     version: p.version,
+    image_ref: p.imageRef,
+    variant_of: p.variantOf,
+    variant_label: p.variantLabel,
+    track_stock: p.trackStock,
+  });
+
+  // Galería cerrada de imágenes de demostración, con origen y licencia.
+  app.get('/v1/organizations/:orgId/catalog/images', read, async (req) => {
+    OrgParam.parse(req.params);
+    return {
+      object: 'list',
+      data: DEMO_PRODUCT_IMAGES.map((i) => ({
+        ref: i.ref,
+        label: i.label,
+        title: i.title,
+        creator: i.creator,
+        source: i.source,
+        source_url: i.sourceUrl,
+        license: i.license,
+        license_url: i.licenseUrl,
+      })),
+    };
   });
 
   app.post('/v1/organizations/:orgId/catalog/products', catalogWrite, async (req, reply) => {
@@ -552,6 +691,10 @@ export function registerCommerceRoutes(
         price: BigInt(b.price),
         currency: b.currency,
         available: b.available,
+        imageRef: b.image_ref ?? null,
+        variantOf: b.variant_of ?? null,
+        variantLabel: b.variant_label ?? null,
+        trackStock: b.track_stock,
       },
       auditor(req, 'catalog_product.created', 'catalog_product', (p) => p.id, productAfter)
     );
@@ -572,12 +715,82 @@ export function registerCommerceRoutes(
         price: b.price === undefined ? undefined : BigInt(b.price),
         available: b.available,
         archived: b.archived,
+        imageRef: b.image_ref,
+        variantLabel: b.variant_label,
+        trackStock: b.track_stock,
         expectedVersion: b.expected_version,
       },
       auditor(req, 'catalog_product.updated', 'catalog_product', (p) => p.id, productAfter)
     );
     return publicProduct(updated);
   });
+
+  // ── Existencias ────────────────────────────────────────────────────────────
+  app.get('/v1/organizations/:orgId/catalog/products/:id/movements', read, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const [product, moves] = await Promise.all([
+      catalogService.getProduct(tenant(req), id),
+      inventoryService.movements(tenant(req), id, 100),
+    ]);
+    return { object: 'list', product: publicProduct(product), data: moves.map(publicMovement) };
+  });
+
+  // Entrada o ajuste: idempotente por `Idempotency-Key` (un doble envío no
+  // suma dos veces) y auditado en la misma transacción.
+  app.post(
+    '/v1/organizations/:orgId/catalog/products/:id/stock',
+    catalogWrite,
+    async (req, reply) => {
+      const { id } = IdParams.parse(req.params);
+      const key = assertValidIdempotencyKey(req.headers['idempotency-key']);
+      const body = StockChangeBody.parse(req.body);
+      const tenantId = tenant(req);
+      const context = ctxOf(req);
+      const result = await idempotencyService.execute({
+        tenantId,
+        endpoint: 'POST /v1/organizations/:orgId/catalog/products/:id/stock',
+        key,
+        requestHash: computeRequestHash({ id, ...body }),
+        handler: async (client) => {
+          const out = await inventoryService.changeIn(client, tenantId, id, {
+            kind: body.kind,
+            quantity: body.quantity,
+            reason: body.reason,
+            createdByUserId: req.identity!.userId,
+          });
+          await insertAuditEvent(client, {
+            action: 'inventory.changed',
+            tenantId,
+            context,
+            resourceType: 'catalog_product',
+            resourceId: id,
+            riskLevel: 'low',
+            reason: 'stock receipt/adjustment from the dashboard (session plane)',
+            after: {
+              kind: body.kind,
+              quantity: body.quantity,
+              on_hand: n(out.stock.onHand),
+              reserved: n(out.stock.reserved),
+            },
+          });
+          return {
+            status: 201,
+            body: {
+              object: 'stock_change',
+              movement: publicMovement(out.movement),
+              stock: {
+                on_hand: n(out.stock.onHand),
+                reserved: n(out.stock.reserved),
+                free: n(out.stock.free),
+              },
+            },
+          };
+        },
+      });
+      reply.header('idempotency-replayed', String(result.replayed));
+      return reply.code(result.status).send(result.body);
+    }
+  );
 
   // ── Pedidos (ventas con líneas) ────────────────────────────────────────────
   app.get('/v1/organizations/:orgId/orders', read, async (req) => {
@@ -662,6 +875,33 @@ export function registerCommerceRoutes(
     return reply.code(result.status).send(result.body);
   });
 
+  // Anular una venta SIN cobro: libera reservas y desactiva su link. Reenviar
+  // la anulación devuelve la venta anulada (200). El motor la rechaza si un
+  // cobro la retiene o tiene un plan de cuotas vivo (409 order_not_cancellable).
+  app.post('/v1/organizations/:orgId/orders/:id/cancel', sell, async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const { reason } = CancelOrderBody.parse(req.body);
+    const { order, replayed } = await orderService.cancel(
+      tenant(req),
+      id,
+      { reason, userId: req.identity!.userId },
+      async (c, o) => {
+        await insertAuditEvent(c, {
+          action: 'order.cancelled',
+          tenantId: tenant(req),
+          context: ctxOf(req),
+          resourceType: 'order',
+          resourceId: o.id,
+          riskLevel: 'medium',
+          reason: 'sale cancelled before any payment (session plane)',
+          after: { number: o.number, total: n(o.total), currency: o.currency },
+        });
+      }
+    );
+    reply.header('idempotency-replayed', String(replayed));
+    return reply.code(200).send(publicOrderDetail(order));
+  });
+
   // ── Clientes (ficha mínima, datos sintéticos en la demo) ───────────────────
   app.get('/v1/organizations/:orgId/customers', read, async (req) => {
     OrgParam.parse(req.params);
@@ -717,6 +957,13 @@ export function registerCommerceRoutes(
     OrgParam.parse(req.params);
     const { from, to } = period(PeriodQuery.parse(req.query ?? {}));
     return publicSummary(await summaryService.summary(tenant(req), from, to));
+  });
+
+  app.get('/v1/organizations/:orgId/commerce/insights', read, async (req) => {
+    OrgParam.parse(req.params);
+    const q = InsightsQuery.parse(req.query ?? {});
+    const { from, to } = period(q);
+    return publicInsights(await summaryService.insights(tenant(req), from, to, q.currency));
   });
 
   app.get('/v1/organizations/:orgId/commerce/cash', read, async (req) => {

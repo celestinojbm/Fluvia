@@ -1,14 +1,18 @@
 import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { Money } from '@fluvia/money';
 import { SALE_RELEASING_STATUSES, type PaymentLinkService } from '@fluvia/payments-core';
+import type { AuditHook } from './catalog.js';
 import {
   CustomerNotVisibleError,
   OrderAmountOutOfRangeError,
   OrderCurrencyMismatchError,
+  OrderNotCancellableError,
   OrderNotFoundError,
   OrderTotalMismatchError,
   ProductUnavailableError,
+  hasEngineMessage,
 } from './errors.js';
+import { reserveForOrderIn } from './inventory.js';
 
 /**
  * Pedidos (ventas con líneas, 0049).
@@ -19,7 +23,8 @@ import {
  *  3. comparar con el total que vio el cajero (`expectedTotal`): si un precio
  *     cambió mientras armaba el carrito, NO se crea nada (409),
  *  4. crear el payment link de COBRO ÚNICO del pedido (0046) por ese total,
- *  5. insertar cabecera + líneas con la COPIA histórica de nombre/precio.
+ *  5. insertar cabecera + líneas con la COPIA histórica de nombre/precio,
+ *  6. RESERVAR las existencias de los productos que las controlan (0051).
  * El motor revalida Σ líneas = total y link = (comercio, total, moneda,
  * cobro único) al COMMIT.
  *
@@ -50,6 +55,7 @@ export interface OrderLineDto {
   unitPrice: bigint;
   quantity: number;
   lineTotal: bigint;
+  variantLabel: string | null;
 }
 
 /**
@@ -60,7 +66,13 @@ export interface OrderLineDto {
  *  - paid / partially_refunded / refunded: cobrado (y devoluciones).
  */
 export type OrderPaymentState =
-  'awaiting_payment' | 'payment_in_progress' | 'paid' | 'partially_refunded' | 'refunded';
+  | 'awaiting_payment'
+  | 'payment_in_progress'
+  | 'paid'
+  | 'partially_refunded'
+  | 'refunded'
+  /** Anulada por el comercio sin cobro (0051): ningún checkout suyo cobra. */
+  | 'cancelled';
 
 export interface OrderPaymentDto {
   state: OrderPaymentState;
@@ -101,10 +113,20 @@ export interface OrderDto {
   payment: OrderPaymentDto;
   /** Último plan de cuotas SANDBOX del pedido (simulación; no es un pago). */
   installments: OrderInstallmentsSummary | null;
+  cancellation: { reason: string; byUserId: string | null; createdAt: string } | null;
+}
+
+/** Estado de la reserva de existencias de un producto de la venta. */
+export interface OrderStockDto {
+  productId: string;
+  quantity: number;
+  /** reserved = retenida; sold = descontada por cobro confirmado; released = liberada al anular. */
+  status: 'reserved' | 'sold' | 'released';
 }
 
 export interface OrderDetailDto extends OrderDto {
   lines: OrderLineDto[];
+  stock: OrderStockDto[];
 }
 
 export interface OrderQuery {
@@ -127,10 +149,12 @@ const ORDER_SELECT = `
          pay.charged_id, pay.charged_status, pay.charged_refunded, pay.holding_id,
          pay.holding_status, pay.checkout_count, pay.latest_session_id, pay.latest_status,
          plan.id AS plan_id, plan.status AS plan_status, plan.installments_count,
-         plan.paid_count, plan.overdue_count
+         plan.paid_count, plan.overdue_count,
+         x.reason AS cancel_reason, x.cancelled_by_user_id, x.created_at AS cancelled_at
   FROM commerce_orders o
   LEFT JOIN merchants m ON m.id = o.merchant_id
   LEFT JOIN customers cu ON cu.id = o.customer_id
+  LEFT JOIN commerce_order_cancellations x ON x.order_id = o.id
   LEFT JOIN LATERAL (
     SELECT
       (array_agg(i.id ORDER BY i.created_at DESC) FILTER (WHERE i.status = ANY($1::text[])))[1]
@@ -189,6 +213,9 @@ interface OrderRow {
   installments_count: number | null;
   paid_count: number | null;
   overdue_count: number | null;
+  cancel_reason: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_at: Date | null;
 }
 
 /** Regla única de derivación (pura, testeable). */
@@ -201,6 +228,7 @@ export function deriveOrderPayment(r: {
   checkout_count: number | null;
   latest_session_id: string | null;
   latest_status: string | null;
+  cancelled_at?: Date | null;
 }): OrderPaymentDto {
   const base = {
     checkoutCount: r.checkout_count ?? 0,
@@ -229,7 +257,9 @@ export function deriveOrderPayment(r: {
   }
   return {
     ...base,
-    state: 'awaiting_payment',
+    // El motor impide anular con un cobro que retiene la venta: solo una venta
+    // sin cobro puede estar anulada.
+    state: r.cancelled_at ? 'cancelled' : 'awaiting_payment',
     paymentIntentId: null,
     intentStatus: null,
     amountRefunded: 0n,
@@ -261,6 +291,13 @@ function toOrder(r: OrderRow): OrderDto {
           overdueCount: r.overdue_count ?? 0,
         }
       : null,
+    cancellation: r.cancelled_at
+      ? {
+          reason: r.cancel_reason ?? '',
+          byUserId: r.cancelled_by_user_id,
+          createdAt: r.cancelled_at.toISOString(),
+        }
+      : null,
   };
 }
 
@@ -269,7 +306,8 @@ const STATE_SQL: Record<OrderPaymentState, string> = {
   partially_refunded: `pay.charged_status = 'partially_refunded'`,
   refunded: `pay.charged_status = 'refunded'`,
   payment_in_progress: `pay.charged_id IS NULL AND pay.holding_id IS NOT NULL`,
-  awaiting_payment: `pay.charged_id IS NULL AND pay.holding_id IS NULL`,
+  awaiting_payment: `pay.charged_id IS NULL AND pay.holding_id IS NULL AND x.id IS NULL`,
+  cancelled: `x.id IS NOT NULL`,
 };
 
 export class OrderService {
@@ -303,8 +341,11 @@ export class OrderService {
       currency: string;
       available: boolean;
       archived_at: Date | null;
+      track_stock: boolean;
+      variant_label: string | null;
     }>(
-      `SELECT id, name, sku, price::text, currency, available, archived_at
+      `SELECT id, name, sku, price::text, currency, available, archived_at, track_stock,
+              variant_label
        FROM catalog_products WHERE id = ANY($1::uuid[]) FOR SHARE`,
       [ids]
     );
@@ -328,6 +369,7 @@ export class OrderService {
         unitPrice: unit,
         quantity: l.quantity,
         lineTotal,
+        variantLabel: p.variant_label,
       };
     });
     if (total <= 0n || total > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -377,8 +419,8 @@ export class OrderService {
       await c.query(
         `INSERT INTO commerce_order_lines
            (tenant_id, order_id, position, product_id, name, sku, unit_price, quantity,
-            line_total, currency)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            line_total, currency, variant_label)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           tenantId,
           orderId,
@@ -390,9 +432,20 @@ export class OrderService {
           l.quantity,
           l.lineTotal.toString(),
           currency,
+          l.variantLabel,
         ]
       );
     }
+    await reserveForOrderIn(
+      c,
+      tenantId,
+      orderId,
+      lines.map((l) => ({
+        productId: l.productId!,
+        quantity: l.quantity,
+        trackStock: byId.get(l.productId!)!.track_stock,
+      }))
+    );
     return this.getIn(c, orderId);
   }
 
@@ -411,13 +464,30 @@ export class OrderService {
       unit_price: string;
       quantity: number;
       line_total: string;
+      variant_label: string | null;
     }>(
-      `SELECT position, product_id, name, sku, unit_price::text, quantity, line_total::text
+      `SELECT position, product_id, name, sku, unit_price::text, quantity, line_total::text,
+              variant_label
        FROM commerce_order_lines WHERE order_id = $1 ORDER BY position`,
+      [orderId]
+    );
+    const stock = await c.query<{ product_id: string; quantity: number; settled: string | null }>(
+      `SELECT r.product_id, r.quantity,
+              (SELECT s.kind FROM inventory_movements s
+                WHERE s.order_id = r.order_id AND s.product_id = r.product_id
+                  AND s.kind IN ('release', 'sale')) AS settled
+       FROM inventory_movements r
+       WHERE r.order_id = $1 AND r.kind = 'reservation'
+       ORDER BY r.product_id`,
       [orderId]
     );
     return {
       ...toOrder(res.rows[0]),
+      stock: stock.rows.map((x) => ({
+        productId: x.product_id,
+        quantity: x.quantity,
+        status: x.settled === 'sale' ? 'sold' : x.settled === 'release' ? 'released' : 'reserved',
+      })),
       lines: lines.rows.map((l) => ({
         position: l.position,
         productId: l.product_id,
@@ -426,6 +496,7 @@ export class OrderService {
         unitPrice: BigInt(l.unit_price),
         quantity: l.quantity,
         lineTotal: BigInt(l.line_total),
+        variantLabel: l.variant_label,
       })),
     };
   }
@@ -470,7 +541,12 @@ export class OrderService {
           where.push(`o.number = $${values.length}`);
         } else {
           values.push(`%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`);
-          where.push(`(cu.name ILIKE $${values.length} OR o.note ILIKE $${values.length})`);
+          // Cliente, nota, o un producto vendido (nombre o SKU de una línea).
+          where.push(
+            `(cu.name ILIKE $${values.length} OR o.note ILIKE $${values.length}
+              OR EXISTS (SELECT 1 FROM commerce_order_lines ol WHERE ol.order_id = o.id
+                AND (ol.name ILIKE $${values.length} OR ol.sku ILIKE $${values.length})))`
+          );
         }
       }
       if (query.state) where.push(STATE_SQL[query.state]);
@@ -484,6 +560,64 @@ export class OrderService {
       );
       const rows = res.rows.map(toOrder);
       return { data: rows.slice(0, limit), hasMore: rows.length > limit };
+    });
+  }
+
+  /**
+   * Anula una venta SIN cobro: libera sus reservas y desactiva su link. El
+   * motor la rechaza si un cobro la retiene (en curso, incierto o cobrado) o
+   * tiene un plan de cuotas vivo, bajo el mismo lock del link que la
+   * confirmación de pagos. Reanular una venta ya anulada devuelve la venta.
+   */
+  async cancel(
+    tenantId: string,
+    orderId: string,
+    input: { reason: string; userId?: string | null },
+    audit?: AuditHook<OrderDetailDto>
+  ): Promise<{ order: OrderDetailDto; replayed: boolean }> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const o = await c.query<{ payment_link_id: string }>(
+        `SELECT payment_link_id FROM commerce_orders WHERE id = $1`,
+        [orderId]
+      );
+      if (!o.rows[0]) throw new OrderNotFoundError();
+      const done = await c.query(`SELECT 1 FROM commerce_order_cancellations WHERE order_id = $1`, [
+        orderId,
+      ]);
+      if ((done.rowCount ?? 0) > 0) return { order: await this.getIn(c, orderId), replayed: true };
+      let inserted: number;
+      try {
+        // ON CONFLICT: dos anulaciones simultáneas ⇒ la segunda es un replay.
+        const ins = await c.query(
+          `INSERT INTO commerce_order_cancellations (tenant_id, order_id, reason, cancelled_by_user_id)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (order_id) DO NOTHING RETURNING id`,
+          [tenantId, orderId, input.reason.trim(), input.userId ?? null]
+        );
+        inserted = ins.rowCount ?? 0;
+      } catch (err) {
+        if (hasEngineMessage(err, 'FLUVIA_ORDER_NOT_CANCELLABLE')) {
+          throw new OrderNotCancellableError();
+        }
+        throw err;
+      }
+      if (inserted === 0) return { order: await this.getIn(c, orderId), replayed: true };
+      await c.query(
+        `INSERT INTO inventory_movements (tenant_id, product_id, kind, quantity, order_id)
+         SELECT tenant_id, product_id, 'release', quantity, order_id
+         FROM inventory_movements r
+         WHERE r.order_id = $1 AND r.kind = 'reservation'
+           AND NOT EXISTS (SELECT 1 FROM inventory_movements s WHERE s.order_id = r.order_id
+                             AND s.product_id = r.product_id AND s.kind IN ('release', 'sale'))`,
+        [orderId]
+      );
+      await c.query(
+        `UPDATE payment_links SET status = 'disabled', disabled_at = now(), updated_at = now()
+         WHERE id = $1 AND status = 'active'`,
+        [o.rows[0].payment_link_id]
+      );
+      const order = await this.getIn(c, orderId);
+      await audit?.(c, order);
+      return { order, replayed: false };
     });
   }
 }
