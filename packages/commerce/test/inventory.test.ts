@@ -531,3 +531,65 @@ describe('indicadores: evolución, más vendidos y saldo', () => {
     expect(sum.ordersAwaitingPayment).toEqual([{ currency: 'VES', count: 1, amount: 1_350n }]);
   });
 });
+
+describe('indicadores: serie de varios días', () => {
+  it('agrupa por día UTC y cuenta días activos (filas retrofechadas en la prueba)', async () => {
+    const { SummaryService } = await import('../src/index.js');
+    const summary = new SummaryService(ctx.app);
+    const t = await ctx.createTenant(`Days ${randomUUID().slice(0, 8)}`);
+    const m = await ctx.admin.query<{ id: string }>(
+      `INSERT INTO merchants (tenant_id, name) VALUES ($1, 'D') RETURNING id`,
+      [t]
+    );
+    const p = await catalog.createProduct(t, { name: 'Arepa', price: 250n, currency: 'VES' });
+    const sale = async () => {
+      const o = await withTenantTransaction(ctx.app, t, (c) =>
+        orders.createIn(c, t, {
+          merchantId: m.rows[0]!.id,
+          currency: 'VES',
+          lines: [{ productId: p.id, quantity: 1 }],
+          expectedTotal: 250n,
+        })
+      );
+      const s = await links.createSessionFromLink(o.paymentLinkId);
+      await checkout.confirmByClientSecret(s.checkoutSessionId, s.clientSecret, 'tok_approve');
+      return o;
+    };
+    const old = await sale();
+    await sale();
+    // Mover la primera venta (pedido + su cobro) dos días atrás. Superusuario y
+    // triggers en réplica: SOLO aquí, para fabricar historia en la prueba.
+    const c = await ctx.admin.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SET LOCAL session_replication_role = replica`);
+      await c.query(
+        `UPDATE commerce_orders SET created_at = created_at - interval '2 days' WHERE id = $1`,
+        [old.id]
+      );
+      await c.query(
+        `UPDATE payment_intents SET created_at = created_at - interval '2 days'
+         WHERE payment_link_id = $1`,
+        [old.paymentLinkId]
+      );
+      await c.query('COMMIT');
+    } finally {
+      c.release();
+    }
+    const now = Date.now();
+    const ins = await summary.insights(
+      t,
+      new Date(now - 6 * 86_400_000),
+      new Date(now + 86_400_000)
+    );
+    expect(ins.series.length).toBeGreaterThanOrEqual(7);
+    expect(ins.activeDays).toBe(2);
+    const active = ins.series.filter((d) => d.ordersCount > 0);
+    expect(active.map((d) => [d.ordersCount, d.confirmedAmount])).toEqual([
+      [1, 250n],
+      [1, 250n],
+    ]);
+    const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    expect(active.map((d) => d.day)).toEqual([dayOf(now - 2 * 86_400_000), dayOf(now)]);
+  });
+});
