@@ -69,6 +69,26 @@ describe('programa y política de referencia', () => {
   });
 });
 
+describe('parámetros no implementados', () => {
+  it('una política con intereses o recargos por mora se rechaza (no se ignoran en silencio)', async () => {
+    const op = { kind: 'operator' as const, userId: crypto.randomUUID() };
+    await expect(
+      h.s.programs.createPolicyDraft(
+        h.program,
+        { code: 'con-interes', params: { ...REFERENCE_POLICY_PARAMS, interestBps: 150 } },
+        op
+      )
+    ).rejects.toThrow(/interestBps/);
+    await expect(
+      h.s.programs.createPolicyDraft(
+        h.program,
+        { code: 'con-mora', params: { ...REFERENCE_POLICY_PARAMS, lateFeeBps: 50 } },
+        op
+      )
+    ).rejects.toThrow(/lateFeeBps/);
+  });
+});
+
 describe('autenticación del cliente', () => {
   it('registro, login, sesión propia y bloqueo tras intentos fallidos', async () => {
     const c = await newConsumer(h);

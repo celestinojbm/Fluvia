@@ -8,6 +8,8 @@ import {
   type ProgramActor,
 } from '@fluvia/personal';
 import { snake } from './wire.js';
+import { DEFAULT_AUTH_RATE_LIMITS, type AuthRateLimits } from './auth.js';
+import { emailKey, ipKey, rateLimit, FixedWindowLimiter, type RateLimiter } from '../rate-limit.js';
 
 /**
  * Fluvia Personal — plano del CLIENTE (consumidor).
@@ -142,9 +144,24 @@ function idemKey(req: FastifyRequest): string {
 
 export function registerPersonalRoutes(
   app: FastifyInstance,
-  deps: { personal: PersonalServices }
+  deps: { personal: PersonalServices; rateLimits?: AuthRateLimits; limiter?: RateLimiter }
 ): void {
   const p = deps.personal;
+  // Mismas ventanas y backend (Redis en despliegues compartidos) que /v1/auth/*,
+  // con claves propias del plano del cliente.
+  const limits = deps.rateLimits ?? DEFAULT_AUTH_RATE_LIMITS;
+  const limiter = deps.limiter ?? new FixedWindowLimiter();
+  const registerLimit = {
+    preHandler: rateLimit(limiter, [
+      { keyOf: ipKey('personal-register:ip'), rule: limits.registerPerIp },
+    ]),
+  };
+  const loginLimit = {
+    preHandler: rateLimit(limiter, [
+      { keyOf: emailKey('personal-login:email'), rule: limits.loginPerEmail },
+      { keyOf: ipKey('personal-login:ip'), rule: limits.loginPerIp },
+    ]),
+  };
 
   const consumerSession = async (req: FastifyRequest): Promise<void> => {
     const token = bearer(req);
@@ -166,7 +183,7 @@ export function registerPersonalRoutes(
   });
 
   // ── Sesión ────────────────────────────────────────────────────────────────
-  app.post('/v1/personal/programs/:programId/register', async (req, reply) => {
+  app.post('/v1/personal/programs/:programId/register', registerLimit, async (req, reply) => {
     const { programId } = ProgramParam.parse(req.params);
     const b = RegisterBody.parse(req.body);
     const r = await p.consumerAuth.register(
@@ -182,7 +199,7 @@ export function registerPersonalRoutes(
     return reply.code(201).send({ consumer_id: r.consumerId, session: r.session });
   });
 
-  app.post('/v1/personal/programs/:programId/login', async (req) => {
+  app.post('/v1/personal/programs/:programId/login', loginLimit, async (req) => {
     const { programId } = ProgramParam.parse(req.params);
     const b = LoginBody.parse(req.body);
     const r = await p.consumerAuth.login(programId, b.email, b.password, ctx(req));

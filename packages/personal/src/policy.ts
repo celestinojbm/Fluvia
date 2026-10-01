@@ -52,6 +52,15 @@ export const PolicyParamsSchema = z
         ctx.addIssue({ code: 'custom', message: `tier ${t.tier} exceeds maxMultiplierBps` });
       }
     }
+    // El calendario aplica SOLO principal: intereses y recargos por mora no
+    // están implementados. Una política que los fije sería un parámetro
+    // ignorado en silencio ⇒ se rechaza hasta implementarlos (y validarlos).
+    if (p.interestBps !== 0) {
+      ctx.addIssue({ code: 'custom', message: 'interestBps > 0 not implemented yet (must be 0)' });
+    }
+    if (p.lateFeeBps !== 0) {
+      ctx.addIssue({ code: 'custom', message: 'lateFeeBps > 0 not implemented yet (must be 0)' });
+    }
     for (const [ccy, r] of Object.entries(p.currencies)) {
       if (r.manualReviewAbove > r.maxLimit) {
         ctx.addIssue({ code: 'custom', message: `${ccy}: manualReviewAbove > maxLimit` });

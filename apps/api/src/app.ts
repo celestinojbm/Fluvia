@@ -467,7 +467,7 @@ export function buildApp({
       refundService
     );
     if (personal) {
-      registerPersonalRoutes(app, { personal });
+      registerPersonalRoutes(app, { personal, rateLimits: authRateLimits, limiter: rateLimiter });
     }
     registerProgramOpsRoutes(app, {
       security,
