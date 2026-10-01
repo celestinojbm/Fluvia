@@ -74,6 +74,8 @@ async function checkScreen(p: Page, name: string) {
     await noHorizontalScroll(p);
     if (EVIDENCE) {
       await sanitize(p);
+      // Arriba: la barra lateral fija se dibuja respecto a la ventana.
+      await p.evaluate(() => window.scrollTo(0, 0));
       await p.screenshot({ path: `${EVIDENCE}/${name}-${width}.png`, fullPage: true });
     }
   }
@@ -141,13 +143,22 @@ test('1. inicio: navegación lateral, saltar al contenido e indicadores honestos
   // Teclado: el primer Tab enfoca «Saltar al contenido».
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeFocused();
-  // Cada indicador declara su significado y su fuente.
-  const confirmed = page.getByRole('region', { name: 'Cobros confirmados' });
-  await expect(confirmed).toContainText('NO es saldo disponible');
-  await expect(confirmed).toContainText('Fuente:');
-  await expect(page.getByRole('region', { name: 'Cuotas aprobadas (simulación)' })).toContainText(
-    'no son cobros'
+  // La cifra protagonista dice qué es (y qué NO es); las definiciones, fuente
+  // y periodo están en el desplegable; cuotas simuladas nunca como cobro.
+  const hero = page.getByRole('region', { name: /Cobrado · confirmado/ });
+  await expect(hero).toContainText('no es saldo disponible');
+  await expect(page.getByRole('region', { name: 'Saldo en Fluvia' })).toContainText(
+    'Pendiente de liquidación'
   );
+  await page.getByText('Qué mide cada cifra').click();
+  await expect(page.locator('.fx-details')).toContainText('Planes SIMULADOS: no son cobros');
+  await expect(page.locator('.fx-details')).toContainText('Periodo en UTC');
+  // Moneda seleccionable: VES (catálogo) aunque no tenga actividad aún.
+  await expect(
+    page.getByRole('navigation', { name: 'Moneda de los indicadores' }).getByRole('link', {
+      name: 'VES',
+    })
+  ).toBeVisible();
   await checkScreen(page, '01-inicio');
 });
 
@@ -407,7 +418,7 @@ test('8. pagar en cuotas (simulación): aceptación explícita y la venta NO que
 test('9. caja, clientes, equipo y configuración', async () => {
   await page.goto(`${O}/cash`);
   await expect(page.getByText('No es un arqueo')).toBeVisible();
-  await expect(page.getByText('Ventas del POS')).toBeVisible();
+  await expect(page.getByText('Ventas del POS').first()).toBeVisible();
   await checkScreen(page, '22-caja');
   await page.goto(`${O}/customers?q=${encodeURIComponent(`Cliente demo ${tag}`)}`);
   await page.getByRole('link', { name: `Cliente demo ${tag}` }).click();
@@ -419,12 +430,161 @@ test('9. caja, clientes, equipo y configuración', async () => {
   await page.goto(`${O}/settings`);
   await expect(page.getByText('No conectados')).toBeVisible();
   await checkScreen(page, '25-configuracion');
-  await page.goto(O);
-  await expect(page.getByRole('region', { name: 'Cobros confirmados' })).not.toContainText(
-    'Sin movimientos'
-  );
+  await page.goto(`${O}?period=7d&currency=COP`);
+  await expect(page.locator('.fx-hero-value')).not.toHaveText(/^\$ 0 COP$/);
+  await expect(page.getByRole('region', { name: 'Más vendidos' })).toContainText('Café molido');
   await checkScreen(page, '26-inicio-con-actividad');
 });
+
+let vesSale = 0;
+
+/** Unidades libres del producto según la insignia del catálogo. */
+async function freeOf(sku: string): Promise<number> {
+  await page.goto(`${O}/catalog?q=${encodeURIComponent(sku)}`);
+  const t = (await page.locator('.fx-stock').first().textContent()) ?? '';
+  if (/Agotado/.test(t)) return 0;
+  return Number(t.match(/(\d+)/)![1]);
+}
+
+test('11. bolívares: venta en VES con variante, SKU por teclado y existencias reservadas', async () => {
+  // Autosuficiente frente a corridas previas: si queda poco, entra stock por
+  // la ficha del producto (entrada idempotente, como lo haría el comercio).
+  await ensureStock('VE-QUE-1K', 'Queso blanco 1 kg', 2);
+  await ensureStock('VE-CAF-250', 'Café molido', 2);
+  const quesoBefore = await freeOf('VE-QUE-1K');
+  expect(quesoBefore).toBeGreaterThanOrEqual(2);
+  await page.goto(`${O}/sell`);
+  await page.getByLabel('Moneda').selectOption('VES');
+  // Una familia con variantes: una opción por presentación.
+  const fam = page.getByRole('list', { name: 'Presentaciones de Café molido' });
+  await fam.getByRole('button', { name: /Añadir Café molido · 250 g/ }).click();
+  await fam.getByRole('button', { name: /Añadir Café molido · 250 g/ }).click();
+  // Agotado: deshabilitado con su motivo.
+  await expect(page.getByRole('button', { name: /Añadir Huevos.*agotado/ })).toBeDisabled();
+  // SKU exacto + Enter añade sin ratón.
+  const search = page.getByLabel('Buscar producto');
+  await search.fill('ve-que-1k');
+  await search.press('Enter');
+  await expect(page.getByRole('group', { name: 'Cantidad de Queso blanco 1 kg' })).toBeVisible();
+  // 2 × Bs. 420,00 + Bs. 1.150,00 = Bs. 1.990,00 (céntimos exactos).
+  await expect(page.locator('.fx-cart-total output')).toHaveText(/Bs\.\s1\.990,00/);
+  await expect(page.getByLabel('Moneda')).toBeDisabled();
+  await checkScreen(page, '29-venta-bolivares');
+  await page.getByRole('button', { name: 'Revisar venta' }).click();
+  await page.getByRole('button', { name: 'Confirmar venta' }).click();
+  const title = page.getByText(/^Venta #\d+ registrada$/);
+  await expect(title).toBeVisible({ timeout: 15_000 });
+  vesSale = Number((await title.textContent())!.match(/#(\d+)/)![1]);
+  await expect(page.getByText(/las existencias quedan reservadas/)).toBeVisible();
+
+  // Catálogo: una unidad menos LIBRE (reservada, no descontada).
+  expect(await freeOf('VE-QUE-1K')).toBe(quesoBefore - 1);
+
+  // Cobro aprobado en el checkout ⇒ el motor descuenta las existencias.
+  await page.goto(`${O}/orders?q=%23${vesSale}`);
+  await page.getByRole('link', { name: `Venta #${vesSale}` }).click();
+  await expect(page.getByText('Reservadas hasta el cobro').first()).toBeVisible();
+  await page.getByRole('main').getByRole('link', { name: 'Cobrar', exact: true }).click();
+  const buyer = await openBuyerFromTerminal();
+  await expect(buyer.getByTestId('amount')).toHaveText(/Bs\.\s1\.990,00\sVES/);
+  await expect(buyer.getByRole('region', { name: 'Resumen de tu compra' })).toContainText(
+    'Café molido · 250 g'
+  );
+  await checkScreen(buyer, '30-checkout-bolivares');
+  await buyer.getByRole('radio', { name: /aprobada/ }).check();
+  await buyer.getByRole('button', { name: /^Pagar/ }).click();
+  await expect(buyer.getByText(/Pago completado/)).toBeVisible({ timeout: 30_000 });
+  await checkScreen(buyer, '31-checkout-bolivares-comprobante');
+  await buyer.close();
+  await phase('succeeded');
+  await page.goto(`${O}/orders?q=%23${vesSale}`);
+  await page.getByRole('link', { name: `Venta #${vesSale}` }).click();
+  await expect(page.getByText('Descontadas (cobro confirmado)').first()).toBeVisible();
+  await checkScreen(page, '32-venta-bolivares-cobrada');
+  await openProduct('VE-QUE-1K', 'Queso blanco 1 kg');
+  // Cobro confirmado: la libre no vuelve a subir (se descontó la existencia).
+  await expect(page.locator('.fx-stock-figs')).toContainText(`Libre para vender${quesoBefore - 1}`);
+  await checkScreen(page, '33-producto-existencias');
+
+  // Panel en VES: cifra cobrada y más vendidos de bolívares, sin mezclar con COP.
+  await page.goto(`${O}?currency=VES`);
+  await expect(page.locator('.fx-hero-value')).toHaveText(/^Bs\.\s[\d.]+,\d\d VES$/);
+  await expect(page.getByRole('region', { name: 'Más vendidos' })).toContainText(
+    'Café molido · 250 g'
+  );
+  await checkScreen(page, '34-inicio-bolivares');
+});
+
+test('12. anular una venta sin cobro libera las existencias; el checkout ya no cobra', async () => {
+  const before = await freeOf('VE-QUE-1K');
+  await page.goto(`${O}/sell`);
+  await page.getByLabel('Moneda').selectOption('VES');
+  await page.getByRole('button', { name: /Añadir Queso blanco 1 kg/ }).click();
+  await page.getByRole('button', { name: 'Revisar venta' }).click();
+  await page.getByRole('button', { name: 'Confirmar venta' }).click();
+  const title = page.getByText(/^Venta #\d+ registrada$/);
+  await expect(title).toBeVisible({ timeout: 15_000 });
+  const n = Number((await title.textContent())!.match(/#(\d+)/)![1]);
+  // Checkout abierto para el comprador antes de anular.
+  await page.getByRole('link', { name: 'Cobrar ahora' }).click();
+  const buyer = await openBuyerFromTerminal();
+  await page.goto(`${O}/orders?q=%23${n}`);
+  await page.getByRole('link', { name: `Venta #${n}` }).click();
+  await page.getByRole('button', { name: 'Anular venta' }).click();
+  await expect(page.getByLabel('Motivo')).toBeFocused();
+  await page.getByLabel('Motivo').fill('El cliente desistió');
+  await checkScreen(page, '35-venta-anular');
+  await page.getByRole('button', { name: 'Confirmar anulación' }).click();
+  await expect(page.getByText('Venta anulada', { exact: true }).first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText('Liberadas (venta anulada)')).toBeVisible();
+  await checkScreen(page, '36-venta-anulada');
+  // El comprador intenta pagar: el servidor lo impide y la página lo explica.
+  await buyer.getByRole('radio', { name: /aprobada/ }).check();
+  await buyer.getByRole('button', { name: /^Pagar/ }).click();
+  await expect(buyer.getByText(/El comercio anuló esta compra/)).toBeVisible({ timeout: 15_000 });
+  await checkScreen(buyer, '37-checkout-venta-anulada');
+  await buyer.close();
+  expect(await freeOf('VE-QUE-1K')).toBe(before);
+});
+
+test('13. variante nueva y entrada de existencias idempotente', async () => {
+  await openProduct('VE-CAF-250', 'Café molido');
+  await page.getByRole('link', { name: 'Añadir variante' }).click();
+  await expect(page.getByRole('heading', { name: 'Nueva variante de Café molido' })).toBeVisible();
+  await page.getByLabel('Etiqueta de la variante').fill(`1 kg ${tag}`);
+  await page.getByLabel('Precio', { exact: true }).fill('1500,00');
+  await page.getByLabel('SKU (opcional)').fill(`VE-CAF-${tag}`);
+  await checkScreen(page, '38-variante-nueva');
+  await page.getByRole('button', { name: 'Crear producto' }).click();
+  await page.waitForURL(/\/catalog\/[0-9a-f-]{36}\?created=1/);
+  await page.getByLabel('Unidades', { exact: true }).fill('5');
+  await page.getByLabel('Motivo', { exact: true }).fill('Compra a proveedor');
+  await page.getByRole('button', { name: 'Registrar movimiento' }).click();
+  await expect(page.locator('.fx-stock-figs')).toContainText('En tienda5', { timeout: 15_000 });
+  await page.goto(`${O}/catalog?q=VE-CAF`);
+  await expect(page.getByRole('list', { name: 'Variantes de Café molido' })).toContainText(
+    `1 kg ${tag}`
+  );
+  await checkScreen(page, '39-catalogo-variantes');
+});
+
+async function ensureStock(sku: string, name: string, min: number) {
+  if ((await freeOf(sku)) >= min) return;
+  await openProduct(sku, name);
+  await page.getByLabel('Unidades', { exact: true }).fill('6');
+  await page.getByLabel('Motivo', { exact: true }).fill('Reposición para la prueba');
+  await page.getByRole('button', { name: 'Registrar movimiento' }).click();
+  await expect(page.locator('.fx-moves li').first()).toContainText('Entrada', { timeout: 15_000 });
+}
+
+/** Abre la ficha de un producto buscándolo por SKU en el catálogo (como un operador). */
+async function openProduct(sku: string, name: string | RegExp) {
+  await page.goto(`${O}/catalog?q=${encodeURIComponent(sku)}`);
+  await page.getByRole('link', { name }).first().click();
+  await page.waitForURL(/\/catalog\/[0-9a-f-]{36}/);
+}
 
 test('10. rol sin permiso, organización ajena y sesión caducada', async ({ browser }) => {
   const dev = await browser.newContext({ viewport: { width: 1440, height: 900 } });

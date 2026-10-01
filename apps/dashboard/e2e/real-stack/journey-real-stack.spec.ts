@@ -147,11 +147,11 @@ test('0. inicio → cobrar por la navegación lateral', async () => {
   await pos.keyboard.press('Escape');
   await checkScreen(pos, '01-panel');
   await pos.getByRole('button', { name: 'Abrir menú' }).click();
-  await nav.getByRole('link', { name: 'Cobrar (terminal)' }).focus();
+  await nav.getByRole('link', { name: 'Cobrar', exact: true }).focus();
   await pos.keyboard.press('Enter');
   await pos.waitForURL(/\/pos/);
   await pos.getByRole('button', { name: 'Abrir menú' }).click();
-  await expect(nav.getByRole('link', { name: 'Cobrar (terminal)' })).toHaveAttribute(
+  await expect(nav.getByRole('link', { name: 'Cobrar', exact: true })).toHaveAttribute(
     'aria-current',
     'page'
   );

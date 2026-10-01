@@ -308,6 +308,36 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This sale has an active installment plan (sandbox simulation)',
   },
+  insufficient_stock: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'There is not enough free stock for a product in the order',
+  },
+  inventory_conflict: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'Stock cannot go below what is reserved for open sales',
+  },
+  stock_not_tracked: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'This product does not track stock',
+  },
+  catalog_variant_invalid: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'A variant needs an active base product with the same currency',
+  },
+  order_not_cancellable: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale cannot be cancelled: a payment holds it or it has a live plan',
+  },
+  order_cancelled: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This sale was cancelled by the merchant',
+  },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
@@ -418,6 +448,12 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   InstallmentPlanNotAllowedError: 'installment_plan_not_allowed',
   InstallmentInvalidStateError: 'invalid_state_transition',
   InstallmentTermsNotAcceptedError: 'validation_error',
+  InsufficientStockError: 'insufficient_stock',
+  InventoryConflictError: 'inventory_conflict',
+  StockNotTrackedError: 'stock_not_tracked',
+  CatalogVariantError: 'catalog_variant_invalid',
+  OrderNotCancellableError: 'order_not_cancellable',
+  UnknownImageError: 'validation_error',
 };
 
 export interface PublicErrorBody {

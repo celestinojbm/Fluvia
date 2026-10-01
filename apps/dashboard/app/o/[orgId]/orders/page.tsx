@@ -14,8 +14,9 @@ import {
   ReadProblem,
   SELL_ROLES,
   dateTime,
-  money,
 } from '../../../lib/ui';
+import { Icon } from '../../../lib/icons';
+import { formatAmount } from '../../../lib/money-format';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,25 +57,29 @@ export default async function OrdersPage({
       <PageHead
         id="orders-title"
         title="Ventas"
-        description="Cada venta guarda sus productos y precios. Su estado sale de los cobros reales."
+        eyebrow="Historial"
+        description="Cada venta guarda sus productos y precios del momento; su estado sale de los cobros reales."
         actions={
           role && SELL_ROLES.has(role) ? (
             <a className="fx-btn fx-btn-primary" href={`${o}/sell`}>
-              Nueva venta
+              <Icon name="plus" /> Nueva venta
             </a>
           ) : null
         }
       />
       <form className="fx-toolbar" method="get" role="search" aria-label="Buscar ventas">
-        <div className="fx-field">
+        <div className="fx-field" style={{ flex: '2 1 16rem' }}>
           <label htmlFor="o-q">Buscar</label>
-          <input
-            id="o-q"
-            name="q"
-            className="fx-input"
-            defaultValue={q}
-            placeholder="#número, cliente o nota"
-          />
+          <div className="fx-search">
+            <Icon name="search" />
+            <input
+              id="o-q"
+              name="q"
+              className="fx-input"
+              defaultValue={q}
+              placeholder="#número, cliente, producto o SKU"
+            />
+          </div>
         </div>
         <div className="fx-field">
           <label htmlFor="o-state">Estado</label>
@@ -152,7 +157,9 @@ export default async function OrdersPage({
                         ) : null}
                       </td>
                       <td data-label="Total" className="num">
-                        {money(ord.total, ord.currency)}
+                        <strong>
+                          {formatAmount(ord.total, ord.currency, 'es', { code: true })}
+                        </strong>
                       </td>
                     </tr>
                   ))}

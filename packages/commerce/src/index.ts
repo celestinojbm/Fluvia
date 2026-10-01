@@ -5,3 +5,5 @@ export * from './summary.js';
 export * from './installments.js';
 export * from './installments-calc.js';
 export * from './customers.js';
+export * from './demo-images.js';
+export * from './inventory.js';

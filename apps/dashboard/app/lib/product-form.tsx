@@ -3,7 +3,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { displayExponent, formatAmount } from '../messages';
 import { clientCall, errorMessage } from './client-call';
-import type { Category, Product } from './commerce-api';
+import type { CatalogImage, Category, Product } from './commerce-api';
+import { ProductThumb } from './commerce-ui';
 import { POS_CURRENCIES, parseMajorAmount } from './pos-money';
 
 /**
@@ -32,19 +33,31 @@ export function ProductForm({
   product,
   defaultCurrency,
   canEdit,
+  images = [],
+  base,
 }: {
   orgId: string;
   categories: Category[];
   product?: Product;
   defaultCurrency: string;
   canEdit: boolean;
+  /** Galería cerrada de imágenes de demostración (origen y licencia en la API). */
+  images?: CatalogImage[];
+  /** Alta de una VARIANTE de este producto base (misma moneda, se fija al crear). */
+  base?: Product;
 }) {
   const editing = product !== undefined;
-  const [name, setName] = useState(product?.name ?? '');
+  const [imageRef, setImageRef] = useState<string | null>(
+    product?.image_ref ?? base?.image_ref ?? null
+  );
+  const [variantLabel, setVariantLabel] = useState(product?.variant_label ?? '');
+  const [trackStock, setTrackStock] = useState(product?.track_stock ?? base?.track_stock ?? false);
+  const isVariant = Boolean(base || product?.variant_of);
+  const [name, setName] = useState(product?.name ?? base?.name ?? '');
   const [sku, setSku] = useState(product?.sku ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
-  const [categoryId, setCategoryId] = useState(product?.category_id ?? '');
-  const [currency, setCurrency] = useState(product?.currency ?? defaultCurrency);
+  const [categoryId, setCategoryId] = useState(product?.category_id ?? base?.category_id ?? '');
+  const [currency, setCurrency] = useState(product?.currency ?? base?.currency ?? defaultCurrency);
   const [priceText, setPriceText] = useState(
     product ? majorText(product.price, product.currency) : ''
   );
@@ -60,6 +73,10 @@ export function ProductForm({
 
   const price = useMemo(() => parseMajorAmount(priceText, currency), [priceText, currency]);
   const nameError = touched && name.trim() === '' ? 'Escribe el nombre del producto.' : null;
+  const variantError =
+    touched && isVariant && variantLabel.trim() === ''
+      ? 'Escribe la etiqueta de la variante (ej. 500 g, talla M).'
+      : null;
   const priceError =
     touched && !price.ok
       ? price.error === 'decimals'
@@ -92,7 +109,8 @@ export function ProductForm({
   async function submit(extra?: { archived: boolean }) {
     setTouched(true);
     if (lock.current) return;
-    if (!extra && (name.trim() === '' || !price.ok)) return;
+    if (!extra && (name.trim() === '' || !price.ok || variantError !== null)) return;
+    if (!extra && isVariant && variantLabel.trim() === '') return;
     lock.current = true;
     setPhase({ kind: 'saving' });
     try {
@@ -108,6 +126,9 @@ export function ProductForm({
                   category_id: categoryId || null,
                   price: price.ok ? price.minor : undefined,
                   available,
+                  image_ref: imageRef,
+                  variant_label: variantLabel.trim() || null,
+                  track_stock: trackStock,
                   expected_version: current!.version,
                 },
           })
@@ -121,6 +142,10 @@ export function ProductForm({
               price: price.ok ? price.minor : 0,
               currency,
               available,
+              image_ref: imageRef,
+              variant_label: variantLabel.trim() || null,
+              track_stock: trackStock,
+              ...(base ? { variant_of: base.id } : {}),
             },
           });
       if (r.kind === 'ok') {
@@ -205,6 +230,35 @@ export function ProductForm({
         ) : null}
       </div>
 
+      {isVariant || variantLabel ? (
+        <div className="fx-field">
+          <label htmlFor="p-variant">
+            {isVariant ? 'Etiqueta de la variante' : 'Presentación (opcional)'}
+          </label>
+          <input
+            id="p-variant"
+            className="fx-input"
+            value={variantLabel}
+            maxLength={40}
+            onChange={(e) => setVariantLabel(e.target.value)}
+            aria-invalid={variantError ? true : undefined}
+            aria-describedby={variantError ? 'p-variant-err p-variant-hint' : 'p-variant-hint'}
+            disabled={disabled}
+            placeholder="500 g · 1 L · talla M"
+          />
+          <p id="p-variant-hint" className="fx-hint">
+            {base
+              ? `Variante de «${base.name}». Tiene su propio precio, SKU y existencias; la moneda es la del producto base.`
+              : 'Se muestra junto al nombre al vender y en el justificante.'}
+          </p>
+          {variantError ? (
+            <p id="p-variant-err" className="fx-error-text">
+              {variantError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="fx-row">
         <div className="fx-field">
           <label htmlFor="p-price">Precio</label>
@@ -238,7 +292,7 @@ export function ProductForm({
             className="fx-select"
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
-            disabled={disabled || editing}
+            disabled={disabled || editing || Boolean(base)}
             aria-describedby="p-currency-hint"
           >
             {[...new Set([defaultCurrency, ...POS_CURRENCIES])].map((c) => (
@@ -326,6 +380,49 @@ export function ProductForm({
         />
       </div>
 
+      {images.length > 0 ? (
+        <fieldset className="fx-field" style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
+          <legend>Imagen</legend>
+          <p className="fx-hint" style={{ marginBottom: 8 }}>
+            Fotos de demostración con licencia CC0 (origen en Configuración → Imágenes).
+          </p>
+          <ul className="fx-gallery">
+            <li>
+              <label title="Sin imagen">
+                <input
+                  type="radio"
+                  name="p-image"
+                  checked={imageRef === null}
+                  onChange={() => setImageRef(null)}
+                  disabled={disabled}
+                  aria-label="Sin imagen"
+                />
+                <ProductThumb
+                  product={{ name: name || '·', image_ref: null, category_name: null }}
+                />
+              </label>
+            </li>
+            {images.map((img) => (
+              <li key={img.ref}>
+                <label title={`${img.label} — ${img.creator} (${img.license})`}>
+                  <input
+                    type="radio"
+                    name="p-image"
+                    checked={imageRef === img.ref}
+                    onChange={() => setImageRef(img.ref)}
+                    disabled={disabled}
+                    aria-label={img.label}
+                  />
+                  <ProductThumb
+                    product={{ name: img.label, image_ref: img.ref, category_name: null }}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        </fieldset>
+      ) : null}
+
       <div className="fx-field">
         <label className="fx-check" htmlFor="p-available">
           <input
@@ -338,8 +435,26 @@ export function ProductForm({
           <span>
             Disponible para vender
             <span className="fx-hint" style={{ display: 'block' }}>
-              Disponibilidad declarada por el comercio. No hay control de existencias en esta
-              versión.
+              Si lo desmarcas, no aparece en «Nueva venta» aunque haya existencias.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div className="fx-field">
+        <label className="fx-check" htmlFor="p-track">
+          <input
+            id="p-track"
+            type="checkbox"
+            checked={trackStock}
+            onChange={(e) => setTrackStock(e.target.checked)}
+            disabled={disabled}
+          />
+          <span>
+            Controlar existencias
+            <span className="fx-hint" style={{ display: 'block' }}>
+              Cada venta reserva unidades; se descuentan solo cuando el cobro se confirma y se
+              liberan si la venta se anula. Registra las entradas en la ficha del producto.
             </span>
           </span>
         </label>

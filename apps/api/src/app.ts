@@ -38,9 +38,11 @@ import {
   CatalogService,
   CustomerDirectory,
   InstallmentSandboxService,
+  InventoryService,
   OrderService,
   SummaryService,
   isInstallmentPlanActive,
+  isOrderCancelled,
 } from '@fluvia/commerce';
 import { MetricsRegistry } from '@fluvia/observability';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
@@ -420,6 +422,7 @@ export function buildApp({
       customerDirectory: new CustomerDirectory(appPool),
       summaryService: new SummaryService(appPool),
       installmentService: new InstallmentSandboxService(appPool, orderService),
+      inventoryService: new InventoryService(appPool),
     });
   }
 
@@ -466,6 +469,14 @@ export function buildApp({
       return reply
         .code(ERROR_CATALOG.installment_plan_active.status)
         .send(errorBody('installment_plan_active', req.id));
+    }
+
+    // Guard del motor (0051): la venta fue anulada; ningún checkout suyo cobra.
+    if (isOrderCancelled(err)) {
+      req.log.warn({ err }, 'cancelled sale blocked a charge or plan');
+      return reply
+        .code(ERROR_CATALOG.order_cancelled.status)
+        .send(errorBody('order_cancelled', req.id));
     }
 
     const code = DOMAIN_ERROR_CODES[err.name];

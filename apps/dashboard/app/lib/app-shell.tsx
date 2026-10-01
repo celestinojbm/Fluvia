@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon, type IconName } from './icons';
 
 /**
  * Estructura común de la plataforma del comercio: barra lateral en escritorio
@@ -28,65 +29,21 @@ export interface ShellNavSection {
   items: ShellNavItem[];
 }
 
-type IconName =
-  | 'home'
-  | 'cart'
-  | 'terminal'
-  | 'receipt'
-  | 'box'
-  | 'users'
-  | 'cash'
-  | 'calendar'
-  | 'card'
-  | 'undo'
-  | 'team'
-  | 'gear'
-  | 'tools';
-
-const ICON_PATHS: Record<IconName, string> = {
-  home: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z',
-  cart: 'M3 4h2l2.4 11h11L21 7H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm9 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z',
-  terminal: 'M5 3h14v18H5zM8 7h8M8 11h8M9 15h2m2 0h2M9 18h6',
-  receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
-  box: 'M3 7.5 12 3l9 4.5v9L12 21l-9-4.5zM3 7.5 12 12l9-4.5M12 12v9',
-  users:
-    'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 10a7 7 0 0 1 14 0M17 3.5a4 4 0 0 1 0 7.5M22 21a7 7 0 0 0-4-6.3',
-  cash: 'M2 6h20v12H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 9v6m12-6v6',
-  calendar: 'M4 5h16v16H4zM4 9h16M8 3v4m8-4v4M8 13h2m4 0h2M8 17h2',
-  card: 'M2 5h20v14H2zM2 10h20M6 15h4',
-  undo: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
-  team: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 9a8 8 0 0 1 16 0',
-  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.2-1.3L14.4 2h-4l-.4 2.4a7.5 7.5 0 0 0-2.2 1.3l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.6l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.2 1.3l.4 2.4h4l.4-2.4a7.5 7.5 0 0 0 2.2-1.3l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.3Z',
-  tools: 'M14 6a4 4 0 0 0 5 5l-9 9a2 2 0 0 1-3-3l9-9a4 4 0 0 0-2-2Z',
-};
-
-function Icon({ name }: { name: IconName }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d={ICON_PATHS[name]} />
-    </svg>
-  );
-}
-
 export function FluviaMark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <rect width="32" height="32" rx="8" fill="#f4ead7" />
+      <rect width="32" height="32" rx="9" fill="#f3e7d1" />
       <path
-        d="M6 12c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 18c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 24c3.3-2.7 6.7-2.7 10 0"
+        d="M6 12c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 18c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0"
         fill="none"
-        stroke="#0a6470"
+        stroke="#0b6b6b"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6 24c3.3-2.7 6.7-2.7 10 0"
+        fill="none"
+        stroke="#e9a23b"
         strokeWidth="2.4"
         strokeLinecap="round"
       />
@@ -102,7 +59,7 @@ export function orgNav(orgId: string): ShellNavSection[] {
       items: [
         { href: o, label: 'Inicio', icon: 'home', exact: true },
         { href: `${o}/sell`, label: 'Nueva venta', icon: 'cart' },
-        { href: `${o}/pos`, label: 'Cobrar (terminal)', icon: 'terminal' },
+        { href: `${o}/pos`, label: 'Cobrar', icon: 'terminal' },
       ],
     },
     {
@@ -225,8 +182,13 @@ export function AppShell({
           <span className="fx-brand-word">Fluvia</span>
         </a>
         <div className="fx-org">
-          <strong>{orgName}</strong>
-          <span>Comercio · {roleLabel}</span>
+          <span className="fx-org-avatar" aria-hidden="true">
+            {(orgName.trim()[0] ?? 'F').toUpperCase()}
+          </span>
+          <div>
+            <strong>{orgName}</strong>
+            <span>Comercio · {roleLabel}</span>
+          </div>
         </div>
         <div className="fx-nav">
           {sections.map((s) => (

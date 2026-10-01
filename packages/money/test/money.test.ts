@@ -6,6 +6,8 @@ import {
   MoneySchema,
   PrecisionError,
   UnknownCurrencyError,
+  currencyExponent,
+  isCurrencyCode,
   moneyFromPayload,
 } from '../src/index.js';
 
@@ -141,5 +143,55 @@ describe('MoneySchema (Zod boundary validation)', () => {
 
   it('is strict: extra keys are rejected (anti mass-assignment)', () => {
     expect(() => MoneySchema.parse({ amount: '1025', currency: 'USD', isAdmin: true })).toThrow();
+  });
+});
+
+describe('VES — bolívar venezolano (ISO 4217: VES / 928 / exponente 2)', () => {
+  it('está registrado con exponente 2 y sin tocar el exponente de COP', () => {
+    expect(isCurrencyCode('VES')).toBe(true);
+    expect(currencyExponent('VES')).toBe(2);
+    expect(currencyExponent('COP')).toBe(2); // PEND-008: sin cambios
+    // VED (enmienda 170) NO se admite: VES es el código válido para transacciones.
+    expect(isCurrencyCode('VED')).toBe(false);
+    expect(() => Money.of(1n, 'VED')).toThrow(UnknownCurrencyError);
+  });
+
+  it('cantidades decimales exactas en unidades menores enteras', () => {
+    expect(Money.fromDecimal('1234.56', 'VES').amount).toBe(123456n);
+    expect(Money.fromDecimal('0.01', 'VES').amount).toBe(1n);
+    expect(Money.fromDecimal('0.1', 'VES').amount).toBe(10n);
+    expect(Money.fromDecimal('99999999999.99', 'VES').amount).toBe(9999999999999n);
+    expect(Money.of(123456n, 'VES').toDecimalString()).toBe('1234.56');
+    expect(Money.of(5n, 'VES').toDecimalString()).toBe('0.05');
+  });
+
+  it('nunca redondea: un tercer decimal se rechaza', () => {
+    expect(() => Money.fromDecimal('10.005', 'VES')).toThrow(PrecisionError);
+    expect(() => Money.fromDecimal('0.001', 'VES')).toThrow(PrecisionError);
+  });
+
+  it('no se mezcla con USD ni COP', () => {
+    expect(() => Money.of(100n, 'VES').add(Money.of(100n, 'USD'))).toThrow(CurrencyMismatchError);
+    expect(() => Money.of(100n, 'VES').compare(Money.of(100n, 'COP'))).toThrow(
+      CurrencyMismatchError
+    );
+  });
+
+  it('reparto (cuotas/devoluciones) con suma exacta', () => {
+    const total = Money.fromDecimal('100.00', 'VES');
+    const parts = total.allocate([1, 1, 1]);
+    expect(parts.map((p) => p.amount)).toEqual([3334n, 3333n, 3333n]);
+    expect(parts.reduce((a, p) => a.add(p), Money.zero('VES')).equals(total)).toBe(true);
+    // devolución parcial: lo devuelto + lo que queda = cobrado
+    const charged = Money.fromDecimal('250.75', 'VES');
+    const refunded = Money.fromDecimal('100.25', 'VES');
+    expect(charged.subtract(refunded).toDecimalString()).toBe('150.50');
+  });
+
+  it('viaja por el schema de frontera', () => {
+    expect(MoneySchema.parse({ amount: '123456', currency: 'VES' })).toEqual({
+      amount: '123456',
+      currency: 'VES',
+    });
   });
 });

@@ -10,6 +10,7 @@ import {
   dateTime,
   money,
 } from '../../../../lib/ui';
+import { formatAmount } from '../../../../lib/money-format';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,29 +40,50 @@ export default async function CustomerPage({
   const c = read.data;
   // Totales por moneda de las compras COBRADAS (no se suman monedas).
   const paid = new Map<string, number>();
+  const CHARGED = new Set(['paid', 'partially_refunded', 'refunded']);
   for (const ord of c.orders) {
-    if (ord.payment.state === 'awaiting_payment' || ord.payment.state === 'payment_in_progress')
-      continue;
+    if (!CHARGED.has(ord.payment.state)) continue; // pendiente, en curso o anulada: no cobrado
     paid.set(ord.currency, (paid.get(ord.currency) ?? 0) + ord.total - ord.payment.amount_refunded);
   }
+  const last = c.orders[0]?.created_at ?? null;
   return (
     <main className="fx-page" aria-labelledby="c-title">
       <PageHead
         id="c-title"
         title={c.name ?? c.email ?? c.phone ?? 'Cliente'}
+        eyebrow="Cliente"
         description={`Cliente desde ${dateTime(c.created_at)}`}
         crumb={{ href: `${o}/customers`, label: 'Clientes' }}
       />
+      <section className="fx-strip" aria-label="Resumen del cliente">
+        <div>
+          <h3>Compras</h3>
+          <p className="fx-strip-value">{c.order_count}</p>
+          <p className="fx-strip-meta">registradas</p>
+        </div>
+        <div style={{ gridColumn: 'span 2' }}>
+          <h3>Cobrado neto</h3>
+          <p className="fx-strip-value">
+            {paid.size === 0
+              ? '—'
+              : [...paid.entries()]
+                  .map(([cur, v]) => formatAmount(v, cur, 'es', { code: true }))
+                  .join(' · ')}
+          </p>
+          <p className="fx-strip-meta">por moneda, sin sumar monedas · menos devoluciones</p>
+        </div>
+        <div>
+          <h3>Última compra</h3>
+          <p className="fx-strip-value" style={{ fontSize: '1rem' }}>
+            {last ? dateTime(last) : '—'}
+          </p>
+          <p className="fx-strip-meta">{c.email ?? c.phone ?? 'Sin contacto'}</p>
+        </div>
+      </section>
       <div className="fx-grid fx-grid-main">
         <section className="fx-panel" aria-labelledby="c-orders-title">
           <header>
-            <h2 id="c-orders-title">Compras ({c.order_count})</h2>
-            <span className="fx-hint">
-              Cobrado neto:{' '}
-              {paid.size === 0
-                ? 'sin compras cobradas'
-                : [...paid.entries()].map(([cur, v]) => money(v, cur)).join(' · ')}
-            </span>
+            <h2 id="c-orders-title">Historial de compras ({c.order_count})</h2>
           </header>
           <div className="fx-panel-body" style={{ paddingTop: 8 }}>
             {c.orders.length === 0 ? (
@@ -95,6 +117,14 @@ export default async function CustomerPage({
                         </td>
                         <td data-label="Total" className="num">
                           {money(ord.total, ord.currency)}
+                          {ord.payment.payment_intent_id && CHARGED.has(ord.payment.state) ? (
+                            <a
+                              className="fx-cell-sub fx-link"
+                              href={`${o}/pos/receipts/${ord.payment.payment_intent_id}`}
+                            >
+                              Justificante
+                            </a>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

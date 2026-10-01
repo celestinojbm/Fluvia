@@ -1,6 +1,9 @@
 import { orgContext } from '../../../lib/org-context';
 import { orgPath, readApi, type Category, type Product } from '../../../lib/commerce-api';
-import { CATALOG_ROLES, Empty, PageHead, ReadProblem, Status, money } from '../../../lib/ui';
+import { LOW_STOCK, ProductThumb, StockBadge, stockLevel } from '../../../lib/commerce-ui';
+import { Icon } from '../../../lib/icons';
+import { formatAmount } from '../../../lib/money-format';
+import { CATALOG_ROLES, Empty, PageHead, ReadProblem, Status } from '../../../lib/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,14 +11,18 @@ const STATUS_FILTERS = {
   active: 'Activos',
   available: 'Disponibles para vender',
   unavailable: 'No disponibles',
+  low: 'Existencias bajas o agotadas',
   archived: 'Archivados',
 } as const;
 type StatusFilter = keyof typeof STATUS_FILTERS;
 
+const money = (p: Product) => formatAmount(p.price, p.currency, 'es');
+
 /**
- * Catálogo: búsqueda (nombre o SKU) y categoría filtradas EN SERVIDOR; el
- * estado se filtra sobre el resultado. Formulario GET: funciona sin JS, con
- * teclado y deja la búsqueda en la URL.
+ * Catálogo: lista rica (foto, nombre y variantes, SKU, categoría,
+ * existencias, precio). Búsqueda (nombre, SKU o variante) y categoría
+ * filtradas EN SERVIDOR; las variantes se agrupan bajo su producto base.
+ * Formulario GET: funciona sin JS, con teclado y deja la búsqueda en la URL.
  */
 export default async function CatalogPage({
   params,
@@ -35,65 +42,79 @@ export default async function CatalogPage({
   if (q) qs.set('q', q);
   if (category) qs.set('category_id', category);
   if (status === 'archived') qs.set('include_archived', 'true');
+  if (status === 'low') qs.set('low_stock', String(LOW_STOCK));
   const [products, categories] = await Promise.all([
     readApi<{ data: Product[] }>(token, orgPath(orgId, `/catalog/products?${qs}`)),
     readApi<{ data: Category[] }>(token, orgPath(orgId, '/catalog/categories')),
   ]);
   const canEdit = role !== undefined && CATALOG_ROLES.has(role);
   const o = `/o/${orgId}`;
-  const rows =
-    products.kind === 'ok'
-      ? products.data.data.filter((p) =>
-          status === 'archived'
-            ? p.archived
-            : status === 'available'
-              ? p.available
-              : status === 'unavailable'
-                ? !p.available
-                : true
-        )
-      : [];
+  const all = products.kind === 'ok' ? products.data.data : [];
+  const rows = all.filter((p) =>
+    status === 'archived'
+      ? p.archived
+      : status === 'available'
+        ? p.available
+        : status === 'unavailable'
+          ? !p.available
+          : true
+  );
+  // Agrupar variantes bajo su base (si la base está en el resultado).
+  const ids = new Set(rows.map((p) => p.id));
+  const children = new Map<string, Product[]>();
+  for (const p of rows) {
+    if (p.variant_of && ids.has(p.variant_of)) {
+      children.set(p.variant_of, [...(children.get(p.variant_of) ?? []), p]);
+    }
+  }
+  const heads = rows.filter((p) => !(p.variant_of && ids.has(p.variant_of)));
   const filtered = q !== '' || category !== '' || status !== 'active';
+  const tracked = all.filter((p) => p.track_stock && !p.archived);
+  const low = tracked.filter((p) => stockLevel(p) === 'low').length;
+  const out = tracked.filter((p) => stockLevel(p) === 'out').length;
+  const link = (extra: Record<string, string>) => {
+    const u = new URLSearchParams();
+    if (q) u.set('q', q);
+    if (status !== 'active') u.set('status', status);
+    for (const [k, v] of Object.entries(extra)) {
+      if (v) u.set(k, v);
+      else u.delete(k);
+    }
+    const s = u.toString();
+    return `${o}/catalog${s ? `?${s}` : ''}`;
+  };
 
   return (
     <main className="fx-page" aria-labelledby="catalog-title">
       <PageHead
         id="catalog-title"
         title="Catálogo"
-        description="Productos y precios que el cajero usa al vender. Cambiar un precio no altera ventas ya hechas."
+        eyebrow="Productos y precios"
+        description="Lo que el cajero ve al vender. Cambiar un precio no altera las ventas ya hechas."
         actions={
           canEdit ? (
             <a className="fx-btn fx-btn-primary" href={`${o}/catalog/new`}>
-              Nuevo producto
+              <Icon name="plus" /> Nuevo producto
             </a>
           ) : null
         }
       />
 
       <form className="fx-toolbar" method="get" role="search" aria-label="Buscar en el catálogo">
-        <div className="fx-field">
+        <div className="fx-field" style={{ flex: '2 1 16rem' }}>
           <label htmlFor="c-q">Buscar</label>
-          <input
-            id="c-q"
-            name="q"
-            className="fx-input"
-            defaultValue={q}
-            placeholder="Nombre o SKU"
-          />
+          <div className="fx-search">
+            <Icon name="search" />
+            <input
+              id="c-q"
+              name="q"
+              className="fx-input"
+              defaultValue={q}
+              placeholder="Nombre, SKU o variante"
+            />
+          </div>
         </div>
-        <div className="fx-field">
-          <label htmlFor="c-cat">Categoría</label>
-          <select id="c-cat" name="category" className="fx-select" defaultValue={category}>
-            <option value="">Todas</option>
-            {categories.kind === 'ok'
-              ? categories.data.data.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.product_count})
-                  </option>
-                ))
-              : null}
-          </select>
-        </div>
+        {category ? <input type="hidden" name="category" value={category} /> : null}
         <div className="fx-field">
           <label htmlFor="c-status">Estado</label>
           <select id="c-status" name="status" className="fx-select" defaultValue={status}>
@@ -108,11 +129,63 @@ export default async function CatalogPage({
           Aplicar
         </button>
         {filtered ? (
-          <a className="fx-btn" href={`${o}/catalog`}>
+          <a className="fx-btn fx-btn-ghost" href={`${o}/catalog`}>
             Limpiar
           </a>
         ) : null}
       </form>
+
+      {categories.kind === 'ok' && categories.data.data.length > 0 ? (
+        <nav aria-label="Categorías">
+          <ul className="fx-chips">
+            <li>
+              <a
+                className="fx-chip"
+                href={link({ category: '' })}
+                aria-current={!category ? 'true' : undefined}
+              >
+                Todas
+              </a>
+            </li>
+            {categories.data.data.map((c) => (
+              <li key={c.id}>
+                <a
+                  className="fx-chip"
+                  href={link({ category: c.id })}
+                  aria-current={category === c.id ? 'true' : undefined}
+                >
+                  {c.name} <small>{c.product_count}</small>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
+
+      {products.kind === 'ok' && !filtered ? (
+        <ul className="fx-summary-line" aria-label="Resumen del catálogo">
+          <li>
+            <strong>{all.length}</strong> productos activos
+          </li>
+          <li>
+            <strong>{tracked.length}</strong> con control de existencias
+          </li>
+          {low > 0 ? (
+            <li>
+              <a className="fx-link" href={`${o}/catalog?status=low`}>
+                <strong>{low}</strong> con existencias bajas
+              </a>
+            </li>
+          ) : null}
+          {out > 0 ? (
+            <li>
+              <a className="fx-link" href={`${o}/catalog?status=low`}>
+                <strong>{out}</strong> agotados
+              </a>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
 
       <section className="fx-panel" aria-labelledby="catalog-list-title">
         <header>
@@ -120,9 +193,11 @@ export default async function CatalogPage({
             Productos <span className="fx-hint">({rows.length})</span>
           </h2>
         </header>
-        <div className="fx-panel-body" style={{ paddingTop: 8 }}>
+        <div style={{ paddingTop: 8 }}>
           {products.kind !== 'ok' ? (
-            <ReadProblem kind={products.kind} what="el catálogo" />
+            <div className="fx-panel-body">
+              <ReadProblem kind={products.kind} what="el catálogo" />
+            </div>
           ) : rows.length === 0 ? (
             filtered ? (
               <Empty title="Sin coincidencias">
@@ -142,52 +217,56 @@ export default async function CatalogPage({
               </Empty>
             )
           ) : (
-            <div className="fx-table-wrap">
-              <table className="fx-table is-stack">
-                <caption className="sr-only">Productos del catálogo</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Producto</th>
-                    <th scope="col">Categoría</th>
-                    <th scope="col">Estado</th>
-                    <th scope="col" className="num">
-                      Precio
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((p) => (
-                    <tr key={p.id}>
-                      <td data-label="Producto">
-                        <a className="fx-link" href={`${o}/catalog/${p.id}`}>
-                          {p.name}
-                        </a>
-                        {p.sku ? <span className="fx-cell-sub">SKU {p.sku}</span> : null}
-                      </td>
-                      <td data-label="Categoría">{p.category_name ?? 'Sin categoría'}</td>
-                      <td data-label="Estado">
+            <ul className="fx-catalog" aria-label="Productos del catálogo">
+              {heads.map((p) => {
+                const kids = children.get(p.id) ?? [];
+                return (
+                  <li key={p.id}>
+                    <div className="fx-item" data-archived={p.archived ? 'true' : undefined}>
+                      <ProductThumb product={p} />
+                      <div style={{ minWidth: 0 }}>
+                        <span className="fx-item-name">
+                          <a href={`${o}/catalog/${p.id}`}>{p.name}</a>
+                        </span>
+                        <span className="fx-cell-sub">
+                          {[p.variant_label, p.sku ? `SKU ${p.sku}` : null]
+                            .filter(Boolean)
+                            .join(' · ') || 'Sin SKU'}
+                        </span>
+                        {kids.length > 0 ? (
+                          <ul className="fx-variants" aria-label={`Variantes de ${p.name}`}>
+                            {kids.map((k) => (
+                              <li key={k.id}>
+                                <a href={`${o}/catalog/${k.id}`}>
+                                  {k.variant_label} · {money(k)}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                      <span className="fx-item-cat fx-cell-sub">
+                        {p.category_name ?? 'Sin categoría'}
+                      </span>
+                      <span className="fx-item-stock">
                         {p.archived ? (
                           <Status tone="neutral" code="archived">
                             Archivado
                           </Status>
-                        ) : p.available ? (
-                          <Status tone="ok" code="available">
-                            Disponible
-                          </Status>
-                        ) : (
+                        ) : !p.available ? (
                           <Status tone="warn" code="unavailable">
                             No disponible
                           </Status>
+                        ) : (
+                          <StockBadge product={p} showUntracked />
                         )}
-                      </td>
-                      <td data-label="Precio" className="num">
-                        {money(p.price, p.currency)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </span>
+                      <span className="fx-item-price">{money(p)}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </section>

@@ -90,10 +90,12 @@ export interface InstallmentQuote {
 export interface BuyerInstallmentsView {
   order: Pick<OrderDetailDto, 'number' | 'currency' | 'total' | 'lines'> & {
     merchantName: string | null;
+    /** El comercio anuló la venta (0051): ya no se puede pagar. */
+    cancelled: boolean;
   };
   /** ¿Se puede pedir un plan ahora? (venta sin cobro y sin plan vivo, checkout abierto). */
   eligible: boolean;
-  ineligibleReason: 'sale_charged' | 'plan_exists' | 'checkout_closed' | null;
+  ineligibleReason: 'sale_charged' | 'plan_exists' | 'checkout_closed' | 'order_cancelled' | null;
   allowedCounts: readonly number[];
   plan: InstallmentPlanDto | null;
 }
@@ -270,6 +272,7 @@ export class InstallmentSandboxService {
       const plan = latest.rows[0] ? await this.loadPlan(c, latest.rows[0].id) : null;
       let reason: BuyerInstallmentsView['ineligibleReason'] = null;
       if (await this.saleHeld(c, ctx.linkId)) reason = 'sale_charged';
+      else if (order.payment.state === 'cancelled') reason = 'order_cancelled';
       else if (await this.livePlanId(c, order.id)) reason = 'plan_exists';
       else if (!ctx.sessionOpen) reason = 'checkout_closed';
       return {
@@ -279,6 +282,7 @@ export class InstallmentSandboxService {
           total: order.total,
           lines: order.lines,
           merchantName: order.merchantName,
+          cancelled: order.payment.state === 'cancelled',
         },
         eligible: reason === null,
         ineligibleReason: reason,

@@ -1,17 +1,30 @@
 import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { Money } from '@fluvia/money';
+import { isDemoImageRef } from './demo-images.js';
 import {
   CatalogDuplicateError,
+  CatalogVariantError,
   CategoryNotFoundError,
+  CommerceError,
   ProductNotFoundError,
   ProductVersionConflictError,
+  hasEngineMessage,
   isUniqueViolation,
 } from './errors.js';
 
+/** Imagen fuera del conjunto cerrado de demostración. */
+export class UnknownImageError extends CommerceError {
+  constructor() {
+    super('Unknown catalog image');
+  }
+}
+
 /**
- * Catálogo del comercio (0049). Por organización (RLS forzado). Precio en
- * unidades menores; `available` = disponibilidad declarada (no existencias).
- * DTO whitelisted explícito, jamás spread de la fila.
+ * Catálogo del comercio (0049 + 0051). Por organización (RLS forzado). Precio
+ * en unidades menores; `available` = disponibilidad declarada por el comercio.
+ * Con `trackStock`, además, existencias reales (on_hand / reservado / libre)
+ * mantenidas por el motor (ver InventoryService). Variantes de un nivel
+ * (`variantOf` fijo al crear). DTO whitelisted explícito, jamás spread.
  */
 
 export interface CategoryDto {
@@ -35,6 +48,14 @@ export interface ProductDto {
   archived: boolean;
   createdAt: string;
   updatedAt: string;
+  /** `catalog/<archivo>.jpg` del conjunto de demostración, o null. */
+  imageRef: string | null;
+  /** Producto base si este es una variante. */
+  variantOf: string | null;
+  variantLabel: string | null;
+  trackStock: boolean;
+  /** Existencias (solo si `trackStock`): libre = existencia − reservado. */
+  stock: { onHand: bigint; reserved: bigint; free: bigint } | null;
 }
 
 export interface ProductInput {
@@ -45,6 +66,10 @@ export interface ProductInput {
   price: bigint;
   currency: string;
   available?: boolean;
+  imageRef?: string | null;
+  variantOf?: string | null;
+  variantLabel?: string | null;
+  trackStock?: boolean;
 }
 
 export interface ProductPatch {
@@ -55,6 +80,9 @@ export interface ProductPatch {
   price?: bigint;
   available?: boolean;
   archived?: boolean;
+  imageRef?: string | null;
+  variantLabel?: string | null;
+  trackStock?: boolean;
   /** Versión que el operador editó (concurrencia optimista). */
   expectedVersion: number;
 }
@@ -65,6 +93,8 @@ export interface ProductQuery {
   /** true = solo vendibles (disponibles y no archivados). */
   sellableOnly?: boolean;
   includeArchived?: boolean;
+  /** Solo productos con existencias controladas y libre ≤ umbral. */
+  lowStock?: number;
   limit?: number;
 }
 
@@ -82,13 +112,22 @@ interface ProductRow {
   archived_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  image_ref: string | null;
+  variant_of: string | null;
+  variant_label: string | null;
+  track_stock: boolean;
+  on_hand: string | null;
+  reserved: string | null;
 }
 
 const PRODUCT_SELECT = `
   SELECT p.id, p.category_id, c.name AS category_name, p.name, p.sku, p.description,
-         p.price::text, p.currency, p.available, p.version, p.archived_at, p.created_at, p.updated_at
+         p.price::text, p.currency, p.available, p.version, p.archived_at, p.created_at, p.updated_at,
+         p.image_ref, p.variant_of, p.variant_label, p.track_stock,
+         lv.on_hand::text, lv.reserved::text
   FROM catalog_products p
-  LEFT JOIN catalog_categories c ON c.id = p.category_id`;
+  LEFT JOIN catalog_categories c ON c.id = p.category_id
+  LEFT JOIN inventory_levels lv ON lv.product_id = p.id`;
 
 function toProduct(r: ProductRow): ProductDto {
   return {
@@ -105,7 +144,22 @@ function toProduct(r: ProductRow): ProductDto {
     archived: r.archived_at !== null,
     createdAt: r.created_at.toISOString(),
     updatedAt: r.updated_at.toISOString(),
+    imageRef: r.image_ref,
+    variantOf: r.variant_of,
+    variantLabel: r.variant_label,
+    trackStock: r.track_stock,
+    stock: r.track_stock
+      ? (() => {
+          const onHand = BigInt(r.on_hand ?? '0');
+          const reserved = BigInt(r.reserved ?? '0');
+          return { onHand, reserved, free: onHand - reserved };
+        })()
+      : null,
   };
+}
+
+function assertImage(ref: string | null | undefined): void {
+  if (ref && !isDemoImageRef(ref)) throw new UnknownImageError();
 }
 
 /** Escapa comodines de LIKE en la búsqueda del operador. */
@@ -197,13 +251,25 @@ export class CatalogService {
       const q = query.q?.trim();
       if (q) {
         values.push(likePattern(q));
-        where.push(`(p.name ILIKE $${values.length} OR p.sku ILIKE $${values.length})`);
+        where.push(
+          `(p.name ILIKE $${values.length} OR p.sku ILIKE $${values.length}
+            OR p.variant_label ILIKE $${values.length})`
+        );
+      }
+      if (query.lowStock !== undefined) {
+        values.push(Math.max(0, Math.floor(query.lowStock)));
+        where.push(
+          `p.track_stock AND coalesce(lv.on_hand, 0) - coalesce(lv.reserved, 0) <= $${values.length}`
+        );
       }
       values.push(limit);
+      // Las variantes quedan junto a su base: orden por (base, variante).
       const res = await c.query<ProductRow>(
         `${PRODUCT_SELECT}
+         LEFT JOIN catalog_products base ON base.id = p.variant_of
          ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-         ORDER BY lower(p.name), p.id
+         ORDER BY lower(coalesce(base.name, p.name)), coalesce(p.variant_of, p.id),
+                  p.variant_of IS NOT NULL, lower(coalesce(p.variant_label, '')), p.id
          LIMIT $${values.length}`,
         values
       );
@@ -238,13 +304,15 @@ export class CatalogService {
   ): Promise<ProductDto> {
     // Valida moneda y monto con el Value Object (registro de @fluvia/money).
     const price = Money.of(input.price, input.currency);
+    assertImage(input.imageRef);
     try {
       return await withTenantTransaction(this.appPool, tenantId, async (c) => {
         await this.assertCategory(c, input.categoryId);
         const ins = await c.query<{ id: string }>(
           `INSERT INTO catalog_products
-             (tenant_id, category_id, name, sku, description, price, currency, available)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+             (tenant_id, category_id, name, sku, description, price, currency, available,
+              image_ref, variant_of, variant_label, track_stock)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
           [
             tenantId,
             input.categoryId ?? null,
@@ -254,6 +322,10 @@ export class CatalogService {
             price.amount.toString(),
             price.currency,
             input.available ?? true,
+            input.imageRef ?? null,
+            input.variantOf ?? null,
+            clean(input.variantLabel),
+            input.trackStock ?? false,
           ]
         );
         const res = await c.query<ProductRow>(`${PRODUCT_SELECT} WHERE p.id = $1`, [
@@ -264,8 +336,7 @@ export class CatalogService {
         return dto;
       });
     } catch (err) {
-      if (isUniqueViolation(err, 'catalog_products_sku_uq')) throw new CatalogDuplicateError('sku');
-      throw err;
+      throw mapCatalogError(err);
     }
   }
 
@@ -307,6 +378,12 @@ export class CatalogService {
           set('price', Money.of(patch.price, row.currency.trim()).amount.toString());
         }
         if (patch.available !== undefined) set('available', patch.available);
+        if (patch.imageRef !== undefined) {
+          assertImage(patch.imageRef);
+          set('image_ref', patch.imageRef);
+        }
+        if (patch.variantLabel !== undefined) set('variant_label', clean(patch.variantLabel));
+        if (patch.trackStock !== undefined) set('track_stock', patch.trackStock);
         if (patch.archived !== undefined) {
           sets.push(
             patch.archived ? 'archived_at = coalesce(archived_at, now())' : 'archived_at = NULL'
@@ -320,8 +397,26 @@ export class CatalogService {
         return dto;
       });
     } catch (err) {
-      if (isUniqueViolation(err, 'catalog_products_sku_uq')) throw new CatalogDuplicateError('sku');
-      throw err;
+      throw mapCatalogError(err);
     }
   }
+}
+
+function mapCatalogError(err: unknown): unknown {
+  if (isUniqueViolation(err, 'catalog_products_sku_uq')) return new CatalogDuplicateError('sku');
+  if (hasEngineMessage(err, 'FLUVIA_CATALOG_VARIANT')) return new CatalogVariantError();
+  // Etiqueta obligatoria en una variante / base = sí misma.
+  const e = err as { code?: unknown; constraint?: unknown } | null;
+  if (
+    e?.code === '23514' &&
+    (e.constraint === 'catalog_products_variant_label_chk' ||
+      e.constraint === 'catalog_products_variant_self_chk')
+  ) {
+    return new CatalogVariantError();
+  }
+  // Base de otra organización: la FK compuesta no la encuentra.
+  if (e?.code === '23503' && e.constraint === 'catalog_products_variant_fk') {
+    return new CatalogVariantError();
+  }
+  return err;
 }

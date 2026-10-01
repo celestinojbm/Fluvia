@@ -110,7 +110,9 @@ describe('resumen de compra', () => {
   });
 
   it('pagado ⇒ comprobante (no factura) con botón de imprimir', async () => {
-    mockRoutes((url) => (url.endsWith('/order') ? { body: orderView(null, false) } : { body: COMPLETED_VIEW }));
+    mockRoutes((url) =>
+      url.endsWith('/order') ? { body: orderView(null, false) } : { body: COMPLETED_VIEW }
+    );
     render(<CheckoutClient sessionId="s1" locale="es" />);
     expect(await screen.findByRole('region', { name: 'Comprobante de compra' })).toBeDefined();
     expect(screen.getByText(/No es una factura/)).toBeDefined();
@@ -129,7 +131,8 @@ describe('pagar en cuotas (simulación)', () => {
         planCreated = true;
         return { status: 201, body: PLAN };
       }
-      if (url.endsWith('/order')) return { body: planCreated ? orderView(PLAN, false) : orderView() };
+      if (url.endsWith('/order'))
+        return { body: planCreated ? orderView(PLAN, false) : orderView() };
       return { body: OPEN_VIEW };
     });
     render(<CheckoutClient sessionId="s1" locale="es" />);
@@ -141,18 +144,24 @@ describe('pagar en cuotas (simulación)', () => {
     await userEvent.click(within(section).getByRole('radio', { name: 'Pendiente de revisión' }));
 
     // Sin marcar la aceptación: no se envía nada.
-    await userEvent.click(within(section).getByRole('button', { name: 'Confirmar plan en cuotas' }));
+    await userEvent.click(
+      within(section).getByRole('button', { name: 'Confirmar plan en cuotas' })
+    );
     expect(within(section).getByText('Debes aceptar explícitamente para continuar.')).toBeDefined();
     expect(calls.some((c) => c.url.endsWith('/installments'))).toBe(false);
 
     await userEvent.click(within(section).getByRole('checkbox'));
-    await userEvent.click(within(section).getByRole('button', { name: 'Confirmar plan en cuotas' }));
+    await userEvent.click(
+      within(section).getByRole('button', { name: 'Confirmar plan en cuotas' })
+    );
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/installments'))).toBe(true));
     const sent = JSON.parse(calls.find((c) => c.url.endsWith('/installments'))!.body!);
     expect(sent).toEqual({ count: 3, scenario: 'pending', accept_terms: true });
 
     // Con el plan vivo: sin formulario de tarjeta, aviso de que NO es un pago.
-    expect(await screen.findByRole('region', { name: 'Tu plan de cuotas (simulación)' })).toBeDefined();
+    expect(
+      await screen.findByRole('region', { name: 'Tu plan de cuotas (simulación)' })
+    ).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
     expect(screen.getByText(/la compra no queda pagada por este plan/)).toBeDefined();
   });
@@ -164,12 +173,15 @@ describe('pagar en cuotas (simulación)', () => {
         confirmCalled = true;
         return { status: 409, body: { error: { code: 'installment_plan_active' } } };
       }
-      if (url.endsWith('/order')) return { body: confirmCalled ? orderView(PLAN, false) : orderView() };
+      if (url.endsWith('/order'))
+        return { body: confirmCalled ? orderView(PLAN, false) : orderView() };
       return { body: OPEN_VIEW };
     });
     render(<CheckoutClient sessionId="s1" locale="es" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Pagar' }));
-    expect(await screen.findByRole('region', { name: 'Tu plan de cuotas (simulación)' })).toBeDefined();
+    expect(
+      await screen.findByRole('region', { name: 'Tu plan de cuotas (simulación)' })
+    ).toBeDefined();
     expect(screen.queryByText(/No pudimos confirmar el resultado del pago/)).toBeNull();
   });
 
@@ -207,5 +219,71 @@ describe('consulta del plan por el comprador', () => {
     mockRoutes(() => ({ status: 404, body: {} }));
     render(<PlanClient sessionId="s1" locale="es" />);
     expect(await screen.findByRole('alert')).toHaveTextContent('inválido');
+  });
+});
+
+describe('bolívares y venta anulada', () => {
+  const VES_VIEW = {
+    ...OPEN_VIEW,
+    payment_intent: { ...OPEN_VIEW.payment_intent, amount: 370_398, currency: 'VES' },
+  };
+  const VES_ORDER = {
+    ...ORDER,
+    merchant_name: 'Bodega Caracas',
+    currency: 'VES',
+    total: 370_398,
+    lines: [
+      {
+        position: 1,
+        name: 'Café molido',
+        variant_label: '500 g',
+        unit_price: 123_456,
+        quantity: 3,
+        line_total: 370_368,
+      },
+      { position: 2, name: 'Caramelo', unit_price: 30, quantity: 1, line_total: 30 },
+    ],
+  };
+
+  it('importe en Bs. con código, variante en la línea y el comercio en la cabecera', async () => {
+    mockRoutes((url) =>
+      url.endsWith('/order') ? { body: { ...orderView(), order: VES_ORDER } } : { body: VES_VIEW }
+    );
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    const amount = await screen.findByTestId('amount');
+    expect(amount.textContent!.replace(/\u00a0/g, ' ')).toBe('Bs. 3.703,98 VES');
+    expect(await screen.findByText('Café molido · 500 g', { exact: false })).toBeDefined();
+    expect(document.querySelector('.co-merchant')!.textContent).toContain('Bodega Caracas');
+  });
+
+  it('venta anulada por el comercio: sin formulario de pago ni cuotas', async () => {
+    mockRoutes((url) =>
+      url.endsWith('/order')
+        ? { body: { ...orderView(null, false), order: { ...ORDER, cancelled: true } } }
+        : { body: OPEN_VIEW }
+    );
+    const { container } = render(<CheckoutClient sessionId="s1" locale="es" />);
+    expect(await screen.findByText(/El comercio anuló esta compra/)).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pagar' })).toBeNull();
+    const result = await axe.run(container);
+    expect(result.violations.map((v) => v.id)).toEqual([]);
+  });
+
+  it('409 order_cancelled al pagar ⇒ relee la vista (no queda «incierto»)', async () => {
+    let cancelled = false;
+    mockRoutes((url) => {
+      if (url.endsWith('/confirm')) {
+        cancelled = true;
+        return { status: 409, body: { error: { code: 'order_cancelled' } } };
+      }
+      if (url.endsWith('/order')) {
+        return { body: { ...orderView(), order: { ...ORDER, cancelled } } };
+      }
+      return { body: OPEN_VIEW };
+    });
+    render(<CheckoutClient sessionId="s1" locale="es" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Pagar' }));
+    expect(await screen.findByText(/El comercio anuló esta compra/)).toBeDefined();
+    expect(screen.queryByText(/No pudimos confirmar el resultado/)).toBeNull();
   });
 });

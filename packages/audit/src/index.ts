@@ -63,6 +63,8 @@ export const AUDIT_ACTIONS = [
   'customer.created',
   'customer.updated',
   'order.created',
+  'order.cancelled',
+  'inventory.changed',
   // Cuotas SANDBOX: evento simulado disparado por un operador (no mueve dinero).
   'installment_plan.simulated_event',
 ] as const;

@@ -283,9 +283,9 @@ cd apps/dashboard && DEMO_APP_URL=http://127.0.0.1:3312 \
 
 **Incompleto (declarado en pantalla):**
 
-1. **Existencias**: solo disponibilidad declarada; no hay inventario (reservar/descontar/liberar). Se decidió no simular stock en el navegador.
+1. ~~**Existencias**~~: resuelto en la jornada siguiente (reserva al vender, descuento con cobro confirmado, liberación al anular, en el motor) — ver [`jornada-bolivares-diseno.md`](jornada-bolivares-diseno.md).
 2. **Método de pago por cobro**: la API no lo registra; Caja agrupa por canal.
-3. **Cancelar una venta** pendiente: no se ofrece. Un checkout abierto sigue siendo pagable hasta expirar y no existe «cancelar cobro» por sesión; cancelar el pedido sin cerrar sus checkouts sería engañoso.
+3. **Cancelar una venta** pendiente: resuelto en la jornada siguiente («Anular venta», con guarda en el motor que impide cobrar después) — ver [`jornada-bolivares-diseno.md`](jornada-bolivares-diseno.md). Texto original: no se ofrece. Un checkout abierto sigue siendo pagable hasta expirar y no existe «cancelar cobro» por sesión; cancelar el pedido sin cerrar sus checkouts sería engañoso.
 4. **Equipo**: sin invitaciones ni cambio de rol (no hay contrato de API).
 5. **Arqueo / cierre de caja / turnos / efectivo**: no existen; Caja es un resumen, no un cierre contable.
 6. **Impuestos y numeración fiscal**: no hay (PEND-007). El comprobante del comprador y el justificante dicen que no son factura.

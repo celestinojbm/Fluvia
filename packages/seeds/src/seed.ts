@@ -58,27 +58,193 @@ export const DEMO = {
   ] as DemoUserSpec[],
 } as const;
 
-export const DEMO_CATEGORIES = ['Abarrotes', 'Bebidas', 'Hogar y limpieza', 'Papelería'] as const;
+export const DEMO_CATEGORIES = [
+  'Abarrotes',
+  'Bebidas',
+  'Hogar y limpieza',
+  'Papelería',
+  'Frescos',
+] as const;
 
-/** Catálogo sintético de un minorista genérico (SKU estable = id estable). */
-export const DEMO_PRODUCTS: Array<{
+interface DemoProductSpec {
   sku: string;
   name: string;
   category: (typeof DEMO_CATEGORIES)[number];
+  /** Unidades menores de `currency`. */
   price: number;
+  currency?: 'COP' | 'VES';
   available?: boolean;
-}> = [
+  /** Imagen del conjunto CC0 de demostración (docs/product/demo-images.md). */
+  image?: string;
+  /** SKU del producto base si es una variante (misma moneda). */
+  variantOf?: string;
+  variantLabel?: string;
+  /** Existencias iniciales (entrada de inventario) ⇒ controla existencias. */
+  stock?: number;
+}
+
+/**
+ * Catálogo sintético (SKU estable = id estable). Los COP de siempre (sin
+ * cambios de precio ni moneda) + un surtido de bodega en bolívares (VES,
+ * céntimos) con fotos CC0, una familia con variantes y existencias, para
+ * ver reservas, agotados y existencias bajas. Precios SINTÉTICOS: no son
+ * referencia de mercado ni resultado de una conversión.
+ */
+export const DEMO_PRODUCTS: DemoProductSpec[] = [
   { sku: 'ABA-001', name: 'Arroz 1 kg', category: 'Abarrotes', price: 4_800 },
   { sku: 'ABA-002', name: 'Harina de maíz 1 kg', category: 'Abarrotes', price: 3_900 },
-  { sku: 'ABA-003', name: 'Café molido 500 g', category: 'Abarrotes', price: 18_500 },
+  {
+    sku: 'ABA-003',
+    name: 'Café molido 500 g',
+    category: 'Abarrotes',
+    price: 18_500,
+    image: 'catalog/cafe-grano.jpg',
+  },
   { sku: 'ABA-004', name: 'Aceite vegetal 1 L', category: 'Abarrotes', price: 12_900 },
-  { sku: 'BEB-001', name: 'Agua mineral 600 ml', category: 'Bebidas', price: 2_200 },
-  { sku: 'BEB-002', name: 'Jugo de naranja 1 L', category: 'Bebidas', price: 7_400 },
-  { sku: 'BEB-003', name: 'Refresco 2 L', category: 'Bebidas', price: 6_900, available: false },
+  {
+    sku: 'BEB-001',
+    name: 'Agua mineral 600 ml',
+    category: 'Bebidas',
+    price: 2_200,
+    image: 'catalog/agua.jpg',
+  },
+  {
+    sku: 'BEB-002',
+    name: 'Jugo de naranja 1 L',
+    category: 'Bebidas',
+    price: 7_400,
+    image: 'catalog/jugo-naranja.jpg',
+  },
+  {
+    sku: 'BEB-003',
+    name: 'Refresco 2 L',
+    category: 'Bebidas',
+    price: 6_900,
+    available: false,
+    image: 'catalog/refresco.jpg',
+  },
   { sku: 'HOG-001', name: 'Detergente 1 kg', category: 'Hogar y limpieza', price: 15_300 },
   { sku: 'HOG-002', name: 'Jabón de manos', category: 'Hogar y limpieza', price: 5_600 },
-  { sku: 'PAP-001', name: 'Cuaderno 100 hojas', category: 'Papelería', price: 6_200 },
-  { sku: 'PAP-002', name: 'Bolígrafos x3', category: 'Papelería', price: 4_100 },
+  {
+    sku: 'PAP-001',
+    name: 'Cuaderno 100 hojas',
+    category: 'Papelería',
+    price: 6_200,
+    image: 'catalog/cuaderno.jpg',
+  },
+  {
+    sku: 'PAP-002',
+    name: 'Bolígrafos x3',
+    category: 'Papelería',
+    price: 4_100,
+    image: 'catalog/boligrafos.jpg',
+  },
+  // ── Bodega en bolívares (VES, céntimos) ──
+  {
+    sku: 'VE-CAF-250',
+    name: 'Café molido',
+    variantLabel: '250 g',
+    category: 'Abarrotes',
+    price: 42_000,
+    currency: 'VES',
+    image: 'catalog/cafe-grano.jpg',
+    stock: 14,
+  },
+  {
+    sku: 'VE-CAF-500',
+    name: 'Café molido',
+    variantOf: 'VE-CAF-250',
+    variantLabel: '500 g',
+    category: 'Abarrotes',
+    price: 79_000,
+    currency: 'VES',
+    image: 'catalog/cafe-grano.jpg',
+    stock: 6,
+  },
+  {
+    sku: 'VE-HAR-1K',
+    name: 'Harina de maíz 1 kg',
+    category: 'Abarrotes',
+    price: 17_550,
+    currency: 'VES',
+    stock: 30,
+  },
+  {
+    sku: 'VE-QUE-1K',
+    name: 'Queso blanco 1 kg',
+    category: 'Frescos',
+    price: 115_000,
+    currency: 'VES',
+    image: 'catalog/queso.jpg',
+    stock: 3,
+  },
+  {
+    sku: 'VE-HUE-30',
+    name: 'Huevos (cartón de 30)',
+    category: 'Frescos',
+    price: 98_000,
+    currency: 'VES',
+    image: 'catalog/huevos.jpg',
+    stock: 0,
+  },
+  {
+    sku: 'VE-PLA-1K',
+    name: 'Plátanos 1 kg',
+    category: 'Frescos',
+    price: 16_000,
+    currency: 'VES',
+    image: 'catalog/platanos.jpg',
+    stock: 40,
+  },
+  {
+    sku: 'VE-PAN-01',
+    name: 'Pan campesino',
+    category: 'Frescos',
+    price: 23_050,
+    currency: 'VES',
+    image: 'catalog/pan.jpg',
+  },
+  {
+    sku: 'VE-AGU-600',
+    name: 'Agua mineral 600 ml',
+    category: 'Bebidas',
+    price: 9_500,
+    currency: 'VES',
+    image: 'catalog/agua.jpg',
+    stock: 48,
+  },
+  {
+    sku: 'VE-JUG-1L',
+    name: 'Jugo de naranja 1 L',
+    category: 'Bebidas',
+    price: 31_000,
+    currency: 'VES',
+    image: 'catalog/jugo-naranja.jpg',
+  },
+  {
+    sku: 'VE-REF-2L',
+    name: 'Refresco 2 L',
+    category: 'Bebidas',
+    price: 36_500,
+    currency: 'VES',
+    image: 'catalog/refresco.jpg',
+  },
+  {
+    sku: 'VE-CUA-100',
+    name: 'Cuaderno 100 hojas',
+    category: 'Papelería',
+    price: 28_000,
+    currency: 'VES',
+    image: 'catalog/cuaderno.jpg',
+  },
+  {
+    sku: 'VE-BOL-3',
+    name: 'Bolígrafos x3',
+    category: 'Papelería',
+    price: 15_000,
+    currency: 'VES',
+    image: 'catalog/boligrafos.jpg',
+  },
 ];
 
 export interface SeedReport {
@@ -137,11 +303,14 @@ export async function seedDemo(env: string, pools: SeedPools): Promise<SeedRepor
       [seedUuid(`category:${name}`), DEMO.organizationId, name]
     );
   }
-  for (const p of DEMO_PRODUCTS) {
+  // Bases antes que variantes (el motor exige que la base exista).
+  const ordered = [...DEMO_PRODUCTS].sort((a, b) => Number(!!a.variantOf) - Number(!!b.variantOf));
+  for (const p of ordered) {
     await pools.admin.query(
       `INSERT INTO catalog_products
-         (id, tenant_id, category_id, name, sku, price, currency, available)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+         (id, tenant_id, category_id, name, sku, price, currency, available, image_ref,
+          variant_of, variant_label, track_stock)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT DO NOTHING`,
       [
         seedUuid(`product:${p.sku}`),
         DEMO.organizationId,
@@ -149,8 +318,27 @@ export async function seedDemo(env: string, pools: SeedPools): Promise<SeedRepor
         p.name,
         p.sku,
         p.price,
-        DEMO.currency,
+        p.currency ?? DEMO.currency,
         p.available ?? true,
+        p.image ?? null,
+        p.variantOf ? seedUuid(`product:${p.variantOf}`) : null,
+        p.variantLabel ?? null,
+        p.stock !== undefined,
+      ]
+    );
+  }
+  // Existencias iniciales: una ENTRADA por producto con id fijo (re-ejecutar
+  // no suma: ON CONFLICT no inserta y el nivel solo lo mueve un movimiento).
+  for (const p of DEMO_PRODUCTS) {
+    if (!p.stock) continue;
+    await pools.admin.query(
+      `INSERT INTO inventory_movements (id, tenant_id, product_id, kind, quantity, reason)
+       VALUES ($1, $2, $3, 'receipt', $4, 'Inventario inicial (demo)') ON CONFLICT (id) DO NOTHING`,
+      [
+        seedUuid(`stock:initial:${p.sku}`),
+        DEMO.organizationId,
+        seedUuid(`product:${p.sku}`),
+        p.stock,
       ]
     );
   }

@@ -25,7 +25,19 @@ import type { InitialMerchant, InitialOrganization } from './resolve';
 
 // Espejo de CURRENCY_CODES de @fluvia/money (el dashboard no depende del
 // paquete; el API valida la lista real y rechaza monedas ajenas).
-const CURRENCY_OPTIONS = ['COP', 'USD', 'EUR', 'GBP', 'MXN', 'BRL', 'ARS', 'PEN', 'CLP', 'JPY'];
+const CURRENCY_OPTIONS = [
+  'COP',
+  'USD',
+  'VES',
+  'EUR',
+  'GBP',
+  'MXN',
+  'BRL',
+  'ARS',
+  'PEN',
+  'CLP',
+  'JPY',
+];
 
 type Step = 'org' | 'merchant';
 type Phase = 'idle' | 'submitting' | 'success';

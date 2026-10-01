@@ -1,5 +1,6 @@
 import { orgContext } from '../../../../lib/org-context';
 import { orgPath, readApi, type OrderDetail } from '../../../../lib/commerce-api';
+import { CancelOrder } from '../../../../lib/cancel-order';
 import { OrderLinesTable } from '../../../../lib/order-summary';
 import {
   Callout,
@@ -9,6 +10,7 @@ import {
   ReadProblem,
   SELL_ROLES,
   ShortId,
+  Status,
   dateTime,
   money,
 } from '../../../../lib/ui';
@@ -49,7 +51,8 @@ export default async function OrderPage({
       <PageHead
         id="order-title"
         title={`Venta #${ord.number}`}
-        description={`${dateTime(ord.created_at)} · ${ord.merchant_name ?? 'Comercio'}`}
+        eyebrow={<OrderState state={pay.state} />}
+        description={`${dateTime(ord.created_at)} · ${ord.merchant_name ?? 'Comercio'} · ${money(ord.total, ord.currency)}`}
         crumb={{ href: `${o}/orders`, label: 'Ventas' }}
         actions={
           <>
@@ -88,6 +91,14 @@ export default async function OrderPage({
         }
       />
 
+      {ord.cancellation ? (
+        <Callout tone="info" title="Venta anulada" role="status">
+          <p>
+            {dateTime(ord.cancellation.created_at)} · Motivo: {ord.cancellation.reason}. Sus
+            checkouts ya no pueden cobrar y las existencias reservadas se liberaron.
+          </p>
+        </Callout>
+      ) : null}
       {pay.state === 'payment_in_progress' ? (
         <Callout tone="warn" title="Cobro en curso o sin confirmar" role="status">
           <p>
@@ -184,6 +195,96 @@ export default async function OrderPage({
               )}
             </div>
           </section>
+          {ord.stock.length > 0 ? (
+            <section className="fx-panel" aria-labelledby="stock-title">
+              <header>
+                <h2 id="stock-title">Existencias</h2>
+              </header>
+              <div className="fx-panel-body">
+                <ul className="fx-feed">
+                  {ord.stock.map((s) => {
+                    const line = ord.lines.find((l) => l.product_id === s.product_id);
+                    return (
+                      <li key={s.product_id}>
+                        <a href={`${o}/catalog/${s.product_id}`}>
+                          {line
+                            ? `${line.name}${line.variant_label ? ` · ${line.variant_label}` : ''}`
+                            : 'Producto'}
+                        </a>
+                        <span className="amt">{s.quantity} u.</span>
+                        <span style={{ gridColumn: '1 / -1' }}>
+                          {s.status === 'sold' ? (
+                            <Status tone="ok" code="sold">
+                              Descontadas (cobro confirmado)
+                            </Status>
+                          ) : s.status === 'released' ? (
+                            <Status tone="neutral" code="released">
+                              Liberadas (venta anulada)
+                            </Status>
+                          ) : (
+                            <Status tone="warn" code="reserved">
+                              Reservadas hasta el cobro
+                            </Status>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </section>
+          ) : null}
+          <section className="fx-panel" aria-labelledby="tl-title">
+            <header>
+              <h2 id="tl-title">Historial</h2>
+            </header>
+            <div className="fx-panel-body">
+              <ol className="fx-timeline">
+                <li>
+                  <strong>Venta registrada</strong>
+                  <span>
+                    {dateTime(ord.created_at)} · {ord.line_count}{' '}
+                    {ord.line_count === 1 ? 'línea' : 'líneas'}
+                  </span>
+                </li>
+                {pay.checkout_count > 0 ? (
+                  <li style={{ ['--tone' as string]: 'var(--fx-sun)' }}>
+                    <strong>
+                      {pay.checkout_count}{' '}
+                      {pay.checkout_count === 1 ? 'checkout abierto' : 'checkouts abiertos'}
+                    </strong>
+                    <span>Enlaces de cobro de esta venta</span>
+                  </li>
+                ) : null}
+                {charged ? (
+                  <li style={{ ['--tone' as string]: 'var(--fx-ok)' }}>
+                    <strong>Cobro confirmado</strong>
+                    <span>
+                      {pay.amount_refunded > 0
+                        ? `Devuelto ${money(pay.amount_refunded, ord.currency)}`
+                        : 'Sin devoluciones'}
+                    </span>
+                  </li>
+                ) : null}
+                {ord.cancellation ? (
+                  <li style={{ ['--tone' as string]: 'var(--fx-line-strong)' }}>
+                    <strong>Venta anulada</strong>
+                    <span>
+                      {dateTime(ord.cancellation.created_at)} · {ord.cancellation.reason}
+                    </span>
+                  </li>
+                ) : null}
+              </ol>
+            </div>
+          </section>
+          {canSell && pay.state === 'awaiting_payment' && !planBlocks ? (
+            <section aria-label="Anular la venta">
+              <CancelOrder orgId={orgId} orderId={ord.id} number={ord.number} />
+              <p className="fx-hint" style={{ marginTop: 6 }}>
+                Solo ventas sin cobro en curso ni hecho.
+              </p>
+            </section>
+          ) : null}
         </div>
       </div>
     </main>

@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatAmount, MESSAGES, type Locale } from './messages';
-import {
-  InstallmentsOption,
-  OrderSummary,
-  PlanBox,
-  type CheckoutOrderView,
-} from './order-panels';
+import { InstallmentsOption, OrderSummary, PlanBox, type CheckoutOrderView } from './order-panels';
 
 /**
  * Página de checkout alojada (F3-05c-iv). Consume los route handlers
@@ -34,10 +29,7 @@ type Phase = 'loading' | 'ready' | 'paying' | 'uncertain' | 'error' | 'not_found
 // Pedido de la compra (venta con productos). `none`: venta de importe libre
 // (sin pedido); `error`: no se pudo leer — el pago sigue siendo posible.
 type OrderRead =
-  | { kind: 'idle' }
-  | { kind: 'none' }
-  | { kind: 'error' }
-  | { kind: 'ok'; view: CheckoutOrderView };
+  { kind: 'idle' } | { kind: 'none' } | { kind: 'error' } | { kind: 'ok'; view: CheckoutOrderView };
 
 const PENDING_POLL_MS = 3000;
 const PENDING_MAX_POLLS = 40;
@@ -127,7 +119,11 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         // tiene otro pago. Se relee la vista, que lo explica sin formulario.
         const code = ((await res.json().catch(() => null)) as { error?: { code?: string } } | null)
           ?.error?.code;
-        if (code === 'sale_already_charged' || code === 'installment_plan_active') {
+        if (
+          code === 'sale_already_charged' ||
+          code === 'installment_plan_active' ||
+          code === 'order_cancelled'
+        ) {
           await load();
           statusRef.current?.focus();
           return;
@@ -221,7 +217,9 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   // Plan de cuotas SIMULADO vivo: la compra no se paga con otro método (lo
   // impide el servidor) y tampoco queda pagada.
   const planActive = plan !== null && plan.status !== 'declined';
-  const canPay = view.status === 'open' && !failed && !pending && !saleClosed && !planActive;
+  const cancelled = orderView?.order.cancelled === true && !done;
+  const canPay =
+    view.status === 'open' && !failed && !pending && !saleClosed && !planActive && !cancelled;
   const planHref = `/c/${sessionId}/cuotas${locale === 'en' ? '?lang=en' : ''}#${encodeURIComponent(clientSecret())}`;
 
   let statusMessage = t.statusOpen;
@@ -229,31 +227,53 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   else if (expired) statusMessage = t.statusExpired;
   else if (failed) statusMessage = t.paymentFailed;
   else if (pending) statusMessage = t.paymentPending;
+  else if (cancelled) statusMessage = t.saleCancelled;
   else if (saleClosed) statusMessage = t.saleClosed;
+  const tone = done
+    ? 'ok'
+    : expired || failed
+      ? 'bad'
+      : saleClosed || cancelled || pending
+        ? 'warn'
+        : 'neutral';
+  const merchant = orderView?.order.merchant_name ?? null;
 
   return (
     <main className="checkout" aria-labelledby="checkout-title">
-      <h1 id="checkout-title">{t.title}</h1>
-
-      {orderView ? <OrderSummary view={orderView} locale={locale} receipt={done} /> : null}
+      <header className="co-head">
+        <BrandMark />
+        <div>
+          {merchant ? (
+            <p className="co-merchant">
+              <span className="co-muted">{t.payTo}</span> {merchant}
+            </p>
+          ) : null}
+          <h1 id="checkout-title">{t.title}</h1>
+        </div>
+      </header>
 
       <p className="amount">
         <span className="amount-label">{t.amountLabel}</span>
         <span className="amount-value" data-testid="amount">
-          {formatAmount(view.payment_intent.amount, view.payment_intent.currency, locale)}
+          {formatAmount(view.payment_intent.amount, view.payment_intent.currency, locale, {
+            code: true,
+          })}
         </span>
       </p>
 
       <p
         ref={statusRef}
         tabIndex={-1}
-        className={`status status-${done ? 'ok' : expired || failed ? 'bad' : saleClosed ? 'warn' : 'neutral'}`}
+        className={`status status-${tone}`}
         role="status"
         aria-live="polite"
         data-testid="status"
       >
-        {statusMessage}
+        <StatusIcon tone={tone} />
+        <span>{statusMessage}</span>
       </p>
+
+      {orderView ? <OrderSummary view={orderView} locale={locale} receipt={done} /> : null}
 
       {pending && (
         <button
@@ -278,7 +298,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
           <fieldset>
             <legend>{t.methodLegend}</legend>
             {METHOD_TOKENS.map((m) => (
-              <label key={m.token} className="method">
+              <label key={m.token} className="method" data-checked={token === m.token}>
                 <input
                   type="radio"
                   name="method"
@@ -306,7 +326,62 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         />
       ) : null}
 
-      <p className="notice">{t.sandboxNotice}</p>
+      <footer className="co-foot">
+        <p className="notice">{t.sandboxNotice}</p>
+        <p className="co-muted co-secured">
+          <BrandMark size={16} /> {t.securedBy}
+        </p>
+      </footer>
     </main>
+  );
+}
+
+function BrandMark({ size = 36 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect width="32" height="32" rx="9" fill="#f3e7d1" />
+      <path
+        d="M6 12c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 18c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0"
+        fill="none"
+        stroke="#0b6b6b"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6 24c3.3-2.7 6.7-2.7 10 0"
+        fill="none"
+        stroke="#e9a23b"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function StatusIcon({ tone }: { tone: 'ok' | 'bad' | 'warn' | 'neutral' }) {
+  const d =
+    tone === 'ok'
+      ? 'M5 12.5 10 17l9-10'
+      : tone === 'bad'
+        ? 'M6 6l12 12M18 6 6 18'
+        : tone === 'warn'
+          ? 'M12 3 2 20h20zM12 10v4m0 3v.5'
+          : 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-13v5l3 2';
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      className="status-ico"
+    >
+      <path d={d} />
+    </svg>
   );
 }
