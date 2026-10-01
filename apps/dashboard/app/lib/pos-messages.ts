@@ -40,6 +40,9 @@ export interface PosMessages {
   openUncertainTitle: string;
   openUncertainText: string;
   openAgain: string;
+  readyTitle: string;
+  readyText: string;
+  readyOpen: string;
   errorCodes: Record<string, string>;
   presentTitle: string;
   presentText: string;
@@ -177,6 +180,10 @@ const ES: PosMessages = {
   openUncertainText:
     'La venta existe, pero se perdió la respuesta al abrir el checkout. Un checkout abierto y no pagado no cobra nada y expira solo. Puedes abrir uno nuevo para esta venta.',
   openAgain: 'Abrir un checkout nuevo para esta venta',
+  readyTitle: 'Venta lista para cobrar',
+  readyText:
+    'Abre el checkout y muéstraselo al cliente. La venta solo admite un cobro: aunque se abra otro checkout, el sistema impide cobrarla dos veces.',
+  readyOpen: 'Abrir checkout del cliente',
   errorCodes: {
     validation_error: 'Datos no válidos. Revisa el importe y la moneda.',
     invalid_session: 'Tu sesión caducó. Vuelve a iniciar sesión.',
@@ -376,6 +383,10 @@ const EN: PosMessages = {
   openUncertainText:
     'The sale exists, but the response to opening the checkout was lost. An open, unpaid checkout charges nothing and expires on its own. You can open a new one for this sale.',
   openAgain: 'Open a new checkout for this sale',
+  readyTitle: 'Sale ready to charge',
+  readyText:
+    'Open the checkout and show it to the customer. The sale accepts a single charge: even if another checkout is opened, the system prevents charging it twice.',
+  readyOpen: 'Open customer checkout',
   errorCodes: {
     validation_error: 'Invalid data. Check the amount and currency.',
     invalid_session: 'Your session expired. Sign in again.',

@@ -22,6 +22,7 @@ export function PosWorkspace({
   allMerchants,
   canCharge,
   resume,
+  startLink,
   recent,
 }: {
   orgId: string;
@@ -30,6 +31,8 @@ export function PosWorkspace({
   allMerchants: Array<{ id: string; name: string }>;
   canCharge: boolean;
   resume?: { sessionId: string; linkId: string | null };
+  /** Venta (pedido) creada fuera del terminal, lista para abrir su checkout. */
+  startLink?: { linkId: string; amount: number; currency: string };
   recent: RecentChargesResult;
 }) {
   const [track, setTrack] = useState<{
@@ -95,6 +98,7 @@ export function PosWorkspace({
         merchants={merchants}
         canCharge={canCharge}
         resume={track ? { sessionId: track.sessionId, linkId: track.linkId } : undefined}
+        startLink={track ? undefined : startLink}
         onActivity={onActivity}
       />
       <PosRecentCharges

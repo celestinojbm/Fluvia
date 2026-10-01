@@ -64,11 +64,7 @@ export interface Category {
 }
 
 export type OrderPaymentState =
-  | 'awaiting_payment'
-  | 'payment_in_progress'
-  | 'paid'
-  | 'partially_refunded'
-  | 'refunded';
+  'awaiting_payment' | 'payment_in_progress' | 'paid' | 'partially_refunded' | 'refunded';
 
 export interface OrderLine {
   position: number;

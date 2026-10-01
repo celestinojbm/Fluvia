@@ -820,6 +820,10 @@ a.btn {
   color: #5c3d00; /* 8.6:1 sobre #fff4d6 */
   background: #fff4d6;
 }
+.pos-alert-info {
+  color: #073c43; /* 11:1 sobre #e3f1f2 */
+  background: #e3f1f2;
+}
 .pos-amount-display {
   margin: 0 0 0.75rem;
   font-size: 2.25rem;

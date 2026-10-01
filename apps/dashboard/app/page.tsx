@@ -27,11 +27,7 @@ export default async function HomePage({
   return (
     <main className="picker" aria-labelledby="orgs-title">
       <h1 id="orgs-title">{t.orgsTitle}</h1>
-      {orgs.length === 0 ? (
-        <NoOrgCta locale={locale} />
-      ) : (
-        <OrgList orgs={orgs} locale={locale} />
-      )}
+      {orgs.length === 0 ? <NoOrgCta locale={locale} /> : <OrgList orgs={orgs} locale={locale} />}
       <p>
         <a className="signout" href="/logout">
           {t.signOut}
