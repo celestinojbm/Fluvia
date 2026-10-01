@@ -234,7 +234,11 @@ export function registerPersonalRoutes(
       p.credit.listApplications(tenantId, { consumerId }, consumerId),
     ]);
     const recent = balances.length
-      ? await p.wallet.statement(tenantId, consumerId, balances[0]!.currency, { limit: 6 })
+      ? // Las reservas internas («retenido») no son actividad para el cliente:
+        // la compra ya aparece como salida de su saldo disponible.
+        (await p.wallet.statement(tenantId, consumerId, balances[0]!.currency, { limit: 20 }))
+          .filter((l) => l.account !== 'held')
+          .slice(0, 6)
       : [];
     return snake({
       balances,

@@ -601,3 +601,18 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Los elementos de rejilla no deben crecer con su contenido (tablas apiladas
+   con claves largas a 390 px): se encogen y el texto largo se parte. */
+.ox-360 > *,
+.ox-main > * {
+  min-width: 0;
+}
+.ox-table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .ox-table.is-stack td > * {
+    min-width: 0;
+  }
+}

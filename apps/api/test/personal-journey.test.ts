@@ -439,6 +439,8 @@ describe('recorrido de aceptación completo', () => {
       url: `/v1/programs/${program}/consumers/${c.id}`,
       headers: opSupport.headers,
     });
+    const ids = detail.json().audit.map((a: { id: string }) => Number(a.id));
+    expect(ids).toEqual([...ids].sort((x, y) => y - x)); // cronológico, más reciente primero
     const actions = detail.json().audit.map((a: { action: string }) => a.action);
     expect(actions).toEqual(
       expect.arrayContaining([

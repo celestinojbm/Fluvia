@@ -255,7 +255,7 @@ export class OperationsService {
                  OR resource_id IN (SELECT id::text FROM cards WHERE consumer_id = $2)
                  OR resource_id IN (SELECT id::text FROM card_authorizations WHERE consumer_id = $2)
                  OR resource_id IN (SELECT id::text FROM credit_lines WHERE consumer_id = $2))
-          ORDER BY id DESC LIMIT 100`,
+          ORDER BY audit_events.id DESC LIMIT 100`,
         [tenantId, consumerId]
       );
       return res.rows.map((r) => ({
