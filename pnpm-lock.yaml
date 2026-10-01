@@ -71,6 +71,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../../packages/personal
       '@fluvia/reconciliation':
         specifier: workspace:*
         version: link:../../packages/reconciliation

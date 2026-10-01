@@ -30,6 +30,8 @@ import {
   PayoutService,
   RefundService,
   ResilientProvider,
+  SqlProviderOperationStore,
+  UncertainPaymentResolver,
   isSaleReleaseUnverified,
   isSingleChargeViolation,
 } from '@fluvia/payments-core';
@@ -45,6 +47,12 @@ import {
   isOrderCancelled,
 } from '@fluvia/commerce';
 import { MetricsRegistry } from '@fluvia/observability';
+import {
+  FluviaCardNetwork,
+  FluviaRoutingProvider,
+  createPersonalServices,
+  type PersonalServices,
+} from '@fluvia/personal';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
 import type { RateLimiter } from './rate-limit.js';
 import { registerAccountRoutes, registerOrganizationRoutes } from './routes/organizations.js';
@@ -66,6 +74,8 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
+import { registerPersonalRoutes } from './routes/personal.js';
+import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
 import { findCardData } from './card-data-guard.js';
@@ -83,6 +93,11 @@ export interface BuildAppOptions {
   adminPool?: Pool;
   /** Servicio de autenticacion (pool fluvia_auth). Opcional en tests de plataforma. */
   authService?: AuthService;
+  /**
+   * Jornada integral: pool fluvia_auth para las credenciales y sesiones del
+   * CLIENTE de Fluvia Personal. Sin él, las rutas del programa no se registran.
+   */
+  authPool?: Pool;
   identityService?: IdentityService;
   apiKeyService?: ApiKeyService;
   /** Override de limites de tasa de /v1/auth/* (tests usan ventanas cortas). */
@@ -138,6 +153,7 @@ export function buildApp({
   appPool,
   adminPool,
   authService,
+  authPool,
   identityService,
   apiKeyService,
   authRateLimits,
@@ -304,7 +320,24 @@ export function buildApp({
     // adapters reales llegan en Fase 5 tras la matriz de jurisdiccion. F3-04:
     // timeout real + circuit breaker alrededor de CUALQUIER adapter — un solo
     // proveedor comparte circuito entre confirm y refund.
-    const provider = new ResilientProvider(new MockPaymentProvider());
+    //
+    // Jornada integral: el MockProvider REGISTRA sus decisiones (proveedor
+    // simulado consultable: los inciertos se resuelven por consulta, no por
+    // suposición) y, si hay organización programa configurada, un proveedor de
+    // ENRUTAMIENTO manda los códigos `fcp_` de Fluvia Personal a la red Fluvia
+    // simulada. Para el resto de tokens el comportamiento es el de siempre.
+    const personal: PersonalServices | undefined = authPool
+      ? createPersonalServices({ app: appPool, auth: authPool })
+      : undefined;
+    const simulatedProvider = new MockPaymentProvider(new SqlProviderOperationStore(appPool));
+    const routedProvider =
+      personal && config.programTenantId
+        ? new FluviaRoutingProvider(
+            simulatedProvider,
+            new FluviaCardNetwork(config.programTenantId, personal.authorizations)
+          )
+        : simulatedProvider;
+    const provider = new ResilientProvider(routedProvider);
     const idempotencyService = new IdempotencyService(appPool, {
       retentionHours: config.idempotencyRetentionHours,
     });
@@ -423,6 +456,24 @@ export function buildApp({
       summaryService: new SummaryService(appPool),
       installmentService: new InstallmentSandboxService(appPool, orderService),
       inventoryService: new InventoryService(appPool),
+    });
+    // Jornada integral: Fluvia Personal (plano del cliente) y Fluvia
+    // Operaciones (plano de operador sobre la organización programa), más la
+    // resolución verificable de cobros/devoluciones inciertos del comercio.
+    const merchantResolver = new UncertainPaymentResolver(
+      appPool,
+      routedProvider,
+      confirmationService,
+      refundService
+    );
+    if (personal) {
+      registerPersonalRoutes(app, { personal });
+    }
+    registerProgramOpsRoutes(app, {
+      security,
+      personal: personal ?? createPersonalServices({ app: appPool, auth: appPool }),
+      merchantResolver,
+      sandboxSimulation: config.env === 'local' || config.env === 'test',
     });
   }
 

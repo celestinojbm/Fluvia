@@ -38,6 +38,7 @@
     "@fluvia/observability": "workspace:*",
     "@fluvia/outbox": "workspace:*",
     "@fluvia/payments-core": "workspace:*",
+    "@fluvia/personal": "workspace:*",
     "@fluvia/reconciliation": "workspace:*",
     "@fluvia/webhooks": "workspace:*",
     "fastify": "^5.12.5",

@@ -75,6 +75,7 @@ export const AUDIT_ACTIONS = [
   'consumer.login_succeeded',
   'consumer.login_failed',
   'consumer.logout',
+  'consumer.status_changed',
   'wallet.funding_requested',
   'wallet.funding_confirmed',
   'wallet.funding_failed',

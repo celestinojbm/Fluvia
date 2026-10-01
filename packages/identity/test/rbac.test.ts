@@ -24,6 +24,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': true,
     'reconciliation:manage': true,
+    'program:read': true,
+    'program:credit_manage': true,
+    'program:cards_manage': true,
+    'program:cases_manage': true,
   },
   admin: {
     'org:read': true,
@@ -36,6 +40,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': true,
     'reconciliation:manage': true,
+    'program:read': true,
+    'program:credit_manage': true,
+    'program:cards_manage': true,
+    'program:cases_manage': true,
   },
   developer: {
     'org:read': true,
@@ -48,6 +56,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': true,
     'reconciliation:manage': false,
+    'program:read': false,
+    'program:credit_manage': false,
+    'program:cards_manage': false,
+    'program:cases_manage': false,
   },
   finance: {
     'org:read': true,
@@ -60,6 +72,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': false,
     'reconciliation:manage': true,
+    'program:read': true,
+    'program:credit_manage': true,
+    'program:cards_manage': false,
+    'program:cases_manage': true,
   },
   support: {
     'org:read': true,
@@ -72,6 +88,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': false,
     'reconciliation:manage': false,
+    'program:read': true,
+    'program:credit_manage': false,
+    'program:cards_manage': true,
+    'program:cases_manage': true,
   },
   analyst: {
     'org:read': true,
@@ -84,6 +104,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': false,
     'reconciliation:manage': false,
+    'program:read': true,
+    'program:credit_manage': false,
+    'program:cards_manage': false,
+    'program:cases_manage': false,
   },
   read_only: {
     'org:read': true,
@@ -96,6 +120,10 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'payments:read': true,
     'webhooks:manage': false,
     'reconciliation:manage': false,
+    'program:read': true,
+    'program:credit_manage': false,
+    'program:cards_manage': false,
+    'program:cases_manage': false,
   },
 };
 

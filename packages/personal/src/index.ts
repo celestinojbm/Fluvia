@@ -14,6 +14,7 @@ import { ConsumerAuthService } from './consumer-auth.js';
 import { CollateralService, CreditService } from './credit.js';
 import { ProgramReconciliationService, ProviderEventService } from './events.js';
 import { ProgramService } from './program.js';
+import { OperationsService } from './operations.js';
 import { WalletService } from './wallet.js';
 
 export * from './errors.js';
@@ -29,6 +30,7 @@ export * from './authorizations.js';
 export * from './cases.js';
 export * from './events.js';
 export * from './network.js';
+export * from './operations.js';
 
 export interface PersonalServices {
   programs: ProgramService;
@@ -41,6 +43,7 @@ export interface PersonalServices {
   cases: CaseService;
   events: ProviderEventService;
   reconciliation: ProgramReconciliationService;
+  operations: OperationsService;
   posting: ProgramPostingService;
   issuer: CardIssuerAdapter;
   funding: FundingProviderAdapter;
@@ -73,6 +76,7 @@ export function createPersonalServices(
     cases: new CaseService(pools.app),
     events: new ProviderEventService(pools.app, { wallet, authorizations, cards }),
     reconciliation: new ProgramReconciliationService(pools.app),
+    operations: new OperationsService(pools.app),
     posting,
     issuer,
     funding,

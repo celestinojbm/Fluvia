@@ -29,6 +29,12 @@ Implementado: registro con verificación de email (token un solo uso, hash en BD
 | payments:read         |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
 | webhooks:manage       |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
 | reconciliation:manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
+| program:read          |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ✅    |    ✅     |
+| program:credit_manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
+| program:cards_manage  |  ✅   |  ✅   |    ❌     |   ❌    |   ✅    |   ❌    |    ❌     |
+| program:cases_manage  |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ❌    |    ❌     |
+
+**`program:*` (jornada integral, Fluvia Operaciones)**: permisos sobre la organización PROGRAMA de Fluvia Personal (`/v1/programs/:orgId/*`). `program:read` investiga clientes, crédito, tarjetas, transacciones, eventos y casos; `program:credit_manage` decide revisiones, cambia límites y estados de línea, crea/activa políticas y propone/aprueba la aplicación de garantía; `program:cards_manage` bloquea/desbloquea/cierra tarjetas y avanza envíos; `program:cases_manage` trabaja casos y resuelve inciertos por consulta verificada. Las acciones que mueven dinero o cambian riesgo exigen además **step-up** y, para activar políticas o aplicar garantía, **doble aprobación** por identidad (CHECK en BD, 0052). El CLIENTE (consumidor) no es miembro de ninguna organización: se autentica con credenciales y sesiones propias (`fluvia_csess_`) y nunca alcanza estas rutas.
 
 El test `packages/identity/test/rbac.test.ts` verifica la matriz completa celda a celda; un cambio en código sin actualizar la matriz esperada rompe CI. La matriz crecerá con cada dominio nuevo (pagos, refunds, webhooks) en el mismo PR que exponga los endpoints.
 

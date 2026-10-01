@@ -25,6 +25,10 @@ export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readon
     'payments:read',
     'webhooks:manage',
     'reconciliation:manage',
+    'program:read',
+    'program:credit_manage',
+    'program:cards_manage',
+    'program:cases_manage',
   ],
   admin: [
     'org:read',
@@ -37,6 +41,10 @@ export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readon
     'payments:read',
     'webhooks:manage',
     'reconciliation:manage',
+    'program:read',
+    'program:credit_manage',
+    'program:cards_manage',
+    'program:cases_manage',
   ],
   finance: [
     'org:read',
@@ -46,6 +54,9 @@ export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readon
     'audit:read',
     'payments:read',
     'reconciliation:manage',
+    'program:read',
+    'program:credit_manage',
+    'program:cases_manage',
   ],
   developer: [
     'org:read',
@@ -56,9 +67,24 @@ export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readon
     'payments:read',
     'webhooks:manage',
   ],
-  support: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
-  analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read', 'payments:read'],
-  read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
+  support: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'payments:read',
+    'program:read',
+    'program:cards_manage',
+    'program:cases_manage',
+  ],
+  analyst: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'audit:read',
+    'payments:read',
+    'program:read',
+  ],
+  read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read', 'program:read'],
 };
 
 /** Capacidades de producto ↔ permiso que las protege en el servidor. */
@@ -69,4 +95,14 @@ export const CAPABILITIES: Array<{ label: string; permission: string }> = [
   { label: 'Ver auditoría', permission: 'audit:read' },
   { label: 'Gestionar API keys', permission: 'keys:manage' },
   { label: 'Gestionar webhooks', permission: 'webhooks:manage' },
+  { label: 'Operaciones: consultar clientes, crédito y tarjetas', permission: 'program:read' },
+  {
+    label: 'Operaciones: decidir crédito, límites y garantías',
+    permission: 'program:credit_manage',
+  },
+  {
+    label: 'Operaciones: bloquear tarjetas y gestionar envíos',
+    permission: 'program:cards_manage',
+  },
+  { label: 'Operaciones: trabajar casos e inciertos', permission: 'program:cases_manage' },
 ];

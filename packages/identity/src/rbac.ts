@@ -37,6 +37,15 @@ export const PERMISSIONS = [
   // (aprobador != proponente) se exige por identidad, no por permiso. Solo roles
   // que gobiernan el dinero/conciliación (owner/admin/finance).
   'reconciliation:manage',
+  // Jornada integral — Fluvia Operaciones (organización PROGRAMA). Lectura de
+  // clientes, crédito, tarjetas y casos; gestión de crédito (límites,
+  // revisiones, políticas, garantía), de tarjetas (bloqueos, envíos) y de
+  // casos. Las acciones sensibles exigen además step-up y, donde aplica,
+  // doble aprobación por identidad (no por permiso).
+  'program:read',
+  'program:credit_manage',
+  'program:cards_manage',
+  'program:cases_manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -62,10 +71,28 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'audit:read',
     'payments:read',
     'reconciliation:manage',
+    'program:read',
+    'program:credit_manage',
+    'program:cases_manage',
   ],
-  support: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
-  analyst: ['org:read', 'members:read', 'merchants:read', 'audit:read', 'payments:read'],
-  read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read'],
+  support: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'payments:read',
+    'program:read',
+    'program:cards_manage',
+    'program:cases_manage',
+  ],
+  analyst: [
+    'org:read',
+    'members:read',
+    'merchants:read',
+    'audit:read',
+    'payments:read',
+    'program:read',
+  ],
+  read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read', 'program:read'],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {
