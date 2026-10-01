@@ -1,6 +1,11 @@
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
-import { apiBase, canResendRole, fetchOrganizations, fetchWebhookEvent } from '../../../../lib/api';
+import {
+  apiBase,
+  canResendRole,
+  fetchOrganizations,
+  fetchWebhookEvent,
+} from '../../../../lib/api';
 import { WebhookEventDetailView } from '../../../../lib/webhook-events-view';
 import { normalizeLocale } from '../../../../messages';
 
