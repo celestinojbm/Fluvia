@@ -14,7 +14,8 @@ export async function proxyCheckout(
   path: string,
   method: 'GET' | 'POST'
 ): Promise<NextResponse> {
-  if (!UUID_RE.test(id)) return NextResponse.json({ error: { code: 'not_found' } }, { status: 404 });
+  if (!UUID_RE.test(id))
+    return NextResponse.json({ error: { code: 'not_found' } }, { status: 404 });
   const secret = req.headers.get('x-checkout-client-secret') ?? '';
   const headers: Record<string, string> = { 'x-checkout-client-secret': secret };
   let body: string | undefined;

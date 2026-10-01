@@ -146,14 +146,16 @@ export const INSTALLMENTS_MESSAGES: Record<Locale, InstallmentsMessages> = {
     acceptRequired: 'You must explicitly accept to continue.',
     confirm: 'Confirm installment plan',
     confirming: 'Confirming…',
-    uncertain: 'We could not confirm whether the plan was recorded. Do not repeat it blindly: check.',
+    uncertain:
+      'We could not confirm whether the plan was recorded. Do not repeat it blindly: check.',
     notAllowed:
       'This purchase no longer accepts an installment plan (a payment is in progress or a plan exists).',
     planTitle: 'Your installment plan (simulation)',
     planApproved: 'Plan approved by the simulated provider.',
     planDeclined: 'The simulated provider declined the plan. You can pay with another method.',
     planPending: 'Plan pending review by the simulated provider.',
-    planNotPaid: 'Important: this plan does not pay the purchase. It is a simulation; no money moves.',
+    planNotPaid:
+      'Important: this plan does not pay the purchase. It is a simulation; no money moves.',
     planLink: 'View my plan',
     cardBlocked: 'While the plan is pending or approved, this purchase cannot be paid another way.',
     statusScheduled: 'Scheduled',
