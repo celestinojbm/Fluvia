@@ -393,7 +393,7 @@ export function SellWorkspace({
                 </p>
               </div>
               {currencies.length > 1 ? (
-                <div className="fx-field" style={{ flex: '0 1 12rem' }}>
+                <div className="fx-field" style={{ flex: '0 1 9rem' }}>
                   <label htmlFor="s-cur">Moneda</label>
                   <select
                     id="s-cur"
@@ -404,8 +404,8 @@ export function SellWorkspace({
                     aria-describedby="s-cur-hint"
                   >
                     {currencies.map((c) => (
-                      <option key={c} value={c}>
-                        {c} · {currencyName(c, 'es')}
+                      <option key={c} value={c} title={currencyName(c, 'es')}>
+                        {c}
                       </option>
                     ))}
                   </select>
@@ -789,8 +789,11 @@ function ProductCard({
                     out ? ', agotado' : ''
                   }${inCart ? `, ${inCart} en el carrito` : ''}`}
                 >
-                  {m.variant_label ?? m.name} · {fmt(m.price, m.currency)}
-                  {out ? ' · agotado' : inCart ? ` · ×${inCart}` : ''}
+                  <span>
+                    {m.variant_label ?? m.name}
+                    {out ? ' · agotado' : inCart ? ` · ×${inCart}` : ''}
+                  </span>
+                  <span>{fmt(m.price, m.currency)}</span>
                 </button>
               </li>
             );

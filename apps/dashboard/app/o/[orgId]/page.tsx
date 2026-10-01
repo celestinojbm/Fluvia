@@ -86,6 +86,8 @@ export default async function OrgHomePage({
       ...(ins?.currencies ?? []),
       ...(sum?.orders_created.map((f) => f.currency) ?? []),
       ...(sum?.confirmed_charges.map((f) => f.currency) ?? []),
+      // Monedas del catálogo: se pueden elegir aunque aún no tengan actividad.
+      ...(products.kind === 'ok' ? products.data.data.map((p) => p.currency) : []),
     ]),
   ];
   const cur = ins?.currency ?? currencies[0] ?? null;
@@ -215,7 +217,7 @@ export default async function OrgHomePage({
               )}
               <p>
                 Libro contable del sandbox, ahora mismo. Lo cobrado entra como pendiente de
-                liquidación; solo «disponible» se puede usar.
+                liquidación; solo «disponible» se puede usar. <a href={`${o}/cash`}>Ver caja</a>
               </p>
             </section>
           </div>

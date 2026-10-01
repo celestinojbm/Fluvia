@@ -146,6 +146,9 @@
 .fx-org span {
   color: #a9c9c5; /* 8.2:1 sobre --fx-deep */
 }
+.fx-org .fx-org-avatar {
+  color: var(--fx-ink); /* 7.8:1 sobre --fx-sun */
+}
 .fx-nav {
   flex: 1;
   padding: 0 var(--fx-s3) var(--fx-s4);
@@ -747,7 +750,8 @@
   flex: none;
 }
 .fx-dot[data-tone='warn'] {
-  background: var(--fx-sun);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--fx-sun-ink);
 }
 .fx-dot[data-tone='bad'] {
   background: var(--fx-bad);
@@ -1216,6 +1220,16 @@
 }
 .fx-cell-flex > div {
   min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .fx-table th,
+  .fx-table td {
+    padding: 10px 8px;
+  }
+  .fx-table th {
+    letter-spacing: 0.02em;
+  }
 }
 
 /* En móvil y tablet vertical, las tablas de lista se apilan como tarjetas. */
@@ -1833,7 +1847,7 @@
 }
 .fx-products {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10.5rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
   gap: var(--fx-s3);
   margin: 0;
   padding: 0;
@@ -1867,9 +1881,12 @@
 .fx-pcard .fx-thumb {
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 10;
   border-radius: 0;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
+}
+.fx-pcard .fx-thumb[data-ph] {
+  aspect-ratio: 16 / 7;
 }
 .fx-product {
   display: flex;
@@ -1926,11 +1943,9 @@
   box-shadow: 0 2px 6px rgba(13, 46, 45, 0.25);
   animation: fx-pop 0.18s var(--fx-ease);
 }
-.fx-pcard .fx-stock {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  box-shadow: 0 1px 4px rgba(13, 46, 45, 0.15);
+.fx-pcard > .fx-stock {
+  align-self: flex-start;
+  margin: -4px var(--fx-s3) var(--fx-s3);
 }
 .fx-pcard[data-out='true'] .fx-thumb {
   filter: grayscale(0.8);
@@ -1944,8 +1959,15 @@
   margin: 0;
   list-style: none;
 }
+.fx-vchips {
+  flex-direction: column;
+}
 .fx-vchips button {
-  min-height: 32px;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--fx-line-strong);
   border-radius: 999px;
@@ -2209,4 +2231,85 @@
   border-radius: 50%;
   background: var(--fx-ok-soft);
   color: var(--fx-ok);
+}
+
+/* --------------------------------------------------------------------------
+   Puente: pantallas heredadas (terminal, justificante, operación avanzada)
+   con la identidad «Corriente», sin tocar su lógica ni su marcado.
+   -------------------------------------------------------------------------- */
+.app-shell .dash {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 0;
+}
+.app-shell .dash-head h1 {
+  font-size: 1.75rem;
+  font-weight: 720;
+  letter-spacing: -0.015em;
+}
+.app-shell .card {
+  border: 1px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+  box-shadow: var(--fx-shadow);
+}
+.app-shell .card h2 {
+  font-weight: 680;
+}
+.app-shell .btn {
+  border-radius: var(--fx-radius-sm);
+  background: var(--fx-river);
+  font-family: inherit;
+}
+.app-shell .btn:hover {
+  background: var(--fx-river-strong);
+}
+.app-shell .btn-secondary {
+  color: var(--fx-ink);
+  background: var(--fx-surface);
+  border: 1px solid var(--fx-line-strong);
+}
+.app-shell .btn-secondary:hover {
+  color: var(--fx-river-strong);
+  background: var(--fx-river-soft);
+  border-color: var(--fx-river);
+}
+.app-shell .btn-danger {
+  background: var(--fx-bad);
+}
+.app-shell .pos-alert {
+  border-left-width: 4px;
+  border-radius: var(--fx-radius-sm);
+}
+.app-shell .pos-alert-warn {
+  color: #4d2c00;
+  background: var(--fx-sun-soft);
+}
+.app-shell .pos-alert-bad {
+  color: #5d120e;
+  background: var(--fx-bad-soft);
+}
+.app-shell .pos-alert-info {
+  color: #073c3b;
+  background: var(--fx-river-soft);
+}
+.app-shell .hint {
+  color: var(--fx-ink-2);
+}
+.app-shell .notice {
+  color: var(--fx-ink-3);
+}
+.app-shell main a:not([class]) {
+  color: var(--fx-river);
+  font-weight: 600;
+}
+/* Encabezados que reciben el foco por programa (anuncio del resultado):
+   sin recuadro, el lector de pantalla ya lo anuncia. */
+.app-shell h1[tabindex='-1']:focus-visible,
+.app-shell h2[tabindex='-1']:focus-visible,
+.app-shell h3[tabindex='-1']:focus-visible {
+  outline: none;
+}
+.app-shell .pos-amount-display {
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
