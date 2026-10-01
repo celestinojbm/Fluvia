@@ -77,6 +77,7 @@ export function orgNav(orgId: string): ShellNavSection[] {
       items: [
         { href: `${o}/payments`, label: 'Pagos', icon: 'card' },
         { href: `${o}/refunds`, label: 'Devoluciones', icon: 'undo' },
+        { href: `${o}/por-confirmar`, label: 'Por confirmar', icon: 'clock' },
       ],
     },
     {

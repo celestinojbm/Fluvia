@@ -71,6 +71,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../../packages/personal
       '@fluvia/reconciliation':
         specifier: workspace:*
         version: link:../../packages/reconciliation
@@ -224,6 +227,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../../packages/personal
       '@fluvia/webhooks':
         specifier: workspace:*
         version: link:../../packages/webhooks
@@ -605,6 +611,40 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(jsdom@25.0.1)(tsx@4.23.0)
 
+  packages/personal:
+    dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@fluvia/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@fluvia/db':
+        specifier: workspace:*
+        version: link:../db
+      '@fluvia/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@fluvia/money':
+        specifier: workspace:*
+        version: link:../money
+      '@fluvia/payments-core':
+        specifier: workspace:*
+        version: link:../payments-core
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(jsdom@25.0.1)(tsx@4.23.0)
+
   packages/reconciliation:
     dependencies:
       '@fluvia/audit':
@@ -674,6 +714,9 @@ importers:
       '@fluvia/money':
         specifier: workspace:*
         version: link:../money
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../personal
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

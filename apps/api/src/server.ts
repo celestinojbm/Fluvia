@@ -28,6 +28,7 @@ const app = buildApp({
   config,
   appPool,
   adminPool,
+  authPool,
   authService: new AuthService(authPool, {
     mfaEncryptionKeyHex: config.mfaSecretKey,
     retiredMfaKeyHexes: config.mfaSecretKeysRetired,

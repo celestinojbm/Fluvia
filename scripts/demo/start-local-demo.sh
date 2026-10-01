@@ -93,6 +93,10 @@ export AUTH_DATABASE_URL="$(pg fluvia_auth:fluvia_auth_dev_password)"
 export INBOX_DATABASE_URL="$(pg fluvia_inbox:fluvia_inbox_dev_password)"
 export WEBHOOK_DATABASE_URL="$(pg fluvia_webhook:fluvia_webhook_dev_password)"
 export REDIS_URL="redis://$H:$REDIS_PORT"
+# Jornada integral: organización PROGRAMA de Fluvia Personal sembrada por el
+# seed (id determinista). La API la usa para enrutar los códigos `fcp_` de los
+# checkouts y el dashboard para las pantalla /personal.
+export FLUVIA_PROGRAM_TENANT_ID=e744e6eb-95cf-5762-95a7-268a0917e747
 
 cd "$ROOT"
 echo "==> Dependencias, migraciones y seed de demo (idempotentes)"
@@ -132,6 +136,9 @@ Demo «$PREFIX» lista (privada: solo accesible desde ESTA máquina)
   Abrir:        $DASHBOARD_ORIGIN/login     (usa 127.0.0.1, no «localhost»:
                 la protección CSRF compara el origen exacto)
   Usuario:      owner@demo.fluvia.test / demo-owner-password   (credenciales de DEMO)
+  Personal:     $DASHBOARD_ORIGIN/personal/entrar   (cliente@demo.fluvia.test / demo-cliente-password)
+  Operaciones:  $DASHBOARD_ORIGIN/operaciones/e744e6eb-95cf-5762-95a7-268a0917e747
+                (owner@demo.fluvia.test o ops@demo.fluvia.test / demo-ops-password)
   Recorrido:    Inicio → Nueva venta (catálogo, carrito, cliente) → Revisar →
                 Confirmar → Cobrar ahora → Abrir checkout → pagar (tarjeta de
                 prueba o «Pagar en cuotas», simulación) → Ventas → Ver justificante

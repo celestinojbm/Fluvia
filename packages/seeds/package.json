@@ -19,7 +19,8 @@
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
     "@fluvia/ledger": "workspace:*",
-    "@fluvia/money": "workspace:*"
+    "@fluvia/money": "workspace:*",
+    "@fluvia/personal": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

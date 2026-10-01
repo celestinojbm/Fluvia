@@ -52,6 +52,10 @@ const EnvSchema = z.object({
   ATTEMPTS_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   ATTEMPTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   MOCK_WEBHOOK_SECRET: z.string().min(16).optional(),
+  // Jornada integral: organización PROGRAMA de Fluvia Personal a la que la red
+  // Fluvia (simulada) enruta los códigos `fcp_` de los checkouts de comercio.
+  // Opcional: sin ella, los códigos se rechazan como método inválido.
+  FLUVIA_PROGRAM_TENANT_ID: z.string().uuid().optional(),
   WEBHOOK_SECRET_ENC_KEY: z
     .string()
     .regex(/^[0-9a-f]{64}$/i, 'must be 64 hex chars')
@@ -77,6 +81,8 @@ const EnvSchema = z.object({
   PAYOUTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   PAYOUTS_REDRIVER_ENABLED: z.enum(['true', 'false']).default('true'),
   PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  PROGRAM_MAINTENANCE_ENABLED: z.enum(['true', 'false']).default('true'),
+  PROGRAM_MAINTENANCE_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   DISPUTES_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   DISPUTES_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   // F6 (threat model §5): watchdog de huérfanos `in_progress` de idempotencia.
@@ -218,6 +224,11 @@ export interface AppConfig {
     enabled: boolean;
     intervalMs: number;
   };
+  /** Jornada integral: resolución periódica de inciertos y mantenimiento del programa. */
+  programMaintenance: {
+    enabled: boolean;
+    intervalMs: number;
+  };
   /** Watchdog de disputas: salud de fondos apartados + envejecidas (F4-10). */
   disputesWatchdog: {
     enabled: boolean;
@@ -246,6 +257,8 @@ export interface AppConfig {
   platformFeeBps: number;
   /** Orígenes CORS permitidos (F3-11a). Vacío = ningún cross-origin; `['*']` = todos. */
   corsAllowedOrigins: string[];
+  /** Organización programa de Fluvia Personal (red Fluvia simulada); opcional. */
+  programTenantId?: string;
 }
 
 export class ConfigError extends Error {
@@ -426,6 +439,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       enabled: e.PAYOUTS_REDRIVER_ENABLED === 'true',
       intervalMs: e.PAYOUTS_REDRIVER_INTERVAL_MS,
     },
+    programMaintenance: {
+      enabled: e.PROGRAM_MAINTENANCE_ENABLED === 'true',
+      intervalMs: e.PROGRAM_MAINTENANCE_INTERVAL_MS,
+    },
     disputesWatchdog: {
       enabled: e.DISPUTES_WATCHDOG_ENABLED === 'true',
       intervalMs: e.DISPUTES_WATCHDOG_INTERVAL_MS,
@@ -448,5 +465,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter((o) => o.length > 0),
+    ...(e.FLUVIA_PROGRAM_TENANT_ID ? { programTenantId: e.FLUVIA_PROGRAM_TENANT_ID } : {}),
   };
 }

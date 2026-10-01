@@ -38,13 +38,17 @@ const METHOD_TOKENS = [
   { token: 'tok_approve', key: 'methodApprove' as const },
   { token: 'tok_decline', key: 'methodDecline' as const },
   { token: 'tok_pse', key: 'methodAsync' as const },
+  { token: 'fluvia_personal', key: 'methodFluvia' as const },
 ];
+const FLUVIA_CODE_RE = /^fcp_[0-9a-f]{64}$/;
 
 export function CheckoutClient({ sessionId, locale }: { sessionId: string; locale: Locale }) {
   const t = MESSAGES[locale];
   const [phase, setPhase] = useState<Phase>('loading');
   const [view, setView] = useState<HostedView | null>(null);
   const [token, setToken] = useState('tok_approve');
+  const [fluviaCode, setFluviaCode] = useState('');
+  const [codeError, setCodeError] = useState(false);
   const [checking, setChecking] = useState(false);
   const [order, setOrder] = useState<OrderRead>({ kind: 'idle' });
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -102,6 +106,12 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   const pay = useCallback(async () => {
     // Candado síncrono: un doble envío no genera dos confirmaciones.
     if (payingRef.current) return;
+    const methodToken = token === 'fluvia_personal' ? fluviaCode.trim() : token;
+    if (token === 'fluvia_personal' && !FLUVIA_CODE_RE.test(methodToken)) {
+      setCodeError(true);
+      return;
+    }
+    setCodeError(false);
     payingRef.current = true;
     setPhase('paying');
     try {
@@ -111,7 +121,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
           'content-type': 'application/json',
           'x-checkout-client-secret': clientSecret(),
         },
-        body: JSON.stringify({ payment_method_token: token }),
+        body: JSON.stringify({ payment_method_token: methodToken }),
       });
       if (res.status === 404) return setPhase('not_found');
       if (res.status === 409) {
@@ -138,7 +148,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
     } finally {
       payingRef.current = false;
     }
-  }, [sessionId, token, clientSecret, load]);
+  }, [sessionId, token, fluviaCode, clientSecret, load]);
 
   // Pago asíncrono en curso: se re-consulta el estado (acotado) hasta que el
   // proveedor simulado lo resuelva; nunca se asume el desenlace.
@@ -310,6 +320,29 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
               </label>
             ))}
           </fieldset>
+          {token === 'fluvia_personal' ? (
+            <div className="fluvia-code">
+              <label htmlFor="fluvia-code">{t.fluviaCodeLabel}</label>
+              <input
+                id="fluvia-code"
+                name="fluvia_code"
+                autoComplete="off"
+                spellCheck={false}
+                value={fluviaCode}
+                onChange={(e) => setFluviaCode(e.target.value)}
+                aria-describedby="fluvia-code-hint"
+                aria-invalid={codeError}
+              />
+              <p id="fluvia-code-hint" className="co-muted">
+                {t.fluviaCodeHint}
+              </p>
+              {codeError ? (
+                <p className="error" role="alert">
+                  {t.fluviaCodeInvalid}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <button type="submit" disabled={phase === 'paying'} className="pay">
             {phase === 'paying' ? t.paying : t.pay}
           </button>

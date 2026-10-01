@@ -338,6 +338,92 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This sale was cancelled by the merchant',
   },
+  // --- Fluvia Personal / Operaciones (jornada integral, sandbox) ---
+  consumer_session_invalid: {
+    status: 401,
+    type: 'authentication_error',
+    message: 'Personal session is missing, invalid or expired',
+  },
+  consumer_locked: {
+    status: 423,
+    type: 'locked_error',
+    message: 'Too many failed attempts; try again later',
+  },
+  consumer_email_taken: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This email is already registered in the program',
+  },
+  consumer_not_active: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The customer account is not active',
+  },
+  program_not_found: {
+    status: 404,
+    type: 'not_found_error',
+    message: 'Program not found',
+  },
+  currency_not_supported: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The program does not operate in this currency',
+  },
+  insufficient_funds: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'Not enough own funds available',
+  },
+  credit_limit_exceeded: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The amount exceeds the available credit',
+  },
+  collateral_committed: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This collateral backs your current credit use and cannot be released',
+  },
+  insufficient_collateral: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'Not enough blocked collateral',
+  },
+  policy_not_active: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'There is no active credit policy',
+  },
+  policy_invalid: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The credit policy parameters are not valid',
+  },
+  application_pending: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'There is already a credit application under review',
+  },
+  amount_exceeds_allowed: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The amount exceeds what is allowed for this operation',
+  },
+  card_not_usable: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The card cannot be used in its current state',
+  },
+  payment_code_invalid: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The payment code is invalid, expired or already used',
+  },
+  idempotency_mismatch: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The idempotency key was already used with different parameters',
+  },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
@@ -454,6 +540,29 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   CatalogVariantError: 'catalog_variant_invalid',
   OrderNotCancellableError: 'order_not_cancellable',
   UnknownImageError: 'validation_error',
+  // Fluvia Personal / Operaciones (jornada integral).
+  ProgramNotFoundError: 'program_not_found',
+  ConsumerNotFoundError: 'not_found',
+  ConsumerNotActiveError: 'consumer_not_active',
+  ResourceNotFoundError: 'not_found',
+  CurrencyNotSupportedError: 'currency_not_supported',
+  InsufficientFundsError: 'insufficient_funds',
+  CreditLimitExceededError: 'credit_limit_exceeded',
+  CollateralCommittedError: 'collateral_committed',
+  InsufficientCollateralError: 'insufficient_collateral',
+  PolicyNotActiveError: 'policy_not_active',
+  InvalidPolicyError: 'policy_invalid',
+  InvalidStateError: 'invalid_state_transition',
+  FourEyesRequiredError: 'four_eyes_required',
+  CardNotUsableError: 'card_not_usable',
+  PaymentCodeInvalidError: 'payment_code_invalid',
+  AmountExceedsError: 'amount_exceeds_allowed',
+  IdempotencyMismatchError: 'idempotency_mismatch',
+  ConsumerEmailTakenError: 'consumer_email_taken',
+  InvalidConsumerCredentialsError: 'invalid_credentials',
+  ConsumerSessionInvalidError: 'consumer_session_invalid',
+  ConsumerLockedError: 'consumer_locked',
+  ApplicationPendingError: 'application_pending',
 };
 
 export interface PublicErrorBody {

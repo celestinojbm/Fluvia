@@ -184,7 +184,7 @@ BEGIN
   --    concurrencia con asientos crudos) — en produccion toda cuenta nace del chart
   --    (ensureChart/ensurePlatformAccounts), asi que estas solo existen en tests y estan
   --    fuera de la garantia del motor. CONTRATO: esta lista == las cuentas del chart
-  --    (chart-of-accounts.ts) con `type` != 'transitory' (matcheadas por su CODE, el
+  --    (chart-of-accounts.ts + program-chart.ts) con `type` != 'transitory' (matcheadas por su CODE, el
   --    prefijo antes de ':'); anadir una cuenta protegida al chart EXIGE anadirla aqui.
   SELECT count(*) INTO bad
   FROM balance_projections p
@@ -193,7 +193,10 @@ BEGIN
           'provider.clearing', 'provider.receivable', 'provider.payable', 'provider.fees',
           'platform.fees', 'platform.cash', 'payout.in_transit',
           'merchant.pending', 'merchant.available', 'merchant.reserve',
-          'refund.liability', 'dispute.reserve'
+          'refund.liability', 'dispute.reserve',
+          'consumer.wallet.available', 'consumer.wallet.held', 'consumer.collateral',
+          'consumer.credit.receivable', 'program.funding.clearing', 'program.network.payable',
+          'program.withdrawals.in_transit'
         )
     AND (p.available < 0 OR p.pending < 0);
   IF bad > 0 THEN

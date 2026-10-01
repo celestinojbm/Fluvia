@@ -14,6 +14,13 @@ export const LEDGER_REASONS = [
   'reconciliation',
   'reserve',
   'dispute',
+  // Programa de consumo (0052).
+  'funding',
+  'withdrawal',
+  'collateral',
+  'card',
+  'credit',
+  'repayment',
 ] as const;
 export type LedgerReason = (typeof LEDGER_REASONS)[number];
 

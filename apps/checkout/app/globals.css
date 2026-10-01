@@ -414,3 +414,23 @@ section > h2 {
     margin: 0;
   }
 }
+
+/* Jornada integral: código de pago de Fluvia Personal. */
+.fluvia-code {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.fluvia-code label {
+  font-weight: 650;
+}
+.fluvia-code input {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #8a8374;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  width: 100%;
+  box-sizing: border-box;
+}

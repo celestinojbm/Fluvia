@@ -3,6 +3,7 @@ import type { InboxHandlerResult, ProviderRegistration } from '@fluvia/inbox';
 import type { PaymentConfirmationService } from './confirmation.js';
 import type { DisputeService } from './disputes.js';
 import type { PayoutService } from './payouts.js';
+import type { RefundService } from './refunds.js';
 
 /**
  * Webhooks del MockPaymentProvider (F3-03b + F4-07c-ii + F4-08c) — el handler
@@ -20,6 +21,9 @@ import type { PayoutService } from './payouts.js';
  *    la disputa; idempotente por `provider_ref` — el inbox es at-least-once).
  *  - dispute.won/lost          -> DisputeService.resolve (fuente verificada; won
  *    devuelve al comercio, lost forfeita al proveedor).
+ *  - refund.succeeded/failed   -> RefundService.resolveFromProvider (jornada
+ *    integral: cierra devoluciones `processing`/`indeterminate` — antes no
+ *    había camino de resolución por webhook). Requiere pasar `refunds`.
  *
  * Todo efecto es idempotente: `resolveFromProvider`/`resolve` son no-ops sobre
  * recursos terminales o inexistentes, y `openFromProvider` no doble-abre (V4 §23
@@ -51,6 +55,11 @@ const disputeOpenFields = {
   provider_ref: z.string().min(1).max(120),
   reason: z.string().min(1).max(120).optional(),
 };
+const refundFields = {
+  ...eventFields,
+  refund_id: z.string().uuid(),
+  provider_ref: z.string().min(1).max(120).optional(),
+};
 const disputeResolveFields = {
   ...eventFields,
   dispute_id: z.string().uuid(),
@@ -65,6 +74,8 @@ export const MockWebhookEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('dispute.opened'), ...disputeOpenFields }).strict(),
   z.object({ type: z.literal('dispute.won'), ...disputeResolveFields }).strict(),
   z.object({ type: z.literal('dispute.lost'), ...disputeResolveFields }).strict(),
+  z.object({ type: z.literal('refund.succeeded'), ...refundFields }).strict(),
+  z.object({ type: z.literal('refund.failed'), ...refundFields }).strict(),
 ]);
 
 export type MockWebhookEvent = z.infer<typeof MockWebhookEventSchema>;
@@ -83,7 +94,8 @@ function mapOutcome(
 export function createMockInboxRegistration(
   confirmation: PaymentConfirmationService,
   payouts: PayoutService,
-  disputes: DisputeService
+  disputes: DisputeService,
+  refunds?: RefundService
 ): ProviderRegistration {
   return {
     schema: MockWebhookEventSchema,
@@ -108,6 +120,19 @@ export function createMockInboxRegistration(
           failureCode: payload.failure_code,
         });
         return mapOutcome(outcome, 'payout');
+      }
+
+      if (payload.type === 'refund.succeeded' || payload.type === 'refund.failed') {
+        if (!refunds) {
+          return { outcome: 'ignored', detail: 'refund events not wired in this process' };
+        }
+        const outcome = await refunds.resolveFromProvider(payload.tenant_id, {
+          refundId: payload.refund_id,
+          result: payload.type === 'refund.succeeded' ? 'succeeded' : 'failed',
+          providerRef: payload.provider_ref,
+          failureCode: payload.failure_code,
+        });
+        return mapOutcome(outcome, 'refund');
       }
 
       if (payload.type === 'dispute.opened') {
