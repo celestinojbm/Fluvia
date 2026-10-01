@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { formatAmount, minorToDecimalString } from '../app/lib/money-format';
 import { parseMajorAmount } from '../app/lib/pos-money';
 
-const nbsp = (s: string) => s.replace(/ /g, ' ');
+const nbsp = (s: string) => s.replace(/\u00a0/g, ' ');
 
 describe('money-format — presentación exacta', () => {
   it('VES: símbolo Bs., dos decimales, separadores locales', () => {
