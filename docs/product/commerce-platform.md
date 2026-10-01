@@ -153,24 +153,114 @@ En [`commerce-evidence/`](commerce-evidence/) (ids → `••••1234`, URLs 
 | 13 | [Terminal aprobado](commerce-evidence/13-terminal-aprobado-1440.png) | | 26 | [Inicio con actividad](commerce-evidence/26-inicio-con-actividad-1440.png) |
 | 14 | [Venta cobrada](commerce-evidence/14-venta-detalle-cobrada-1440.png) · [768](commerce-evidence/14-venta-detalle-cobrada-768.png) | | 27–28 | [Rol sin permiso](commerce-evidence/27-rol-sin-permiso-1440.png) · [Sesión caducada](commerce-evidence/28-sesion-caducada-390.png) |
 
-## 8. Ejecutar esta versión (sin tocar la demo en marcha)
+## 8. Ejecutar esta versión sin tocar la demo en marcha
 
-La demo existente del propietario usa `scripts/demo/start-local-demo.sh` con contenedores `fluvia-demo-*` y puertos 3300–3302 / 55432 / 56379. **No** se debe correr esta versión desde ese checkout ni con ese nombre: reutilizaría su base de datos (le aplicaría 0049/0050 y el seed). Para correrla **al lado**, en otra carpeta y con otro nombre y puertos:
+### Instancias de demo
+
+Los scripts de `scripts/demo/` trabajan por **instancia**. Una instancia es un prefijo (`DEMO_PREFIX`) más el checkout desde el que se ejecutan (o `DEMO_ROOT`). Todo deriva del prefijo:
+
+| Recurso | Por defecto (= la demo actual) | Segunda instancia (`DEMO_PREFIX=fluvia-demo2`) |
+| --- | --- | --- |
+| Contenedores | `fluvia-demo-pg`, `fluvia-demo-redis` | `fluvia-demo2-pg`, `fluvia-demo2-redis` (con etiquetas `fluvia.demo.prefix` y `fluvia.demo.root`) |
+| Volumen | `fluvia-demo-pgdata` | `fluvia-demo2-pgdata` (con etiquetas) |
+| Puertos API · checkout · dashboard | 3300 · 3301 · 3302 | `DEMO_PORT_BASE=3310` → 3310 · 3311 · 3312 |
+| Puertos PG · Redis | 55432 · 56379 | `DEMO_PG_PORT=55433` · `DEMO_REDIS_PORT=56380` |
+| Orígenes (`FLUVIA_DASHBOARD_ORIGIN`, `CHECKOUT_BASE_URL`) | `http://127.0.0.1:3302` · `:3301` | se derivan de los puertos; también `DEMO_DASHBOARD_ORIGIN` / `DEMO_CHECKOUT_ORIGIN` |
+| PID y logs | `<checkout>/.demo/{api,checkout,dashboard}.{pid,log}` | `<checkout>/.demo-fluvia-demo2/…` y el marcador `instance` |
+
+Los valores por defecto son exactamente los de la demo actual, así que el script nuevo no rompe la demo que ya está en marcha. `DEMO_PRINT_CONFIG=1 scripts/demo/start-local-demo.sh` muestra la configuración resuelta sin arrancar nada.
+
+**Arranque.** No arranca nada si se da cualquiera de estos casos:
+
+- la instancia ya está en marcha;
+- un puerto está ocupado;
+- un contenedor o volumen con su nombre pertenece a otra instancia;
+- una instancia que no es la de por defecto pide los puertos de la demo por defecto;
+- un contenedor reutilizado publica otro puerto distinto del pedido.
+
+**Parada (`stop-local-demo.sh`).** Antes de actuar comprueba todo lo siguiente:
+
+- el marcador de estado es de ese prefijo y de ese checkout;
+- cada PID leído del directorio de estado de **esa** instancia corre en `<checkout>/apps/<servicio>`;
+- los contenedores y el volumen llevan su prefijo y sus etiquetas.
+
+Los recursos sin etiquetas, creados por la versión anterior del script, solo se aceptan con el prefijo por defecto **y** si ese checkout tiene su propio `.demo/`. Si algo no coincide, sale con código 3 **sin tocar nada**. Para los procesos y hace `docker stop`. **Conserva contenedores y volumen.**
+
+**Borrado de datos (`purge-local-demo.sh --yes-delete-data`).** Es un paso aparte y explícito. Exige que la instancia esté parada y que se cumplan las mismas comprobaciones de pertenencia. Elimina los contenedores y el volumen; conserva el checkout, el marcador y los logs.
+
+> ⚠️ El `stop-local-demo.sh` de la versión anterior, el del checkout actual `~/fluvia-demo/repo` (commit `2475f42`), **borra el volumen** (`docker volume rm fluvia-demo-pgdata`). No lo uses si quieres conservar los datos de la demo actual: para pararla, usa el comando de «Cambio» de abajo.
+
+### Comandos
+
+**1. Segunda instancia**, en un directorio nuevo y sin tocar `~/fluvia-demo/repo`:
 
 ```bash
-# En una carpeta NUEVA (no en el checkout de la demo existente)
-git clone https://github.com/celestinojbm/Fluvia fluvia-plataforma && cd fluvia-plataforma
-git switch claude/plataforma-comercio-cuotas
-DEMO_NAME=fluvia-plataforma DEMO_PG_PORT=55433 DEMO_REDIS_PORT=56380 \
-DEMO_API_PORT=3310 DEMO_CHECKOUT_PORT=3311 DEMO_DASHBOARD_PORT=3312 \
+mkdir -p ~/fluvia-demo2
+git clone https://github.com/celestinojbm/Fluvia ~/fluvia-demo2/repo
+cd ~/fluvia-demo2/repo && git switch claude/plataforma-comercio-cuotas
+# (opcional) comprobar la configuración sin arrancar nada:
+DEMO_PREFIX=fluvia-demo2 DEMO_PORT_BASE=3310 DEMO_PG_PORT=55433 DEMO_REDIS_PORT=56380 \
+  DEMO_PRINT_CONFIG=1 scripts/demo/start-local-demo.sh
+# arrancar:
+DEMO_PREFIX=fluvia-demo2 DEMO_PORT_BASE=3310 DEMO_PG_PORT=55433 DEMO_REDIS_PORT=56380 \
   scripts/demo/start-local-demo.sh
-# Abrir en ESA máquina: http://127.0.0.1:3312/login
-#   owner@demo.fluvia.test / demo-owner-password   (credenciales de DEMO)
-# Parar SOLO esta demo:
-DEMO_NAME=fluvia-plataforma scripts/demo/stop-local-demo.sh
+# abrir en ESA máquina: http://127.0.0.1:3312/login  (owner@demo.fluvia.test / demo-owner-password)
 ```
 
-Verificado en el entorno cloud: demo base (`2475f42`, `fluvia-demo`, 3300–3302) y esta versión (`fluvia-plataforma`, 3310–3312) corriendo a la vez; E2E 17/17 contra la segunda; al pararla, los contenedores, el volumen y los servicios de la primera siguieron intactos y su BD no recibió las tablas nuevas. **No verificado en la MSI** (sin acceso). Todo escucha solo en 127.0.0.1; sin túneles ni Funnel; sin coste.
+La demo actual sigue en 3300–3302, con su checkout, contenedores, volumen y procesos intactos.
+
+**2. Cambio de aplicación.** La versión nueva queda como la demo activa en 3312. La anterior se para **conservando sus datos** y sin modificar su checkout; solo se borran sus archivos PID en `.demo/`:
+
+```bash
+cd ~/fluvia-demo2/repo
+DEMO_ROOT=~/fluvia-demo/repo scripts/demo/stop-local-demo.sh
+```
+
+**3. Rollback.** Volver a la demo anterior con sus datos:
+
+```bash
+cd ~/fluvia-demo2/repo && DEMO_PREFIX=fluvia-demo2 scripts/demo/stop-local-demo.sh   # conserva los datos de la nueva
+cd ~/fluvia-demo/repo && scripts/demo/start-local-demo.sh                            # su script ORIGINAL; reutiliza fluvia-demo-pg y su volumen
+```
+
+El script original reinstala, migra, siembra (idempotente) y compila: tarda lo mismo que el primer arranque. Además, su `next build` modifica `next-env.d.ts` y `tsconfig.json` en ese checkout, como ya ocurría antes.
+
+**4. Borrar los datos de la segunda instancia.** Es opcional y va siempre aparte:
+
+```bash
+cd ~/fluvia-demo2/repo
+DEMO_PREFIX=fluvia-demo2 scripts/demo/stop-local-demo.sh
+DEMO_PREFIX=fluvia-demo2 scripts/demo/purge-local-demo.sh --yes-delete-data
+```
+
+### Prueba de la parametrización (entorno cloud, Docker real)
+
+La simulación reprodujo la disposición de la máquina del propietario:
+
+- **A** = `…/fluvia-demo/repo` en el commit base `2475f42`, arrancada con su **script antiguo**, con una fila marcadora `MARCADOR-A` en su BD.
+- **B** = `…/fluvia-demo2/repo` con esta versión y `DEMO_PREFIX=fluvia-demo2`.
+
+| Prueba | Resultado |
+| --- | --- |
+| B con el prefijo nuevo y puertos por defecto | Rechazado (exit 1) |
+| Prefijo por defecto desde B: arrancar · parar · borrar con el flag | Rechazados (contenedor ajeno · exit 3 · exit 3); A intacta |
+| Parar una instancia inexistente · borrar sin `--yes-delete-data` | Rechazados |
+| A y B a la vez (3300–3302 y 3310–3312) | Ambas responden 200; E2E de la plataforma contra B 10/10 |
+| Arrancar B otra vez estando en marcha | Rechazado |
+| PID falsificado (el estado de B apunta al API de A) · marcador de otro checkout | Exit 3, nada tocado; A y B siguen en marcha |
+| Parar B | Procesos parados sin huérfanos; contenedores `Exited`; volumen conservado; A intacta |
+| Parar y volver a arrancar B | `MARCADOR-B` conservado |
+| Borrar B en marcha · B parada con el flag | Rechazado · contenedores y volumen de B eliminados; A intacta |
+| Borrar y volver a arrancar B | Arranca con datos nuevos |
+| **Cambio**: parar A desde B con `DEMO_ROOT` | A parada; volumen, contenedores y checkout conservados (mismos archivos modificados antes y después) |
+| **Rollback**: parar B y arrancar A con su script original | A en 3300–3302 con `MARCADOR-A` intacto |
+
+**Dos fallos encontrados y corregidos durante esta prueba**, antes de publicar el cambio:
+
+- `purge` con el prefijo por defecto, ejecutado desde un checkout sin estado propio, aceptaba los contenedores sin etiquetas y borró el volumen de A en la simulación. Ahora, para tratar un recurso sin etiquetas como propio, exige el estado `.demo/` del propio checkout.
+- `purge` borraba el marcador y el siguiente arranque se rechazaba.
+
+No se verificó en la MSI (sin acceso). En Linux/WSL el directorio de trabajo de cada PID se lee de `/proc`; en macOS, con `lsof`. Todo escucha solo en 127.0.0.1, sin túneles ni Funnel ni coste. La segunda instancia **no se ha arrancado** en la máquina del propietario.
 
 Recorrido sugerido: Inicio → Nueva venta → elegir productos y cantidades → Cliente nuevo → Revisar → Confirmar → **Cobrar ahora** → Abrir checkout del cliente → en la pestaña del comprador: pagar con la tarjeta aprobada, o abrir «Pagar en cuotas», elegir cuotas y escenario, aceptar y confirmar → volver a Ventas / Cuotas / Caja.
 
@@ -188,7 +278,7 @@ cd apps/dashboard && DEMO_APP_URL=http://127.0.0.1:3312 \
 
 ## 9. Terminado, incompleto y decisiones pendientes
 
-**Terminado (sandbox):** estructura común y sistema visual; Inicio con indicadores honestos; catálogo con versión; nueva venta con total en servidor e idempotencia; integración con el terminal y el checkout existentes; ventas con búsqueda/estado/paginación; clientes; caja operativa; equipo (lectura); configuración; «Pagar en cuotas» de punta a punta con proveedor simulado; demo aislable con `DEMO_NAME`.
+**Terminado (sandbox):** estructura común y sistema visual; Inicio con indicadores honestos; catálogo con versión; nueva venta con total en servidor e idempotencia; integración con el terminal y el checkout existentes; ventas con búsqueda/estado/paginación; clientes; caja operativa; equipo (lectura); configuración; «Pagar en cuotas» de punta a punta con proveedor simulado; demo local parametrizable por instancia (`DEMO_PREFIX`, parada que conserva datos y borrado explícito aparte).
 
 **Incompleto (declarado en pantalla):**
 
