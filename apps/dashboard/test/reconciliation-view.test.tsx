@@ -35,19 +35,12 @@ const ENTRIES: ReconciliationEntry[] = [
 describe('ReconciliationList', () => {
   it('lists reports linking to detail, and shows the empty state', () => {
     const { rerender } = render(
-      <ReconciliationList
-        reports={[REPORT]}
-        orgId="o1"
-        locale="es"
-        signOutHref="/logout"
-      />
+      <ReconciliationList reports={[REPORT]} orgId="o1" locale="es" signOutHref="/logout" />
     );
     const link = screen.getByRole('link', { name: /rep_abcd/ });
     expect(link.getAttribute('href')).toBe('/o/o1/reconciliation/rep_abcdef123456');
 
-    rerender(
-      <ReconciliationList reports={[]} orgId="o1" locale="es" signOutHref="/logout" />
-    );
+    rerender(<ReconciliationList reports={[]} orgId="o1" locale="es" signOutHref="/logout" />);
     expect(screen.getByText('Sin reportes de liquidación.')).toBeInTheDocument();
   });
 });

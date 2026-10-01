@@ -79,6 +79,7 @@ export const ORDER_STATE_LABEL: Record<OrderPaymentState, { label: string; tone:
   paid: { label: 'Cobrada', tone: 'ok' },
   partially_refunded: { label: 'Devolución parcial', tone: 'info' },
   refunded: { label: 'Devuelta', tone: 'info' },
+  cancelled: { label: 'Anulada', tone: 'neutral' },
 };
 
 export function OrderState({ state }: { state: OrderPaymentState }) {
@@ -117,12 +118,15 @@ export function PageHead({
   crumb,
   actions,
   id,
+  eyebrow,
 }: {
   title: string;
   description?: ReactNode;
   crumb?: { href: string; label: string };
   actions?: ReactNode;
   id?: string;
+  /** Antetítulo de contexto (organización, periodo…). */
+  eyebrow?: ReactNode;
 }) {
   return (
     <header className="fx-head">
@@ -132,6 +136,7 @@ export function PageHead({
             <a href={crumb.href}>← {crumb.label}</a>
           </p>
         ) : null}
+        {eyebrow ? <p className="fx-eyebrow">{eyebrow}</p> : null}
         <h1 id={id}>{title}</h1>
         {description ? <p>{description}</p> : null}
       </div>

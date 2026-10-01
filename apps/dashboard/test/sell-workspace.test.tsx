@@ -38,6 +38,11 @@ const product = (id: string, name: string, price: number): Product => ({
   version: 1,
   created_at: '2026-07-01T00:00:00Z',
   updated_at: '2026-07-01T00:00:00Z',
+  image_ref: null,
+  variant_of: null,
+  variant_label: null,
+  track_stock: false,
+  stock: null,
 });
 const CAFE = product('11111111-1111-4111-8111-111111111111', 'Café', 1250);
 const PAN = product('22222222-2222-4222-8222-222222222222', 'Pan', 300);
@@ -54,7 +59,9 @@ const ORDER = {
 
 type Call = { url: string; method: string; key: string | null; body: unknown };
 
-function stubFetch(responder: (c: Call, n: number) => { status: number; body: unknown } | 'network') {
+function stubFetch(
+  responder: (c: Call, n: number) => { status: number; body: unknown } | 'network'
+) {
   const calls: Call[] = [];
   vi.stubGlobal(
     'fetch',
@@ -83,7 +90,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 function renderSell() {
   return render(
-    <SellWorkspace orgId={ORG} products={[CAFE, PAN]} categories={[]} merchants={[MERCHANT]} canSell />
+    <SellWorkspace
+      orgId={ORG}
+      products={[CAFE, PAN]}
+      categories={[]}
+      merchants={[MERCHANT]}
+      canSell
+    />
   );
 }
 
@@ -189,7 +202,13 @@ describe('Nueva venta', () => {
 
   it('rol sin permiso ⇒ sin carrito; accesible (axe)', async () => {
     const { container, unmount } = render(
-      <SellWorkspace orgId={ORG} products={[CAFE]} categories={[]} merchants={[MERCHANT]} canSell={false} />
+      <SellWorkspace
+        orgId={ORG}
+        products={[CAFE]}
+        categories={[]}
+        merchants={[MERCHANT]}
+        canSell={false}
+      />
     );
     expect(screen.getByText(/Tu rol no puede registrar ventas/)).toBeDefined();
     expect(screen.queryByRole('button', { name: /Añadir/ })).toBeNull();
@@ -200,6 +219,86 @@ describe('Nueva venta', () => {
     const result = await axe.run(r.container);
     expect(result.violations.map((v) => v.id)).toEqual([]);
     void container;
+  });
+});
+
+describe('Nueva venta — variantes, existencias y SKU', () => {
+  const BASE = {
+    ...product('55555555-5555-4555-8555-555555555555', 'Café molido', 3500),
+    sku: 'CAF-250',
+    variant_label: '250 g',
+    image_ref: 'catalog/cafe-grano.jpg',
+    track_stock: true,
+    stock: { on_hand: 2, reserved: 0, free: 2 },
+  };
+  const BIG = {
+    ...product('66666666-6666-4666-8666-666666666666', 'Café molido', 6500),
+    sku: 'CAF-500',
+    variant_of: BASE.id,
+    variant_label: '500 g',
+    track_stock: true,
+    stock: { on_hand: 1, reserved: 1, free: 0 },
+  };
+  const AGUA = { ...product('77777777-7777-4777-8777-777777777777', 'Agua', 200), sku: 'AGU-1' };
+
+  function renderFam() {
+    return render(
+      <SellWorkspace
+        orgId={ORG}
+        products={[BASE, BIG, AGUA]}
+        categories={[]}
+        merchants={[MERCHANT]}
+        canSell
+      />
+    );
+  }
+
+  it('una familia muestra una opción por variante; la agotada no se puede añadir', async () => {
+    stubFetch(() => ({ status: 500, body: {} }));
+    renderFam();
+    const group = screen.getByRole('list', { name: 'Presentaciones de Café molido' });
+    expect(within(group).getAllByRole('button')).toHaveLength(2);
+    expect(
+      screen.getByRole('button', { name: /Añadir Café molido · 500 g.*agotado/ })
+    ).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /Añadir Café molido · 250 g/ }));
+    expect(screen.getByText('Café molido · 250 g', { selector: '.fx-cell-main' })).toBeDefined();
+  });
+
+  it('la cantidad no supera las existencias libres leídas (ayuda; el servidor reserva)', async () => {
+    stubFetch(() => ({ status: 500, body: {} }));
+    renderFam();
+    const add = () =>
+      userEvent.click(screen.getByRole('button', { name: /Añadir Café molido · 250 g/ }));
+    await add();
+    await add();
+    await add(); // libre = 2
+    const qty = screen.getByRole('group', { name: 'Cantidad de Café molido' });
+    expect((within(qty).getByRole('spinbutton') as HTMLInputElement).value).toBe('2');
+    expect(within(qty).getByRole('button', { name: 'Sumar uno' })).toBeDisabled();
+  });
+
+  it('Enter con un SKU exacto añade el producto y limpia la búsqueda', async () => {
+    stubFetch(() => ({ status: 500, body: {} }));
+    renderFam();
+    const search = screen.getByLabelText('Buscar producto');
+    await userEvent.type(search, 'agu-1{Enter}');
+    expect((search as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('group', { name: 'Cantidad de Agua' })).toBeDefined();
+  });
+
+  it('sin existencias suficientes (422) ⇒ relee el catálogo y no queda nada creado', async () => {
+    const calls = stubFetch((c) =>
+      c.url.endsWith('/orders')
+        ? { status: 422, body: { error: { code: 'insufficient_stock' } } }
+        : { status: 200, body: { data: [BASE, BIG, AGUA] } }
+    );
+    renderFam();
+    await userEvent.click(screen.getByRole('button', { name: /Añadir Café molido · 250 g/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Revisar venta' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar venta' }));
+    expect(await screen.findByText(/No hay existencias suficientes/)).toBeDefined();
+    expect(calls.some((c) => c.method === 'GET' && c.url.endsWith('/catalog/products'))).toBe(true);
   });
 });
 

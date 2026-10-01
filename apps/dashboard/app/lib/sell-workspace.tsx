@@ -5,9 +5,13 @@ import { formatAmount } from '../messages';
 import type { Merchant } from './api';
 import { clientCall, errorMessage } from './client-call';
 import type { Category, Customer, OrderDetail, Product } from './commerce-api';
+import { ProductThumb, StockBadge, stockLevel } from './commerce-ui';
+import { Icon } from './icons';
+import { currencyName } from './money-format';
 
 /**
- * Nueva venta: catálogo → carrito → cliente (opcional) → revisión → registrar.
+ * Nueva venta: mostrador (catálogo con fotos y variantes) → ticket → cliente
+ * (opcional) → revisión → registrar.
  *
  * Reglas de dinero:
  *  - El total mostrado es una PREVISIÓN; el servidor lo recalcula con los
@@ -16,7 +20,10 @@ import type { Category, Customer, OrderDetail, Product } from './commerce-api';
  *  - Una `Idempotency-Key` por carrito revisado: reintentar tras un resultado
  *    incierto devuelve la MISMA venta; cambiar el carrito genera otra key.
  *  - Tras un resultado incierto el carrito queda BLOQUEADO hasta comprobarlo.
- *  - Una venta = una moneda (la del primer producto).
+ *  - Una venta = una moneda (selector de moneda; bloqueado con carrito).
+ *  - Existencias: el tope de cantidad por línea es una AYUDA (libre según el
+ *    último catálogo leído); la reserva real la hace el servidor al registrar
+ *    (422 insufficient_stock ⇒ se relee el catálogo). Nada se descuenta aquí.
  */
 
 const MAX_QTY = 999;
@@ -32,6 +39,24 @@ type Step =
 
 function fmt(amount: number, currency: string) {
   return formatAmount(amount, currency, 'es');
+}
+
+/** Nombre visible de un producto: «Café molido · 500 g». */
+export function productLabel(p: Pick<Product, 'name' | 'variant_label'>): string {
+  return p.variant_label ? `${p.name} · ${p.variant_label}` : p.name;
+}
+
+/** Tope de unidades vendibles por línea según el catálogo leído. */
+function maxFor(p: Product | undefined): number {
+  if (!p) return MAX_QTY;
+  if (p.track_stock && p.stock) return Math.max(0, Math.min(MAX_QTY, p.stock.free));
+  return MAX_QTY;
+}
+
+interface Family {
+  key: string;
+  head: Product;
+  members: Product[];
 }
 
 export function SellWorkspace({
@@ -72,25 +97,43 @@ export function SellWorkspace({
   const lock = useRef(false);
   const alertRef = useRef<HTMLDivElement>(null);
   const reviewRef = useRef<HTMLHeadingElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const lines = cart.map((l) => {
     const p = byId.get(l.productId);
-    return { ...l, product: p, total: p ? p.price * l.qty : 0 };
+    return { ...l, product: p, total: p ? p.price * l.qty : 0, max: maxFor(p) };
   });
   const total = lines.reduce((a, l) => a + l.total, 0);
   const missing = lines.filter((l) => !l.product);
+  const overStock = lines.filter((l) => l.product && l.qty > l.max);
   const locked = step.kind === 'creating' || step.kind === 'uncertain' || step.kind === 'created';
   const totalTooLarge = !Number.isSafeInteger(total);
+  const units = cart.reduce((a, l) => a + l.qty, 0);
 
+  const needle = q.trim().toLowerCase();
+  const matches = (p: Product) =>
+    needle === '' ||
+    p.name.toLowerCase().includes(needle) ||
+    (p.sku ?? '').toLowerCase().includes(needle) ||
+    (p.variant_label ?? '').toLowerCase().includes(needle);
   const visible = products.filter(
-    (p) =>
-      p.currency === currency &&
-      (cat === null || p.category_id === cat) &&
-      (q.trim() === '' ||
-        p.name.toLowerCase().includes(q.trim().toLowerCase()) ||
-        (p.sku ?? '').toLowerCase().includes(q.trim().toLowerCase()))
+    (p) => p.currency === currency && (cat === null || p.category_id === cat) && matches(p)
   );
+  // Variantes juntas: la familia es la base (o el primer miembro visible).
+  const families: Family[] = [];
+  const famIdx = new Map<string, Family>();
+  for (const p of visible) {
+    const key = p.variant_of ?? p.id;
+    let f = famIdx.get(key);
+    if (!f) {
+      const head = byId.get(key) ?? p;
+      f = { key, head, members: [] };
+      famIdx.set(key, f);
+      families.push(f);
+    }
+    f.members.push(p);
+  }
 
   useEffect(() => {
     if (step.kind === 'failed' || step.kind === 'uncertain') alertRef.current?.focus();
@@ -101,17 +144,26 @@ export function SellWorkspace({
   const add = useCallback(
     (p: Product) => {
       if (locked) return;
+      const max = maxFor(p);
+      if (max <= 0) {
+        setAnnounce(`${productLabel(p)}: agotado.`);
+        return;
+      }
+      let capped = false;
       setCart((c) => {
         const found = c.find((l) => l.productId === p.id);
         if (found) {
-          return c.map((l) =>
-            l.productId === p.id ? { ...l, qty: Math.min(MAX_QTY, l.qty + 1) } : l
-          );
+          if (found.qty >= max) capped = true;
+          return c.map((l) => (l.productId === p.id ? { ...l, qty: Math.min(max, l.qty + 1) } : l));
         }
         if (c.length >= MAX_LINES) return c;
         return [...c, { productId: p.id, qty: 1 }];
       });
-      setAnnounce(`${p.name} añadido al carrito.`);
+      setAnnounce(
+        capped
+          ? `${productLabel(p)}: no quedan más unidades libres.`
+          : `${productLabel(p)} añadido al carrito.`
+      );
       if (step.kind !== 'cart') setStep({ kind: 'cart' });
     },
     [locked, step.kind]
@@ -120,15 +172,21 @@ export function SellWorkspace({
   const setQty = (productId: string, qty: number) => {
     if (locked) return;
     if (!Number.isInteger(qty) || qty < 1) qty = 1;
+    const max = maxFor(byId.get(productId));
     setCart((c) =>
-      c.map((l) => (l.productId === productId ? { ...l, qty: Math.min(MAX_QTY, qty) } : l))
+      c.map((l) =>
+        l.productId === productId
+          ? { ...l, qty: Math.min(MAX_QTY, Math.max(1, Math.min(qty, max || 1))) }
+          : l
+      )
     );
     if (step.kind !== 'cart') setStep({ kind: 'cart' });
   };
 
   const remove = (productId: string) => {
     if (locked) return;
-    const name = byId.get(productId)?.name ?? 'Producto';
+    const p = byId.get(productId);
+    const name = p ? productLabel(p) : 'Producto';
     setCart((c) => c.filter((l) => l.productId !== productId));
     setAnnounce(`${name} quitado del carrito.`);
     if (step.kind !== 'cart') setStep({ kind: 'cart' });
@@ -139,11 +197,28 @@ export function SellWorkspace({
     setCurrency(c);
   };
 
+  /** Enter en la búsqueda: SKU exacto, o el único producto visible, al ticket. */
+  const addFromSearch = () => {
+    if (needle === '') return;
+    const exact = visible.filter((p) => (p.sku ?? '').toLowerCase() === needle);
+    const pick = exact.length === 1 ? exact[0] : visible.length === 1 ? visible[0] : undefined;
+    if (pick) {
+      add(pick);
+      setQ('');
+    } else {
+      setAnnounce(
+        visible.length === 0
+          ? 'Ningún producto coincide.'
+          : `${visible.length} productos coinciden: elige uno de la lista.`
+      );
+    }
+  };
+
   const refreshPrices = useCallback(async () => {
     const r = await clientCall<{ data: Product[] }>(`/api/orgs/${o}/catalog/products`);
     if (r.kind === 'ok') {
-      setProducts(r.body.data);
-      setAnnounce('Precios actualizados con el catálogo vigente.');
+      setProducts(r.body.data.filter((p) => p.available && !p.archived));
+      setAnnounce('Precios y existencias actualizados con el catálogo vigente.');
       return true;
     }
     return false;
@@ -182,7 +257,11 @@ export function SellWorkspace({
         setStep({ kind: 'uncertain' });
         return;
       }
-      if (r.code === 'order_total_changed' || r.code === 'product_unavailable') {
+      if (
+        r.code === 'order_total_changed' ||
+        r.code === 'product_unavailable' ||
+        r.code === 'insufficient_stock'
+      ) {
         await refreshPrices();
         idem.current = null;
       }
@@ -200,6 +279,7 @@ export function SellWorkspace({
     setNote('');
     setStep({ kind: 'cart' });
     setAnnounce('Venta nueva. El carrito está vacío.');
+    void refreshPrices();
   };
 
   if (!canSell) {
@@ -228,22 +308,28 @@ export function SellWorkspace({
     const ord = step.order;
     const posHref = `/o/${orgId}/pos?link=${ord.payment_link_id}&order=${ord.id}`;
     return (
-      <section className="fx-panel" aria-labelledby="created-title">
+      <section className="fx-panel" aria-labelledby="created-title" style={{ maxWidth: '40rem' }}>
         <div className="fx-panel-body">
-          <div ref={alertRef} tabIndex={-1} className="fx-callout" data-tone="ok" role="status">
+          <div ref={alertRef} tabIndex={-1} className="fx-done" role="status">
+            <span className="fx-done-ico" aria-hidden="true">
+              <Icon name="check" size={28} />
+            </span>
             <div>
-              <p>
-                <strong id="created-title">Venta #{ord.number} registrada</strong>
+              <p style={{ margin: 0 }}>
+                <strong id="created-title" style={{ fontSize: '1.2rem' }}>
+                  Venta #{ord.number} registrada
+                </strong>
               </p>
-              <p>
-                Total {fmt(ord.total, ord.currency)} · {ord.line_count}{' '}
+              <p style={{ margin: '4px 0 0' }}>
+                Total <strong>{fmt(ord.total, ord.currency)}</strong> · {ord.line_count}{' '}
                 {ord.line_count === 1 ? 'línea' : 'líneas'}
-                {ord.customer_name ? ` · ${ord.customer_name}` : ''}. Aún no se ha cobrado.
+                {ord.customer_name ? ` · ${ord.customer_name}` : ''}. Aún no se ha cobrado
+                {ord.stock && ord.stock.length > 0 ? '; las existencias quedan reservadas' : ''}.
               </p>
             </div>
           </div>
-          <div className="fx-actions">
-            <a className="fx-btn fx-btn-primary" href={posHref}>
+          <div className="fx-actions" style={{ marginTop: 20 }}>
+            <a className="fx-btn fx-btn-primary fx-btn-lg" href={posHref}>
               Cobrar ahora
             </a>
             <a className="fx-btn" href={`/o/${orgId}/orders/${ord.id}`}>
@@ -280,30 +366,47 @@ export function SellWorkspace({
           </header>
           <div className="fx-panel-body">
             <div className="fx-toolbar">
-              <div className="fx-field">
+              <div className="fx-field" style={{ flex: '3 1 16rem' }}>
                 <label htmlFor="s-q">Buscar producto</label>
-                <input
-                  id="s-q"
-                  type="search"
-                  className="fx-input"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Nombre o SKU"
-                />
+                <div className="fx-search">
+                  <Icon name="search" />
+                  <input
+                    id="s-q"
+                    ref={searchRef}
+                    type="search"
+                    className="fx-input fx-input-lg"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addFromSearch();
+                      }
+                    }}
+                    placeholder="Nombre o SKU · Enter añade"
+                    aria-describedby="s-q-hint"
+                    autoComplete="off"
+                  />
+                </div>
+                <p id="s-q-hint" className="sr-only">
+                  Escribe un SKU exacto y pulsa Enter para añadirlo al carrito.
+                </p>
               </div>
               {currencies.length > 1 ? (
-                <div className="fx-field" style={{ flex: '0 1 9rem' }}>
+                <div className="fx-field" style={{ flex: '0 1 12rem' }}>
                   <label htmlFor="s-cur">Moneda</label>
                   <select
                     id="s-cur"
-                    className="fx-select"
+                    className="fx-select fx-input-lg"
                     value={currency}
                     onChange={(e) => changeCurrency(e.target.value)}
                     disabled={cart.length > 0}
                     aria-describedby="s-cur-hint"
                   >
                     {currencies.map((c) => (
-                      <option key={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c} · {currencyName(c, 'es')}
+                      </option>
                     ))}
                   </select>
                   <p id="s-cur-hint" className="fx-hint">
@@ -348,35 +451,16 @@ export function SellWorkspace({
                   Nuevo producto
                 </a>
               </div>
-            ) : visible.length === 0 ? (
+            ) : families.length === 0 ? (
               <div className="fx-empty">
                 <h3>Sin coincidencias</h3>
                 <p>Ningún producto disponible coincide con la búsqueda.</p>
               </div>
             ) : (
               <ul className="fx-products" aria-label="Productos disponibles">
-                {visible.map((p) => {
-                  const inCart = cart.find((l) => l.productId === p.id)?.qty ?? 0;
-                  return (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        className="fx-product"
-                        onClick={() => add(p)}
-                        disabled={locked}
-                        aria-label={`Añadir ${p.name}, ${fmt(p.price, p.currency)}${inCart ? `, ${inCart} en el carrito` : ''}`}
-                      >
-                        <span className="fx-product-name">{p.name}</span>
-                        <span className="fx-product-meta">
-                          {p.category_name ?? 'Sin categoría'}
-                          {p.sku ? ` · ${p.sku}` : ''}
-                        </span>
-                        <span className="fx-product-price">{fmt(p.price, p.currency)}</span>
-                        {inCart ? <span className="fx-product-qty">× {inCart}</span> : null}
-                      </button>
-                    </li>
-                  );
-                })}
+                {families.map((f) => (
+                  <ProductCard key={f.key} family={f} cart={cart} locked={locked} onAdd={add} />
+                ))}
               </ul>
             )}
           </div>
@@ -385,7 +469,7 @@ export function SellWorkspace({
         {cart.length > 0 && !reviewing ? (
           <div className="fx-cartbar">
             <span>
-              {cart.reduce((a, l) => a + l.qty, 0)} art. · <strong>{fmt(total, currency)}</strong>
+              {units} art. · <strong>{fmt(total, currency)}</strong>
             </span>
             <a className="fx-btn fx-btn-sm" href="#cart-title">
               Ver carrito
@@ -397,9 +481,14 @@ export function SellWorkspace({
           <header>
             <h2 id="cart-title" ref={reviewRef} tabIndex={-1}>
               {reviewing ? 'Revisar la venta' : 'Carrito'}
+              {cart.length > 0 ? (
+                <span className="fx-hint" style={{ marginLeft: 8, fontWeight: 500 }}>
+                  {units} art.
+                </span>
+              ) : null}
             </h2>
             {cart.length > 0 && !locked ? (
-              <button type="button" className="fx-btn fx-btn-sm" onClick={reset}>
+              <button type="button" className="fx-btn fx-btn-sm fx-btn-ghost" onClick={reset}>
                 Vaciar
               </button>
             ) : null}
@@ -448,68 +537,84 @@ export function SellWorkspace({
             {cart.length === 0 ? (
               <div className="fx-empty" style={{ padding: '24px 8px' }}>
                 <h3>El carrito está vacío</h3>
-                <p>Elige productos de la lista para empezar.</p>
+                <p>Toca un producto o escribe su SKU y pulsa Enter.</p>
               </div>
             ) : (
               <ul className="fx-cart-lines" aria-label="Líneas de la venta">
-                {lines.map((l) => (
-                  <li key={l.productId} className="fx-cart-line">
-                    <div>
-                      <span className="fx-cell-main">
-                        {l.product?.name ?? 'Producto no disponible'}
-                      </span>
-                      <span className="fx-cell-sub">
-                        {l.product
-                          ? `${fmt(l.product.price, currency)} c/u`
-                          : 'Ya no está a la venta: quítalo'}
-                      </span>
-                    </div>
-                    <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(l.total, currency)}
-                    </strong>
-                    <div
-                      className="fx-qty"
-                      role="group"
-                      aria-label={`Cantidad de ${l.product?.name ?? 'producto'}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setQty(l.productId, l.qty - 1)}
-                        disabled={locked || l.qty <= 1}
-                        aria-label="Restar uno"
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={MAX_QTY}
-                        value={l.qty}
-                        onChange={(e) => setQty(l.productId, Number.parseInt(e.target.value, 10))}
-                        disabled={locked}
-                        aria-label="Cantidad"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setQty(l.productId, l.qty + 1)}
-                        disabled={locked || l.qty >= MAX_QTY}
-                        aria-label="Sumar uno"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      className="fx-btn fx-btn-sm"
-                      onClick={() => remove(l.productId)}
-                      disabled={locked}
-                      aria-label={`Quitar ${l.product?.name ?? 'producto'}`}
-                    >
-                      Quitar
-                    </button>
-                  </li>
-                ))}
+                {lines.map((l) => {
+                  const label = l.product ? productLabel(l.product) : 'producto';
+                  return (
+                    <li key={l.productId} className="fx-cart-line">
+                      {l.product ? (
+                        <ProductThumb product={l.product} />
+                      ) : (
+                        <span className="fx-thumb" aria-hidden="true">
+                          ?
+                        </span>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <span className="fx-cell-main">
+                          {l.product ? label : 'Producto no disponible'}
+                        </span>
+                        <span className="fx-cell-sub">
+                          {l.product
+                            ? `${fmt(l.product.price, currency)} c/u${
+                                l.product.track_stock ? ` · libres ${l.max}` : ''
+                              }`
+                            : 'Ya no está a la venta: quítalo'}
+                        </span>
+                      </div>
+                      <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {fmt(l.total, currency)}
+                      </strong>
+                      <div className="fx-cart-line-ctl">
+                        <div
+                          className="fx-qty"
+                          role="group"
+                          aria-label={`Cantidad de ${l.product?.name ?? 'producto'}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setQty(l.productId, l.qty - 1)}
+                            disabled={locked || l.qty <= 1}
+                            aria-label="Restar uno"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={l.max || 1}
+                            value={l.qty}
+                            onChange={(e) =>
+                              setQty(l.productId, Number.parseInt(e.target.value, 10))
+                            }
+                            disabled={locked}
+                            aria-label="Cantidad"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setQty(l.productId, l.qty + 1)}
+                            disabled={locked || l.qty >= l.max}
+                            aria-label="Sumar uno"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="fx-btn fx-btn-sm fx-btn-ghost"
+                          onClick={() => remove(l.productId)}
+                          disabled={locked}
+                          aria-label={`Quitar ${l.product?.name ?? 'producto'}`}
+                        >
+                          <Icon name="trash" size={16} /> Quitar
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -537,19 +642,24 @@ export function SellWorkspace({
                   <output aria-live="polite">{fmt(total, currency)}</output>
                 </div>
                 <p className="fx-hint" style={{ marginBottom: 12 }}>
-                  {merchant?.name ? `${merchant.name} · ` : ''}Sin impuestos desglosados (pendiente
-                  de la decisión de mercado). El servidor recalcula el total con los precios
-                  vigentes.
+                  {merchant?.name ? `${merchant.name} · ` : ''}
+                  {currencyName(currency, 'es')}. Sin impuestos desglosados. El servidor confirma el
+                  total y las existencias al registrar.
                 </p>
                 {totalTooLarge ? (
                   <p className="fx-error-text">El total excede el máximo permitido.</p>
                 ) : null}
+                {overStock.length > 0 ? (
+                  <p className="fx-error-text">
+                    Hay más unidades que existencias libres: ajusta las cantidades.
+                  </p>
+                ) : null}
                 {step.kind === 'cart' || step.kind === 'failed' ? (
                   <button
                     type="button"
-                    className="fx-btn fx-btn-primary fx-btn-block"
+                    className="fx-btn fx-btn-primary fx-btn-block fx-btn-lg"
                     onClick={() => setStep({ kind: 'review' })}
-                    disabled={missing.length > 0 || totalTooLarge}
+                    disabled={missing.length > 0 || totalTooLarge || overStock.length > 0}
                   >
                     Revisar venta
                   </button>
@@ -563,7 +673,7 @@ export function SellWorkspace({
                     </p>
                     <button
                       type="button"
-                      className="fx-btn fx-btn-primary fx-btn-block"
+                      className="fx-btn fx-btn-primary fx-btn-block fx-btn-lg"
                       onClick={() => void create()}
                       disabled={step.kind === 'creating'}
                     >
@@ -590,6 +700,109 @@ export function SellWorkspace({
         </section>
       </div>
     </>
+  );
+}
+
+/**
+ * Tarjeta del mostrador. Producto simple: toda la tarjeta es el botón.
+ * Familia con variantes: foto + nombre y un chip por variante (cada uno su
+ * botón, con precio). Agotado ⇒ deshabilitado con su motivo en texto.
+ */
+function ProductCard({
+  family,
+  cart,
+  locked,
+  onAdd,
+}: {
+  family: Family;
+  cart: Array<{ productId: string; qty: number }>;
+  locked: boolean;
+  onAdd: (p: Product) => void;
+}) {
+  const inCartOf = (id: string) => cart.find((l) => l.productId === id)?.qty ?? 0;
+  const famQty = family.members.reduce((a, m) => a + inCartOf(m.id), 0);
+  const single = family.members.length === 1 ? family.members[0]! : null;
+  if (single) {
+    const p = single;
+    const out = stockLevel(p) === 'out';
+    const inCart = inCartOf(p.id);
+    return (
+      <li>
+        <div
+          className="fx-pcard"
+          data-in-cart={inCart > 0 ? 'true' : undefined}
+          data-out={out ? 'true' : undefined}
+        >
+          <button
+            type="button"
+            className="fx-product"
+            onClick={() => onAdd(p)}
+            disabled={locked || out}
+            aria-label={`Añadir ${productLabel(p)}, ${fmt(p.price, p.currency)}${
+              out ? ', agotado' : ''
+            }${inCart ? `, ${inCart} en el carrito` : ''}`}
+          >
+            <ProductThumb product={p} />
+            <span className="fx-product-body">
+              <span className="fx-product-name">{productLabel(p)}</span>
+              <span className="fx-product-meta">
+                {p.category_name ?? 'Sin categoría'}
+                {p.sku ? ` · ${p.sku}` : ''}
+              </span>
+              <span className="fx-product-price">{fmt(p.price, p.currency)}</span>
+            </span>
+          </button>
+          <StockBadge product={p} />
+          {inCart ? (
+            <span className="fx-product-qty" aria-hidden="true">
+              × {inCart}
+            </span>
+          ) : null}
+        </div>
+      </li>
+    );
+  }
+  const head = family.head;
+  const prices = family.members.map((m) => m.price);
+  const min = Math.min(...prices);
+  return (
+    <li>
+      <div className="fx-pcard" data-in-cart={famQty > 0 ? 'true' : undefined}>
+        <ProductThumb product={head} />
+        <div className="fx-product-body">
+          <span className="fx-product-name">{head.name}</span>
+          <span className="fx-product-meta">
+            {family.members.length} presentaciones · desde {fmt(min, head.currency)}
+          </span>
+        </div>
+        <ul className="fx-vchips" aria-label={`Presentaciones de ${head.name}`}>
+          {family.members.map((m) => {
+            const out = stockLevel(m) === 'out';
+            const inCart = inCartOf(m.id);
+            return (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => onAdd(m)}
+                  disabled={locked || out}
+                  aria-label={`Añadir ${productLabel(m)}, ${fmt(m.price, m.currency)}${
+                    out ? ', agotado' : ''
+                  }${inCart ? `, ${inCart} en el carrito` : ''}`}
+                >
+                  {m.variant_label ?? m.name} · {fmt(m.price, m.currency)}
+                  {out ? ' · agotado' : inCart ? ` · ×${inCart}` : ''}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {famQty ? (
+          <span className="fx-product-qty" aria-hidden="true">
+            × {famQty}
+          </span>
+        ) : null}
+      </div>
+    </li>
   );
 }
 

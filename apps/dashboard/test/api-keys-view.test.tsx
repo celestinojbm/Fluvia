@@ -61,7 +61,13 @@ describe('ApiKeysList', () => {
     expect(screen.getByText(/Tu rol no permite crear ni revocar/)).toBeInTheDocument();
 
     rerender(
-      <ApiKeysList keys={[ACTIVE, REVOKED]} orgId="o1" locale="es" signOutHref="/logout" canManage />
+      <ApiKeysList
+        keys={[ACTIVE, REVOKED]}
+        orgId="o1"
+        locale="es"
+        signOutHref="/logout"
+        canManage
+      />
     );
     expect(screen.getByRole('button', { name: 'Crear API key' })).toBeInTheDocument();
     // Revocar visible solo para la key activa (la revocada muestra '—').

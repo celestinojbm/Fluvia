@@ -55,6 +55,36 @@ export interface Product {
   version: number;
   created_at: string;
   updated_at: string;
+  /** `catalog/<archivo>.jpg` del conjunto de demostración (servido en /). */
+  image_ref: string | null;
+  variant_of: string | null;
+  variant_label: string | null;
+  track_stock: boolean;
+  /** Solo si track_stock: libre = existencia − reservado. */
+  stock: { on_hand: number; reserved: number; free: number } | null;
+}
+
+export interface CatalogImage {
+  ref: string;
+  label: string;
+  title: string;
+  creator: string;
+  source: string;
+  source_url: string;
+  license: string;
+  license_url: string;
+}
+
+export interface Movement {
+  id: string;
+  product_id: string;
+  kind: 'receipt' | 'adjustment' | 'reservation' | 'release' | 'sale';
+  quantity: number;
+  order_id: string | null;
+  order_number: number | null;
+  reason: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
 }
 
 export interface Category {
@@ -64,7 +94,12 @@ export interface Category {
 }
 
 export type OrderPaymentState =
-  'awaiting_payment' | 'payment_in_progress' | 'paid' | 'partially_refunded' | 'refunded';
+  | 'awaiting_payment'
+  | 'payment_in_progress'
+  | 'paid'
+  | 'partially_refunded'
+  | 'refunded'
+  | 'cancelled';
 
 export interface OrderLine {
   position: number;
@@ -74,6 +109,7 @@ export interface OrderLine {
   unit_price: number;
   quantity: number;
   line_total: number;
+  variant_label: string | null;
 }
 
 export interface Order {
@@ -106,10 +142,12 @@ export interface Order {
     overdue_count: number;
     simulated: true;
   } | null;
+  cancellation: { reason: string; cancelled_by_user_id: string | null; created_at: string } | null;
 }
 
 export interface OrderDetail extends Order {
   lines: OrderLine[];
+  stock: Array<{ product_id: string; quantity: number; status: 'reserved' | 'sold' | 'released' }>;
 }
 
 export interface OrderList {
@@ -148,7 +186,32 @@ export interface CommerceSummary {
   refunds_open: Figure[];
   orders_created: Figure[];
   orders_awaiting_payment: Figure[];
+  orders_cancelled: Figure[];
   installments_sandbox_approved: Figure[];
+}
+
+export interface CommerceInsights {
+  period: { start: string; end: string; timezone: 'UTC' };
+  currency: string | null;
+  currencies: string[];
+  active_days: number;
+  series: Array<{
+    day: string;
+    orders_count: number;
+    orders_amount: number;
+    confirmed_count: number;
+    confirmed_amount: number;
+    refunded_amount: number;
+  }>;
+  top_products: Array<{
+    product_id: string | null;
+    name: string;
+    variant_label: string | null;
+    sku: string | null;
+    quantity: number;
+    amount: number;
+  }>;
+  balances: Array<{ currency: string; pending: number; available: number; reserve: number }>;
 }
 
 export interface CashSummary {

@@ -68,6 +68,18 @@ export function errorMessage(r: Exclude<CallResult, { kind: 'ok' }>): string {
       return 'Un producto del carrito ya no está disponible. Quítalo para continuar.';
     case 'order_currency_mismatch':
       return 'Todos los productos de una venta deben tener la misma moneda.';
+    case 'insufficient_stock':
+      return 'No hay existencias suficientes de un producto del carrito. Las cantidades se actualizaron: revísalas.';
+    case 'inventory_conflict':
+      return 'La existencia no puede quedar por debajo de lo reservado por ventas abiertas.';
+    case 'stock_not_tracked':
+      return 'Este producto no controla existencias. Actívalo en la ficha antes de registrar entradas.';
+    case 'catalog_variant_invalid':
+      return 'Una variante necesita un producto base activo, con la misma moneda, y su propia etiqueta.';
+    case 'order_not_cancellable':
+      return 'No se puede anular: hay un cobro en curso, sin confirmar o hecho, o un plan de cuotas activo.';
+    case 'order_cancelled':
+      return 'Esta venta fue anulada: ya no se puede cobrar.';
     case 'idempotency_key_reuse':
       return 'Esta venta ya se registró con otro contenido. Empieza una venta nueva.';
     case 'invalid_state_transition':
