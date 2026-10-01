@@ -210,7 +210,7 @@ El consumidor solo actúa sobre **sus** recursos (RLS + filtro de servicio); un 
 
 ```
 wallet_fundings:       pending → confirmed | failed
-wallet_transfers:      created → completed | failed | indeterminate → completed | failed
+wallet_transfers:      processing → completed | failed | indeterminate → completed | failed
 credit_applications:   submitted → approved | rejected | manual_review → approved | rejected
 credit_lines:          active ⇄ frozen → closed
 cards:                 requested → inactive → active ⇄ blocked → replaced | closed
