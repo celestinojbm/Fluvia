@@ -35,6 +35,9 @@ importers:
       '@fluvia/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@fluvia/commerce':
+        specifier: workspace:*
+        version: link:../../packages/commerce
       '@fluvia/config':
         specifier: workspace:*
         version: link:../../packages/config

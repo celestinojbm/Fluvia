@@ -1,4 +1,4 @@
-import { withTenantTransaction, type Pool } from '@fluvia/db';
+import { withTenantTransaction, type Pool, type PoolClient } from '@fluvia/db';
 import { Money } from '@fluvia/money';
 import {
   CatalogDuplicateError,
@@ -119,6 +119,9 @@ const clean = (s: string | null | undefined): string | null => {
   return t === '' ? null : t;
 };
 
+/** Gancho de auditoría: corre en la MISMA transacción que el cambio. */
+export type AuditHook<T> = (c: PoolClient, after: T) => Promise<void>;
+
 export class CatalogService {
   constructor(
     /** Pool con rol fluvia_app (RLS forzado). */
@@ -149,7 +152,11 @@ export class CatalogService {
     });
   }
 
-  async createCategory(tenantId: string, name: string): Promise<CategoryDto> {
+  async createCategory(
+    tenantId: string,
+    name: string,
+    audit?: AuditHook<CategoryDto>
+  ): Promise<CategoryDto> {
     const n = name.trim();
     try {
       return await withTenantTransaction(this.appPool, tenantId, async (c) => {
@@ -159,7 +166,14 @@ export class CatalogService {
           [tenantId, n]
         );
         const r = res.rows[0]!;
-        return { id: r.id, name: r.name, productCount: 0, createdAt: r.created_at.toISOString() };
+        const dto = {
+          id: r.id,
+          name: r.name,
+          productCount: 0,
+          createdAt: r.created_at.toISOString(),
+        };
+        await audit?.(c, dto);
+        return dto;
       });
     } catch (err) {
       if (isUniqueViolation(err, 'catalog_categories_name_uq')) {
@@ -217,7 +231,11 @@ export class CatalogService {
     if ((r.rowCount ?? 0) === 0) throw new CategoryNotFoundError();
   }
 
-  async createProduct(tenantId: string, input: ProductInput): Promise<ProductDto> {
+  async createProduct(
+    tenantId: string,
+    input: ProductInput,
+    audit?: AuditHook<ProductDto>
+  ): Promise<ProductDto> {
     // Valida moneda y monto con el Value Object (registro de @fluvia/money).
     const price = Money.of(input.price, input.currency);
     try {
@@ -241,7 +259,9 @@ export class CatalogService {
         const res = await c.query<ProductRow>(`${PRODUCT_SELECT} WHERE p.id = $1`, [
           ins.rows[0]!.id,
         ]);
-        return toProduct(res.rows[0]!);
+        const dto = toProduct(res.rows[0]!);
+        await audit?.(c, dto);
+        return dto;
       });
     } catch (err) {
       if (isUniqueViolation(err, 'catalog_products_sku_uq')) throw new CatalogDuplicateError('sku');
@@ -254,7 +274,12 @@ export class CatalogService {
    * que el operador vio. La moneda no se edita (cambiarla re-denominaría el
    * precio). Los pedidos ya creados NO cambian: guardan su copia histórica.
    */
-  async updateProduct(tenantId: string, id: string, patch: ProductPatch): Promise<ProductDto> {
+  async updateProduct(
+    tenantId: string,
+    id: string,
+    patch: ProductPatch,
+    audit?: AuditHook<ProductDto>
+  ): Promise<ProductDto> {
     try {
       return await withTenantTransaction(this.appPool, tenantId, async (c) => {
         const cur = await c.query<{ version: number; currency: string }>(
@@ -290,7 +315,9 @@ export class CatalogService {
         sets.push('version = version + 1', 'updated_at = now()');
         await c.query(`UPDATE catalog_products SET ${sets.join(', ')} WHERE id = $1`, values);
         const res = await c.query<ProductRow>(`${PRODUCT_SELECT} WHERE p.id = $1`, [id]);
-        return toProduct(res.rows[0]!);
+        const dto = toProduct(res.rows[0]!);
+        await audit?.(c, dto);
+        return dto;
       });
     } catch (err) {
       if (isUniqueViolation(err, 'catalog_products_sku_uq')) throw new CatalogDuplicateError('sku');

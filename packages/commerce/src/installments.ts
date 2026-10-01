@@ -433,7 +433,8 @@ export class InstallmentSandboxService {
     tenantId: string,
     planId: string,
     decision: 'approved' | 'declined',
-    userId: string
+    userId: string,
+    audit?: (c: PoolClient, plan: InstallmentPlanDto) => Promise<void>
   ): Promise<InstallmentPlanDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const cur = await c.query<{ status: string }>(
@@ -458,7 +459,9 @@ export class InstallmentSandboxService {
         'simulated_provider',
         userId
       );
-      return this.loadPlan(c, planId);
+      const plan = await this.loadPlan(c, planId);
+      await audit?.(c, plan);
+      return plan;
     });
   }
 
@@ -472,7 +475,8 @@ export class InstallmentSandboxService {
     planId: string,
     seq: number,
     outcome: 'paid' | 'overdue',
-    userId: string
+    userId: string,
+    audit?: (c: PoolClient, plan: InstallmentPlanDto) => Promise<void>
   ): Promise<InstallmentPlanDto> {
     const target = outcome === 'paid' ? 'paid_simulated' : 'overdue_simulated';
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
@@ -514,7 +518,9 @@ export class InstallmentSandboxService {
         'operator',
         userId
       );
-      return this.loadPlan(c, planId);
+      const updated = await this.loadPlan(c, planId);
+      await audit?.(c, updated);
+      return updated;
     });
   }
 }
