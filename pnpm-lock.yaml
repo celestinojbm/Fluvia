@@ -714,6 +714,9 @@ importers:
       '@fluvia/money':
         specifier: workspace:*
         version: link:../money
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../personal
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

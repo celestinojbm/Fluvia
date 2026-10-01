@@ -7,3 +7,4 @@ export {
   type SeedPools,
   type SeedReport,
 } from './seed.js';
+export { PROGRAM_DEMO, seedProgramDemo, type ProgramSeedReport } from './program-seed.js';
