@@ -31,7 +31,18 @@ export type IconName =
   | 'layers'
   | 'printer'
   | 'in'
-  | 'out';
+  | 'out'
+  | 'shield'
+  | 'lock'
+  | 'wallet'
+  | 'user'
+  | 'help'
+  | 'eye'
+  | 'refresh'
+  | 'flag'
+  | 'list'
+  | 'send'
+  | 'truck';
 
 const PATHS: Record<IconName, string> = {
   home: 'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z',
@@ -63,6 +74,18 @@ const PATHS: Record<IconName, string> = {
   printer: 'M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z',
   in: 'M12 3v12m-5-5 5 5 5-5M4 21h16',
   out: 'M12 15V3m-5 5 5-5 5 5M4 21h16',
+  shield: 'M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6zM9 12l2 2 4-4',
+  lock: 'M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4M12 15v2',
+  wallet: 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3zM3 7l12-3v3M16 13.5h.01',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0',
+  help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14m0 3v.5',
+  eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+  refresh: 'M20 11a8 8 0 0 0-14.6-4.5L3 9m0-5v5h5m-4 4a8 8 0 0 0 14.6 4.5L21 15m0 5v-5h-5',
+  flag: 'M5 21V4h11l-2 4 2 4H5',
+  list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  send: 'M21 3 3 10l7 3 3 7zM10 13l11-10',
+  truck:
+    'M2 6h11v10H2zM13 10h5l3 3v3h-8M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
 };
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
