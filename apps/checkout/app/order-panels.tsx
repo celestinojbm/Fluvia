@@ -91,7 +91,7 @@ export function OrderSummary({
         <caption className="sr-only">{t.summaryTitle}</caption>
         <thead>
           <tr>
-            <th scope="col">{receipt ? t.receiptTitle : t.summaryTitle}</th>
+            <th scope="col">{t.product}</th>
             <th scope="col" className="num">
               {t.qty}
             </th>

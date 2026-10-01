@@ -11,6 +11,7 @@ export interface InstallmentsMessages {
   receiptNote: string;
   print: string;
   orderNumber: (n: number) => string;
+  product: string;
   qty: string;
   unitPrice: string;
   lineTotal: string;
@@ -60,6 +61,7 @@ export const INSTALLMENTS_MESSAGES: Record<Locale, InstallmentsMessages> = {
     receiptNote: 'Comprobante operativo del sandbox. No es una factura.',
     print: 'Imprimir comprobante',
     orderNumber: (n) => `Compra #${n}`,
+    product: 'Producto',
     qty: 'Cant.',
     unitPrice: 'Precio',
     lineTotal: 'Importe',
@@ -120,6 +122,7 @@ export const INSTALLMENTS_MESSAGES: Record<Locale, InstallmentsMessages> = {
     receiptNote: 'Sandbox operational receipt. Not an invoice.',
     print: 'Print receipt',
     orderNumber: (n) => `Purchase #${n}`,
+    product: 'Item',
     qty: 'Qty',
     unitPrice: 'Price',
     lineTotal: 'Amount',

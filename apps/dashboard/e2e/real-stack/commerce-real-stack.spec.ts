@@ -44,6 +44,14 @@ async function noHorizontalScroll(p: Page) {
     cw: document.documentElement.clientWidth,
   }));
   expect(r.sw, 'scroll horizontal').toBeLessThanOrEqual(r.cw);
+  // Tampoco tablas recortadas dentro de su contenedor (salvo regiones
+  // desplazables declaradas, como la matriz de roles).
+  const clipped = await p.evaluate(() =>
+    Array.from(document.querySelectorAll('.fx-table-wrap:not([role="region"])'))
+      .filter((el) => el.scrollWidth > el.clientWidth + 1)
+      .map((el) => el.querySelector('caption')?.textContent ?? el.className)
+  );
+  expect(clipped, 'tabla recortada').toEqual([]);
 }
 
 async function sanitize(p: Page) {

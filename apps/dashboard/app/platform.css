@@ -631,8 +631,8 @@
   color: var(--fx-ink-2);
 }
 
-/* En móvil, las tablas de lista se convierten en tarjetas apiladas. */
-@media (max-width: 640px) {
+/* En móvil y tablet vertical, las tablas de lista se apilan como tarjetas. */
+@media (max-width: 860px) {
   .fx-table.is-stack thead {
     display: block;
     top: 0;
@@ -656,6 +656,7 @@
   }
   .fx-table.is-stack td {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--fx-s3);
     padding: var(--fx-s1) 0;
@@ -672,6 +673,11 @@
   }
   .fx-table.is-stack td.num {
     text-align: right;
+  }
+  .fx-table.is-stack td > * {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 }
 

@@ -7,6 +7,8 @@ import { Callout, OrderState, PlanStatus, money } from './ui';
  * en el detalle de la venta.
  */
 export function OrderLinesTable({ order }: { order: OrderDetail }) {
+  // Tres columnas (el precio unitario va bajo el nombre): legible a 390 px
+  // sin desplazamiento horizontal.
   return (
     <div className="fx-table-wrap">
       <table className="fx-table">
@@ -18,9 +20,6 @@ export function OrderLinesTable({ order }: { order: OrderDetail }) {
               Cant.
             </th>
             <th scope="col" className="num">
-              Precio
-            </th>
-            <th scope="col" className="num">
               Importe
             </th>
           </tr>
@@ -30,17 +29,18 @@ export function OrderLinesTable({ order }: { order: OrderDetail }) {
             <tr key={l.position}>
               <td>
                 <span className="fx-cell-main">{l.name}</span>
-                {l.sku ? <span className="fx-cell-sub">SKU {l.sku}</span> : null}
+                <span className="fx-cell-sub">
+                  {money(l.unit_price, order.currency)} c/u{l.sku ? ` · SKU ${l.sku}` : ''}
+                </span>
               </td>
               <td className="num">{l.quantity}</td>
-              <td className="num">{money(l.unit_price, order.currency)}</td>
               <td className="num">{money(l.line_total, order.currency)}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={3}>Total</td>
+            <td colSpan={2}>Total</td>
             <td className="num">{money(order.total, order.currency)}</td>
           </tr>
         </tfoot>
