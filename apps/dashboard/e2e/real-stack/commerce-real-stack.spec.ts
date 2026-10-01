@@ -358,7 +358,7 @@ test('8. pagar en cuotas (simulación): aceptación explícita y la venta NO que
   // El comprador consulta su plan con SU secreto (fragmento de la URL).
   const buyerPlan = await ctx.newPage();
   await buyerPlan.setViewportSize({ width: 390, height: 844 });
-  await buyerPlan.goto(new URL(planHref!, 'http://127.0.0.1:3100').toString());
+  await buyerPlan.goto(new URL(planHref!, buyer.url()).toString());
   await expect(buyerPlan.locator('.schedule li[data-status="overdue_simulated"]')).toHaveCount(1);
   await expect(buyerPlan.locator('.schedule li[data-status="paid_simulated"]')).toHaveCount(1);
   await expect(buyerPlan.getByText(/^Cuota vencida \(simulada\)/)).toBeVisible();

@@ -14,10 +14,16 @@
 # Variables opcionales (por si algún puerto ya está ocupado):
 #   DEMO_PG_PORT=55432 DEMO_REDIS_PORT=56379 DEMO_API_PORT=3300
 #   DEMO_CHECKOUT_PORT=3301 DEMO_DASHBOARD_PORT=3302
+#   DEMO_NAME=fluvia-demo   prefijo de contenedores, volumen y estado. Con otro
+#                           nombre (y otros puertos) corre una SEGUNDA demo
+#                           aislada sin tocar la primera (otra BD, otro estado).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+NAME="${DEMO_NAME:-fluvia-demo}"
+case "$NAME" in *[!a-z0-9-]*|'') echo "DEMO_NAME inválido: $NAME" >&2; exit 1;; esac
 STATE="$ROOT/.demo"
+[ "$NAME" = fluvia-demo ] || STATE="$ROOT/.demo-$NAME"
 PG_PORT="${DEMO_PG_PORT:-55432}"
 REDIS_PORT="${DEMO_REDIS_PORT:-56379}"
 API_PORT="${DEMO_API_PORT:-3300}"
@@ -29,17 +35,17 @@ need() { command -v "$1" >/dev/null || { echo "Falta $1" >&2; exit 1; }; }
 need node; need pnpm; need docker; need curl
 mkdir -p "$STATE"
 
-echo "==> PostgreSQL 16 y Redis 7 en contenedores propios, solo en $H"
-docker volume create fluvia-demo-pgdata >/dev/null
-docker inspect fluvia-demo-pg >/dev/null 2>&1 ||
-  docker run -d --name fluvia-demo-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
-    -e POSTGRES_DB=fluvia -p "$H:$PG_PORT:5432" -v fluvia-demo-pgdata:/var/lib/postgresql/data \
+echo "==> PostgreSQL 16 y Redis 7 en contenedores propios ($NAME-*), solo en $H"
+docker volume create "$NAME-pgdata" >/dev/null
+docker inspect "$NAME-pg" >/dev/null 2>&1 ||
+  docker run -d --name "$NAME-pg" -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+    -e POSTGRES_DB=fluvia -p "$H:$PG_PORT:5432" -v "$NAME-pgdata":/var/lib/postgresql/data \
     postgres:16 >/dev/null
-docker inspect fluvia-demo-redis >/dev/null 2>&1 ||
-  docker run -d --name fluvia-demo-redis -p "$H:$REDIS_PORT:6379" redis:7 >/dev/null
-docker start fluvia-demo-pg fluvia-demo-redis >/dev/null
+docker inspect "$NAME-redis" >/dev/null 2>&1 ||
+  docker run -d --name "$NAME-redis" -p "$H:$REDIS_PORT:6379" redis:7 >/dev/null
+docker start "$NAME-pg" "$NAME-redis" >/dev/null
 for _ in $(seq 1 60); do
-  docker exec fluvia-demo-pg pg_isready -U postgres -d fluvia >/dev/null 2>&1 && break
+  docker exec "$NAME-pg" pg_isready -U postgres -d fluvia >/dev/null 2>&1 && break
   sleep 1
 done
 
@@ -92,8 +98,9 @@ Demo lista (privada: solo accesible desde ESTA máquina)
   Abrir:        http://$H:$DASHBOARD_PORT/login     (usa 127.0.0.1, no «localhost»:
                 la protección CSRF compara el origen exacto)
   Usuario:      owner@demo.fluvia.test / demo-owner-password   (credenciales de DEMO)
-  Recorrido:    Panel → Cobrar → Abrir checkout → pagar con la tarjeta de prueba
-                → Cobros recientes → Detalle → Devolver… → Ver justificante
+  Recorrido:    Inicio → Nueva venta (catálogo, carrito, cliente) → Revisar →
+                Confirmar → Cobrar ahora → Abrir checkout → pagar (tarjeta de
+                prueba o «Pagar en cuotas», simulación) → Ventas → Ver justificante
 
 Saldo de DEMO: el seed deja 300.000 COP «disponibles» en el comercio Demo Store
 (releaseSettlement local). Es saldo sembrado para poder demostrar devoluciones,
@@ -101,5 +108,5 @@ NO una liquidación de producto: ningún camino del producto libera fondos. Cuan
 se agote, las devoluciones terminan «Cancelada · sin saldo», que es el
 comportamiento real documentado.
 
-Parar y borrar todo:  scripts/demo/stop-local-demo.sh
+Parar y borrar todo:  DEMO_NAME=$NAME scripts/demo/stop-local-demo.sh
 EOF

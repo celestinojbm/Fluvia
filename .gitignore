@@ -11,3 +11,4 @@ coverage/
 # Snapshot del redis-server local (tests TM-03); artefacto de runtime
 dump.rdb
 .demo/
+.demo-*/
