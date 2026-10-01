@@ -495,3 +495,63 @@ describe('indicadores', () => {
     expect(bad.statusCode).toBe(400);
   });
 });
+
+describe('bolívares (VES) por HTTP', () => {
+  it('producto y venta en VES con céntimos; VED y mezcla de monedas se rechazan', async () => {
+    const bs = await newProduct(123_456, {
+      currency: 'VES',
+      sku: `VE-${randomUUID().slice(0, 6)}`,
+    });
+    expect(bs.price).toBe(123_456);
+    const got = await app.inject({
+      method: 'GET',
+      url: `${base(orgA)}/catalog/products/${bs.id}`,
+      headers: owner.headers,
+    });
+    expect(got.json().currency).toBe('VES');
+
+    const ved = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/catalog/products`,
+      headers: owner.headers,
+      payload: { name: `Prod ${randomUUID().slice(0, 6)}`, price: 100, currency: 'VED' },
+    });
+    expect({ status: ved.statusCode, code: ved.json().error.code }).toEqual({
+      status: 400,
+      code: 'validation_error',
+    });
+
+    const key = `ord-${randomUUID()}`;
+    const ok = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/orders`,
+      headers: { ...finance.headers, 'idempotency-key': key },
+      payload: {
+        merchant_id: merchantA,
+        currency: 'VES',
+        lines: [{ product_id: bs.id, quantity: 2 }],
+        expected_total: 246_912,
+      },
+    });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json()).toMatchObject({ currency: 'VES', total: 246_912 });
+
+    const usd = await newProduct(500);
+    const mixed = await app.inject({
+      method: 'POST',
+      url: `${base(orgA)}/orders`,
+      headers: { ...finance.headers, 'idempotency-key': `ord-${randomUUID()}` },
+      payload: {
+        merchant_id: merchantA,
+        currency: 'VES',
+        lines: [
+          { product_id: bs.id, quantity: 1 },
+          { product_id: usd.id, quantity: 1 },
+        ],
+        expected_total: 123_956,
+      },
+    });
+    expect(mixed.statusCode).toBe(422);
+    expect(mixed.json().error.code).toBe('order_currency_mismatch');
+  });
+});

@@ -26,6 +26,7 @@ export const POS_CURRENCIES = [
   'PEN',
   'CLP',
   'JPY',
+  'VES',
 ] as const;
 
 export type AmountError = 'empty' | 'format' | 'decimals' | 'zero' | 'too_large';

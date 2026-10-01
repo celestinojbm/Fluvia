@@ -17,6 +17,15 @@ export const CURRENCIES = {
   PEN: { exponent: 2 },
   CLP: { exponent: 0 },
   JPY: { exponent: 0 },
+  /**
+   * Bolívar venezolano. Código y exponente verificados en la lista oficial
+   * ISO 4217 «List one» publicada por la agencia de mantenimiento (SIX,
+   * publicación 2026-09-17): VES / 928 / 2 decimales. La enmienda 170 (2021)
+   * añadió VED/926 solo «para necesidades internas» de la reconversión y
+   * declara VES el código válido para transacciones; el BCV no adopta VED.
+   * Fuente y huella: docs/product/bolivares.md.
+   */
+  VES: { exponent: 2 },
 } as const;
 
 export type CurrencyCode = keyof typeof CURRENCIES;

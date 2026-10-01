@@ -88,19 +88,5 @@ export const MESSAGES: Record<Locale, Messages> = {
   },
 };
 
-const MINOR_UNIT_CURRENCIES = new Set(['COP', 'JPY', 'CLP']); // exponente 0
-
-/** Formatea unidades menores según la moneda y el locale. */
-export function formatAmount(amountMinor: number, currency: string, locale: Locale): string {
-  const zeroExponent = MINOR_UNIT_CURRENCIES.has(currency);
-  const value = zeroExponent ? amountMinor : amountMinor / 100;
-  try {
-    return new Intl.NumberFormat(locale === 'en' ? 'en-US' : 'es-CO', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: zeroExponent ? 0 : 2,
-    }).format(value);
-  } catch {
-    return `${value} ${currency}`;
-  }
-}
+/** Formato exacto de importes: `lib/money-format` (idéntico al del dashboard). */
+export { displayExponent, formatAmount } from './lib/money-format';

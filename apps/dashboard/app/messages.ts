@@ -1062,31 +1062,9 @@ export function formatMinor(amountMinor: number | null, locale: Locale): string 
   }
 }
 
-const MINOR_UNIT_CURRENCIES = new Set(['COP', 'JPY', 'CLP']); // exponente 0
-
 /**
- * Exponente con el que la UI MUESTRA una moneda (0 o 2). Es la regla de
- * `formatAmount`, expuesta para que el POS convierta el importe tecleado con la
- * MISMA regla con la que se muestra (lo que el cajero escribe = lo que ve el
- * comprador). OJO: para COP difiere de `@fluvia/money` (exponente 2) —
- * discrepancia preexistente registrada como decisión pendiente; no se corrige
- * aquí porque es una regla monetaria.
+ * Exponente de PRESENTACIÓN y formato de importes: viven en `lib/money-format`
+ * (idéntico al del checkout). Para COP el exponente mostrado (0) difiere de
+ * `@fluvia/money` (2): discrepancia preexistente registrada como PEND-008.
  */
-export function displayExponent(currency: string): 0 | 2 {
-  return MINOR_UNIT_CURRENCIES.has(currency) ? 0 : 2;
-}
-
-/** Formatea unidades menores según la moneda y el locale (espeja apps/checkout). */
-export function formatAmount(amountMinor: number, currency: string, locale: Locale): string {
-  const zeroExponent = displayExponent(currency) === 0;
-  const value = zeroExponent ? amountMinor : amountMinor / 100;
-  try {
-    return new Intl.NumberFormat(locale === 'en' ? 'en-US' : 'es-CO', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: zeroExponent ? 0 : 2,
-    }).format(value);
-  } catch {
-    return `${value} ${currency}`;
-  }
-}
+export { displayExponent, formatAmount } from './lib/money-format';
