@@ -382,6 +382,17 @@ export function SellWorkspace({
           </div>
         </section>
 
+        {cart.length > 0 && !reviewing ? (
+          <div className="fx-cartbar">
+            <span>
+              {cart.reduce((a, l) => a + l.qty, 0)} art. · <strong>{fmt(total, currency)}</strong>
+            </span>
+            <a className="fx-btn fx-btn-sm" href="#cart-title">
+              Ver carrito
+            </a>
+          </div>
+        ) : null}
+
         <section className="fx-panel fx-cart" aria-labelledby="cart-title">
           <header>
             <h2 id="cart-title" ref={reviewRef} tabIndex={-1}>

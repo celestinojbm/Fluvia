@@ -304,6 +304,7 @@
 
 .fx-grid {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--fx-s4);
 }
 .fx-grid-2 {
@@ -586,6 +587,7 @@
    Tablas y listas
    -------------------------------------------------------------------------- */
 .fx-table-wrap {
+  position: relative; /* contiene los .sr-only absolutos dentro del scroll */
   overflow-x: auto;
 }
 .fx-table {
@@ -632,6 +634,9 @@
 /* En móvil, las tablas de lista se convierten en tarjetas apiladas. */
 @media (max-width: 640px) {
   .fx-table.is-stack thead {
+    display: block;
+    top: 0;
+    left: 0;
     position: absolute;
     width: 1px;
     height: 1px;
@@ -682,7 +687,17 @@
 }
 .fx-dl dd {
   margin: 0;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .fx-dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px var(--fx-s4);
+  }
+  .fx-dl dd {
+    margin-bottom: var(--fx-s2);
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -696,7 +711,7 @@
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 700;
-  white-space: nowrap;
+  max-width: 100%;
   background: var(--fx-sunken);
   color: var(--fx-ink);
 }
@@ -852,7 +867,7 @@
 }
 .fx-products {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr));
   gap: var(--fx-s3);
   margin: 0;
   padding: 0;
@@ -1041,4 +1056,37 @@
 .fx-matrix td:first-child,
 .fx-matrix th:first-child {
   text-align: left;
+}
+
+/* Barra del carrito (móvil/tablet): total siempre visible + salto al carrito. */
+.fx-cartbar {
+  display: none;
+}
+@media (max-width: 1023px) {
+  .fx-cartbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fx-s3);
+    margin: var(--fx-s4) calc(-1 * var(--fx-s4)) 0;
+    padding: var(--fx-s3) var(--fx-s4);
+    background: var(--fx-deep);
+    color: #ffffff;
+    box-shadow: 0 -2px 8px rgba(8, 24, 28, 0.2);
+  }
+  .fx-cartbar strong {
+    font-variant-numeric: tabular-nums;
+  }
+  .fx-cartbar a {
+    color: var(--fx-deep);
+    background: #ffffff;
+    border-color: #ffffff;
+  }
+  .fx-product {
+    min-height: 96px;
+    padding: var(--fx-s3);
+  }
 }

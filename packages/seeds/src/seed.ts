@@ -58,6 +58,29 @@ export const DEMO = {
   ] as DemoUserSpec[],
 } as const;
 
+export const DEMO_CATEGORIES = ['Abarrotes', 'Bebidas', 'Hogar y limpieza', 'Papelería'] as const;
+
+/** Catálogo sintético de un minorista genérico (SKU estable = id estable). */
+export const DEMO_PRODUCTS: Array<{
+  sku: string;
+  name: string;
+  category: (typeof DEMO_CATEGORIES)[number];
+  price: number;
+  available?: boolean;
+}> = [
+  { sku: 'ABA-001', name: 'Arroz 1 kg', category: 'Abarrotes', price: 4_800 },
+  { sku: 'ABA-002', name: 'Harina de maíz 1 kg', category: 'Abarrotes', price: 3_900 },
+  { sku: 'ABA-003', name: 'Café molido 500 g', category: 'Abarrotes', price: 18_500 },
+  { sku: 'ABA-004', name: 'Aceite vegetal 1 L', category: 'Abarrotes', price: 12_900 },
+  { sku: 'BEB-001', name: 'Agua mineral 600 ml', category: 'Bebidas', price: 2_200 },
+  { sku: 'BEB-002', name: 'Jugo de naranja 1 L', category: 'Bebidas', price: 7_400 },
+  { sku: 'BEB-003', name: 'Refresco 2 L', category: 'Bebidas', price: 6_900, available: false },
+  { sku: 'HOG-001', name: 'Detergente 1 kg', category: 'Hogar y limpieza', price: 15_300 },
+  { sku: 'HOG-002', name: 'Jabón de manos', category: 'Hogar y limpieza', price: 5_600 },
+  { sku: 'PAP-001', name: 'Cuaderno 100 hojas', category: 'Papelería', price: 6_200 },
+  { sku: 'PAP-002', name: 'Bolígrafos x3', category: 'Papelería', price: 4_100 },
+];
+
 export interface SeedReport {
   organizationId: string;
   merchantId: string;
@@ -103,6 +126,34 @@ export async function seedDemo(env: string, pools: SeedPools): Promise<SeedRepor
     `INSERT INTO merchants (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
     [DEMO.merchantId, DEMO.organizationId, DEMO.merchantName]
   );
+
+  // --- Catálogo de DEMO (comercio minorista genérico, datos sintéticos) -----
+  // Precios en unidades menores con la regla de VISUALIZACIÓN vigente para COP
+  // (exponente 0 en pantalla; PEND-008 sin decidir). Idempotente por ids fijos.
+  for (const name of DEMO_CATEGORIES) {
+    await pools.admin.query(
+      `INSERT INTO catalog_categories (id, tenant_id, name) VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [seedUuid(`category:${name}`), DEMO.organizationId, name]
+    );
+  }
+  for (const p of DEMO_PRODUCTS) {
+    await pools.admin.query(
+      `INSERT INTO catalog_products
+         (id, tenant_id, category_id, name, sku, price, currency, available)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+      [
+        seedUuid(`product:${p.sku}`),
+        DEMO.organizationId,
+        seedUuid(`category:${p.category}`),
+        p.name,
+        p.sku,
+        p.price,
+        DEMO.currency,
+        p.available ?? true,
+      ]
+    );
+  }
 
   // --- Ledger demo: por la via NORMATIVA (chart + posting idempotente) ------
   const ledger = new LedgerService(pools.app);

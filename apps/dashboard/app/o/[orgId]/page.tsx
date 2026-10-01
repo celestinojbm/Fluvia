@@ -58,13 +58,6 @@ export default async function OrgHomePage({
         id="home-title"
         title="Inicio"
         description="Resumen operativo del comercio. Datos de sandbox: dinero simulado."
-        actions={
-          canSell ? (
-            <a className="fx-btn fx-btn-primary" href={`${o}/sell`}>
-              Nueva venta
-            </a>
-          ) : null
-        }
       />
 
       <nav aria-label="Accesos rápidos" className="fx-quick" style={{ marginBottom: 24 }}>

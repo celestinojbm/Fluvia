@@ -94,31 +94,33 @@ export default async function SettingsPage({ params }: { params: Promise<{ orgId
             </a>
           </header>
           <div className="fx-panel-body" style={{ paddingTop: 8 }}>
-            <table className="fx-table is-stack">
-              <caption className="sr-only">Comercios de la organización</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Comercio</th>
-                  <th scope="col">País</th>
-                  <th scope="col">Moneda</th>
-                  <th scope="col">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {merchants.map((m) => (
-                  <tr key={m.id}>
-                    <td data-label="Comercio">{m.name}</td>
-                    <td data-label="País">{m.country}</td>
-                    <td data-label="Moneda">{m.defaultCurrency}</td>
-                    <td data-label="Estado">
-                      <Status tone={m.status === 'active' ? 'ok' : 'warn'} code={m.status}>
-                        {m.status === 'active' ? 'Activo' : 'Congelado'}
-                      </Status>
-                    </td>
+            <div className="fx-table-wrap">
+              <table className="fx-table is-stack">
+                <caption className="sr-only">Comercios de la organización</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Comercio</th>
+                    <th scope="col">País</th>
+                    <th scope="col">Moneda</th>
+                    <th scope="col">Estado</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {merchants.map((m) => (
+                    <tr key={m.id}>
+                      <td data-label="Comercio">{m.name}</td>
+                      <td data-label="País">{m.country}</td>
+                      <td data-label="Moneda">{m.defaultCurrency}</td>
+                      <td data-label="Estado">
+                        <Status tone={m.status === 'active' ? 'ok' : 'warn'} code={m.status}>
+                          {m.status === 'active' ? 'Activo' : 'Congelado'}
+                        </Status>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>

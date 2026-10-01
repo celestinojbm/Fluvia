@@ -59,7 +59,12 @@ export default async function TeamPage({ params }: { params: Promise<{ orgId: st
           <header>
             <h2 id="matrix-title">Qué puede hacer cada rol</h2>
           </header>
-          <div className="fx-panel-body fx-table-wrap">
+          <div
+            className="fx-panel-body fx-table-wrap"
+            tabIndex={0}
+            role="region"
+            aria-label="Matriz de permisos (desplazable)"
+          >
             <table className="fx-table fx-matrix">
               <caption className="sr-only">Matriz de permisos por rol</caption>
               <thead>
