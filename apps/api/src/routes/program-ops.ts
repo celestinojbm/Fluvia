@@ -5,7 +5,7 @@ import type { Permission } from '@fluvia/identity';
 import type { PersonalServices, ProgramActor } from '@fluvia/personal';
 import type { UncertainPaymentResolver } from '@fluvia/payments-core';
 import type { Security } from '../security.js';
-import { snake } from './wire.js';
+import { camel, snake } from './wire.js';
 
 /**
  * Fluvia Operaciones — plano de OPERADOR sobre la organización PROGRAMA.
@@ -284,7 +284,8 @@ export function registerProgramOpsRoutes(
       const b = PolicyBody.parse(req.body);
       const draft = await p.programs.createPolicyDraft(
         tenant(req),
-        { code: b.code, params: b.params },
+        // Acepta snake_case (lo que devuelve GET /policies) o camelCase.
+        { code: b.code, params: camel(b.params) },
         op(req)
       );
       return reply.code(201).send(snake(draft));

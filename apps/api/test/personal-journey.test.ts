@@ -468,6 +468,49 @@ async function releaseMerchant(intentId: string, amount: number) {
   });
 }
 
+describe('política versionada por HTTP', () => {
+  it('una versión nueva se crea desde los parámetros devueltos (snake_case) y su activación exige otra persona', async () => {
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/programs/${program}/policies`,
+      headers: opFinance.headers,
+    });
+    const active = list.json().data.find((p: { status: string }) => p.status === 'active');
+    expect(active.params.currencies.VES).toBeDefined();
+    await stepUp(opFinance.headers);
+    const draft = await app.inject({
+      method: 'POST',
+      url: `/v1/programs/${program}/policies`,
+      headers: opFinance.headers,
+      payload: { code: active.code, params: { ...active.params, down_payment_bps: 3000 } },
+    });
+    expect(draft.statusCode).toBe(201);
+    const prop = await app.inject({
+      method: 'POST',
+      url: `/v1/programs/${program}/policies/${draft.json().id}/propose-activation`,
+      headers: opFinance.headers,
+      payload: { reason: 'Prueba de doble firma' },
+    });
+    expect(prop.statusCode).toBe(201);
+    const self = await app.inject({
+      method: 'POST',
+      url: `/v1/programs/${program}/approvals/${prop.json().approval_id}/decision`,
+      headers: opFinance.headers,
+      payload: { decision: 'approve' },
+    });
+    expect(self.json().error.code).toBe('four_eyes_required');
+    // Otra persona la RECHAZA (la suite sigue con la política de referencia).
+    await stepUp(opOwner.headers);
+    const other = await app.inject({
+      method: 'POST',
+      url: `/v1/programs/${program}/approvals/${prop.json().approval_id}/decision`,
+      headers: opOwner.headers,
+      payload: { decision: 'reject' },
+    });
+    expect(other.json().status).toBe('rejected');
+  });
+});
+
 describe('rechazos, límites, bloqueo y aislamiento', () => {
   it('fondos insuficientes y límite excedido: el comercio ve el rechazo', async () => {
     const c = await consumer('B');

@@ -18,6 +18,10 @@ interface Messages {
   methodApprove: string;
   methodDecline: string;
   methodAsync: string;
+  methodFluvia: string;
+  fluviaCodeLabel: string;
+  fluviaCodeHint: string;
+  fluviaCodeInvalid: string;
   pay: string;
   paying: string;
   statusOpen: string;
@@ -46,6 +50,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     methodApprove: 'Tarjeta de prueba (aprobada)',
     methodDecline: 'Tarjeta de prueba (rechazada)',
     methodAsync: 'Transferencia de prueba (asíncrona)',
+    methodFluvia: 'Fluvia Personal (saldo o cuotas)',
+    fluviaCodeLabel: 'Código de pago de Fluvia Personal',
+    fluviaCodeHint:
+      'Genéralo en tu app Fluvia Personal (Tarjetas → Pagar en comercio). Es de un solo uso y caduca en 10 minutos.',
+    fluviaCodeInvalid: 'Pega el código completo (empieza por fcp_).',
     pay: 'Pagar',
     paying: 'Procesando…',
     statusOpen: 'Pago pendiente',
@@ -74,6 +83,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     methodApprove: 'Test card (approved)',
     methodDecline: 'Test card (declined)',
     methodAsync: 'Test bank transfer (asynchronous)',
+    methodFluvia: 'Fluvia Personal (balance or installments)',
+    fluviaCodeLabel: 'Fluvia Personal payment code',
+    fluviaCodeHint:
+      'Create it in your Fluvia Personal app (Cards → Pay at a store). Single use, expires in 10 minutes.',
+    fluviaCodeInvalid: 'Paste the full code (starts with fcp_).',
     pay: 'Pay',
     paying: 'Processing…',
     statusOpen: 'Payment pending',

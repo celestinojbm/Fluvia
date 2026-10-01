@@ -1,0 +1,603 @@
+/* ==========================================================================
+   Fluvia Operaciones — «Sala de control» (docs/design/fluvia-surfaces.md §3)
+   Denso y legible: barra superior oscura, navegación clara compacta, tablas
+   con cabecera fija, estados con punto + palabra, acciones con motivo.
+   ========================================================================== */
+
+:root {
+  --ox-top: 56px;
+  --ox-nav: 236px;
+  --px-credit: #2c4a9a;
+  --px-credit-soft: #e8edf9;
+}
+.ox-shell {
+  min-height: 100vh;
+  background: #f4f2ee;
+  color: var(--fx-ink);
+  font-family: var(--fx-font);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.ox-shell *,
+.ox-gate * {
+  box-sizing: border-box;
+}
+.ox-shell a {
+  color: var(--fx-river);
+}
+.ox-shell :focus-visible,
+.ox-gate :focus-visible {
+  outline: 3px solid var(--fx-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* --- barra superior ----------------------------------------------------- */
+.ox-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  min-height: var(--ox-top);
+  padding: 8px 16px;
+  background: var(--fx-deep);
+  color: #e8f1f0;
+}
+.ox-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff !important;
+  text-decoration: none;
+  font-weight: 760;
+}
+.ox-brand em {
+  font-style: normal;
+  font-weight: 560;
+  color: var(--fx-sun);
+}
+.ox-program {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.ox-search {
+  flex: 1 1 18rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  order: 5;
+}
+.ox-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  outline: none;
+}
+.ox-search input::placeholder {
+  color: #a9c9c5;
+}
+.ox-role {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #a9c9c5;
+}
+@media (min-width: 1024px) {
+  .ox-search {
+    order: 0;
+    max-width: 30rem;
+  }
+}
+
+/* --- navegación --------------------------------------------------------- */
+.ox-nav {
+  background: #fff;
+  border-bottom: 1px solid var(--fx-line);
+  overflow-x: auto;
+}
+.ox-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: flex;
+  gap: 2px;
+}
+.ox-nav a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  color: var(--fx-ink-2);
+  text-decoration: none;
+  font-weight: 600;
+}
+.ox-nav a:hover {
+  background: var(--fx-sunken);
+}
+.ox-nav a[aria-current='page'] {
+  background: var(--fx-deep);
+  color: #fff;
+}
+.ox-badge {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--fx-sun);
+  color: var(--fx-ink);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-align: center;
+}
+.ox-nav-foot {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .ox-nav {
+    position: fixed;
+    top: var(--ox-top);
+    bottom: 0;
+    left: 0;
+    width: var(--ox-nav);
+    border-bottom: 0;
+    border-right: 1px solid var(--fx-line);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .ox-nav ul {
+    flex-direction: column;
+    padding: 12px;
+  }
+  .ox-nav-foot {
+    display: block;
+    margin-top: auto;
+    padding: 12px 16px;
+    font-size: 0.82rem;
+    color: var(--fx-ink-3);
+  }
+}
+
+/* --- contenido ---------------------------------------------------------- */
+.ox-main {
+  max-width: 96rem;
+  padding: 16px 16px 48px;
+  outline: none;
+}
+@media (min-width: 768px) {
+  .ox-main {
+    padding: 24px 24px 48px;
+  }
+}
+@media (min-width: 1024px) {
+  .ox-main {
+    margin-left: var(--ox-nav);
+    padding: 24px 32px 48px;
+  }
+}
+.ox-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ox-head h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+}
+.ox-eyebrow {
+  margin: 0 0 2px;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fx-ink-3);
+}
+.ox-section {
+  margin-top: 24px;
+}
+.ox-section > h2 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.ox-muted {
+  color: var(--fx-ink-3);
+  font-size: 0.84rem;
+}
+.ox-sandbox {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--fx-sim-soft);
+  color: var(--fx-sim);
+  font-size: 0.82rem;
+}
+
+/* --- franja de colas ---------------------------------------------------- */
+.ox-queues {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  background: #fff;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ox-queues a {
+  display: block;
+  padding: 14px 16px;
+  border-left: 1px solid var(--fx-line);
+  text-decoration: none;
+  color: var(--fx-ink);
+}
+.ox-queues a:first-child {
+  border-left: 0;
+}
+.ox-queues a:hover {
+  background: var(--fx-canvas);
+}
+.ox-queues strong {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 760;
+  line-height: 1.1;
+}
+.ox-queues .is-hot strong {
+  color: var(--fx-bad);
+}
+.ox-queues span {
+  font-size: 0.8rem;
+  color: var(--fx-ink-3);
+}
+
+/* --- tablas ------------------------------------------------------------- */
+.ox-table-wrap {
+  background: #fff;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+  overflow: auto;
+  max-height: 70vh;
+}
+.ox-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.ox-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--fx-canvas);
+  text-align: left;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fx-ink-3);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fx-line);
+  white-space: nowrap;
+}
+.ox-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--fx-line);
+  vertical-align: top;
+}
+.ox-table tr:last-child td {
+  border-bottom: 0;
+}
+.ox-table tbody tr:hover {
+  background: #fbfaf7;
+}
+.ox-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+.ox-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--fx-ink-2);
+  word-break: break-all;
+}
+@media (max-width: 767px) {
+  .ox-table.is-stack thead {
+    display: none;
+  }
+  .ox-table.is-stack tr {
+    display: block;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--fx-line);
+  }
+  .ox-table.is-stack td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border: 0;
+    padding: 4px 10px;
+    text-align: right;
+  }
+  .ox-table.is-stack td::before {
+    content: attr(data-label);
+    font-weight: 650;
+    color: var(--fx-ink-3);
+    text-align: left;
+  }
+  .ox-table-wrap {
+    max-height: none;
+  }
+}
+.ox-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--fx-ink-2);
+  background: #fff;
+  border: 1px dashed var(--fx-line-strong);
+  border-radius: 12px;
+}
+
+/* --- estados ------------------------------------------------------------ */
+.ox-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  color: var(--fx-ink-2);
+}
+.ox-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ox-ok {
+  color: var(--fx-ok);
+}
+.ox-warn {
+  color: var(--fx-warn);
+}
+.ox-bad {
+  color: var(--fx-bad);
+}
+.ox-info {
+  color: var(--fx-river-strong);
+}
+.ox-credit {
+  color: var(--px-credit);
+}
+
+/* --- 360 ---------------------------------------------------------------- */
+.ox-360 {
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 1200px) {
+  .ox-360 {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    align-items: start;
+  }
+  .ox-actions-pane {
+    position: sticky;
+    top: calc(var(--ox-top) + 16px);
+  }
+}
+.ox-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+}
+.ox-identity h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.ox-anchors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ox-anchors a {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--fx-line-strong);
+  background: #fff;
+  font-size: 0.8rem;
+  font-weight: 620;
+  text-decoration: none;
+  color: var(--fx-ink-2);
+}
+.ox-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+}
+.ox-kv dt {
+  font-size: 0.75rem;
+  color: var(--fx-ink-3);
+}
+.ox-kv dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+.ox-actions-pane {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--fx-line);
+  border-radius: 12px;
+}
+.ox-actions-pane h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* --- acciones ----------------------------------------------------------- */
+.ox-action-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--fx-canvas);
+  border: 1px solid var(--fx-line);
+}
+.ox-action-title {
+  margin: 0;
+  font-weight: 700;
+}
+.ox-field {
+  display: grid;
+  gap: 3px;
+  font-size: 0.82rem;
+  font-weight: 620;
+}
+.ox-field input,
+.ox-field select,
+.ox-field textarea {
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--fx-line-strong);
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+  width: 100%;
+}
+.ox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ox-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--fx-line-strong);
+  background: #fff;
+  color: var(--fx-ink);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ox-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ox-btn-primary {
+  background: var(--fx-river);
+  border-color: var(--fx-river);
+  color: #fff !important;
+}
+.ox-btn-danger {
+  border-color: var(--fx-bad);
+  color: var(--fx-bad);
+}
+.ox-msg {
+  margin: 0;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.ox-msg-ok {
+  background: var(--fx-ok-soft);
+  color: var(--fx-ok);
+}
+.ox-msg-bad {
+  background: var(--fx-bad-soft);
+  color: var(--fx-bad);
+}
+.ox-msg-warn {
+  background: var(--fx-warn-soft);
+  color: var(--fx-warn);
+}
+.ox-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.ox-filters a {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--fx-line-strong);
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 620;
+  color: var(--fx-ink-2);
+  text-decoration: none;
+}
+.ox-filters a[aria-current='true'] {
+  background: var(--fx-deep);
+  border-color: var(--fx-deep);
+  color: #fff;
+}
+.ox-reasons {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: var(--fx-ink-2);
+}
+.ox-gate {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  max-width: 40rem;
+  margin: 0 auto;
+  font-family: var(--fx-font);
+  color: var(--fx-ink);
+}
+.ox-gate h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
