@@ -74,6 +74,8 @@ async function checkScreen(p: Page, name: string) {
     await noHorizontalScroll(p);
     if (EVIDENCE) {
       await sanitize(p);
+      // Arriba: la barra lateral fija se dibuja respecto a la ventana.
+      await p.evaluate(() => window.scrollTo(0, 0));
       await p.screenshot({ path: `${EVIDENCE}/${name}-${width}.png`, fullPage: true });
     }
   }
@@ -445,8 +447,12 @@ async function freeOf(sku: string): Promise<number> {
 }
 
 test('11. bolívares: venta en VES con variante, SKU por teclado y existencias reservadas', async () => {
+  // Autosuficiente frente a corridas previas: si queda poco, entra stock por
+  // la ficha del producto (entrada idempotente, como lo haría el comercio).
+  await ensureStock('VE-QUE-1K', 'Queso blanco 1 kg', 2);
+  await ensureStock('VE-CAF-250', 'Café molido', 2);
   const quesoBefore = await freeOf('VE-QUE-1K');
-  expect(quesoBefore).toBeGreaterThanOrEqual(1);
+  expect(quesoBefore).toBeGreaterThanOrEqual(2);
   await page.goto(`${O}/sell`);
   await page.getByLabel('Moneda').selectOption('VES');
   // Una familia con variantes: una opción por presentación.
@@ -563,6 +569,15 @@ test('13. variante nueva y entrada de existencias idempotente', async () => {
   );
   await checkScreen(page, '39-catalogo-variantes');
 });
+
+async function ensureStock(sku: string, name: string, min: number) {
+  if ((await freeOf(sku)) >= min) return;
+  await openProduct(sku, name);
+  await page.getByLabel('Unidades', { exact: true }).fill('6');
+  await page.getByLabel('Motivo', { exact: true }).fill('Reposición para la prueba');
+  await page.getByRole('button', { name: 'Registrar movimiento' }).click();
+  await expect(page.locator('.fx-moves li').first()).toContainText('Entrada', { timeout: 15_000 });
+}
 
 /** Abre la ficha de un producto buscándolo por SKU en el catálogo (como un operador). */
 async function openProduct(sku: string, name: string | RegExp) {

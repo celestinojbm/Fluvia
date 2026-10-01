@@ -148,7 +148,7 @@ export function DayBars({
                 height={hc}
                 rx={2}
               />
-              {i % every === 0 || i === n - 1 ? (
+              {(i % every === 0 && n - 1 - i >= every / 2) || i === n - 1 ? (
                 <text x={x} y={H - 6} textAnchor="middle">
                   {label(d.day)}
                 </text>

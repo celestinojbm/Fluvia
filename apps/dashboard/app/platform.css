@@ -460,7 +460,7 @@
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .fx-kpi-value + .fx-kpi-value {
   font-size: 1.05rem;
@@ -555,12 +555,12 @@
 }
 .fx-hero-value {
   margin: var(--fx-s1) 0 0;
-  font-size: clamp(2rem, 4.2vw, 2.75rem);
+  font-size: clamp(1.75rem, 4.2vw, 2.75rem);
   font-weight: 760;
   line-height: 1.05;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .fx-hero-sub {
   margin: var(--fx-s2) 0 0;
@@ -666,7 +666,7 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: #ffffff;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .fx-balance .fx-balance-cur {
   grid-column: 1 / -1;
@@ -735,7 +735,16 @@
   font-weight: 740;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
+  /* Corta en los espacios («Bs. 24.484,00 / VES»), nunca dentro del número. */
+  overflow-wrap: break-word;
+}
+@media (max-width: 520px) {
+  .fx-strip > div {
+    padding: var(--fx-s3) var(--fx-s4);
+  }
+  .fx-strip-value {
+    font-size: 1.02rem;
+  }
 }
 .fx-strip-meta {
   margin: 2px 0 0;
@@ -1222,6 +1231,15 @@
   min-width: 0;
 }
 
+@media (max-width: 1100px) {
+  .fx-grid-2 .fx-table th,
+  .fx-grid-2 .fx-table td {
+    padding: 10px 10px;
+  }
+  .fx-table th {
+    letter-spacing: 0.03em;
+  }
+}
 @media (max-width: 520px) {
   .fx-table th,
   .fx-table td {
@@ -2301,6 +2319,16 @@
 .app-shell main a:not([class]) {
   color: var(--fx-river);
   font-weight: 600;
+}
+.app-shell .fx-balance a,
+.app-shell .fx-alert a {
+  color: inherit;
+}
+.app-shell main .fx-balance a:not([class]) {
+  color: #ffffff;
+}
+.app-shell main .fx-alert a:not([class]) {
+  color: inherit;
 }
 /* Encabezados que reciben el foco por programa (anuncio del resultado):
    sin recuadro, el lector de pantalla ya lo anuncia. */
