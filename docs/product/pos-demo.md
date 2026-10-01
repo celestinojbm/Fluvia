@@ -1,5 +1,7 @@
 # POS sandbox — estado del producto, mapa de pantallas y demo
 
+> **Continuación:** la plataforma del comercio (catálogo → venta → cobro, gestión y «Pagar en cuotas» en simulación) está documentada en [`commerce-platform.md`](commerce-platform.md). El terminal descrito aquí sigue siendo el que cobra cada venta.
+
 Estado: **incremento sandbox, sin merge** (PR draft apilado sobre `claude/pos-justificante`) · Proveedor: **MockProvider únicamente** · Datos: **sintéticos** (seed de demo) · Fluvia no es banco, adquirente ni procesador. Nada de esto autoriza producción, exposición pública ni sandbox compartido (decisión #24, PEND-006).
 
 ## 1. Estado del producto (verificado contra el stack real el 2026-09-30)

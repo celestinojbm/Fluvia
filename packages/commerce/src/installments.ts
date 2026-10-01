@@ -221,12 +221,16 @@ export class InstallmentSandboxService {
     linkId: string | null;
     sessionOpen: boolean;
   }> {
-    const s = await c.query<{ payment_link_id: string | null; open: boolean }>(
-      `SELECT i.payment_link_id, (cs.status = 'open' AND cs.expires_at > now()) AS open
-       FROM checkout_sessions cs JOIN payment_intents i ON i.id = cs.payment_intent_id
-       WHERE cs.id = $1 ${lock ? 'FOR UPDATE OF cs' : ''}`,
-      [sessionId]
-    );
+    // Dos literales (sin interpolar SQL): con lock para confirmar un plan,
+    // sin lock para leer.
+    const sql = lock
+      ? `SELECT i.payment_link_id, (cs.status = 'open' AND cs.expires_at > now()) AS open
+         FROM checkout_sessions cs JOIN payment_intents i ON i.id = cs.payment_intent_id
+         WHERE cs.id = $1 FOR UPDATE OF cs`
+      : `SELECT i.payment_link_id, (cs.status = 'open' AND cs.expires_at > now()) AS open
+         FROM checkout_sessions cs JOIN payment_intents i ON i.id = cs.payment_intent_id
+         WHERE cs.id = $1`;
+    const s = await c.query<{ payment_link_id: string | null; open: boolean }>(sql, [sessionId]);
     const row = s.rows[0];
     if (!row) throw new CheckoutSessionNotFoundError();
     if (!row.payment_link_id) return { order: null, linkId: null, sessionOpen: row.open };
