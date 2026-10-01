@@ -107,3 +107,38 @@ describe('seedDemo (F1-10)', () => {
     }
   });
 });
+
+describe('catálogo de demo en bolívares', () => {
+  it('VES con céntimos, variantes y existencias; re-ejecutar no suma existencias', async () => {
+    await seedDemo('test', { admin, app });
+    await seedDemo('test', { admin, app });
+    const r = await admin.query<{
+      sku: string;
+      currency: string;
+      price: string;
+      on_hand: string | null;
+      variant: string | null;
+    }>(
+      `SELECT p.sku, p.currency, p.price::text, lv.on_hand::text,
+              (SELECT b.sku FROM catalog_products b WHERE b.id = p.variant_of) AS variant
+       FROM catalog_products p LEFT JOIN inventory_levels lv ON lv.product_id = p.id
+       WHERE p.tenant_id = $1 AND p.sku LIKE 'VE-%' ORDER BY p.sku`,
+      [DEMO.organizationId]
+    );
+    const by = new Map(r.rows.map((x) => [x.sku, x]));
+    expect(by.get('VE-CAF-500')).toMatchObject({
+      currency: 'VES',
+      price: '79000',
+      on_hand: '6',
+      variant: 'VE-CAF-250',
+    });
+    expect(by.get('VE-HAR-1K')).toMatchObject({ price: '17550', on_hand: '30' });
+    expect(by.get('VE-HUE-30')?.on_hand ?? '0').toBe('0');
+    // Los COP históricos siguen en COP con su precio.
+    const cop = await admin.query<{ currency: string; price: string }>(
+      `SELECT currency, price::text FROM catalog_products WHERE tenant_id = $1 AND sku = 'ABA-001'`,
+      [DEMO.organizationId]
+    );
+    expect(cop.rows[0]).toEqual({ currency: 'COP', price: '4800' });
+  });
+});
