@@ -97,6 +97,7 @@ Estado: **Sandbox** = implementado y verificado · **Incompleto** = funciona con
 - **Importes en servidor**: el total lo calcula la API desde el catálogo; el total que vio el cajero viaja como `expected_total` y, si no coincide, no se crea nada.
 - **Aislamiento**: RLS forzado + FKs compuestas; pruebas de que otra organización no ve ni opera productos, pedidos, clientes ni planes, y no puede vender productos ajenos.
 - **CSRF**: todo BFF mutante nuevo pasa por `assertTrustedMutationRequest` (same-origin estricto) y valida los ids como UUID.
+- **Terminal con cobros abiertos (decisión de producto)**: un checkout abierto **no** bloquea el terminal: «Nuevo cobro» deja ese checkout abierto (la API no permite cancelarlo desde el panel; si nadie paga, caduca solo) y se puede cobrar otra venta en paralelo, cada una con su propio link de cobro único. Lo único que bloquea «Seguir» en «Cobros recientes» es una venta **sin checkout abierto** en el terminal (lista para cobrar, creación o apertura con resultado incierto o fallido), para no perderla de vista ni su clave de idempotencia. El aviso nombra el botón del terminal que libera el bloqueo sin efectos: «Dejar esta venta para después» (la venta queda pendiente en Ventas, no se abre checkout), «Nuevo cobro» o «Descartar y editar». No cambia la garantía de cobro único ni ninguna regla monetaria.
 - **Lo vendido no es saldo**: Inicio y Caja separan cobrado bruto (no disponible), sin confirmar (no ingreso) y cuotas simuladas (no cobro).
 
 ## 6. «Pagar en cuotas» — motor sandbox
@@ -131,8 +132,8 @@ El propietario apunta a **Venezuela**. Implicaciones a decidir explícitamente, 
 | --- | --- | --- |
 | Dominio (PG real) | `packages/commerce/test/*.test.ts`: catálogo, versión, duplicados, aislamiento, total en servidor, precio histórico, inmutabilidad, invariantes del motor, numeración concurrente, estado derivado (aprobado/rechazado/asíncrono), cuotas (aceptación, Σ = total, no toca ledger, idempotencia, carrera tarjeta ↔ cuotas, pendiente/rechazado, eventos en orden, aislamiento), resumen | 27/27 (8 corridas seguidas estables) |
 | HTTP (PG real) | `apps/api/test/commerce-routes.test.ts`: permisos por rol, 401/404 indistinguible, idempotencia y `idempotency_key_reuse`, auditoría, clientes, comprador por client_secret, 409 `installment_plan_active`, indicadores | 8/8 · suite completa de la API verde |
-| Componentes (jsdom + axe) | `sell-workspace.test.tsx` (total, key reutilizada tras incierto, precio cambiado ⇒ otra key, doble clic, axe, paridad RBAC), `checkout-installments.test.tsx` | dashboard 515/515 · checkout 27/27 |
-| Navegador, stack real | `e2e/real-stack/commerce-real-stack.spec.ts` (10 escenarios) + `journey-real-stack.spec.ts` (7) | 10/10 · 7/7, también contra la demo aislada de §8 |
+| Componentes (jsdom + axe) | `sell-workspace.test.tsx` (total, key reutilizada tras incierto, precio cambiado ⇒ otra key, doble clic, axe, paridad RBAC), `checkout-installments.test.tsx` | dashboard 517/517 · checkout 27/27 |
+| Navegador, stack real | `e2e/real-stack/commerce-real-stack.spec.ts` (11 escenarios; el 7b cubre cobro suelto abierto + venta lista) + `journey-real-stack.spec.ts` (7) | 11/11 · 7/7, también contra la demo aislada de §8 |
 | Navegador, CI | `e2e/receipt.spec.ts` contra API sintética (ampliada con `/v1/auth/session`) | 31/31 |
 | Responsive | Sin scroll horizontal ni tablas recortadas a 390/768/1440 (E2E) y 900/1024/1280 (barrido manual de 12 pantallas) | OK |
 
@@ -145,7 +146,7 @@ En [`commerce-evidence/`](commerce-evidence/) (ids → `••••1234`, URLs 
 | # | Pantalla | | # | Pantalla |
 | --- | --- | --- | --- | --- |
 | 01 | [Inicio 1440](commerce-evidence/01-inicio-1440.png) · [768](commerce-evidence/01-inicio-768.png) · [390](commerce-evidence/01-inicio-390.png) | | 15 | [Venta rechazada](commerce-evidence/15-venta-rechazada-1440.png) |
-| 02 | [Menú móvil](commerce-evidence/02-menu-movil-390.png) | | 16 | [Cobro en curso (incierto)](commerce-evidence/16-venta-cobro-en-curso-1440.png) |
+| 02 | [Menú móvil](commerce-evidence/02-menu-movil-390.png) | | 16 | [Cobro en curso (incierto)](commerce-evidence/16-venta-cobro-en-curso-1440.png) · [16b terminal: venta lista con salida](commerce-evidence/16b-terminal-venta-lista-con-salida-1440.png) ([390](commerce-evidence/16b-terminal-venta-lista-con-salida-390.png)) |
 | 03–05 | [Catálogo](commerce-evidence/03-catalogo-1440.png) · [validación](commerce-evidence/04-producto-validacion-390.png) · [editado (v2)](commerce-evidence/05-producto-editado-1440.png) | | 17–18 | [Cuotas: elección](commerce-evidence/17-cuotas-eleccion-390.png) · [aprobado (comprador)](commerce-evidence/18-cuotas-aprobado-comprador-390.png) |
 | 06–09 | [Venta vacía](commerce-evidence/06-venta-vacia-390.png) · [carrito](commerce-evidence/07-venta-carrito-1440.png) ([768](commerce-evidence/07-venta-carrito-768.png), [390](commerce-evidence/07-venta-carrito-390.png)) · [revisar](commerce-evidence/08-venta-revisar-1440.png) · [registrada](commerce-evidence/09-venta-registrada-1440.png) | | 19–21 | [Plan (comercio)](commerce-evidence/19-cuotas-plan-comercio-1440.png) · [cuota vencida](commerce-evidence/20-cuotas-cuota-vencida-1440.png) · [consulta comprador](commerce-evidence/21-cuotas-consulta-comprador-390.png) |
 | 10 | [Terminal lista para cobrar](commerce-evidence/10-terminal-lista-1440.png) · [390](commerce-evidence/10-terminal-lista-390.png) | | 22 | [Caja](commerce-evidence/22-caja-1440.png) · [768](commerce-evidence/22-caja-768.png) |

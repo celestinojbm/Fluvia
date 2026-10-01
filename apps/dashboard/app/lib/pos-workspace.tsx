@@ -109,6 +109,7 @@ export function PosWorkspace({
         refreshSignal={signal}
         activeSessionId={activity.sessionId}
         trackLocked={activity.locked}
+        trackLockAction={activity.lockAction ?? null}
         onTrack={onTrack}
       />
     </div>

@@ -108,4 +108,51 @@ describe('PosWorkspace', () => {
     expect(f.mock.calls.some((c) => String(c[0]).endsWith(`/pos/sessions/${S2}`))).toBe(true);
     expect(window.location.search).toContain(`session=${S2}`);
   });
+
+  it('venta lista para cobrar + otro cobro abierto ⇒ el terminal ofrece la salida que pide el aviso', async () => {
+    // Hallazgo del recorrido manual: con un cobro suelto «Esperando al
+    // cliente» y una venta de «Nueva venta» lista para cobrar, la lista decía
+    // «Termina o descarta…» sin ningún control para descartar.
+    const LINK = '22222222-0000-4000-8000-000000000001';
+    const f = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/pos/recent')) {
+        return res(
+          200,
+          joinRecentCharges([sess(S1, P1, 'open', 1)], [pay(P1, 'requires_payment_method')])
+        );
+      }
+      throw new Error(`unexpected ${init?.method ?? 'GET'} ${url}`);
+    });
+    vi.stubGlobal('fetch', f);
+
+    render(
+      <PosWorkspace
+        orgId={ORG}
+        locale="es"
+        merchants={[MERCHANT]}
+        allMerchants={[{ id: MERCHANT.id, name: MERCHANT.name }]}
+        canCharge
+        startLink={{ linkId: LINK, amount: 620000, currency: 'COP' }}
+        recent={joinRecentCharges([sess(S1, P1, 'open', 1)], [pay(P1, 'requires_payment_method')])}
+      />
+    );
+
+    // El terminal muestra la venta y DOS salidas: abrir su checkout o dejarla.
+    expect(screen.getByRole('button', { name: 'Abrir checkout del cliente' })).toBeEnabled();
+    const later = screen.getByRole('link', { name: 'Dejar esta venta para después' });
+    // Salida = terminal limpio, sin la venta en la URL; la venta no se toca.
+    expect(later).toHaveAttribute('href', `/o/${ORG}/pos`);
+    expect(screen.getByText(/queda pendiente en Ventas/)).toBeInTheDocument();
+
+    // «Seguir» del otro cobro bloqueado, y el aviso nombra la acción REAL.
+    const list = await screen.findByRole('list');
+    const seguir = within(list).getByRole('button', { name: 'Seguir' });
+    expect(seguir).toBeDisabled();
+    expect(seguir).toHaveAccessibleDescription(/«Dejar esta venta para después»/);
+    expect(screen.queryByText(/Termina o descarta/)).not.toBeInTheDocument();
+    // Nada se ha creado ni abierto.
+    expect(f.mock.calls.every((c) => !c[1] || (c[1] as RequestInit).method === undefined)).toBe(
+      true
+    );
+  });
 });

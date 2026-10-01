@@ -308,6 +308,43 @@ test('7. transferencia asíncrona: cobro en curso, sin ofrecer cobrar otra vez',
   await checkScreen(page, '16-venta-cobro-en-curso');
 });
 
+test('7b. cobro suelto abierto + venta lista: el terminal ofrece salida real', async () => {
+  // Hallazgo del recorrido manual: el aviso pedía «descartar» sin control
+  // para hacerlo. Un checkout abierto no bloquea; una venta sin checkout se
+  // puede dejar para después (queda pendiente) o cobrar.
+  await page.goto(`${O}/pos`);
+  await page.getByLabel('Importe', { exact: true }).fill('30000');
+  await page.getByLabel('Importe', { exact: true }).press('Enter');
+  await expect(page.getByRole('link', { name: 'Abrir checkout' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/«Nuevo cobro» deja este checkout abierto/)).toBeVisible();
+
+  const n = await createSale([[/Añadir Cuaderno 100 hojas/, 1]]);
+  await page.goto(`${O}/orders?q=%23${n}`);
+  await page.getByRole('link', { name: `Venta #${n}` }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Cobrar', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Abrir checkout del cliente' })).toBeVisible();
+  const seguir = page.getByRole('button', { name: 'Seguir' }).first();
+  await expect(seguir).toBeDisabled();
+  await expect(
+    page.getByText(/pulsa «Dejar esta venta para después» en el terminal/)
+  ).toBeVisible();
+  await checkScreen(page, '16b-terminal-venta-lista-con-salida');
+
+  // Salida: terminal limpio; la venta sigue pendiente y no se abrió checkout.
+  await page.getByRole('link', { name: 'Dejar esta venta para después' }).click();
+  await page.waitForURL((u) => u.pathname.endsWith('/pos') && !u.search.includes('link='));
+  await expect(page.getByLabel('Importe', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Seguir/ }).first()).toBeVisible();
+  await page.goto(`${O}/orders?q=%23${n}`);
+  await page.getByRole('link', { name: `Venta #${n}` }).click();
+  await expect(page.getByText('Pendiente de cobro').first()).toBeVisible();
+  // Y se puede cobrar después, con el otro checkout aún abierto.
+  await page.getByRole('main').getByRole('link', { name: 'Cobrar', exact: true }).click();
+  await page.getByRole('button', { name: 'Abrir checkout del cliente' }).click();
+  await expect(page.getByRole('link', { name: 'Abrir checkout' })).toBeVisible({ timeout: 15_000 });
+  await phase('awaiting_payment');
+});
+
 test('8. pagar en cuotas (simulación): aceptación explícita y la venta NO queda cobrada', async () => {
   const n = await createSale([
     [/Añadir Detergente 1 kg/, 1],

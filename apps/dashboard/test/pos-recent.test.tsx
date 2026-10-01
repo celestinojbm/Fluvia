@@ -512,6 +512,7 @@ describe('PosRecentCharges', () => {
         initial={okResult([session(1), session(2)], [intent(1, 'succeeded'), intent(2, 'failed')])}
         activeSessionId={sid(2)}
         trackLocked
+        trackLockAction="Dejar esta venta para después"
         onTrack={vi.fn()}
       />
     );
@@ -520,7 +521,10 @@ describe('PosRecentCharges', () => {
     expect(within(items[0]!).getByText('En seguimiento')).toBeInTheDocument();
     const locked = within(items[1]!).getByRole('button', { name: 'Seguir' });
     expect(locked).toBeDisabled();
-    expect(locked).toHaveAccessibleDescription(/Termina o descarta la venta en curso/);
+    // El aviso nombra el botón real del terminal que libera el bloqueo.
+    expect(locked).toHaveAccessibleDescription(
+      /abre su checkout o pulsa «Dejar esta venta para después» en el terminal/
+    );
   });
 
   it('inglés', () => {

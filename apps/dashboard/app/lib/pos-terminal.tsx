@@ -158,6 +158,11 @@ export interface PosActivity {
   sessionId: string | null;
   phase: SalePhase | null;
   locked: boolean;
+  /**
+   * Con `locked`: etiqueta del botón del terminal que libera el bloqueo sin
+   * perder nada (o null si es una operación en curso que solo hay que esperar).
+   */
+  lockAction?: string | null;
   /** Estado del pago + devuelto: cambia con una devolución sin cambiar la fase. */
   revision?: string | null;
 }
@@ -467,14 +472,24 @@ export function PosTerminal({
   const activityRef = useRef(onActivity);
   activityRef.current = onActivity;
   const revision = status ? `${status.payment.status}:${status.payment.amount_refunded}` : null;
+  const lockAction = !pendingSale
+    ? null
+    : step.kind === 'ready'
+      ? t.readyLater
+      : step.kind === 'create_uncertain'
+        ? t.discardDraft
+        : step.kind === 'open_failed' || step.kind === 'open_uncertain'
+          ? t.nextSale
+          : null;
   useEffect(() => {
     activityRef.current?.({
       sessionId: trackingId,
       phase: phaseNow,
       locked: pendingSale,
+      lockAction,
       revision,
     });
-  }, [trackingId, phaseNow, pendingSale, revision]);
+  }, [trackingId, phaseNow, pendingSale, lockAction, revision]);
   const refreshStatus = useCallback(() => setPollNonce((n) => n + 1), []);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -906,7 +921,15 @@ export function PosTerminal({
               >
                 {t.readyOpen}
               </button>
+              {/* Salida sin efectos: la venta (pedido + link) ya está guardada
+                  y sigue pendiente; no hay checkout ni clave que perder. Es una
+                  navegación completa para que la página deje de mostrar el
+                  pedido junto a un terminal vacío. */}
+              <a className="btn btn-secondary" href={posHref(orgId, locale)}>
+                {t.readyLater}
+              </a>
             </div>
+            <p className="hint">{t.readyLaterHint}</p>
           </div>
         );
       case 'open_uncertain':
