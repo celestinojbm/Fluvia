@@ -13,10 +13,16 @@ export function PlanClient({ sessionId, locale }: { sessionId: string; locale: L
   const t = MESSAGES[locale];
   const ti = INSTALLMENTS_MESSAGES[locale];
   const [state, setState] = useState<
-    { kind: 'loading' } | { kind: 'not_found' } | { kind: 'error' } | { kind: 'ok'; view: CheckoutOrderView }
+    | { kind: 'loading' }
+    | { kind: 'not_found' }
+    | { kind: 'error' }
+    | { kind: 'ok'; view: CheckoutOrderView }
   >({ kind: 'loading' });
   const secret = useCallback(
-    () => (typeof window === 'undefined' ? '' : decodeURIComponent(window.location.hash.replace(/^#/, ''))),
+    () =>
+      typeof window === 'undefined'
+        ? ''
+        : decodeURIComponent(window.location.hash.replace(/^#/, '')),
     []
   );
   const load = useCallback(async () => {

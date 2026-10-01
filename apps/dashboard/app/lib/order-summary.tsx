@@ -28,7 +28,10 @@ export function OrderLinesTable({ order }: { order: OrderDetail }) {
           {order.lines.map((l) => (
             <tr key={l.position}>
               <td>
-                <span className="fx-cell-main">{l.name}</span>
+                <span className="fx-cell-main">
+                  {l.name}
+                  {l.variant_label ? ` · ${l.variant_label}` : ''}
+                </span>
                 <span className="fx-cell-sub">
                   {money(l.unit_price, order.currency)} c/u{l.sku ? ` · SKU ${l.sku}` : ''}
                 </span>

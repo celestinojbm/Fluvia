@@ -1,3 +1,4 @@
+import { Icon } from '../../../lib/icons';
 import { orgContext } from '../../../lib/org-context';
 import { orgPath, readApi, type Customer } from '../../../lib/commerce-api';
 import { Empty, PageHead, ReadProblem, SELL_ROLES, dateTime } from '../../../lib/ui';
@@ -26,7 +27,8 @@ export default async function CustomersPage({
       <PageHead
         id="cust-title"
         title="Clientes"
-        description="Ficha mínima y compras vinculadas. Datos sintéticos en el sandbox."
+        eyebrow="Relación"
+        description="Fichas, historial de compras y justificantes. Datos sintéticos en el sandbox."
         actions={
           canEdit ? (
             <a className="fx-btn fx-btn-primary" href={`${o}/customers/new`}>
@@ -36,15 +38,18 @@ export default async function CustomersPage({
         }
       />
       <form className="fx-toolbar" method="get" role="search" aria-label="Buscar clientes">
-        <div className="fx-field">
+        <div className="fx-field" style={{ flex: '2 1 16rem' }}>
           <label htmlFor="cu-q">Buscar</label>
-          <input
-            id="cu-q"
-            name="q"
-            className="fx-input"
-            defaultValue={q}
-            placeholder="Nombre, email o teléfono"
-          />
+          <div className="fx-search">
+            <Icon name="search" />
+            <input
+              id="cu-q"
+              name="q"
+              className="fx-input"
+              defaultValue={q}
+              placeholder="Nombre, email o teléfono"
+            />
+          </div>
         </div>
         <button type="submit" className="fx-btn">
           Buscar
@@ -91,9 +96,18 @@ export default async function CustomersPage({
                   {list.data.data.map((c) => (
                     <tr key={c.id}>
                       <td data-label="Cliente">
-                        <a className="fx-link" href={`${o}/customers/${c.id}`}>
-                          {c.name ?? c.email ?? c.phone ?? 'Sin nombre'}
-                        </a>
+                        <span className="fx-cell-flex">
+                          <span
+                            className="fx-thumb"
+                            aria-hidden="true"
+                            style={{ borderRadius: '50%' }}
+                          >
+                            {(c.name ?? c.email ?? '?').trim()[0]?.toUpperCase()}
+                          </span>
+                          <a className="fx-link" href={`${o}/customers/${c.id}`}>
+                            {c.name ?? c.email ?? c.phone ?? 'Sin nombre'}
+                          </a>
+                        </span>
                       </td>
                       <td data-label="Contacto">
                         {[c.email, c.phone].filter(Boolean).join(' · ') || '—'}

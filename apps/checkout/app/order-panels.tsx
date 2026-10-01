@@ -17,12 +17,16 @@ export interface CheckoutOrderView {
       unit_price: number;
       quantity: number;
       line_total: number;
+      variant_label?: string | null;
     }>;
+    /** El comercio anuló la venta (no se puede pagar). */
+    cancelled?: boolean;
   };
   installments: {
     simulated: true;
     eligible: boolean;
-    ineligible_reason: 'sale_charged' | 'plan_exists' | 'checkout_closed' | null;
+    ineligible_reason:
+      'sale_charged' | 'plan_exists' | 'checkout_closed' | 'order_cancelled' | null;
     allowed_counts: number[];
     interval_days: number;
     terms_version: string;
@@ -105,6 +109,7 @@ export function OrderSummary({
             <tr key={l.position}>
               <td>
                 {l.name}
+                {l.variant_label ? ` · ${l.variant_label}` : ''}
                 <span className="order-sub">
                   {fmt(l.unit_price)} {locale === 'en' ? 'each' : 'c/u'}
                 </span>
@@ -135,7 +140,11 @@ export function OrderSummary({
 
 export function PlanSchedule({ plan, locale }: { plan: BuyerPlan; locale: Locale }) {
   const t = INSTALLMENTS_MESSAGES[locale];
-  const label = { scheduled: t.statusScheduled, paid_simulated: t.statusPaid, overdue_simulated: t.statusOverdue };
+  const label = {
+    scheduled: t.statusScheduled,
+    paid_simulated: t.statusPaid,
+    overdue_simulated: t.statusOverdue,
+  };
   return (
     <ol className="schedule">
       {plan.installments.map((i) => (
@@ -164,11 +173,18 @@ export function PlanBox({
 }) {
   const t = INSTALLMENTS_MESSAGES[locale];
   const msg =
-    plan.status === 'approved' ? t.planApproved : plan.status === 'declined' ? t.planDeclined : t.planPending;
+    plan.status === 'approved'
+      ? t.planApproved
+      : plan.status === 'declined'
+        ? t.planDeclined
+        : t.planPending;
   return (
     <section className="plan" aria-labelledby="plan-title" data-status={plan.status}>
       <h2 id="plan-title">{t.planTitle}</h2>
-      <p className={`status status-${plan.status === 'declined' ? 'bad' : plan.status === 'approved' ? 'ok' : 'warn'}`} role="status">
+      <p
+        className={`status status-${plan.status === 'declined' ? 'bad' : plan.status === 'approved' ? 'ok' : 'warn'}`}
+        role="status"
+      >
         {msg}
       </p>
       {plan.status !== 'declined' ? (
@@ -185,8 +201,10 @@ export function PlanBox({
   );
 }
 
-type QuoteState = { kind: 'idle' } | { kind: 'loading' } | { kind: 'ok'; quote: Quote } | { kind: 'error' };
-type Submit = { kind: 'idle' } | { kind: 'sending' } | { kind: 'uncertain' } | { kind: 'not_allowed' };
+type QuoteState =
+  { kind: 'idle' } | { kind: 'loading' } | { kind: 'ok'; quote: Quote } | { kind: 'error' };
+type Submit =
+  { kind: 'idle' } | { kind: 'sending' } | { kind: 'uncertain' } | { kind: 'not_allowed' };
 
 /**
  * Elección de cuotas con confirmación EXPLÍCITA. La cotización la calcula el
@@ -277,7 +295,8 @@ export function InstallmentsOption({
   return (
     <section className="installments" aria-labelledby="inst-title">
       <h2 id="inst-title">
-        {t.optionTitle} <span className="sim-pill">{locale === 'en' ? 'Simulation' : 'Simulación'}</span>
+        {t.optionTitle}{' '}
+        <span className="sim-pill">{locale === 'en' ? 'Simulation' : 'Simulación'}</span>
       </h2>
       <p className="sim-note">{t.optionSim}</p>
       <button
@@ -325,7 +344,10 @@ export function InstallmentsOption({
                     installments_count: quote.quote.count,
                     interval_days: quote.quote.interval_days,
                     terms_version: quote.quote.terms_version,
-                    installments: quote.quote.schedule.map((s) => ({ ...s, status: 'scheduled' as const })),
+                    installments: quote.quote.schedule.map((s) => ({
+                      ...s,
+                      status: 'scheduled' as const,
+                    })),
                     events: [],
                   }}
                 />
@@ -415,7 +437,10 @@ export function PlanTimeline({ plan, locale }: { plan: BuyerPlan; locale: Locale
             {t.event[e.kind] ?? e.kind}
             {e.seq ? ` · ${t.installment(e.seq)}` : ''}
             <span className="order-sub">
-              {new Date(e.created_at).toLocaleString(locale === 'en' ? 'en-US' : 'es-CO', { timeZone: 'UTC' })} UTC
+              {new Date(e.created_at).toLocaleString(locale === 'en' ? 'en-US' : 'es-CO', {
+                timeZone: 'UTC',
+              })}{' '}
+              UTC
             </span>
           </li>
         ))}
