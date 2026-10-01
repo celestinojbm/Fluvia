@@ -1,4 +1,15 @@
-export { LedgerService } from './service.js';
+export { LedgerService, isRetryableLedgerError } from './service.js';
+export {
+  PROGRAM_CHART_OF_ACCOUNTS,
+  PROGRAM_ACCOUNT_CODES,
+  PROGRAM_POSTINGS,
+  ProgramPostingService,
+  programAccountName,
+  type ProgramAccountCode,
+  type ProgramAccounts,
+  type ProgramPostingInput,
+  type ProgramPostingKind,
+} from './program-chart.js';
 export { ProjectionDriftWatcher, type DriftLogger, type ProjectionDriftRow } from './drift.js';
 export {
   PostingService,

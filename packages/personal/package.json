@@ -1,0 +1,31 @@
+{
+  "name": "@fluvia/personal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Programa de consumo de Fluvia (wallet, garantía, crédito, tarjetas y operación) — sandbox",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fluvia/audit": "workspace:*",
+    "@fluvia/auth": "workspace:*",
+    "@fluvia/db": "workspace:*",
+    "@fluvia/ledger": "workspace:*",
+    "@fluvia/money": "workspace:*",
+    "@fluvia/payments-core": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

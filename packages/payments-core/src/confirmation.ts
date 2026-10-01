@@ -141,10 +141,12 @@ export class PaymentConfirmationService {
         amount: string;
         currency: string;
         merchant_id: string;
+        merchant_name: string | null;
       }>(
-        `SELECT a.intent_id, a.amount::text, a.currency, i.merchant_id
+        `SELECT a.intent_id, a.amount::text, a.currency, i.merchant_id, m.name AS merchant_name
          FROM payment_attempts a
          JOIN payment_intents i ON i.id = a.intent_id
+         LEFT JOIN merchants m ON m.id = i.merchant_id
          WHERE a.id = $1 AND a.status = 'submitting'`,
         [attemptId]
       )
@@ -160,6 +162,8 @@ export class PaymentConfirmationService {
         amount: row.amount,
         currency: row.currency,
         paymentMethodToken,
+        ...(row.merchant_name ? { merchantDescriptor: row.merchant_name } : {}),
+        merchantRef: `${tenantId}:${row.merchant_id}`,
       });
     } catch (err) {
       if (err instanceof CircuitOpenError) {

@@ -67,11 +67,56 @@ export const AUDIT_ACTIONS = [
   'inventory.changed',
   // Cuotas SANDBOX: evento simulado disparado por un operador (no mueve dinero).
   'installment_plan.simulated_event',
+  // Programa de consumo (0052): cliente, wallet, garantía, crédito, tarjetas y
+  // operación. Las acciones del CLIENTE llevan actor `consumer`; las de un
+  // operador, actor `user` con motivo.
+  'program.created',
+  'consumer.registered',
+  'consumer.login_succeeded',
+  'consumer.login_failed',
+  'consumer.logout',
+  'wallet.funding_requested',
+  'wallet.funding_confirmed',
+  'wallet.funding_failed',
+  'wallet.transfer_completed',
+  'wallet.withdrawal_requested',
+  'wallet.withdrawal_resolved',
+  'collateral.locked',
+  'collateral.released',
+  'collateral.applied',
+  'credit.policy_created',
+  'credit.policy_activated',
+  'credit.application_submitted',
+  'credit.application_decided',
+  'credit.limit_changed',
+  'credit.line_status_changed',
+  'credit.repayment_applied',
+  'credit.overdue_marked',
+  'card.issued',
+  'card.activated',
+  'card.blocked',
+  'card.unblocked',
+  'card.limits_changed',
+  'card.replaced',
+  'card.closed',
+  'card.shipment_updated',
+  'card.payment_code_created',
+  'card.authorization_decided',
+  'card.captured',
+  'card.reversed',
+  'card.refunded',
+  'program.case_opened',
+  'program.case_acknowledged',
+  'program.case_resolved',
+  'program.approval_proposed',
+  'program.approval_decided',
+  'program.uncertain_resolved',
+  'program.provider_event_ingested',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export type ActorType = 'user' | 'api_key' | 'system';
-export type AuthMethod = 'session' | 'api_key' | 'platform' | 'none';
+export type ActorType = 'user' | 'api_key' | 'system' | 'consumer';
+export type AuthMethod = 'session' | 'api_key' | 'platform' | 'none' | 'consumer_session';
 export type AuditResult = 'success' | 'failure';
 export type RiskLevel = 'low' | 'medium' | 'high';
 

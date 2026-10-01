@@ -67,6 +67,7 @@ export {
   MockPaymentProvider,
   ProviderTimeoutError,
   type PaymentProvider,
+  type ProviderOperationStore,
   type ProviderOutcome,
   type RefundPaymentInput,
   type SubmitPaymentInput,
@@ -97,3 +98,5 @@ export {
   createMockInboxRegistration,
   type MockWebhookEvent,
 } from './mock-webhook.js';
+export { SqlProviderOperationStore } from './provider-store.js';
+export { UncertainPaymentResolver, type UncertainResolution } from './uncertain-resolver.js';

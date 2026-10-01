@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CHART_OF_ACCOUNTS } from '../src/chart-of-accounts.js';
+import { PROGRAM_CHART_OF_ACCOUNTS } from '../src/program-chart.js';
 
 /**
  * RA-F6-005 (re-auditoría F6 delta) — META-TEST de sincronización chart ↔ check [9].
@@ -31,10 +32,12 @@ function extractCheck9Accounts(sql: string): string[] {
 describe('RA-F6-005 — el check [9] cubre EXACTAMENTE las cuentas protegidas del chart', () => {
   const sql = readFileSync(SQL_PATH, 'utf8');
   const sqlList = extractCheck9Accounts(sql);
-  const chartProtected = Object.entries(CHART_OF_ACCOUNTS)
+  // 0052: el catálogo del programa de consumo también es protegido.
+  const allCharts = { ...CHART_OF_ACCOUNTS, ...PROGRAM_CHART_OF_ACCOUNTS };
+  const chartProtected = Object.entries(allCharts)
     .filter(([, def]) => def.type !== 'transitory')
     .map(([code]) => code);
-  const chartTransitory = Object.entries(CHART_OF_ACCOUNTS)
+  const chartTransitory = Object.entries(allCharts)
     .filter(([, def]) => def.type === 'transitory')
     .map(([code]) => code);
 

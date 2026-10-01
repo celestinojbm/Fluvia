@@ -53,6 +53,10 @@ interface LockedAccount {
 // caer un asiento legitimo por contencion momentanea, sin reabrir la espera infinita.
 const RETRYABLE_SQLSTATES = new Set(['40001', '40P01', '55P03']);
 
+export function isRetryableLedgerError(err: unknown): boolean {
+  return isRetryable(err);
+}
+
 function isRetryable(err: unknown): boolean {
   return (
     err instanceof OptimisticLockError ||
@@ -198,7 +202,26 @@ export class LedgerService {
   }
 
   private async postOnce(input: PostTransactionInput): Promise<PostedTransaction> {
-    return withTenantTransaction(this.appPool, input.tenantId, async (c) => {
+    return withTenantTransaction(this.appPool, input.tenantId, (c) => this.postOnClient(c, input));
+  }
+
+  /**
+   * Asiento DENTRO de una transaccion del llamador (composicion de dominio:
+   * el estado de negocio y el asiento comparten COMMIT). El cliente DEBE
+   * venir de `withTenantTransaction` del mismo tenant. Sin reintentos: un
+   * error reintentable (ver `isRetryableLedgerError`) obliga al llamador a
+   * repetir SU transaccion completa.
+   */
+  async postWithin(c: PoolClient, input: PostTransactionInput): Promise<PostedTransaction> {
+    validateInput(input);
+    return this.postOnClient(c, input);
+  }
+
+  private async postOnClient(
+    c: PoolClient,
+    input: PostTransactionInput
+  ): Promise<PostedTransaction> {
+    {
       const inserted = await c.query<{ id: string; created_at: Date }>(
         `INSERT INTO ledger_transactions
            (tenant_id, idempotency_key, reason, source_type, source_id, reverses_tx_id)
@@ -298,7 +321,7 @@ export class LedgerService {
       // Composicion atomica (solo primera aplicacion; el replay retorna antes).
       if (input.onPosted) await input.onPosted(c, posted);
       return posted;
-    });
+    }
   }
 
   private async applyProjectionDeltas(
