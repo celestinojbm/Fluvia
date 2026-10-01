@@ -227,6 +227,9 @@ importers:
       '@fluvia/payments-core':
         specifier: workspace:*
         version: link:../../packages/payments-core
+      '@fluvia/personal':
+        specifier: workspace:*
+        version: link:../../packages/personal
       '@fluvia/webhooks':
         specifier: workspace:*
         version: link:../../packages/webhooks

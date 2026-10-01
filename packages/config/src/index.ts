@@ -81,6 +81,8 @@ const EnvSchema = z.object({
   PAYOUTS_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   PAYOUTS_REDRIVER_ENABLED: z.enum(['true', 'false']).default('true'),
   PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  PROGRAM_MAINTENANCE_ENABLED: z.enum(['true', 'false']).default('true'),
+  PROGRAM_MAINTENANCE_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   DISPUTES_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   DISPUTES_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   // F6 (threat model §5): watchdog de huérfanos `in_progress` de idempotencia.
@@ -219,6 +221,11 @@ export interface AppConfig {
   };
   /** Re-drive de payouts `requested` atascados: execute nunca corrio (F4-07e). */
   payoutsRedriver: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** Jornada integral: resolución periódica de inciertos y mantenimiento del programa. */
+  programMaintenance: {
     enabled: boolean;
     intervalMs: number;
   };
@@ -431,6 +438,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     payoutsRedriver: {
       enabled: e.PAYOUTS_REDRIVER_ENABLED === 'true',
       intervalMs: e.PAYOUTS_REDRIVER_INTERVAL_MS,
+    },
+    programMaintenance: {
+      enabled: e.PROGRAM_MAINTENANCE_ENABLED === 'true',
+      intervalMs: e.PROGRAM_MAINTENANCE_INTERVAL_MS,
     },
     disputesWatchdog: {
       enabled: e.DISPUTES_WATCHDOG_ENABLED === 'true',

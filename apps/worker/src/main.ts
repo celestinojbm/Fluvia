@@ -14,7 +14,10 @@ import {
   PaymentConfirmationService,
   PaymentIntentService,
   PayoutService,
+  RefundService,
   ResilientProvider,
+  SqlProviderOperationStore,
+  UncertainPaymentResolver,
   createMockInboxRegistration,
 } from '@fluvia/payments-core';
 import { AttemptsWatchdog } from './attempts-watchdog.js';
@@ -28,6 +31,8 @@ import { LedgerCheckpointer } from './ledger-checkpointer.js';
 import { LedgerChainAnchorer } from './ledger-chain-anchorer.js';
 import { createMetricsServer } from './metrics-server.js';
 import { TechnicalPurgeJob } from './purge.js';
+import { ProgramMaintenanceJob } from './program-maintenance.js';
+import { FluviaCardNetwork, FluviaRoutingProvider, createPersonalServices } from '@fluvia/personal';
 import { WorkerProcess } from './worker.js';
 
 const config = loadConfig();
@@ -215,7 +220,19 @@ const purgeJob = new TechnicalPurgeJob(workerPool, logger, {
 // indeterminados del MockProvider por webhook firmado (fuente verificada).
 const paymentIntents = new PaymentIntentService(appPool);
 const inboxPosting = new PostingService(new LedgerService(appPool), appPool);
-const inboxProvider = new ResilientProvider(new MockPaymentProvider());
+// Jornada integral: el MockProvider registra sus decisiones (consultables) y,
+// con organización programa configurada, el enrutador manda los cobros `fcp_`
+// a la red Fluvia simulada — el mismo cableado que el API, para que las
+// resoluciones del worker consulten la fuente correcta.
+const personal = createPersonalServices({ app: appPool, auth: appPool });
+const simulatedProvider = new MockPaymentProvider(new SqlProviderOperationStore(appPool));
+const routedProvider = config.programTenantId
+  ? new FluviaRoutingProvider(
+      simulatedProvider,
+      new FluviaCardNetwork(config.programTenantId, personal.authorizations)
+    )
+  : simulatedProvider;
+const inboxProvider = new ResilientProvider(routedProvider);
 const confirmation = new PaymentConfirmationService(
   appPool,
   paymentIntents,
@@ -232,6 +249,13 @@ const payouts = new PayoutService(appPool, inboxPosting, inboxProvider);
 // idempotente por provider_ref) y las RESUELVE (dispute.won/lost) por fuente
 // verificada — jamas por asuncion (V4 §23).
 const disputes = new DisputeService(appPool, inboxPosting);
+const refunds = new RefundService(appPool, paymentIntents, inboxPosting, inboxProvider);
+const programMaintenance = new ProgramMaintenanceJob(
+  workerPool,
+  personal,
+  new UncertainPaymentResolver(appPool, routedProvider, confirmation, refunds),
+  logger
+);
 const inboxProcessor = new InboxProcessor(inboxPool, {
   logger,
   onStats: (stats) => {
@@ -244,7 +268,7 @@ const inboxProcessor = new InboxProcessor(inboxPool, {
 });
 inboxProcessor.register(
   MOCK_PROVIDER_NAME,
-  createMockInboxRegistration(confirmation, payouts, disputes)
+  createMockInboxRegistration(confirmation, payouts, disputes, refunds)
 );
 // F3-04: barrido submitting->indeterminate + salud de indeterminados. La
 // politica vive en sweep_payment_attempts() (0018); el job la invoca.
@@ -379,6 +403,7 @@ async function shutdown(signal: string): Promise<void> {
   ledgerCheckpointer.stop();
   ledgerChainAnchorer.stop();
   webhookDeliverer.stop();
+  programMaintenance.stop();
   metricsServer.close();
   await worker.stop();
   await Promise.all([
@@ -500,6 +525,15 @@ worker
       );
     } else {
       logger.info({}, 'ledger chain anchorer disabled by config (LEDGER_ANCHOR_ENABLED=false)');
+    }
+    if (config.programMaintenance.enabled) {
+      programMaintenance.start(config.programMaintenance.intervalMs);
+      logger.info(
+        { intervalMs: config.programMaintenance.intervalMs },
+        'program maintenance started'
+      );
+    } else {
+      logger.info({}, 'program maintenance disabled by config (PROGRAM_MAINTENANCE_ENABLED=false)');
     }
     if (config.webhookDelivery.enabled) {
       webhookDeliverer.start(config.webhookDelivery.intervalMs);
