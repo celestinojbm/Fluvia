@@ -268,7 +268,7 @@ describe('refund indeterminate + otra solicitud sobre el mismo cobro', () => {
 });
 
 describe('concurrencia e idempotencia por HTTP', () => {
-  it('two full refunds in parallel, one per plane (distinct keys): exactly one 201 and one 422', async () => {
+  it('two full refunds in parallel, one per plane (distinct keys): exactly one 201 and one rejection', async () => {
     const merchant = await freshMerchant();
     await chargeReleased(merchant, 100_000);
     const pi = await chargeReleased(merchant, 100_000);
@@ -276,7 +276,15 @@ describe('concurrencia e idempotencia por HTTP', () => {
       viaApiKey(`rf-${randomUUID()}`, { payment_intent_id: pi, amount: 100_000 }),
       viaSession(finance, `rf-${randomUUID()}`, { payment_intent_id: pi, amount: 100_000 }),
     ]);
-    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 422]);
+    const [ok, rejected] = a.statusCode === 201 ? [a, b] : [b, a];
+    expect(ok.statusCode).toBe(201);
+    // El perdedor depende del entrelazado: si toma el lock del intent con el
+    // refund ganador aún vivo → 422 por remanente; si el ganador ya completó
+    // sus dos fases (intent `refunded`) → 409 por estado. Ambos rechazan.
+    expect([
+      [422, 'refund_amount_exceeds_remaining'],
+      [409, 'invalid_state_transition'],
+    ]).toContainEqual([rejected.statusCode, rejected.json().error.code]);
     expect((await refundsOf(pi)).map((r) => r.amount)).toEqual(['100000']);
   });
 
