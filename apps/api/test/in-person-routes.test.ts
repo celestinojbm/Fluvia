@@ -101,6 +101,25 @@ async function toWaiting(p: { id: string; version: number }) {
   return waiting.json();
 }
 
+/**
+ * Procesa el inbox hasta que ESTE evento deje de estar pendiente. Otros
+ * archivos de prueba corren en paralelo sobre la misma BD con su propio
+ * procesador: cualquiera puede reclamar el evento (SKIP LOCKED), así que un
+ * solo `runOnce()` propio no garantiza haberlo aplicado.
+ */
+async function drainEvent(eventId: string) {
+  for (let i = 0; i < 100; i++) {
+    await processor.runOnce();
+    const r = await adminPool.query<{ status: string }>(
+      `SELECT status FROM provider_events WHERE provider_event_id = $1`,
+      [eventId]
+    );
+    if (r.rows[0] && r.rows[0].status !== 'pending') return;
+    await new Promise((res) => setTimeout(res, 100));
+  }
+  throw new Error(`el evento ${eventId} sigue pendiente tras 10 s`);
+}
+
 const charges = async (linkId: string) =>
   Number(
     (
@@ -298,8 +317,9 @@ describe('Cobrar → Acercar tarjeta (simulador) → resultado verificado → re
       `SELECT id, provider_ref FROM payment_attempts WHERE intent_id = $1`,
       [r.json().payment_intent_id]
     );
+    const eventId = `evt-${randomUUID()}`;
     const body = JSON.stringify({
-      event_id: `evt-${randomUUID()}`,
+      event_id: eventId,
       type: 'payment.succeeded',
       tenant_id: org,
       attempt_id: att.rows[0]!.id,
@@ -319,7 +339,7 @@ describe('Cobrar → Acercar tarjeta (simulador) → resultado verificado → re
       });
       expect(res.json().duplicate).toBe(i === 1);
     }
-    await processor.runOnce();
+    await drainEvent(eventId);
     const after = (await call(owner, 'GET', `/in-person/payments/${w.id}`)).json();
     expect(after.state).toBe('approved');
     expect(await charges(after.payment_link_id)).toBe(1);
