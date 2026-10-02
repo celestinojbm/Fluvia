@@ -19,6 +19,7 @@ import {
   IdempotencyMismatchError,
   InsufficientCollateralError,
   InvalidStateError,
+  PolicyNotActiveError,
   ResourceNotFoundError,
 } from './errors.js';
 import { evaluateApplication, requiredCollateral, type RiskTier } from './policy.js';
@@ -1279,7 +1280,15 @@ export class CreditService {
    */
   async markOverdue(tenantId: string, asOf: Date): Promise<{ marked: number }> {
     return withProgramTx(this.appPool, tenantId, null, async (c) => {
-      const policy = await loadActivePolicy(c, tenantId);
+      // Un programa sin política de crédito activa (aún no ofrece crédito) no
+      // tiene periodo de gracia que aplicar: no hay nada que marcar.
+      let policy: Awaited<ReturnType<typeof loadActivePolicy>>;
+      try {
+        policy = await loadActivePolicy(c, tenantId);
+      } catch (err) {
+        if (err instanceof PolicyNotActiveError) return { marked: 0 };
+        throw err;
+      }
       const cutoff = new Date(asOf.getTime() - policy.params.graceDays * 86_400_000)
         .toISOString()
         .slice(0, 10);
