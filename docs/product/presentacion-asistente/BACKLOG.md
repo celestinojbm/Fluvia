@@ -1,0 +1,49 @@
+# Backlog — Presentación comercial, nuevas secciones y asistente multimodal
+
+Rama `claude/presentacion-asistente-fluvia`, apilada sobre `claude/diseno-identidad-menta` (`2142be8`, PR #67).
+
+Este documento es la fuente persistente del estado de la jornada. Se actualiza en cada incremento.
+
+**Estados:**
+
+- **entregado:** está en la rama y verificado. La prueba está indicada.
+- **en curso:** hay trabajo parcial.
+- **pendiente técnico:** se puede hacer en el repo y no está hecho.
+- **dependencia externa:** necesita algo fuera del repo, como credenciales, contrato o decisión del propietario.
+
+## Incidencias de arranque
+
+| Asunto                                                           | Estado / decisión                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Imágenes de referencia 1 y 2                                     | **No llegaron a la sesión** (solo texto). No se compara la composición con ellas. Se aplican las especificaciones escritas: tarjetas verticales ~4:5 con foto dominante, lima como acento escaso y barra sandbox negra. |
+| Rama asignada por el entorno (`claude/jornada-bolivares-diseno`) | Tiene abierto el borrador #65 de una jornada anterior y no contiene `2142be8`. Empujar ahí reescribiría #65 e incumpliría «no empujes a las ramas anteriores». Por eso se usa una rama propia nueva.                    |
+
+## Bloques
+
+| Id   | Bloque                                                                                                                            | Estado            | Prueba / nota                                                                            |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| B-01 | Token lima `--fl-lime #DFFE1C` y chip `.fl-chip-lime` (texto negro y borde negro)                                                 | entregado         | `brand-tokens.test.ts`: negro/lima 17.9:1 y prueba de que lima/menta < 3 obliga al borde |
+| B-02 | Directorio de comercios: perfil público con **opt-in explícito** y API pública solo de publicados                                 | pendiente técnico |                                                                                          |
+| B-03 | Presentación pública: portada, categorías, «Dónde comprar», «Cómo funciona», explicadores, centro de ayuda                        | pendiente técnico |                                                                                          |
+| B-04 | Inicio Personal con descubrimiento comercial (dinero propio, garantía y crédito separados)                                        | pendiente técnico |                                                                                          |
+| B-05 | Inicio Comercio con indicadores y tareas (definiciones monetarias actuales)                                                       | pendiente técnico |                                                                                          |
+| B-06 | Asistente: interfaces de proveedor (conversación+visión, STT, TTS, transporte de llamada) y proveedor simulado determinista       | pendiente técnico |                                                                                          |
+| B-07 | Asistente: herramientas de lectura tipadas con autorización en servidor                                                           | pendiente técnico |                                                                                          |
+| B-08 | Asistente: UI (panel lateral o pantalla completa, historial, streaming, cancelar, reintentar)                                     | pendiente técnico |                                                                                          |
+| B-09 | Fotos: subida validada, almacenamiento privado, acceso temporal y retención                                                       | pendiente técnico |                                                                                          |
+| B-10 | Notas de voz: grabar, escuchar, borrar, enviar y transcripción editable                                                           | pendiente técnico |                                                                                          |
+| B-11 | Llamada «Hablar con Fluvia» (WebRTC): evaluación de LiveKit, estados, silencio, colgar, liberar el micrófono                      | pendiente técnico |                                                                                          |
+| B-12 | Límites configurables: uso, duración, tamaño y concurrencia                                                                       | pendiente técnico |                                                                                          |
+| B-13 | Verificación a 390/768/1440, E2E, aislamiento entre usuarios y organizaciones, regresión de checkout, devoluciones y justificante | pendiente técnico |                                                                                          |
+| B-14 | Instancia independiente nueva (prefijo, puertos, logs y volúmenes propios)                                                        | pendiente técnico |                                                                                          |
+
+## Dependencias externas (no se deciden en esta jornada)
+
+| Id   | Dependencia                                                                                                                      | Por qué                                                                                                                                                            |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| X-01 | Credenciales del proveedor de conversación y visión del asistente de producto                                                    | No se usan la sesión ni los créditos de Claude Code. Sin una clave propia del producto, el asistente funciona con el proveedor simulado y lo indica.               |
+| X-02 | Credenciales de STT y TTS                                                                                                        | Igual que X-01.                                                                                                                                                    |
+| X-03 | Servidor y credenciales de LiveKit (o equivalente)                                                                               | Sin ellas no hay llamada real. El transporte simulado no se presenta como llamada.                                                                                 |
+| X-04 | Almacenamiento de objetos privado de producción (bucket y política de cifrado)                                                   | En local se usa almacenamiento privado en disco con URLs firmadas y caducadas.                                                                                     |
+| X-05 | Proveedores financieros reales, liquidación al comercio, financiación, condiciones comerciales, emisión real y reglas monetarias | Heredadas del cierre de #66 (X-01..X-04 allí). **No se cambian esos modelos para que funcione una demo.** La política de referencia es sintética y se muestra así. |
+| X-06 | Comercios asociados reales, testimonios, promociones y estadísticas                                                              | No se inventan. El directorio solo muestra comercios que publiquen su perfil, y los del seed van marcados como **demo**.                                           |

@@ -13,6 +13,7 @@
   --fl-white: #ffffff; /* superficies de lectura */
   --fl-ink-2: #404040; /* texto secundario: 8.9:1 sobre menta, 10.4:1 sobre blanco */
   --fl-line: #d9e2de; /* divisores decorativos (no delimitan controles) */
+  --fl-lime: #dffe1c; /* RGB 223 254 28: acento escaso (etiquetas, chips, acción destacada); texto SIEMPRE negro (17.9:1). Sobre menta no se distingue (1.1:1): lleva borde negro */
 
   /* Derivados neutros (no son «otro menta»). */
   --fl-surface: var(--fl-white);
@@ -225,6 +226,24 @@ output {
   height: 8px;
   border-radius: 50%;
   background: var(--fl-mint);
+}
+
+/* ---- Acento lima: escaso (etiquetas, chips de categoría, acción destacada,
+   detalle seleccionado). Texto SIEMPRE negro. Borde negro porque lima sobre
+   menta o blanco no llega a 3:1. ------------------------------------------- */
+.fl-chip-lime {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 12px;
+  border-radius: var(--fl-pill);
+  border: 1.5px solid var(--fl-black);
+  background: var(--fl-lime);
+  color: var(--fl-black);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 @media (prefers-reduced-motion: reduce) {
