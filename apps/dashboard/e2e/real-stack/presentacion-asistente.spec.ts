@@ -104,6 +104,14 @@ async function merchant(browser: Browser) {
   return { ctx, p };
 }
 
+/** Petición DESDE el navegador (envía cookies `Secure` en 127.0.0.1, como un usuario real). */
+async function inPage(p: Page, url: string): Promise<{ status: number; body: string }> {
+  return p.evaluate(async (u) => {
+    const r = await fetch(u, { cache: 'no-store' });
+    return { status: r.status, body: await r.text() };
+  }, url);
+}
+
 async function openAssistant(p: Page) {
   const trigger = p
     .getByRole('button', { name: 'Pregunta a Fluvia' })
@@ -214,14 +222,15 @@ test.describe('asistente', () => {
 
   test('una orden de mover dinero no se ejecuta', async ({ browser }) => {
     const { ctx, p } = await personal(browser);
-    const before = await (await p.request.get(`${APP}/api/personal/wallet/balances`)).text();
+    const before = await inPage(p, `${APP}/api/personal/wallet/balances`);
+    expect(before.status).toBe(200);
     await openAssistant(p);
     await p.locator('#as-input').fill('Transfiere 100 VES a otra persona');
     await p.keyboard.press('Enter');
     await expect(p.locator('.as-msg[data-role="assistant"]').last()).toContainText(
       'No puedo hacer operaciones'
     );
-    expect(await (await p.request.get(`${APP}/api/personal/wallet/balances`)).text()).toBe(before);
+    expect(await inPage(p, `${APP}/api/personal/wallet/balances`)).toEqual(before);
     await ctx.close();
   });
 
@@ -321,11 +330,12 @@ test.describe('asistente', () => {
     browser,
   }) => {
     const m = await merchant(browser);
-    expect((await m.p.request.get(`${APP}/api/assistant/personal/status`)).status()).toBe(401);
-    expect((await m.p.request.get(`${APP}/api/assistant/o/${ORG}/status`)).status()).toBe(200);
+    expect((await inPage(m.p, `${APP}/api/assistant/personal/status`)).status).toBe(401);
+    expect((await inPage(m.p, `${APP}/api/assistant/o/${ORG}/status`)).status).toBe(200);
     await m.ctx.close();
     const c = await personal(browser);
-    expect((await c.p.request.get(`${APP}/api/assistant/o/${ORG}/status`)).status()).toBe(401);
+    expect((await inPage(c.p, `${APP}/api/assistant/o/${ORG}/status`)).status).toBe(401);
+    expect((await inPage(c.p, `${APP}/api/assistant/personal/status`)).status).toBe(200);
     await c.ctx.close();
   });
 });
