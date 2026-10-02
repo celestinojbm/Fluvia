@@ -35,13 +35,7 @@ export default async function Clientes({
             name="q"
             defaultValue={q}
             placeholder="Correo, nombre o id"
-            className="ox-field"
-            style={{
-              minHeight: 36,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: '1px solid var(--fx-line-strong)',
-            }}
+            className="ox-input"
           />
           <button className="ox-btn" type="submit">
             Buscar
@@ -53,7 +47,12 @@ export default async function Clientes({
           {q ? 'Ningún cliente coincide con la búsqueda.' : 'Aún no hay clientes registrados.'}
         </div>
       ) : (
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

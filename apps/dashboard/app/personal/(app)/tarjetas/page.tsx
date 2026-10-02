@@ -6,6 +6,7 @@ import {
   money,
   Status,
 } from '../../lib/format';
+import { FluviaWordmark } from '../../../lib/brand';
 import { ErrorPanel } from '../../lib/panels';
 import { readPersonal } from '../../lib/server';
 import type { Authorization, Card, Me } from '../../lib/types';
@@ -55,7 +56,10 @@ export default async function Tarjetas({
               aria-label="Tarjeta"
             >
               <div className="px-cardart-top">
-                <span>Fluvia</span>
+                <span>
+                  <FluviaWordmark height={20} color="var(--fl-white)" />
+                  <span className="sr-only">Fluvia</span>
+                </span>
                 <span>{selected.form === 'virtual' ? 'Virtual' : 'Física'}</span>
               </div>
               <div
@@ -92,9 +96,7 @@ export default async function Tarjetas({
                 ))}
               </nav>
             ) : null}
-          </div>
-          <div className="px-controls">
-            <section className="px-card" aria-labelledby="px-card-info">
+            <section className="px-card px-card-info" aria-labelledby="px-card-info">
               <h2 id="px-card-info" style={{ margin: '0 0 8px', fontSize: '1rem' }}>
                 Datos y uso
               </h2>
@@ -141,6 +143,8 @@ export default async function Tarjetas({
                 ) : null}
               </dl>
             </section>
+          </div>
+          <div className="px-controls">
             <CardControls card={selected} />
           </div>
         </div>

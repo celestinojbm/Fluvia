@@ -47,25 +47,33 @@ export function ReconciliationList({
 }) {
   const t = MESSAGES[locale];
   return (
-    <main className="dash" aria-labelledby="recon-title">
-      <header className="dash-head">
+    <main className="dash fx-page" aria-labelledby="recon-title">
+      <header className="fx-head">
         <div>
-          <h1 id="recon-title">{t.reconTitle}</h1>
-          <p className="org">
+          <p className="fx-crumb">
             <a href={`/o/${orgId}`}>{t.backToDashboard}</a>
           </p>
+          <h1 id="recon-title">{t.reconTitle}</h1>
+          <p>{t.reconIntro}</p>
         </div>
         <a className="signout" href={signOutHref}>
           {t.signOut}
         </a>
       </header>
 
-      <section className="card">
+      <section className="fx-panel">
         {reports.length === 0 ? (
-          <p className="empty">{t.reconEmpty}</p>
+          <div className="fx-empty">
+            <p>{t.reconEmpty}</p>
+          </div>
         ) : (
-          <div className="table-wrap">
-            <table>
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
+            <table className="fx-table is-stack">
               <caption className="sr-only">{t.reconTitle}</caption>
               <thead>
                 <tr>
@@ -78,16 +86,16 @@ export function ReconciliationList({
               <tbody>
                 {reports.map((r) => (
                   <tr key={r.id}>
-                    <td>
+                    <td data-label={t.colReport}>
                       <a href={`/o/${orgId}/reconciliation/${r.id}`}>
                         <code>{shortId(r.id)}</code>
                       </a>
                     </td>
-                    <td>{r.provider}</td>
-                    <td>
+                    <td data-label={t.colProvider}>{r.provider}</td>
+                    <td data-label={t.colPeriod}>
                       {when(r.period_start)} → {when(r.period_end)}
                     </td>
-                    <td>
+                    <td data-label={t.colStatus}>
                       <span className={`badge badge-${r.status}`}>{r.status}</span>
                     </td>
                   </tr>
@@ -118,13 +126,15 @@ export function ReconciliationDetail({
   const t = MESSAGES[locale];
   const money = (v: number | null) => (v === null ? '—' : formatAmount(v, report.currency, locale));
   return (
-    <main className="dash" aria-labelledby="recon-detail-title">
-      <header className="dash-head">
+    <main className="dash fx-page" aria-labelledby="recon-detail-title">
+      <header className="fx-head">
         <div>
+          <p className="fx-crumb">
+            <a href={`/o/${orgId}/reconciliation`}>{t.backToList}</a>
+          </p>
           <h1 id="recon-detail-title">{t.reconciliation}</h1>
-          <p className="org">
-            <a href={`/o/${orgId}/reconciliation`}>{t.backToList}</a> · {report.provider} ·{' '}
-            {when(report.period_start)} → {when(report.period_end)} ·{' '}
+          <p>
+            {report.provider} · {when(report.period_start)} → {when(report.period_end)} ·{' '}
             <span className={`badge badge-${report.status}`}>{report.status}</span>
           </p>
         </div>
@@ -134,37 +144,52 @@ export function ReconciliationDetail({
       </header>
 
       {report.summary && (
-        <section className="card" aria-label={t.reconTitle}>
+        <section aria-label={t.reconTitle}>
           <SummaryBadges summary={report.summary} locale={locale} />
         </section>
       )}
 
-      <section className="card">
+      <section className="fx-panel">
         {entries.length === 0 ? (
-          <p className="empty">{t.empty}</p>
+          <div className="fx-empty">
+            <p>{t.empty}</p>
+          </div>
         ) : (
-          <div className="table-wrap">
-            <table>
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
+            <table className="fx-table is-stack">
               <caption className="sr-only">{t.reconciliation}</caption>
               <thead>
                 <tr>
                   <th scope="col">{t.colRef}</th>
                   <th scope="col">{t.colStatus}</th>
-                  <th scope="col">{t.colLedger}</th>
-                  <th scope="col">{t.colProviderAmount}</th>
+                  <th scope="col" className="num">
+                    {t.colLedger}
+                  </th>
+                  <th scope="col" className="num">
+                    {t.colProviderAmount}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={e.provider_ref}>
-                    <td>
+                  <tr key={e.provider_ref} className="recon-row" data-status={e.status}>
+                    <td data-label={t.colRef}>
                       <code>{e.provider_ref}</code>
                     </td>
-                    <td>
+                    <td data-label={t.colStatus}>
                       <span className={`badge recon-badge-${e.status}`}>{e.status}</span>
                     </td>
-                    <td>{money(e.ledger_amount)}</td>
-                    <td>{money(e.provider_amount)}</td>
+                    <td className="num" data-label={t.colLedger}>
+                      {money(e.ledger_amount)}
+                    </td>
+                    <td className="num" data-label={t.colProviderAmount}>
+                      {money(e.provider_amount)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

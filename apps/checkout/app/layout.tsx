@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { SandboxBadge } from './sandbox-badge';
+import '@fontsource-variable/manrope';
+import './brand.css';
 import './globals.css';
 
 export const metadata = {

@@ -146,7 +146,7 @@ export default async function Credito() {
                       margin: '6px 0 0',
                       paddingLeft: 18,
                       fontSize: '0.86rem',
-                      color: 'var(--fx-ink-2)',
+                      color: 'var(--fl-ink-2)',
                     }}
                   >
                     {a.decision.reasons.map((r) => (

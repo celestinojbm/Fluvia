@@ -56,7 +56,12 @@ export function PaymentLinksList({
         {links.length === 0 ? (
           <p className="empty">{t.linksEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.linksTitle}</caption>
               <thead>
@@ -138,7 +143,12 @@ export function PaymentLinkDetail({
       </header>
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.linkDetailTitle}</caption>
             <tbody>

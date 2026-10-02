@@ -160,7 +160,12 @@ export default async function Cliente360({
             <h2 id="ox-bal" className="ox-eyebrow">
               Saldos (ledger)
             </h2>
-            <div className="ox-table-wrap">
+            <div
+              className="ox-table-wrap"
+              tabIndex={0}
+              role="group"
+              aria-label="Tabla (desplazable con teclado)"
+            >
               <table className="ox-table is-stack">
                 <thead>
                   <tr>
@@ -266,7 +271,13 @@ export default async function Cliente360({
               ))
             )}
             {d.applications.length > 0 ? (
-              <div className="ox-table-wrap" style={{ marginTop: 12 }}>
+              <div
+                className="ox-table-wrap"
+                tabIndex={0}
+                role="group"
+                aria-label="Tabla (desplazable con teclado)"
+                style={{ marginTop: 12 }}
+              >
                 <table className="ox-table is-stack">
                   <thead>
                     <tr>
@@ -310,7 +321,12 @@ export default async function Cliente360({
             {d.cards.length === 0 ? (
               <div className="ox-empty">Sin tarjetas.</div>
             ) : (
-              <div className="ox-table-wrap">
+              <div
+                className="ox-table-wrap"
+                tabIndex={0}
+                role="group"
+                aria-label="Tabla (desplazable con teclado)"
+              >
                 <table className="ox-table is-stack">
                   <thead>
                     <tr>
@@ -390,7 +406,12 @@ export default async function Cliente360({
             {d.authorizations.length === 0 ? (
               <div className="ox-empty">Sin compras.</div>
             ) : (
-              <div className="ox-table-wrap">
+              <div
+                className="ox-table-wrap"
+                tabIndex={0}
+                role="group"
+                aria-label="Tabla (desplazable con teclado)"
+              >
                 <table className="ox-table is-stack">
                   <thead>
                     <tr>
@@ -464,7 +485,12 @@ export default async function Cliente360({
 
           <section id="wallet" className="ox-section" aria-labelledby="ox-wal">
             <h2 id="ox-wal">Ingresos y retiros</h2>
-            <div className="ox-table-wrap">
+            <div
+              className="ox-table-wrap"
+              tabIndex={0}
+              role="group"
+              aria-label="Tabla (desplazable con teclado)"
+            >
               <table className="ox-table is-stack">
                 <thead>
                   <tr>
@@ -559,7 +585,12 @@ export default async function Cliente360({
 
           <section id="auditoria" className="ox-section" aria-labelledby="ox-aud">
             <h2 id="ox-aud">Auditoría</h2>
-            <div className="ox-table-wrap">
+            <div
+              className="ox-table-wrap"
+              tabIndex={0}
+              role="group"
+              aria-label="Tabla (desplazable con teclado)"
+            >
               <table className="ox-table is-stack">
                 <thead>
                   <tr>

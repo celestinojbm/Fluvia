@@ -8,17 +8,10 @@ import type { CommerceInsights, Product } from './commerce-api';
  * Ver docs/design/fluvia-visual-direction.md.
  */
 
-const PH_TONES = ['#dff0ec', '#f3e7d1', '#e8e3f5', '#e5f3ea', '#fbe7dd', '#e3edf5'];
-
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
 /**
  * Foto del conjunto de demostración (servida por la propia app: CSP
- * `img-src 'self'`) o un marcador con la inicial y el tono de su categoría.
+ * `img-src 'self'`) o un marcador con la inicial sobre el menta de la marca
+ * (un único menta: los tonos por categoría se retiraron con la identidad Menta).
  * Decorativa: el nombre del producto siempre está en texto al lado.
  */
 export function ProductThumb({
@@ -36,9 +29,8 @@ export function ProductThumb({
       </span>
     );
   }
-  const tone = PH_TONES[hash(product.category_name ?? product.name) % PH_TONES.length];
   return (
-    <span className={cls} data-ph="" style={{ ['--ph' as string]: tone }} aria-hidden="true">
+    <span className={cls} data-ph="" aria-hidden="true">
       {(product.name.trim()[0] ?? '·').toUpperCase()}
     </span>
   );
@@ -179,5 +171,27 @@ export function DayBars({
         </table>
       </figcaption>
     </figure>
+  );
+}
+
+/**
+ * Progreso de un plan de cuotas (simulación): un segmento por cuota —
+ * pagada (negro), vencida (rojo, con trama), pendiente (contorno). El texto
+ * equivalente va en `aria-label`/`title`; nunca solo color.
+ */
+export function PlanProgress({
+  installments,
+}: {
+  installments: Array<{ seq: number; status: string }>;
+}) {
+  const paid = installments.filter((i) => i.status === 'paid_simulated').length;
+  const overdue = installments.filter((i) => i.status === 'overdue_simulated').length;
+  const label = `${paid} de ${installments.length} pagadas${overdue ? `, ${overdue} vencida${overdue > 1 ? 's' : ''}` : ''}`;
+  return (
+    <span className="fx-plan-progress" role="img" aria-label={label} title={label}>
+      {installments.map((i) => (
+        <span key={i.seq} data-status={i.status} />
+      ))}
+    </span>
   );
 }

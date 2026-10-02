@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FluviaSymbol } from './brand';
 import { formatAmount, MESSAGES, type Locale } from './messages';
 import { InstallmentsOption, OrderSummary, PlanBox, type CheckoutOrderView } from './order-panels';
 
@@ -251,7 +252,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
   return (
     <main className="checkout" aria-labelledby="checkout-title">
       <header className="co-head">
-        <BrandMark />
+        <FluviaSymbol size={44} />
         <div>
           {merchant ? (
             <p className="co-merchant">
@@ -362,32 +363,10 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
       <footer className="co-foot">
         <p className="notice">{t.sandboxNotice}</p>
         <p className="co-muted co-secured">
-          <BrandMark size={16} /> {t.securedBy}
+          <FluviaSymbol size={16} /> {t.securedBy}
         </p>
       </footer>
     </main>
-  );
-}
-
-function BrandMark({ size = 36 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <rect width="32" height="32" rx="9" fill="#f3e7d1" />
-      <path
-        d="M6 12c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 18c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0"
-        fill="none"
-        stroke="#0b6b6b"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6 24c3.3-2.7 6.7-2.7 10 0"
-        fill="none"
-        stroke="#e9a23b"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 

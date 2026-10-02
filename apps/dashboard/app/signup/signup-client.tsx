@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { FluviaLogo } from '../lib/brand';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../lib/csrf-header';
 import { MESSAGES, type Locale } from '../messages';
 
@@ -86,6 +87,9 @@ export function SignupForm({
 
   return (
     <main className="auth" aria-labelledby="signup-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="signup-title">{t.signupTitle}</h1>
       <p className="notice">{t.signupSandboxVerification}</p>
       <form onSubmit={submit}>

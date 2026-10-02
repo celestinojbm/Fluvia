@@ -66,7 +66,12 @@ export default async function Tarjetas({
       {rows.length === 0 ? (
         <div className="ox-empty">Sin tarjetas en este filtro.</div>
       ) : (
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

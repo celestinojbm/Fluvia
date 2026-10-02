@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
-import { FluviaMark } from '../../lib/app-shell';
+import { FluviaLogo } from '../../lib/brand';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../lib/csrf-header';
 import { Icon, type IconName } from '../../lib/icons';
 
@@ -43,10 +43,7 @@ export function PersonalShell({ name, children }: { name: string; children: Reac
       </a>
       <nav className="px-rail" aria-label="Fluvia Personal">
         <a className="px-brand" href="/personal">
-          <FluviaMark size={30} />
-          <span>
-            Fluvia <em>Personal</em>
-          </span>
+          <FluviaLogo height={24} label="Personal" />
         </a>
         <ul>
           {NAV.map((n) => (
@@ -67,10 +64,7 @@ export function PersonalShell({ name, children }: { name: string; children: Reac
       </nav>
       <header className="px-top">
         <a className="px-brand" href="/personal">
-          <FluviaMark size={26} />
-          <span>
-            Fluvia <em>Personal</em>
-          </span>
+          <FluviaLogo height={22} label="Personal" />
         </a>
         <a className="px-top-user" href="/personal/perfil" aria-label="Perfil y ayuda">
           <span aria-hidden="true">{(name.trim()[0] ?? 'F').toUpperCase()}</span>

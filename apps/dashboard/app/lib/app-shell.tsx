@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { FluviaLogo } from './brand';
 import { Icon, type IconName } from './icons';
 
 /**
@@ -29,28 +30,6 @@ export interface ShellNavSection {
   items: ShellNavItem[];
 }
 
-export function FluviaMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-      <rect width="32" height="32" rx="9" fill="#f3e7d1" />
-      <path
-        d="M6 12c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0M6 18c3.3-2.7 6.7-2.7 10 0s6.7 2.7 10 0"
-        fill="none"
-        stroke="#0b6b6b"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6 24c3.3-2.7 6.7-2.7 10 0"
-        fill="none"
-        stroke="#e9a23b"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export function orgNav(orgId: string): ShellNavSection[] {
   const o = `/o/${orgId}`;
   return [
@@ -58,7 +37,6 @@ export function orgNav(orgId: string): ShellNavSection[] {
       title: 'Vender',
       items: [
         { href: o, label: 'Inicio', icon: 'home', exact: true },
-        { href: `${o}/sell`, label: 'Nueva venta', icon: 'cart' },
         { href: `${o}/pos`, label: 'Cobrar', icon: 'terminal' },
       ],
     },
@@ -165,8 +143,7 @@ export function AppShell({
           <span className="sr-only">{open ? 'Cerrar menú' : 'Abrir menú'}</span>
         </button>
         <a className="fx-brand" href={`/o/${orgId}`}>
-          <FluviaMark size={26} />
-          <span className="fx-brand-word">Fluvia</span>
+          <FluviaLogo height={22} />
         </a>
         <span className="fx-top-org">{orgName}</span>
       </div>
@@ -179,8 +156,7 @@ export function AppShell({
         aria-label="Navegación principal"
       >
         <a className="fx-brand" href={`/o/${orgId}`}>
-          <FluviaMark />
-          <span className="fx-brand-word">Fluvia</span>
+          <FluviaLogo height={26} />
         </a>
         <div className="fx-org">
           <span className="fx-org-avatar" aria-hidden="true">
@@ -191,6 +167,14 @@ export function AppShell({
             <span>Comercio · {roleLabel}</span>
           </div>
         </div>
+        <a
+          className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
+          href={`/o/${orgId}/sell`}
+          aria-current={pathname.startsWith(`/o/${orgId}/sell`) ? 'page' : undefined}
+        >
+          <Icon name="plus" />
+          Nueva venta
+        </a>
         <div className="fx-nav">
           {sections.map((s) => (
             <section key={s.title} aria-labelledby={`nav-${s.title}`}>

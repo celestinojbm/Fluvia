@@ -68,7 +68,12 @@ export default async function Casos({
       {rows.length === 0 ? (
         <div className="ox-empty">No hay casos en este filtro.</div>
       ) : (
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

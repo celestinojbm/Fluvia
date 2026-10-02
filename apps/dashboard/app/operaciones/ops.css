@@ -1,21 +1,21 @@
 /* ==========================================================================
-   Fluvia Operaciones — «Sala de control» (docs/design/fluvia-surfaces.md §3)
-   Denso y legible: barra superior oscura, navegación clara compacta, tablas
-   con cabecera fija, estados con punto + palabra, acciones con motivo.
+   Fluvia Operaciones — identidad «Menta» (docs/design/identidad-menta.md §4.3)
+   Trabajo intensivo: barra superior blanca con buscador (la herramienta
+   principal), navegación compacta sobre menta, tablas densas en blanco con
+   cabecera fija y números tabulares. Consultar = enlaces; actuar = botones con
+   candado (motivo + auditoría); destruir/bloquear = rojo.
    ========================================================================== */
 
 :root {
-  --ox-top: 56px;
-  --ox-nav: 236px;
-  --px-credit: #2c4a9a;
-  --px-credit-soft: #e8edf9;
+  --ox-top: 60px;
+  --ox-nav: 232px;
 }
 .ox-shell {
   min-height: 100vh;
-  background: #f4f2ee;
-  color: var(--fx-ink);
-  font-family: var(--fx-font);
-  font-size: 0.92rem;
+  background: var(--fl-mint);
+  color: var(--fl-black);
+  font-family: var(--fl-font);
+  font-size: 0.875rem;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
 }
@@ -24,13 +24,14 @@
   box-sizing: border-box;
 }
 .ox-shell a {
-  color: var(--fx-river);
+  color: var(--fl-black);
+  font-weight: 700;
+  text-underline-offset: 3px;
 }
 .ox-shell :focus-visible,
 .ox-gate :focus-visible {
-  outline: 3px solid var(--fx-focus);
+  outline: 3px solid var(--fl-focus);
   outline-offset: 2px;
-  border-radius: 6px;
 }
 
 /* --- barra superior ----------------------------------------------------- */
@@ -43,76 +44,78 @@
   align-items: center;
   gap: 10px 16px;
   min-height: var(--ox-top);
-  padding: 8px 16px;
-  background: var(--fx-deep);
-  color: #e8f1f0;
+  padding: 10px 16px;
+  background: var(--fl-white);
+  border-bottom: 2px solid var(--fl-black);
+  color: var(--fl-black);
 }
 .ox-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: #fff !important;
   text-decoration: none;
-  font-weight: 760;
-}
-.ox-brand em {
-  font-style: normal;
-  font-weight: 560;
-  color: var(--fx-sun);
 }
 .ox-program {
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 0.8rem;
-  font-weight: 650;
+  padding: 4px 12px;
+  border-radius: var(--fl-pill);
+  background: var(--fl-black);
+  color: var(--fl-white);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
 }
 .ox-search {
   flex: 1 1 18rem;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
-  min-height: 38px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 0 14px;
+  min-height: 44px;
+  border-radius: var(--fl-pill);
+  background: var(--fl-white);
+  border: 1.5px solid var(--fl-control-line);
   order: 5;
+}
+.ox-search:focus-within {
+  outline: 3px solid var(--fl-focus);
+  outline-offset: 2px;
 }
 .ox-search input {
   flex: 1;
   min-width: 0;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--fl-black);
   font: inherit;
+  font-weight: 600;
   outline: none;
 }
 .ox-search input::placeholder {
-  color: #a9c9c5;
+  color: var(--fl-ink-2);
 }
 .ox-role {
   margin-left: auto;
-  font-size: 0.8rem;
-  color: #a9c9c5;
+  padding: 4px 12px;
+  border-radius: var(--fl-pill);
+  background: var(--fl-mint);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
 }
 @media (min-width: 1024px) {
   .ox-search {
     order: 0;
-    max-width: 30rem;
+    max-width: 34rem;
   }
 }
 
 /* --- navegación --------------------------------------------------------- */
 .ox-nav {
-  background: #fff;
-  border-bottom: 1px solid var(--fx-line);
+  background: var(--fl-mint);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   overflow-x: auto;
 }
 .ox-nav ul {
   list-style: none;
   margin: 0;
-  padding: 6px 8px;
+  padding: 8px;
   display: flex;
   gap: 2px;
 }
@@ -120,27 +123,32 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--fl-pill);
   white-space: nowrap;
-  color: var(--fx-ink-2);
+  color: var(--fl-black);
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
 }
 .ox-nav a:hover {
-  background: var(--fx-sunken);
+  background: rgba(255, 255, 255, 0.6);
 }
 .ox-nav a[aria-current='page'] {
-  background: var(--fx-deep);
-  color: #fff;
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.ox-nav a[aria-current='page'] svg {
+  color: var(--fl-mint);
 }
 .ox-badge {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--fx-sun);
-  color: var(--fx-ink);
-  font-size: 0.72rem;
+  min-width: 22px;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--fl-pill);
+  background: var(--fl-bad);
+  color: var(--fl-white);
+  font-size: 0.6875rem;
   font-weight: 800;
   text-align: center;
 }
@@ -148,28 +156,36 @@
   display: none;
 }
 @media (min-width: 1024px) {
+  .ox-shell {
+    display: grid;
+    grid-template-columns: var(--ox-nav) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: 'top top' 'nav main';
+  }
+  .ox-top {
+    grid-area: top;
+  }
   .ox-nav {
-    position: fixed;
+    grid-area: nav;
+    position: sticky;
     top: var(--ox-top);
-    bottom: 0;
-    left: 0;
-    width: var(--ox-nav);
+    align-self: start;
+    height: calc(100vh - var(--ox-top));
     border-bottom: 0;
-    border-right: 1px solid var(--fx-line);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
   }
   .ox-nav ul {
     flex-direction: column;
-    padding: 12px;
+    padding: 16px 12px;
   }
   .ox-nav-foot {
     display: block;
     margin-top: auto;
-    padding: 12px 16px;
-    font-size: 0.82rem;
-    color: var(--fx-ink-3);
+    padding: 12px 20px 20px;
+    font-size: var(--fl-fs-sm);
   }
 }
 
@@ -186,8 +202,8 @@
 }
 @media (min-width: 1024px) {
   .ox-main {
-    margin-left: var(--ox-nav);
-    padding: 24px 32px 48px;
+    grid-area: main;
+    padding: 28px 32px 56px;
   }
 }
 .ox-head {
@@ -196,149 +212,164 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .ox-head h1 {
   margin: 0;
-  font-size: 1.45rem;
-  font-weight: 720;
-  letter-spacing: -0.01em;
+  font-size: clamp(1.5rem, 2.2vw, 1.875rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 .ox-eyebrow {
-  margin: 0 0 2px;
-  font-size: 0.7rem;
-  font-weight: 750;
-  letter-spacing: 0.1em;
+  margin: 0 0 4px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--fx-ink-3);
+  color: var(--fl-ink-2);
 }
 .ox-section {
-  margin-top: 24px;
+  margin-top: 28px;
 }
 .ox-section > h2 {
-  margin: 0 0 10px;
-  font-size: 1rem;
-  font-weight: 700;
+  margin: 0 0 12px;
+  font-size: var(--fl-fs-h3);
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 .ox-muted {
-  color: var(--fx-ink-3);
-  font-size: 0.84rem;
+  color: var(--fl-ink-2);
+  font-size: var(--fl-fs-sm);
 }
 .ox-sandbox {
   margin: 0 0 16px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--fx-sim-soft);
-  color: var(--fx-sim);
-  font-size: 0.82rem;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--fl-sim-soft);
+  color: var(--fl-sim);
+  font-size: var(--fl-fs-sm);
+  font-weight: 650;
 }
 
-/* --- franja de colas ---------------------------------------------------- */
+/* --- franja de colas: contadores grandes que llevan a la cola ----------- */
 .ox-queues {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  background: #fff;
-  border: 1px solid var(--fx-line);
-  border-radius: 12px;
+  background: var(--fl-white);
+  border-radius: 20px;
   overflow: hidden;
 }
 .ox-queues a {
   display: block;
-  padding: 14px 16px;
-  border-left: 1px solid var(--fx-line);
+  padding: 16px 20px;
+  border-left: 1px solid var(--fl-line);
   text-decoration: none;
-  color: var(--fx-ink);
+  color: var(--fl-black);
 }
 .ox-queues a:first-child {
   border-left: 0;
 }
 .ox-queues a:hover {
-  background: var(--fx-canvas);
+  background: var(--fl-surface-2);
 }
 .ox-queues strong {
   display: block;
-  font-size: 1.7rem;
-  font-weight: 760;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   line-height: 1.1;
 }
+.ox-queues .is-hot {
+  box-shadow: inset 0 4px 0 var(--fl-bad);
+}
 .ox-queues .is-hot strong {
-  color: var(--fx-bad);
+  color: var(--fl-bad);
 }
 .ox-queues span {
-  font-size: 0.8rem;
-  color: var(--fx-ink-3);
+  font-size: var(--fl-fs-sm);
+  font-weight: 650;
+  color: var(--fl-ink-2);
 }
 
 /* --- tablas ------------------------------------------------------------- */
 .ox-table-wrap {
-  background: #fff;
-  border: 1px solid var(--fx-line);
-  border-radius: 12px;
+  background: var(--fl-white);
+  border-radius: 16px;
   overflow: auto;
   max-height: 70vh;
 }
 .ox-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.86rem;
+  font-size: 0.8125rem;
 }
 .ox-table th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--fx-canvas);
+  background: var(--fl-surface-2);
   text-align: left;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--fx-ink-3);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--fx-line);
+  color: var(--fl-ink-2);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--fl-line);
   white-space: nowrap;
 }
 .ox-table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--fx-line);
-  vertical-align: top;
+  height: 40px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fl-line);
+  vertical-align: middle;
 }
 .ox-table tr:last-child td {
   border-bottom: 0;
 }
 .ox-table tbody tr:hover {
-  background: #fbfaf7;
+  background: var(--fl-surface-2);
 }
 .ox-num {
   text-align: right !important;
   white-space: nowrap;
+  font-weight: 750;
 }
 .ox-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  color: var(--fx-ink-2);
+  font-size: 0.75rem;
+  color: var(--fl-ink-2);
   word-break: break-all;
 }
 @media (max-width: 767px) {
   .ox-table.is-stack thead {
     display: none;
   }
+  .ox-table.is-stack,
+  .ox-table.is-stack tbody {
+    display: block;
+    width: 100%;
+  }
   .ox-table.is-stack tr {
     display: block;
     padding: 8px 4px;
-    border-bottom: 1px solid var(--fx-line);
+    border-bottom: 1px solid var(--fl-line);
   }
   .ox-table.is-stack td {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 12px;
+    gap: 2px 12px;
+    height: auto;
     border: 0;
-    padding: 4px 10px;
+    padding: 4px 12px;
     text-align: right;
   }
   .ox-table.is-stack td::before {
     content: attr(data-label);
-    font-weight: 650;
-    color: var(--fx-ink-3);
+    font-weight: 750;
+    color: var(--fl-ink-2);
     text-align: left;
   }
   .ox-table-wrap {
@@ -346,23 +377,23 @@
   }
 }
 .ox-empty {
-  padding: 24px;
+  padding: 28px;
   text-align: center;
-  color: var(--fx-ink-2);
-  background: #fff;
-  border: 1px dashed var(--fx-line-strong);
-  border-radius: 12px;
+  color: var(--fl-black);
+  background: rgba(255, 255, 255, 0.6);
+  border: 2px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 16px;
 }
 
-/* --- estados ------------------------------------------------------------ */
+/* --- estados (punto + palabra) ------------------------------------------ */
 .ox-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-weight: 650;
-  font-size: 0.8rem;
+  font-weight: 800;
+  font-size: var(--fl-fs-xs);
   white-space: nowrap;
-  color: var(--fx-ink-2);
+  color: var(--fl-black);
 }
 .ox-status::before {
   content: '';
@@ -372,19 +403,19 @@
   background: currentColor;
 }
 .ox-ok {
-  color: var(--fx-ok);
+  color: var(--fl-ok);
 }
 .ox-warn {
-  color: var(--fx-warn);
+  color: var(--fl-warn);
 }
 .ox-bad {
-  color: var(--fx-bad);
+  color: var(--fl-bad);
 }
 .ox-info {
-  color: var(--fx-river-strong);
+  color: var(--fl-black);
 }
 .ox-credit {
-  color: var(--px-credit);
+  color: var(--fl-credit);
 }
 
 /* --- 360 ---------------------------------------------------------------- */
@@ -407,14 +438,15 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 24px;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--fx-line);
-  border-radius: 12px;
+  padding: 20px;
+  background: var(--fl-white);
+  border-radius: 20px;
 }
 .ox-identity h1 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 .ox-anchors {
   display: flex;
@@ -425,75 +457,106 @@
   list-style: none;
 }
 .ox-anchors a {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--fx-line-strong);
-  background: #fff;
-  font-size: 0.8rem;
-  font-weight: 620;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: var(--fl-pill);
+  border: 1.5px solid var(--fl-black);
+  background: var(--fl-white);
+  font-size: var(--fl-fs-xs);
+  font-weight: 750;
   text-decoration: none;
-  color: var(--fx-ink-2);
+  color: var(--fl-black);
+}
+.ox-anchors a:hover {
+  background: var(--fl-mint);
 }
 .ox-kv {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 10px;
+  gap: 12px;
   margin: 0;
-  padding: 14px 16px;
-  background: #fff;
-  border: 1px solid var(--fx-line);
-  border-radius: 12px;
+  padding: 16px 20px;
+  background: var(--fl-white);
+  border-radius: 16px;
 }
 .ox-kv dt {
-  font-size: 0.75rem;
-  color: var(--fx-ink-3);
+  font-size: var(--fl-fs-xs);
+  font-weight: 650;
+  color: var(--fl-ink-2);
 }
 .ox-kv dd {
   margin: 2px 0 0;
-  font-weight: 700;
+  font-weight: 800;
 }
+/* Panel de acciones: negro — se distingue de la lectura (blanca). */
 .ox-actions-pane {
   display: grid;
   gap: 10px;
-  padding: 14px;
-  background: #fff;
-  border: 1px solid var(--fx-line);
-  border-radius: 12px;
+  padding: 18px;
+  background: var(--fl-black);
+  color: var(--fl-white);
+  border-radius: 20px;
 }
 .ox-actions-pane h2 {
   margin: 0;
-  font-size: 0.95rem;
+  color: var(--fl-white);
+  font-size: var(--fl-fs-sm);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ox-actions-pane :focus-visible {
+  outline-color: var(--fl-mint);
+}
+.ox-actions-pane .ox-muted,
+.ox-actions-pane p {
+  color: var(--fl-white);
+}
+.ox-actions-pane .ox-btn {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 /* --- acciones ----------------------------------------------------------- */
 .ox-action-form {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--fx-canvas);
-  border: 1px solid var(--fx-line);
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--fl-white);
+  color: var(--fl-black);
+  border-left: 4px solid var(--fl-black);
+}
+.ox-action-form[data-tone='danger'] {
+  border-left-color: var(--fl-bad);
+}
+.ox-action-form .ox-msg,
+.ox-action-form p {
+  color: inherit;
 }
 .ox-action-title {
   margin: 0;
-  font-weight: 700;
+  font-weight: 800;
 }
 .ox-field {
   display: grid;
-  gap: 3px;
-  font-size: 0.82rem;
-  font-weight: 620;
+  gap: 4px;
+  font-size: var(--fl-fs-sm);
+  font-weight: 750;
 }
 .ox-field input,
 .ox-field select,
 .ox-field textarea {
-  min-height: 38px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--fx-line-strong);
-  background: #fff;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--fl-control-line);
+  background: var(--fl-white);
+  color: var(--fl-black);
   font: inherit;
-  font-weight: 400;
+  font-weight: 600;
   width: 100%;
 }
 .ox-row {
@@ -501,94 +564,132 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.ox-input {
+  flex: 1 1 14rem;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--fl-pill);
+  border: 1.5px solid var(--fl-control-line);
+  background: var(--fl-white);
+  color: var(--fl-black);
+  font: inherit;
+  font-weight: 600;
+}
+.ox-head > form {
+  flex: 1 1 22rem;
+  max-width: 30rem;
+  flex-wrap: nowrap;
+}
 .ox-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 1px solid var(--fx-line-strong);
-  background: #fff;
-  color: var(--fx-ink);
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--fl-pill);
+  border: 2px solid var(--fl-black);
+  background: var(--fl-white);
+  color: var(--fl-black);
   font: inherit;
-  font-weight: 650;
+  font-weight: 750;
   text-decoration: none;
   cursor: pointer;
 }
+.ox-btn:hover:not(:disabled) {
+  background: var(--fl-mint);
+}
 .ox-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 .ox-btn-primary {
-  background: var(--fx-river);
-  border-color: var(--fx-river);
-  color: #fff !important;
+  background: var(--fl-black);
+  color: var(--fl-white) !important;
+}
+.ox-btn-primary:hover:not(:disabled) {
+  background: var(--fl-black-hover);
 }
 .ox-btn-danger {
-  border-color: var(--fx-bad);
-  color: var(--fx-bad);
+  border-color: var(--fl-bad);
+  color: var(--fl-bad);
+}
+.ox-btn-danger:hover:not(:disabled) {
+  background: var(--fl-bad-soft);
+}
+/* Dentro del panel negro, los botones de acción van en blanco. */
+.ox-actions-pane .ox-btn-primary {
+  background: var(--fl-mint);
+  border-color: var(--fl-mint);
+  color: var(--fl-black) !important;
 }
 .ox-msg {
   margin: 0;
-  font-size: 0.82rem;
-  padding: 6px 10px;
-  border-radius: 8px;
+  font-size: var(--fl-fs-sm);
+  font-weight: 650;
+  padding: 8px 12px;
+  border-radius: 10px;
 }
 .ox-msg-ok {
-  background: var(--fx-ok-soft);
-  color: var(--fx-ok);
+  background: var(--fl-ok-soft);
+  color: var(--fl-ok) !important;
 }
 .ox-msg-bad {
-  background: var(--fx-bad-soft);
-  color: var(--fx-bad);
+  background: var(--fl-bad-soft);
+  color: var(--fl-bad) !important;
 }
 .ox-msg-warn {
-  background: var(--fx-warn-soft);
-  color: var(--fx-warn);
+  background: var(--fl-warn-soft);
+  color: var(--fl-warn) !important;
 }
 .ox-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .ox-filters a {
-  padding: 5px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--fx-line-strong);
-  background: #fff;
-  font-size: 0.82rem;
-  font-weight: 620;
-  color: var(--fx-ink-2);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--fl-pill);
+  border: 1.5px solid var(--fl-black);
+  background: var(--fl-white);
+  font-size: var(--fl-fs-sm);
+  font-weight: 750;
+  color: var(--fl-black);
   text-decoration: none;
 }
+.ox-filters a:hover {
+  background: var(--fl-mint);
+}
 .ox-filters a[aria-current='true'] {
-  background: var(--fx-deep);
-  border-color: var(--fx-deep);
-  color: #fff;
+  background: var(--fl-black);
+  color: var(--fl-white);
 }
 .ox-reasons {
   margin: 4px 0 0;
   padding-left: 18px;
-  font-size: 0.8rem;
-  color: var(--fx-ink-2);
+  font-size: var(--fl-fs-sm);
+  color: var(--fl-ink-2);
 }
 .ox-gate {
-  min-height: 100vh;
+  min-height: calc(100vh - 28px);
   display: grid;
   place-content: center;
   gap: 12px;
   padding: 24px 16px;
   max-width: 40rem;
   margin: 0 auto;
-  font-family: var(--fx-font);
-  color: var(--fx-ink);
+  font-family: var(--fl-font);
+  color: var(--fl-black);
 }
 .ox-gate h1 {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: var(--fl-fs-h1);
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 .sr-only {
   position: absolute;
@@ -614,5 +715,9 @@
 @media (max-width: 767px) {
   .ox-table.is-stack td > * {
     min-width: 0;
+    max-width: 100%;
+  }
+  .ox-table.is-stack td::before {
+    flex: none;
   }
 }

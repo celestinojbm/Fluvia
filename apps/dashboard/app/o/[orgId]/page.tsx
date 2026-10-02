@@ -184,7 +184,7 @@ export default async function OrgHomePage({
                 </p>
               </div>
               {ins!.series.length >= 2 && ins!.active_days >= 2 ? (
-                <div>
+                <div className="fx-hero-chart">
                   <ul className="fx-legend" aria-hidden="true">
                     <li>
                       <span className="fx-swatch" data-k="orders" /> Registrado
@@ -197,6 +197,7 @@ export default async function OrgHomePage({
                 </div>
               ) : (
                 <p className="fx-chart-empty">
+                  <Icon name="trend" />
                   {key === 'today'
                     ? 'Elige 7 o 30 días para ver la evolución diaria.'
                     : 'Aún no hay datos suficientes: la evolución aparece con actividad en al menos dos días del periodo.'}

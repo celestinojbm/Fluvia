@@ -67,7 +67,12 @@ export default async function Solicitudes({
           style={{ marginTop: 0, marginBottom: 24 }}
         >
           <h2 id="ox-hist">Historial de límites de la línea</h2>
-          <div className="ox-table-wrap">
+          <div
+            className="ox-table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table className="ox-table is-stack">
               <thead>
                 <tr>
@@ -124,7 +129,12 @@ export default async function Solicitudes({
             : 'Sin solicitudes en este estado.'}
         </div>
       ) : (
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

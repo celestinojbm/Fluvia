@@ -1,5 +1,6 @@
 import { orgContext } from '../../../lib/org-context';
 import { orgPath, readApi, type InstallmentPlan } from '../../../lib/commerce-api';
+import { PlanProgress } from '../../../lib/commerce-ui';
 import {
   Callout,
   Empty,
@@ -37,6 +38,9 @@ export default async function InstallmentsPage({ params }: { params: Promise<{ o
           <strong>parámetros de demostración</strong>, no una política comercial aprobada.
         </p>
       </Callout>
+      {list.kind === 'ok' && list.data.data.length > 0 ? (
+        <PlanSummary plans={list.data.data} />
+      ) : null}
       <section className="fx-panel" aria-labelledby="inst-list-title">
         <header>
           <h2 id="inst-list-title">Planes recientes</h2>
@@ -81,8 +85,11 @@ export default async function InstallmentsPage({ params }: { params: Promise<{ o
                           <PlanStatus status={p.status} />
                         </td>
                         <td data-label="Cuotas">
-                          {paid}/{p.installments_count} pagadas
-                          {overdue ? ` · ${overdue} vencida${overdue > 1 ? 's' : ''}` : ''}
+                          <PlanProgress installments={p.installments} />
+                          <span className="fx-cell-sub">
+                            {paid}/{p.installments_count} pagadas
+                            {overdue ? ` · ${overdue} vencida${overdue > 1 ? 's' : ''}` : ''}
+                          </span>
                         </td>
                         <td data-label="Total" className="num">
                           {money(p.total, p.currency)}
@@ -97,5 +104,52 @@ export default async function InstallmentsPage({ params }: { params: Promise<{ o
         </div>
       </section>
     </main>
+  );
+}
+
+/** Resumen de la cartera simulada: conteos y pendiente POR MONEDA (nunca se suman). */
+function PlanSummary({ plans }: { plans: InstallmentPlan[] }) {
+  const approved = plans.filter((p) => p.status === 'approved');
+  const all = approved.flatMap((p) => p.installments.map((i) => ({ ...i, currency: p.currency })));
+  const paid = all.filter((i) => i.status === 'paid_simulated').length;
+  const overdue = all.filter((i) => i.status === 'overdue_simulated').length;
+  const pending = new Map<string, number>();
+  for (const i of all) {
+    if (i.status !== 'paid_simulated')
+      pending.set(i.currency, (pending.get(i.currency) ?? 0) + i.amount);
+  }
+  return (
+    <section className="fx-strip" aria-label="Resumen de planes (simulación)">
+      <div>
+        <h3>Planes aprobados</h3>
+        <p className="fx-strip-value">{approved.length}</p>
+        <p className="fx-strip-meta">de {plans.length} solicitados</p>
+      </div>
+      <div>
+        <h3>Cuotas pagadas</h3>
+        <p className="fx-strip-value">{paid}</p>
+        <p className="fx-strip-meta">de {all.length} cuotas</p>
+      </div>
+      <div>
+        <h3>
+          <span className="fx-dot" data-tone="bad" /> Vencidas
+        </h3>
+        <p className="fx-strip-value">{overdue}</p>
+        <p className="fx-strip-meta">solo por evento simulado</p>
+      </div>
+      <div>
+        <h3>Pendiente</h3>
+        {pending.size === 0 ? (
+          <p className="fx-strip-value">—</p>
+        ) : (
+          [...pending.entries()].map(([c, a]) => (
+            <p key={c} className="fx-strip-value">
+              {money(a, c)}
+            </p>
+          ))
+        )}
+        <p className="fx-strip-meta">no es saldo ni cobro</p>
+      </div>
+    </section>
   );
 }

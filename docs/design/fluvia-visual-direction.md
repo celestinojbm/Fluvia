@@ -1,5 +1,7 @@
 # Dirección visual de Fluvia — «Corriente»
 
+> **Sustituido (2026-10-02)** por la identidad «Menta»: [`identidad-menta.md`](identidad-menta.md). Se conserva como histórico; sus colores y composiciones ya no se aplican.
+
 Estado: **aplicada en el dashboard del comercio y el checkout** (sandbox). Esta guía se registró antes de implementar y es la referencia para cualquier pantalla nueva. Sin dependencias nuevas: tipografía del sistema, iconos SVG propios, gráficos en SVG inline (la CSP solo permite recursos propios).
 
 ## 1. Idea

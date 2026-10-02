@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { FluviaMark } from '../../lib/app-shell';
+import { FluviaLogo } from '../../lib/brand';
 import { Icon, type IconName } from '../../lib/icons';
 
 /**
@@ -48,10 +48,7 @@ export function OpsShell({
       </a>
       <header className="ox-top">
         <a className="ox-brand" href={base}>
-          <FluviaMark size={26} />
-          <span>
-            Fluvia <em>Operaciones</em>
-          </span>
+          <FluviaLogo height={20} label="Operaciones" />
         </a>
         <span className="ox-program">{programName}</span>
         <form className="ox-search" action={`${base}/clientes`} role="search">

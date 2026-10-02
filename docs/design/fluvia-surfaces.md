@@ -1,5 +1,7 @@
 # Fluvia — dirección visual por superficie (Comercios, Personal, Operaciones)
 
+> **Sustituido (2026-10-02)** por la identidad «Menta»: [`identidad-menta.md`](identidad-menta.md). Se conserva como histórico; sus colores y composiciones ya no se aplican.
+
 Registrada antes de construir las pantallas de la jornada integral. Amplía «Corriente» ([`fluvia-visual-direction.md`](fluvia-visual-direction.md)): **misma identidad** (tokens `--fx-*`, marca de ondas, pila tipográfica del sistema, iconos SVG propios, CSP sin recursos externos) y **una composición distinta por superficie**, porque cada una sirve una tarea distinta.
 
 Skills de diseño: en este entorno no hay skills de diseño de interfaz instaladas para el código del panel (las disponibles generan artefactos, presentaciones o documentos). No se usaron; la dirección se aplica a mano sobre los tokens existentes.

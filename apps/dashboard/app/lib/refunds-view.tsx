@@ -44,7 +44,12 @@ export function RefundsList({
         {refunds.length === 0 ? (
           <p className="empty">{t.refundsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.refundsTitle}</caption>
               <thead>
@@ -121,7 +126,12 @@ export function RefundDetail({
       </header>
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.refundDetailTitle}</caption>
             <tbody>

@@ -44,6 +44,7 @@ interface Messages {
   reconciliation: string;
   reconTitle: string;
   reconEmpty: string;
+  reconIntro: string;
   colProvider: string;
   colPeriod: string;
   colReport: string;
@@ -386,6 +387,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     reconciliation: 'Conciliación',
     reconTitle: 'Reportes de liquidación',
     reconEmpty: 'Sin reportes de liquidación.',
+    reconIntro:
+      'Cada reporte compara lo que el proveedor (simulado) dice haber liquidado con el libro contable de Fluvia. Las diferencias quedan marcadas para revisarlas.',
     colProvider: 'Proveedor',
     colPeriod: 'Periodo',
     colReport: 'Reporte',
@@ -734,6 +737,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     reconciliation: 'Reconciliation',
     reconTitle: 'Settlement reports',
     reconEmpty: 'No settlement reports.',
+    reconIntro:
+      'Each report compares what the (simulated) provider says it settled against the Fluvia ledger. Differences are flagged for review.',
     colProvider: 'Provider',
     colPeriod: 'Period',
     colReport: 'Report',

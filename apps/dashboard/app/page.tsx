@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { FluviaLogo } from './lib/brand';
 import { redirect } from 'next/navigation';
 import { apiBase, fetchOrganizations } from './lib/api';
 import { NoOrgCta } from './lib/no-org-cta';
@@ -26,6 +27,9 @@ export default async function HomePage({
 
   return (
     <main className="picker" aria-labelledby="orgs-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="orgs-title">{t.orgsTitle}</h1>
       {orgs.length === 0 ? <NoOrgCta locale={locale} /> : <OrgList orgs={orgs} locale={locale} />}
       <p>

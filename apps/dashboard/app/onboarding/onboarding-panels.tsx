@@ -1,4 +1,5 @@
 import type { InitialOrganization } from './resolve';
+import { FluviaLogo } from '../lib/brand';
 import { MESSAGES, type Locale } from '../messages';
 
 /**
@@ -50,7 +51,10 @@ export function OrgSelectionPanel({
 }) {
   const t = MESSAGES[locale];
   return (
-    <main className="auth" aria-labelledby="onboarding-title">
+    <main className="auth onb" aria-labelledby="onboarding-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="onboarding-title">{t.onboardingTitle}</h1>
       <p className="notice">{t.onboardingSelectBody}</p>
       <p className="notice">{t.sandboxNotice}</p>
@@ -76,7 +80,10 @@ export function InvalidSelectionPanel({
 }) {
   const t = MESSAGES[locale];
   return (
-    <main className="auth" aria-labelledby="onboarding-title">
+    <main className="auth onb" aria-labelledby="onboarding-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="onboarding-title">{t.onboardingTitle}</h1>
       <p className="error" role="alert">
         {t.onboardingInvalidSelection}
@@ -102,7 +109,10 @@ export function InvalidSelectionPanel({
 export function ReadErrorPanel({ locale, retryOrgId }: { locale: Locale; retryOrgId?: string }) {
   const t = MESSAGES[locale];
   return (
-    <main className="auth" aria-labelledby="onboarding-title">
+    <main className="auth onb" aria-labelledby="onboarding-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="onboarding-title">{t.onboardingTitle}</h1>
       <p className="error" role="alert">
         {t.onboardingReadError}

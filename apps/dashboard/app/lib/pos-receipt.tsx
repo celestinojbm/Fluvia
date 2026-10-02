@@ -9,6 +9,7 @@ import {
   receiptRef,
   type PosReceipt,
 } from './pos-receipt-contract';
+import { FluviaLogo } from './brand';
 import { installPrintUrlGuard, type PrintUrlGuard } from './pos-print-url';
 import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 
@@ -201,6 +202,9 @@ export function PosReceiptView({
       data-testid="pos-receipt"
     >
       <header className="pos-receipt-head">
+        <p className="pos-receipt-brand" aria-hidden="true">
+          <FluviaLogo height={22} />
+        </p>
         <h2 id="pos-receipt-title">
           {refunds.length > 0 || receipt.refunds_truncated ? t.docTitleRefunds : t.docTitle}
         </h2>
