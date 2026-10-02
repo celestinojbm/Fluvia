@@ -8,6 +8,11 @@ const nextConfig = {
   poweredByHeader: false,
   async headers() {
     const dev = process.env.NODE_ENV !== 'production';
+    // Llamada del asistente por WebRTC: el navegador abre la señalización con
+    // el servidor LiveKit (ws/wss) y, si falla, la valida por http(s) en el
+    // mismo origen. Solo ese origen, solo si está configurado AL CONSTRUIR
+    // (las cabeceras se fijan en `next build`).
+    const livekit = livekitOrigins(process.env.LIVEKIT_PUBLIC_URL);
     // F6 (revisión de seguridad): CSP en el panel del operador. `connect-src 'self'`
     // acota exfiltración; Next inyecta scripts/estilos inline (hydration/RSC) y en dev
     // usa eval (HMR), de ahí 'unsafe-inline' (+ 'unsafe-eval' solo en dev). Una CSP
@@ -20,7 +25,7 @@ const nextConfig = {
       // Notas de voz (escucha previa) y respuesta hablada del asistente: blobs locales.
       "media-src 'self' blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      `connect-src 'self'${livekit}`,
       "base-uri 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
@@ -39,5 +44,20 @@ const nextConfig = {
     ];
   },
 };
+
+/** `ws(s)://host[:puerto]` → ` ws(s)://host[:puerto] http(s)://host[:puerto]`; si no es válido, nada. */
+function livekitOrigins(raw) {
+  if (!raw) return '';
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error('LIVEKIT_PUBLIC_URL no es una URL válida');
+  }
+  if (u.protocol !== 'ws:' && u.protocol !== 'wss:')
+    throw new Error('LIVEKIT_PUBLIC_URL debe ser ws:// o wss://');
+  const http = u.protocol === 'wss:' ? 'https:' : 'http:';
+  return ` ${u.protocol}//${u.host} ${http}//${u.host}`;
+}
 
 export default nextConfig;

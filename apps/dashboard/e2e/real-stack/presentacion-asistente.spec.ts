@@ -296,7 +296,7 @@ test.describe('asistente', () => {
     await ctx.close();
   });
 
-  test('llamada: consentimiento, turnos, interrupción, colgar y micrófono liberado', async ({
+  test('llamada LOCAL simulada (sin servidor de llamadas): consentimiento, turnos, interrupción, colgar', async ({
     browser,
   }) => {
     test.skip(!FAKE_AUDIO, 'ASSISTANT_FAKE_AUDIO no definido');
@@ -304,6 +304,9 @@ test.describe('asistente', () => {
     await p.goto(`${APP}/o/${ORG}`);
     await openAssistant(p);
     await p.getByRole('button', { name: 'Hablar con Fluvia' }).click();
+    const transport = await p.locator('.as-call').getAttribute('data-call-transport');
+    test.skip(transport !== 'local-simulated', 'con WebRTC lo cubre llamada-webrtc.spec.ts');
+    await expect(p.locator('.as-call .as-sim-chip')).toContainText('sin WebRTC');
     expect(
       await p.evaluate(() => (window as unknown as { __tracks: unknown[] }).__tracks.length)
     ).toBe(0);

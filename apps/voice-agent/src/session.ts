@@ -26,6 +26,8 @@ import type { AgentSpeech } from './speech.js';
  */
 /** Si la persona no entra en la sala en este tiempo, el agente sale. */
 const JOIN_TIMEOUT_MS = 60_000;
+/** Margen para que la persona vuelva tras perder la conexión. */
+const REJOIN_GRACE_MS = 20_000;
 
 export class CallSession {
   private readonly room = new Room();
@@ -69,10 +71,21 @@ export class CallSession {
     // El saludo se envía cuando la persona está en la sala (un mensaje
     // dirigido a quien aún no ha entrado se perdería).
     this.room.on(RoomEvent.ParticipantConnected, (p) => {
-      if (p.identity === this.cfg.userIdentity) void this.greet();
+      if (p.identity !== this.cfg.userIdentity) return;
+      // Vuelve tras una reconexión completa: la llamada sigue.
+      if (this.leftTimer) {
+        clearTimeout(this.leftTimer);
+        this.leftTimer = null;
+        this.cfg.log('user rejoined', { room: this.cfg.room });
+      }
+      void this.greet();
     });
     this.room.on(RoomEvent.ParticipantDisconnected, (p) => {
-      if (p.identity === this.cfg.userIdentity) void this.close('user_left');
+      if (p.identity !== this.cfg.userIdentity || this.leftTimer) return;
+      // Una reconexión completa del navegador sale y vuelve a entrar con la
+      // misma identidad: se espera un margen antes de dar la llamada por
+      // terminada. Colgar de verdad envía «bye» y cierra al instante.
+      this.leftTimer = setTimeout(() => void this.close('user_left'), REJOIN_GRACE_MS);
     });
     this.room.on(RoomEvent.Disconnected, () => void this.close('disconnected'));
 
@@ -98,6 +111,7 @@ export class CallSession {
 
   private greeted = false;
   private joinTimer: NodeJS.Timeout | null = null;
+  private leftTimer: NodeJS.Timeout | null = null;
   private async greet(): Promise<void> {
     if (this.greeted) return;
     this.greeted = true;
@@ -129,10 +143,14 @@ export class CallSession {
       return;
     const detector = new TurnDetector({
       onSpeechStart: () => {
+        this.cfg.log('speech start', { room: this.cfg.room, agentSpeaking: this.speaking });
         void this.send({ t: 'speech_start' });
         if (this.speaking) this.interrupt();
       },
-      onUtterance: (pcm, rate) => void this.transcribe(pcm, rate),
+      onUtterance: (pcm, rate) => {
+        this.cfg.log('turn', { room: this.cfg.room, seconds: +(pcm.length / rate).toFixed(2) });
+        void this.transcribe(pcm, rate);
+      },
     });
     void (async () => {
       const stream = new AudioStream(track, RATE, 1);
@@ -212,6 +230,7 @@ export class CallSession {
     this.speakToken++;
     if (this.timer) clearTimeout(this.timer);
     if (this.joinTimer) clearTimeout(this.joinTimer);
+    if (this.leftTimer) clearTimeout(this.leftTimer);
     try {
       this.source?.clearQueue();
       await this.source?.close();

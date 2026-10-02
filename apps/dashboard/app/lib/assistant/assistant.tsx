@@ -403,6 +403,12 @@ function AssistantPanel({
     return finalText;
   };
 
+  // La llamada guarda su `onAsk` al conectar; con esta referencia cada turno
+  // usa el `send` del último render (conversación y estado actuales), así la
+  // llamada continúa la MISMA conversación del chat.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
   const stop = () => stream.current?.abort();
 
   const speak = async (m: Msg) => {
@@ -507,7 +513,7 @@ function AssistantPanel({
           <CallPanel
             base={base}
             simulated={status?.call.simulated ?? true}
-            onAsk={(t, ids) => send(t, { ids, mode: 'call' })}
+            onAsk={(t, ids) => sendRef.current(t, { ids, mode: 'call' })}
             onClose={() => setView('chat')}
           />
         ) : (

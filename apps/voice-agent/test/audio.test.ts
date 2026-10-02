@@ -32,6 +32,43 @@ describe('detección de turnos', () => {
     expect(turns[0]!).toBeLessThan(2.4);
   });
 
+  it('voz atenuada (supresión de ruido del navegador) y con valles: se detecta', () => {
+    const turns: number[] = [];
+    const d = new TurnDetector({
+      onSpeechStart: () => undefined,
+      onUtterance: (p) => turns.push(p.length),
+    });
+    feed(d, silence(500));
+    // 1,2 s de voz a RMS ≈ 0,02 con valles de 10 ms cada 30 ms.
+    const v = tone(1200, 900);
+    for (let o = 0; o < v.length; o += 1440) v.fill(0, o, o + 480);
+    feed(d, v);
+    feed(d, silence(900));
+    expect(turns).toHaveLength(1);
+  });
+
+  it('ruido constante no es voz, y la voz encima del ruido sí', () => {
+    let starts = 0;
+    let turns = 0;
+    const d = new TurnDetector({ onSpeechStart: () => starts++, onUtterance: () => turns++ });
+    const noise = (ms: number) => {
+      const a = new Int16Array(Math.round(48 * ms));
+      for (let i = 0; i < a.length; i++)
+        a[i] = Math.round((((i * 7919) % 1000) / 1000 - 0.5) * 1400);
+      return a;
+    };
+    feed(d, noise(4000)); // RMS ≈ 0,012 desde el inicio: ruido de ventilador
+    expect(starts).toBe(0);
+    expect(d.threshold).toBeGreaterThan(0.02);
+    const mix = tone(1000, 6000);
+    const n = noise(1000);
+    for (let i = 0; i < mix.length; i++) mix[i] = mix[i]! + n[i]!;
+    feed(d, mix);
+    feed(d, noise(1200));
+    expect(starts).toBe(1);
+    expect(turns).toBe(1);
+  });
+
   it('un clic corto no es un turno', () => {
     let n = 0;
     const d = new TurnDetector({ onSpeechStart: () => n++, onUtterance: () => n++ });

@@ -36,7 +36,18 @@ export interface AssistantProviderConfig {
         ttsModel: string;
         ttsVoice: string;
       };
-  call: { kind: 'simulated' } | { kind: 'livekit'; url: string; apiKey: string; apiSecret: string };
+  call:
+    | { kind: 'simulated' }
+    | {
+        kind: 'livekit';
+        /** URL wss/ws que usa el NAVEGADOR. */
+        url: string;
+        apiKey: string;
+        apiSecret: string;
+        /** Control del agente de voz (loopback o red privada) y su secreto. */
+        agentUrl: string;
+        agentSecret: string;
+      };
 }
 
 const int = (v: string | undefined, def: number, min: number, max: number) => {
@@ -99,12 +110,16 @@ export function loadAssistantProviders(
     env.ASSISTANT_CALL_PROVIDER === 'livekit' &&
     env.LIVEKIT_URL &&
     env.LIVEKIT_API_KEY &&
-    env.LIVEKIT_API_SECRET
+    env.LIVEKIT_API_SECRET &&
+    env.ASSISTANT_AGENT_URL &&
+    env.ASSISTANT_AGENT_SECRET
       ? {
           kind: 'livekit' as const,
           url: env.LIVEKIT_URL,
           apiKey: env.LIVEKIT_API_KEY,
           apiSecret: env.LIVEKIT_API_SECRET,
+          agentUrl: env.ASSISTANT_AGENT_URL,
+          agentSecret: env.ASSISTANT_AGENT_SECRET,
         }
       : { kind: 'simulated' as const };
   return { conversation, speech, call };

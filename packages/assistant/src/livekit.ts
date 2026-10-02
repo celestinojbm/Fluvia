@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import type { CallGrant, CallTransport } from './providers.js';
+import { ProviderError, type CallGrant, type CallTransport } from './providers.js';
 
 /**
  * Transporte de llamada con LiveKit: SOLO emite el token de acceso (JWT HS256
@@ -7,13 +7,13 @@ import type { CallGrant, CallTransport } from './providers.js';
  * según «Access tokens & grants» de la documentación oficial: `iss` = API key,
  * `sub` = identidad, `nbf`, `exp` y el grant `video` limitado a UNA sala.
  *
- * Permisos mínimos: entrar a esa sala, publicar micrófono (y cámara o pantalla
- * solo si el usuario la comparte: se habilitan como fuentes, la UI pide
- * consentimiento cada vez), suscribirse y canal de datos para la
- * transcripción. Sin admin, sin grabación, sin crear salas.
+ * Permisos mínimos: entrar a esa sala, publicar SOLO micrófono, suscribirse
+ * y canal de datos (transcripción y respuestas). Sin cámara ni pantalla: una
+ * foto durante la llamada va por la subida autenticada del chat, con su
+ * validación y su retención. Sin admin, sin grabación, sin crear salas.
  *
- * El agente de voz (LiveKit Agents) es un proceso aparte que entra a la sala;
- * no forma parte de este repositorio (dependencia externa documentada).
+ * El agente de voz (apps/voice-agent) es un proceso aparte: al emitir el
+ * token, la API le pide entrar en ESA sala para ESA identidad.
  */
 const b64url = (b: Buffer | string) =>
   Buffer.from(b).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -37,7 +37,7 @@ export function signLiveKitToken(
         canPublish: true,
         canSubscribe: true,
         canPublishData: true,
-        canPublishSources: ['microphone', 'camera', 'screen_share'],
+        canPublishSources: ['microphone'],
       },
     })
   );
@@ -48,9 +48,40 @@ export function signLiveKitToken(
 export class LiveKitCallTransport implements CallTransport {
   readonly name = 'livekit';
   readonly simulated = false;
-  constructor(private readonly cfg: { url: string; apiKey: string; apiSecret: string }) {}
+  constructor(
+    private readonly cfg: {
+      url: string;
+      apiKey: string;
+      apiSecret: string;
+      agentUrl: string;
+      agentSecret: string;
+    },
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
 
   async grant(input: { room: string; identity: string; ttlSeconds: number }): Promise<CallGrant> {
+    // Primero el agente: sin agente no hay llamada y no se entrega token.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 10_000);
+    let status = 0;
+    try {
+      const res = await this.fetchImpl(new URL('/join', this.cfg.agentUrl), {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.cfg.agentSecret}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ room: input.room, identity: input.identity }),
+        signal: ac.signal,
+      });
+      status = res.status;
+      await res.body?.cancel().catch(() => undefined);
+    } catch {
+      throw new ProviderError('unavailable');
+    } finally {
+      clearTimeout(timer);
+    }
+    if (status !== 200) throw new ProviderError('unavailable');
     const t = signLiveKitToken(this.cfg, input);
     return {
       url: this.cfg.url,

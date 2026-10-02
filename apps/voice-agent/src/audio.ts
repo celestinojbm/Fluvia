@@ -20,11 +20,36 @@ export interface TurnEvents {
 }
 
 /**
- * Detector de turnos por energía con histéresis:
- *  - voz = RMS ≥ `threshold` durante ≥ `minSpeechMs`;
- *  - fin del turno = `silenceMs` seguidos bajo el umbral;
+ * Detector de turnos por energía, ADAPTATIVO y con histéresis:
+ *  - el umbral sigue al ruido de fondo (×`noiseFactor`, acotado entre
+ *    `minThreshold` y `maxThreshold`): la voz atenuada por la supresión de
+ *    ruido del navegador se detecta y un ventilador constante no es voz;
+ *  - voz = ≥ `minSpeechMs` de energía sobre el umbral (los valles breves de
+ *    la voz procesada restan, no reinician);
+ *  - fin del turno = `silenceMs` seguidos bajo el 60 % del umbral;
+ *  - los primeros 500 ms solo aprenden el ruido (nada es voz todavía);
  *  - un turno nunca supera `maxUtteranceMs` (se corta y se entrega).
  */
+export interface TurnOptions {
+  minThreshold: number;
+  maxThreshold: number;
+  noiseFactor: number;
+  minSpeechMs: number;
+  silenceMs: number;
+  maxUtteranceMs: number;
+}
+
+export const DEFAULT_TURN_OPTIONS: TurnOptions = {
+  minThreshold: 0.008,
+  maxThreshold: 0.05,
+  noiseFactor: 3,
+  minSpeechMs: 200,
+  silenceMs: 700,
+  maxUtteranceMs: 30_000,
+};
+
+const WARMUP_MS = 500;
+
 export class TurnDetector {
   private buf: Int16Array[] = [];
   private speechMs = 0;
@@ -32,24 +57,41 @@ export class TurnDetector {
   private inSpeech = false;
   private totalMs = 0;
   private preRoll: Int16Array[] = [];
+  private noise = 0;
+  private warmMs = 0;
+  private readonly opts: TurnOptions;
 
   constructor(
     private readonly events: TurnEvents,
-    private readonly opts = {
-      threshold: 0.03,
-      minSpeechMs: 200,
-      silenceMs: 700,
-      maxUtteranceMs: 30_000,
-    }
-  ) {}
+    opts: Partial<TurnOptions> = {}
+  ) {
+    this.opts = { ...DEFAULT_TURN_OPTIONS, ...opts };
+  }
+
+  /** Umbral de voz actual (para pruebas y diagnóstico). */
+  get threshold(): number {
+    const { minThreshold, maxThreshold, noiseFactor } = this.opts;
+    return Math.min(maxThreshold, Math.max(minThreshold, this.noise * noiseFactor));
+  }
 
   push(pcm: Int16Array, sampleRate: number): void {
     const ms = (pcm.length / sampleRate) * 1000;
-    const loud = rms(pcm) >= this.opts.threshold;
+    const level = rms(pcm);
+    // Calentamiento: los primeros 500 ms solo aprenden el ruido de fondo.
+    if (this.warmMs < WARMUP_MS) {
+      this.warmMs += ms;
+      this.noise += (level - this.noise) * Math.min(1, ms / this.warmMs);
+      return;
+    }
+    const threshold = this.threshold;
     if (!this.inSpeech) {
+      // Ruido de fondo: media lenta (~2 s) de lo que no es voz; si sube y se
+      // mantiene, el umbral la sigue más despacio (~16 s).
+      const a = Math.min(1, ms / 2000) / (level < threshold ? 1 : 8);
+      this.noise = this.noise * (1 - a) + level * a;
       this.preRoll.push(pcm);
       if (this.preRoll.length > 20) this.preRoll.shift();
-      this.speechMs = loud ? this.speechMs + ms : 0;
+      this.speechMs = level >= threshold ? this.speechMs + ms : Math.max(0, this.speechMs - ms);
       if (this.speechMs >= this.opts.minSpeechMs) {
         this.inSpeech = true;
         this.buf = [...this.preRoll];
@@ -62,7 +104,7 @@ export class TurnDetector {
     }
     this.buf.push(pcm);
     this.totalMs += ms;
-    this.silenceMs = loud ? 0 : this.silenceMs + ms;
+    this.silenceMs = level >= threshold * 0.6 ? 0 : this.silenceMs + ms;
     if (this.silenceMs >= this.opts.silenceMs || this.totalMs >= this.opts.maxUtteranceMs) {
       const n = this.buf.reduce((a, b) => a + b.length, 0);
       const out = new Int16Array(n);

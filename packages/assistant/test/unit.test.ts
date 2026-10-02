@@ -14,6 +14,8 @@ import {
   resolveActions,
   sanitizeContext,
   signLiveKitToken,
+  LiveKitCallTransport,
+  ProviderError,
   type StreamEvent,
 } from '../src/index.js';
 
@@ -202,9 +204,75 @@ describe('token de LiveKit', () => {
       exp: 1_700_000_300,
       video: { room: 'fluvia-abc', roomJoin: true },
     });
+    expect(payload.video.canPublishSources).toEqual(['microphone']);
     expect(payload.video.roomAdmin).toBeUndefined();
     expect(payload.video.roomRecord).toBeUndefined();
     expect(expiresAt).toBe(1_700_000_300);
+  });
+
+  it('LiveKit exige también el agente; si no, simulado', () => {
+    const base = {
+      ASSISTANT_CALL_PROVIDER: 'livekit',
+      LIVEKIT_URL: 'ws://127.0.0.1:3363',
+      LIVEKIT_API_KEY: 'k',
+      LIVEKIT_API_SECRET: 's',
+    };
+    expect(loadAssistantProviders(base).call.kind).toBe('simulated');
+    expect(
+      loadAssistantProviders({
+        ...base,
+        ASSISTANT_AGENT_URL: 'http://127.0.0.1:3366',
+        ASSISTANT_AGENT_SECRET: 'x'.repeat(32),
+      }).call
+    ).toMatchObject({ kind: 'livekit', agentUrl: 'http://127.0.0.1:3366' });
+  });
+
+  it('despacha el agente a ESA sala antes de emitir el token; sin agente, sin token', async () => {
+    const calls: { url: string; auth: string | null; body: unknown }[] = [];
+    let status = 200;
+    const fake = (async (url: URL, init: RequestInit) => {
+      calls.push({
+        url: String(url),
+        auth: new Headers(init.headers).get('authorization'),
+        body: JSON.parse(String(init.body)),
+      });
+      return new Response('{}', { status });
+    }) as unknown as typeof fetch;
+    const t = new LiveKitCallTransport(
+      {
+        url: 'ws://lk',
+        apiKey: 'k',
+        apiSecret: 's',
+        agentUrl: 'http://127.0.0.1:3366',
+        agentSecret: 'agent-secret',
+      },
+      fake
+    );
+    const input = { room: 'fluvia-personal-x', identity: 'consumer:1', ttlSeconds: 60 };
+    const g = await t.grant(input);
+    expect(g.url).toBe('ws://lk');
+    expect(calls).toEqual([
+      {
+        url: 'http://127.0.0.1:3366/join',
+        auth: 'Bearer agent-secret',
+        body: { room: 'fluvia-personal-x', identity: 'consumer:1' },
+      },
+    ]);
+    status = 503;
+    await expect(t.grant(input)).rejects.toBeInstanceOf(ProviderError);
+    const down = new LiveKitCallTransport(
+      {
+        url: 'ws://lk',
+        apiKey: 'k',
+        apiSecret: 's',
+        agentUrl: 'http://127.0.0.1:1',
+        agentSecret: 'x',
+      },
+      (async () => {
+        throw new TypeError('fetch failed');
+      }) as unknown as typeof fetch
+    );
+    await expect(down.grant(input)).rejects.toBeInstanceOf(ProviderError);
   });
 });
 

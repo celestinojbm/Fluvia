@@ -5,6 +5,7 @@ import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../csrf-header';
 import { Icon } from '../icons';
 import { assistantError, call, upload } from './sse';
 import { recorderMime } from './voice-note';
+import { WebRtcCallPanel } from './call-webrtc';
 
 /**
  * «Hablar con Fluvia» — llamada de voz.
@@ -15,9 +16,9 @@ import { recorderMime } from './voice-note';
  * (nota → transcripción → asistente → voz). La UI dice «simulada» en todo
  * momento; no se afirma una llamada real.
  *
- * Con transporte LiveKit configurado, el cliente WebRTC (livekit-client) aún
- * no está incluido: la UI lo indica como dependencia pendiente y libera el
- * micrófono.
+ * Esto NO es una llamada WebRTC: es el modo local para cuando no hay servidor
+ * de llamadas. Con transporte LiveKit configurado se usa `WebRtcCallPanel`
+ * (call-webrtc.tsx): sala propia, agente de voz y audio por WebRTC.
  *
  * Siempre: consentimiento explícito antes de pedir el micrófono; silencio,
  * colgar y selección de dispositivo; cámara/pantalla solo voluntarias y
@@ -25,14 +26,7 @@ import { recorderMime } from './voice-note';
  */
 
 type CallState =
-  | 'consent'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'ended'
-  | 'denied'
-  | 'blocked'
-  | 'error';
+  'consent' | 'connecting' | 'connected' | 'reconnecting' | 'ended' | 'denied' | 'error';
 
 interface Line {
   who: 'tú' | 'fluvia' | 'sistema';
@@ -43,18 +37,18 @@ const SPEECH_LEVEL = 0.06;
 const SILENCE_MS = 900;
 const MIN_SPEECH_MS = 250;
 
-export function CallPanel({
-  base,
-  simulated,
-  onAsk,
-  onClose,
-}: {
+interface CallProps {
   base: string;
-  simulated: boolean;
   /** Envía el turno a la conversación (modo llamada) y devuelve la respuesta. */
   onAsk: (text: string, attachmentIds: string[]) => Promise<string | null>;
   onClose: () => void;
-}) {
+}
+
+export function CallPanel({ simulated, ...props }: CallProps & { simulated: boolean }) {
+  return simulated ? <LocalSimulatedCall {...props} /> : <WebRtcCallPanel {...props} />;
+}
+
+function LocalSimulatedCall({ base, onAsk, onClose }: CallProps) {
   const [state, setState] = useState<CallState>('consent');
   const [muted, setMuted] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -256,11 +250,6 @@ export function CallPanel({
       setError(assistantError(g.status, g.code));
       return;
     }
-    if (!g.body.simulated) {
-      // Transporte real configurado, cliente WebRTC no incluido todavía.
-      setState('blocked');
-      return;
-    }
     setMaxSeconds(g.body.max_seconds);
     live.current = true;
     try {
@@ -354,14 +343,17 @@ export function CallPanel({
     reconnecting: 'Reconectando…',
     ended: 'Finalizada',
     denied: 'Micrófono denegado',
-    blocked: 'No disponible',
     error: 'Error',
   };
 
   return (
-    <section className="as-body as-call" aria-labelledby="as-call-title">
+    <section
+      className="as-body as-call"
+      aria-labelledby="as-call-title"
+      data-call-transport="local-simulated"
+    >
       <h3 id="as-call-title">
-        Hablar con Fluvia {simulated ? <span className="as-sim-chip">Llamada simulada</span> : null}
+        Hablar con Fluvia <span className="as-sim-chip">Llamada simulada · local, sin WebRTC</span>
       </h3>
       <p className="as-call-state" role="status" aria-live="polite">
         Estado: <strong>{STATE_LABEL[state]}</strong>
@@ -392,18 +384,6 @@ export function CallPanel({
         <div className="as-error" role="alert">
           <p>
             Sin permiso de micrófono no podemos llamar. Actívalo en tu navegador o sigue por chat.
-          </p>
-          <button type="button" className="as-btn" onClick={onClose}>
-            Seguir por chat
-          </button>
-        </div>
-      ) : null}
-
-      {state === 'blocked' ? (
-        <div className="as-error" role="alert">
-          <p>
-            El servidor de llamadas está configurado, pero este panel aún no incluye el cliente
-            WebRTC. La llamada no se puede iniciar; sigue por chat.
           </p>
           <button type="button" className="as-btn" onClick={onClose}>
             Seguir por chat
@@ -474,11 +454,9 @@ export function CallPanel({
                 playsInline
                 aria-label="Vista previa de tu pantalla"
               />
-              {simulated ? (
-                <p className="as-muted">
-                  Llamada simulada: tu pantalla no se envía a nadie, solo la ves tú.
-                </p>
-              ) : null}
+              <p className="as-muted">
+                Llamada simulada: tu pantalla no se envía a nadie, solo la ves tú.
+              </p>
             </div>
           ) : null}
         </>

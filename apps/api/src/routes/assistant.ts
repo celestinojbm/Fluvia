@@ -489,11 +489,12 @@ export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutes
       const ow = owner(req);
       const room = `fluvia-${ow.surface}-${randomUUID()}`;
       const ttl = Math.min(o.limits.maxCallSeconds, 900);
-      const g = await o.providers.call.grant({
-        room,
-        identity: `${ow.kind}:${ow.ownerId}`,
-        ttlSeconds: ttl,
-      });
+      // Con LiveKit, antes del token se despacha el agente a ESA sala.
+      const g = await o.providers.call
+        .grant({ room, identity: `${ow.kind}:${ow.ownerId}`, ttlSeconds: ttl })
+        .catch((e: unknown) => {
+          throw mapError(e);
+        });
       return {
         object: 'assistant_call_grant',
         simulated: o.providers.call.simulated,
