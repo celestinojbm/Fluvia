@@ -49,6 +49,8 @@ export class CallSession {
       maxSeconds: number;
       speech: AgentSpeech;
       log: (msg: string, extra?: Record<string, unknown>) => void;
+      /** Fuente de audio del agente (inyectable en pruebas para provocar fallos). */
+      createSource?: () => AudioSource;
     }
   ) {
     this.done = new Promise((r) => (this.resolveDone = r));
@@ -65,8 +67,8 @@ export class CallSession {
     this.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
       if (topic !== TOPIC || participant?.identity !== this.cfg.userIdentity) return;
       const m = parseUserMessage(payload);
-      if (m?.t === 'say') void this.say(m.text);
-      if (m?.t === 'bye') void this.close('bye');
+      if (m?.t === 'say') this.task('say', this.say(m.text));
+      if (m?.t === 'bye') this.task('close', this.close('bye'));
     });
     // El saludo se envía cuando la persona está en la sala (un mensaje
     // dirigido a quien aún no ha entrado se perdería).
@@ -78,33 +80,37 @@ export class CallSession {
         this.leftTimer = null;
         this.cfg.log('user rejoined', { room: this.cfg.room });
       }
-      void this.greet();
+      this.task('greet', this.greet());
     });
     this.room.on(RoomEvent.ParticipantDisconnected, (p) => {
       if (p.identity !== this.cfg.userIdentity || this.leftTimer) return;
       // Una reconexión completa del navegador sale y vuelve a entrar con la
       // misma identidad: se espera un margen antes de dar la llamada por
       // terminada. Colgar de verdad envía «bye» y cierra al instante.
-      this.leftTimer = setTimeout(() => void this.close('user_left'), REJOIN_GRACE_MS);
+      this.leftTimer = setTimeout(
+        () => this.task('close', this.close('user_left')),
+        REJOIN_GRACE_MS
+      );
     });
-    this.room.on(RoomEvent.Disconnected, () => void this.close('disconnected'));
+    this.room.on(RoomEvent.Disconnected, () => this.task('close', this.close('disconnected')));
 
     await this.room.connect(this.cfg.url, token, { autoSubscribe: true, dynacast: false });
-    this.source = new AudioSource(RATE, 1);
+    this.source = this.cfg.createSource ? this.cfg.createSource() : new AudioSource(RATE, 1);
     const track = LocalAudioTrack.createAudioTrack('fluvia-voz', this.source);
     await this.room.localParticipant!.publishTrack(
       track,
       new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE })
     );
     this.timer = setTimeout(() => {
-      void this.send({ t: 'error', code: 'max_duration' }).finally(() =>
-        this.close('max_duration')
+      this.task(
+        'close',
+        this.send({ t: 'error', code: 'max_duration' }).finally(() => this.close('max_duration'))
       );
     }, this.cfg.maxSeconds * 1000);
     if (this.room.remoteParticipants.has(this.cfg.userIdentity)) await this.greet();
     else
       this.joinTimer = setTimeout(() => {
-        if (!this.greeted) void this.close('user_never_joined');
+        if (!this.greeted) this.task('close', this.close('user_never_joined'));
       }, JOIN_TIMEOUT_MS);
     this.cfg.log('agent joined', { room: this.cfg.room });
   }
@@ -123,6 +129,23 @@ export class CallSession {
       stt: { provider: this.cfg.speech.stt.name, simulated: this.cfg.speech.stt.simulated },
       tts: { provider: this.cfg.speech.tts.name, simulated: this.cfg.speech.tts.simulated },
       maxSeconds: this.cfg.maxSeconds,
+    });
+  }
+
+  /**
+   * Toda tarea asíncrona de la sesión pasa por aquí: un fallo se captura,
+   * se registra con su sala y se limpia el estado de ESTA sesión. El
+   * manejador global del proceso no es la red de seguridad.
+   */
+  private task(name: string, p: Promise<unknown>): void {
+    p.catch((err: unknown) => {
+      this.cfg.log('session task failed', { room: this.cfg.room, task: name, err: String(err) });
+      if (name === 'say') {
+        this.speaking = false;
+        this.speakToken++;
+        void this.send({ t: 'speaking', on: false }).catch(() => undefined);
+        void this.send({ t: 'error', code: 'tts_failed' }).catch(() => undefined);
+      }
     });
   }
 
@@ -149,16 +172,19 @@ export class CallSession {
       },
       onUtterance: (pcm, rate) => {
         this.cfg.log('turn', { room: this.cfg.room, seconds: +(pcm.length / rate).toFixed(2) });
-        void this.transcribe(pcm, rate);
+        this.task('transcribe', this.transcribe(pcm, rate));
       },
     });
-    void (async () => {
-      const stream = new AudioStream(track, RATE, 1);
-      for await (const frame of stream) {
-        if (this.closed) break;
-        detector.push(frame.data, frame.sampleRate);
-      }
-    })();
+    this.task(
+      'audio_in',
+      (async () => {
+        const stream = new AudioStream(track, RATE, 1);
+        for await (const frame of stream) {
+          if (this.closed) break;
+          detector.push(frame.data, frame.sampleRate);
+        }
+      })()
+    );
   }
 
   private interrupt(): void {
@@ -215,19 +241,7 @@ export class CallSession {
       if (my !== this.speakToken || this.closed) return;
       const chunk = pcm.subarray(o, Math.min(o + step, pcm.length));
       const frame = new AudioFrame(Int16Array.from(chunk), RATE, 1, chunk.length);
-      try {
-        await this.source.captureFrame(frame);
-      } catch (err) {
-        // Pista no disponible (p. ej. durante una reconexión): se abandona
-        // ESTA frase; la llamada y el proceso siguen. La respuesta queda por
-        // escrito en el panel.
-        this.cfg.log('speak aborted', { room: this.cfg.room, err: String(err) });
-        if (my === this.speakToken) {
-          this.speaking = false;
-          await this.send({ t: 'speaking', on: false });
-        }
-        return;
-      }
+      await this.source.captureFrame(frame);
     }
     await this.source.waitForPlayout().catch(() => undefined);
     if (my === this.speakToken) {

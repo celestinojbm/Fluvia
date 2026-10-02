@@ -56,6 +56,7 @@ const server = createServer((req, res) => {
     return reply(res, 200, {
       ok: true,
       sessions: sessions.size,
+      unhandled,
       stt: { provider: speech.stt.name, simulated: speech.stt.simulated },
       tts: { provider: speech.tts.name, simulated: speech.tts.simulated },
     });
@@ -120,8 +121,15 @@ server.listen(PORT, HOST, () =>
   })
 );
 
-// Un fallo inesperado en UNA llamada no debe tumbar las demás.
-process.on('unhandledRejection', (err) => log('unhandled rejection', { err: String(err) }));
+// Último recurso: las tareas de cada sesión capturan y limpian sus propios
+// fallos (CallSession.task). Si algo llega aquí es un defecto: se registra
+// como error y se CUENTA en /health (no se oculta), sin tumbar las demás
+// llamadas.
+let unhandled = 0;
+process.on('unhandledRejection', (err) => {
+  unhandled++;
+  console.error(JSON.stringify({ level: 'error', msg: 'unhandled rejection', err: String(err) }));
+});
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {
