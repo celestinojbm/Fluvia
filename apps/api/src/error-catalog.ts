@@ -278,6 +278,16 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This product was modified by someone else; reload it and try again',
   },
+  directory_version_conflict: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This directory profile was modified by someone else; reload it and try again',
+  },
+  directory_slug_taken: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This public address is already in use; choose another one',
+  },
   catalog_duplicate: {
     status: 409,
     type: 'conflict_error',
@@ -527,6 +537,10 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   InstallmentPlanNotFoundError: 'not_found',
   ProductVersionConflictError: 'catalog_version_conflict',
   CatalogDuplicateError: 'catalog_duplicate',
+  DirectoryProfileNotFoundError: 'not_found',
+  DirectoryMerchantNotFoundError: 'not_found',
+  DirectoryVersionConflictError: 'directory_version_conflict',
+  DirectorySlugTakenError: 'directory_slug_taken',
   ProductUnavailableError: 'product_unavailable',
   OrderCurrencyMismatchError: 'order_currency_mismatch',
   OrderTotalMismatchError: 'order_total_changed',

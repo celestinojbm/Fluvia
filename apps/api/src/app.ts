@@ -38,6 +38,7 @@ import {
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import {
   CatalogService,
+  DirectoryService,
   CustomerDirectory,
   InstallmentSandboxService,
   InventoryService,
@@ -74,6 +75,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
+import { registerDirectoryRoutes } from './routes/directory.js';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
@@ -456,6 +458,13 @@ export function buildApp({
       summaryService: new SummaryService(appPool),
       installmentService: new InstallmentSandboxService(appPool, orderService),
       inventoryService: new InventoryService(appPool),
+    });
+    // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
+    // comercio; lectura pública limitada por IP.
+    registerDirectoryRoutes(app, {
+      security,
+      directoryService: new DirectoryService(appPool),
+      limiter: rateLimiter,
     });
     // Jornada integral: Fluvia Personal (plano del cliente) y Fluvia
     // Operaciones (plano de operador sobre la organización programa), más la

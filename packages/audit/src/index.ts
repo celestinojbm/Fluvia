@@ -113,6 +113,10 @@ export const AUDIT_ACTIONS = [
   'program.approval_decided',
   'program.uncertain_resolved',
   'program.provider_event_ingested',
+  // Directorio «Dónde comprar» (0054): perfil público del comercio.
+  'directory_profile.saved',
+  'directory_profile.published',
+  'directory_profile.hidden',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

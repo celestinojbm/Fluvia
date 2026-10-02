@@ -366,6 +366,16 @@
       "status": 409,
       "type": "conflict_error",
       "message": "The idempotency key was already used with different parameters"
+    },
+    "directory_version_conflict": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This directory profile was modified by someone else; reload it and try again"
+    },
+    "directory_slug_taken": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This public address is already in use; choose another one"
     }
   },
   "domain_error_codes": {
@@ -476,6 +486,10 @@
     "InvalidConsumerCredentialsError": "invalid_credentials",
     "ConsumerSessionInvalidError": "consumer_session_invalid",
     "ConsumerLockedError": "consumer_locked",
-    "ApplicationPendingError": "application_pending"
+    "ApplicationPendingError": "application_pending",
+    "DirectoryProfileNotFoundError": "not_found",
+    "DirectoryMerchantNotFoundError": "not_found",
+    "DirectoryVersionConflictError": "directory_version_conflict",
+    "DirectorySlugTakenError": "directory_slug_taken"
   }
 }
