@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { assertValidIdempotencyKey } from '@fluvia/idempotency';
 import {
   ConsumerSessionInvalidError,
+  MAX_LIVE_CARDS,
+  parsePolicyParams,
   previewOffer,
   type PersonalServices,
   type ProgramActor,
@@ -180,6 +182,51 @@ export function registerPersonalRoutes(
     requestId: String(req.id),
     ip: req.ip,
     userAgent: req.headers['user-agent'],
+  });
+
+  // ── Condiciones públicas del programa ────────────────────────────────────
+  // Lo que la presentación explica (cuotas, inicial, intervalo, límites) sale
+  // de la política ACTIVA, no de textos fijos. Solo parámetros de producto;
+  // la política de referencia es sintética y se declara así.
+  const termsLimit = {
+    preHandler: rateLimit(limiter, [
+      { keyOf: ipKey('program-terms:ip'), rule: { max: 600, windowMs: 60_000 } },
+    ]),
+  };
+  app.get('/v1/public/programs/:programId/terms', termsLimit, async (req) => {
+    const { programId } = ProgramParam.parse(req.params);
+    const program = await p.programs.getProgram(programId);
+    const policy = await p.programs.getActivePolicy(programId);
+    const params = parsePolicyParams(policy.params);
+    return {
+      object: 'program_terms',
+      name: program.name,
+      sandbox: program.sandbox,
+      currencies: program.currencies,
+      policy: {
+        code: policy.code,
+        version: policy.version,
+        synthetic: policy.synthetic,
+        pending_commercial_validation: policy.pendingCommercialValidation,
+        installment_counts: params.installmentCounts,
+        interval_days: params.intervalDays,
+        down_payment_bps: params.downPaymentBps,
+        interest_bps: params.interestBps,
+        late_fee_bps: params.lateFeeBps,
+        grace_days: params.graceDays,
+        max_multiplier_bps: params.maxMultiplierBps,
+        authorization_ttl_hours: params.authorizationTtlHours,
+        limits: Object.fromEntries(
+          Object.entries(params.currencies)
+            .filter(([ccy]) => program.currencies.includes(ccy))
+            .map(([ccy, r]) => [
+              ccy,
+              { min_collateral: Number(r.minCollateral), max_limit: Number(r.maxLimit) },
+            ])
+        ),
+      },
+      cards: { max_live: MAX_LIVE_CARDS },
+    };
   });
 
   // ── Sesión ────────────────────────────────────────────────────────────────

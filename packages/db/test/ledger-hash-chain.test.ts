@@ -280,7 +280,13 @@ describe('sellado en dos fases (candidato → horizonte de txid → checkpoint)'
     expect(before.unsealedSeq).toBeGreaterThanOrEqual(0);
     const maxSeq = await currentMaxSeq();
     const after = await sealUntilCovers(maxSeq);
-    expect(after.unsealedSeq).toBe(0);
+    // Con la cola sellada, el rezago solo puede venir de asientos escritos
+    // DESPUÉS (otros paquetes escriben en la misma BD en paralelo en CI): es 0
+    // si nadie escribió y nunca supera lo escrito tras `maxSeq`.
+    expect(after.sealedUptoSeq).toBeGreaterThanOrEqual(maxSeq);
+    const writtenSince = (await currentMaxSeq()) - maxSeq;
+    expect(after.unsealedSeq).toBeGreaterThanOrEqual(0);
+    expect(after.unsealedSeq).toBeLessThanOrEqual(writtenSince);
   }, 30_000);
 });
 

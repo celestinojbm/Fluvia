@@ -40,6 +40,7 @@ describe('identidad Menta: tokens', () => {
     expect(token('fl-white')).toBe('#ffffff');
     expect(token('fl-ink-2')).toBe('#404040');
     expect(token('fl-line')).toBe('#d9e2de');
+    expect(token('fl-lime')).toBe('#dffe1c');
   });
 
   it('Manrope alojada localmente es la primera fuente', () => {
@@ -85,9 +86,19 @@ describe('identidad Menta: tokens', () => {
     ['crédito / menta', token('fl-credit'), mint, 4.5],
     ['simulación / suave', token('fl-sim'), token('fl-sim-soft'), 4.5],
     ['blanco sobre error (fecha vencida)', white, token('fl-bad'), 4.5],
+    ['texto negro sobre lima (chips, etiquetas, acción destacada)', black, token('fl-lime'), 4.5],
+    ['lima sobre negro (detalle seleccionado en pieza negra)', token('fl-lime'), black, 4.5],
+    ['anillo de foco negro sobre lima', black, token('fl-lime'), 3],
   ];
   it.each(pairs)('contraste %s', (_name, fg, bg, min) => {
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(min);
+  });
+
+  it('lima sobre menta no se distingue: los chips lima sobre el lienzo llevan borde negro', () => {
+    expect(contrast(token('fl-lime'), mint)).toBeLessThan(3);
+    expect(contrast(token('fl-lime'), white)).toBeLessThan(3);
+    // Por eso .fl-chip-lime declara siempre su borde negro.
+    expect(brand).toMatch(/\.fl-chip-lime\s*\{[^}]*border:\s*[^;]*var\(--fl-black\)/);
   });
 });
 

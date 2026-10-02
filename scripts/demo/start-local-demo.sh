@@ -24,6 +24,13 @@
 # ocupado, si un contenedor/volumen con su nombre pertenece a otra instancia,
 # o si una instancia no por defecto pide los puertos de la demo por defecto.
 # DEMO_PRINT_CONFIG=1 solo imprime la configuración resuelta y sale.
+#
+# Llamada por WebRTC (opcional, DEMO_WITH_CALL=1): servidor LiveKit en un
+# contenedor propio ($PREFIX-livekit, solo 127.0.0.1) y agente de voz de
+# PRUEBA (o con voz real si se exportan ASSISTANT_SPEECH_PROVIDER y SPEECH_*).
+# Las claves de LiveKit y del agente se generan una vez por instancia en
+# $STATE/call (0700) y llegan a los procesos por el entorno, no por la línea
+# de órdenes.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -46,7 +53,7 @@ if [ -d "$STATE" ]; then
   verify_instance || die "el estado/recursos de '$PREFIX' no pertenecen a $ROOT; no se arranca nada"
   [ -z "$(live_pids)" ] || die "la instancia '$PREFIX' ya está en marcha (PIDs en $STATE); párala antes"
 else
-  for c in "$PG_CONTAINER" "$REDIS_CONTAINER"; do
+  for c in "$PG_CONTAINER" "$REDIS_CONTAINER" "$LK_CONTAINER"; do
     container_exists "$c" && { owns_resource container "$c" || die "el contenedor $c pertenece a otra instancia"; }
   done
   volume_exists "$VOLUME" && { owns_resource volume "$VOLUME" || die "el volumen $VOLUME pertenece a otra instancia"; }
@@ -57,6 +64,16 @@ for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT"; do
 done
 container_exists "$PG_CONTAINER" || { port_busy "$PG_PORT" && die "el puerto $PG_PORT ya está en uso"; }
 container_exists "$REDIS_CONTAINER" || { port_busy "$REDIS_PORT" && die "el puerto $REDIS_PORT ya está en uso"; }
+if [ "$WITH_CALL" = 1 ]; then
+  port_busy "$AGENT_PORT" && die "el puerto $AGENT_PORT (agente de voz) ya está en uso"
+  # Si el contenedor de esta instancia está en marcha, los puertos son suyos.
+  if ! docker ps -q --filter "name=^${LK_CONTAINER}\$" | grep -q .; then
+    for p in "$LIVEKIT_PORT" "$LIVEKIT_TCP_PORT"; do
+      port_busy "$p" && die "el puerto $p (LiveKit) ya está en uso"
+    done
+    udp_busy "$LIVEKIT_UDP_PORT" && die "el puerto UDP $LIVEKIT_UDP_PORT (LiveKit) ya está en uso"
+  fi
+fi
 
 mkdir -p "$STATE"
 printf 'prefix=%s\nroot=%s\n' "$PREFIX" "$ROOT" >"$MARKER"
@@ -81,6 +98,49 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
+if [ "$WITH_CALL" = 1 ]; then
+  echo "==> Servidor de llamadas LiveKit ($LK_CONTAINER, solo $H)"
+  mkdir -p "$CALL_DIR" && chmod 700 "$CALL_DIR"
+  if [ ! -f "$CALL_DIR/secrets.env" ]; then
+    rnd() { od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
+    umask 077
+    printf 'LIVEKIT_API_KEY=%s\nLIVEKIT_API_SECRET=%s\nASSISTANT_AGENT_SECRET=%s\n' \
+      "$PREFIX" "$(rnd)" "$(rnd)" >"$CALL_DIR/secrets.env"
+    umask 022
+  fi
+  # shellcheck disable=SC1091
+  . "$CALL_DIR/secrets.env"
+  # Mismo puerto dentro y fuera: el servidor anuncia $H:<puerto> en ICE.
+  cat >"$CALL_DIR/livekit.yaml" <<YAML
+port: $LIVEKIT_PORT
+bind_addresses: ['0.0.0.0']
+rtc:
+  tcp_port: $LIVEKIT_TCP_PORT
+  udp_port: $LIVEKIT_UDP_PORT
+  use_external_ip: false
+  node_ip: $H
+keys:
+  $LIVEKIT_API_KEY: $LIVEKIT_API_SECRET
+room:
+  empty_timeout: 60
+  max_participants: 4
+logging:
+  level: info
+YAML
+  # El directorio es 0700; el archivo debe poder leerlo el usuario del contenedor.
+  chmod 644 "$CALL_DIR/livekit.yaml"
+  container_exists "$LK_CONTAINER" ||
+    docker run -d --name "$LK_CONTAINER" "${LABELS[@]}" \
+      -p "$H:$LIVEKIT_PORT:$LIVEKIT_PORT" -p "$H:$LIVEKIT_TCP_PORT:$LIVEKIT_TCP_PORT" \
+      -p "$H:$LIVEKIT_UDP_PORT:$LIVEKIT_UDP_PORT/udp" \
+      -v "$CALL_DIR/livekit.yaml:/etc/livekit.yaml:ro" \
+      "$LK_IMAGE" --config /etc/livekit.yaml >/dev/null
+  docker start "$LK_CONTAINER" >/dev/null
+  docker port "$LK_CONTAINER" "$LIVEKIT_PORT/tcp" | grep -q ":$LIVEKIT_PORT\$" ||
+    die "$LK_CONTAINER no publica $H:$LIVEKIT_PORT (¿contenedor de una configuración anterior?)"
+  for _ in $(seq 1 30); do curl -s -o /dev/null "http://$H:$LIVEKIT_PORT" && break; sleep 1; done
+fi
+
 # Credenciales de rol de DESARROLLO (las de docker-compose.yml / migración 0002):
 # solo sirven dentro de este contenedor local.
 pg() { echo "postgres://$1@$H:$PG_PORT/fluvia"; }
@@ -97,6 +157,12 @@ export REDIS_URL="redis://$H:$REDIS_PORT"
 # seed (id determinista). La API la usa para enrutar los códigos `fcp_` de los
 # checkouts y el dashboard para las pantalla /personal.
 export FLUVIA_PROGRAM_TENANT_ID=e744e6eb-95cf-5762-95a7-268a0917e747
+# Asistente: adjuntos en un directorio PRIVADO de esta instancia (API y
+# worker comparten el mismo). Proveedores simulados salvo que se exporten las
+# variables ASSISTANT_* / ANTHROPIC_* / SPEECH_* / LIVEKIT_* (ver
+# docs/product/presentacion-asistente/ASISTENTE.md).
+export ASSISTANT_STORAGE_DIR="$STATE/assistant"
+mkdir -p "$ASSISTANT_STORAGE_DIR" && chmod 700 "$ASSISTANT_STORAGE_DIR"
 
 cd "$ROOT"
 echo "==> Dependencias, migraciones y seed de demo (idempotentes)"
@@ -106,7 +172,13 @@ pnpm seed | tee "$STATE/seed.log"
 
 echo "==> Build de checkout y dashboard (next build)"
 (cd apps/checkout && npx next build >"$STATE/build-checkout.log" 2>&1)
-(cd apps/dashboard && npx next build >"$STATE/build-dashboard.log" 2>&1)
+# Con llamada, la CSP del panel (fijada al construir) admite el origen de LiveKit.
+if [ "$WITH_CALL" = 1 ]; then
+  (cd apps/dashboard && LIVEKIT_PUBLIC_URL="ws://$H:$LIVEKIT_PORT" npx next build \
+    >"$STATE/build-dashboard.log" 2>&1)
+else
+  (cd apps/dashboard && npx next build >"$STATE/build-dashboard.log" 2>&1)
+fi
 
 echo "==> Arrancando API, checkout y dashboard (solo $H)"
 start() { # nombre, dir, comando...
@@ -116,14 +188,41 @@ start() { # nombre, dir, comando...
   (cd "$ROOT/$dir" && setsid bash -c 'echo $$ >"$0"; exec "$@"' "$STATE/$name.pid" "$@" \
     >"$STATE/$name.log" 2>&1 </dev/null &)
 }
-start api apps/api env HOST=$H PORT="$API_PORT" CHECKOUT_BASE_URL="$CHECKOUT_ORIGIN" \
-  npx tsx src/server.ts
+if [ "$WITH_CALL" = 1 ]; then
+  # Claves por el ENTORNO de la API y del agente (no en la línea de órdenes).
+  (
+    export ASSISTANT_CALL_PROVIDER=livekit LIVEKIT_URL="ws://$H:$LIVEKIT_PORT" \
+      LIVEKIT_API_KEY LIVEKIT_API_SECRET ASSISTANT_AGENT_URL="http://$H:$AGENT_PORT" \
+      ASSISTANT_AGENT_SECRET
+    start api apps/api env HOST=$H PORT="$API_PORT" CHECKOUT_BASE_URL="$CHECKOUT_ORIGIN" \
+      npx tsx src/server.ts
+  )
+  (
+    export LIVEKIT_INTERNAL_URL="ws://$H:$LIVEKIT_PORT" LIVEKIT_API_KEY LIVEKIT_API_SECRET \
+      AGENT_CONTROL_SECRET="$ASSISTANT_AGENT_SECRET"
+    start voice-agent apps/voice-agent env AGENT_HOST=$H AGENT_PORT="$AGENT_PORT" \
+      node --import tsx src/main.ts
+  )
+else
+  start api apps/api env HOST=$H PORT="$API_PORT" CHECKOUT_BASE_URL="$CHECKOUT_ORIGIN" \
+    npx tsx src/server.ts
+fi
 start checkout apps/checkout env FLUVIA_API_URL="http://$H:$API_PORT" \
   npx next start -H $H -p "$CHECKOUT_PORT"
 start dashboard apps/dashboard env FLUVIA_API_URL="http://$H:$API_PORT" \
   FLUVIA_DASHBOARD_ORIGIN="$DASHBOARD_ORIGIN" npx next start -H $H -p "$DASHBOARD_PORT"
 
-for url in "http://$H:$API_PORT/health" "http://$H:$CHECKOUT_PORT" "http://$H:$DASHBOARD_PORT/login"; do
+# Worker OPCIONAL y aislado (retención del asistente, resoluciones y
+# vigilancias): misma BD y Redis de la instancia, métricas en su propio puerto.
+if [ "${DEMO_WITH_WORKER:-0}" = 1 ]; then
+  echo "==> Arrancando worker (DEMO_WITH_WORKER=1, métricas en $H:$WORKER_METRICS_PORT)"
+  start worker apps/worker env WORKER_METRICS_HOST=$H WORKER_METRICS_PORT="$WORKER_METRICS_PORT" \
+    npx tsx src/main.ts
+fi
+
+URLS=("http://$H:$API_PORT/health" "http://$H:$CHECKOUT_PORT" "http://$H:$DASHBOARD_PORT/login")
+[ "$WITH_CALL" = 1 ] && URLS+=("http://$H:$AGENT_PORT/health")
+for url in "${URLS[@]}"; do
   for _ in $(seq 1 90); do curl -s -o /dev/null "$url" && break; sleep 1; done
   curl -s -o /dev/null -w "   $url -> %{http_code}\n" "$url"
 done
@@ -147,6 +246,9 @@ Saldo de DEMO: el seed deja 300.000 COP «disponibles» en el comercio Demo Stor
 (releaseSettlement local). Es saldo sembrado para poder demostrar devoluciones,
 NO una liquidación de producto: ningún camino del producto libera fondos.
 
+$([ "$WITH_CALL" = 1 ] && echo "Llamada:      asistente → «Hablar con Fluvia» (WebRTC; agente de PRUEBA salvo
+                que se exporten ASSISTANT_SPEECH_PROVIDER y SPEECH_*)
+")
 Parar (CONSERVA los datos):   ${PFX}scripts/demo/stop-local-demo.sh
 Borrar los datos (aparte):    ${PFX}scripts/demo/purge-local-demo.sh --yes-delete-data
 EOF

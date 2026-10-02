@@ -5,6 +5,7 @@ import { AuthService } from '@fluvia/auth';
 import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { buildApp } from './app.js';
 import { RedisFixedWindowLimiter } from './rate-limit.js';
+import { RedisConcurrencyGate } from '@fluvia/assistant';
 
 const config = loadConfig();
 const appPool = createPool({ connectionString: config.db.app });
@@ -40,6 +41,8 @@ const app = buildApp({
   identityService: new IdentityService(appPool),
   apiKeyService: new ApiKeyService(appPool, { hmacSecretHex: config.apiKeyHmacSecret }),
   rateLimiter,
+  // Varias réplicas: la concurrencia del asistente se coordina en Redis.
+  assistant: { concurrency: new RedisConcurrencyGate(redis) },
 });
 
 redis.on('error', (err) => app.log.error({ err }, 'redis client error (rate limiter)'));

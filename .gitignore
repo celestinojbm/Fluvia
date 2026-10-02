@@ -12,3 +12,6 @@ coverage/
 dump.rdb
 .demo/
 .demo-*/
+
+# Almacenamiento privado local del asistente (adjuntos)
+.data/

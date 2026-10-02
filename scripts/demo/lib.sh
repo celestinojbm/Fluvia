@@ -13,6 +13,9 @@
 #                  └─ *.log
 #   puertos        DEMO_PORT_BASE (+0 API, +1 checkout, +2 dashboard),
 #                  DEMO_PG_PORT, DEMO_REDIS_PORT (o cada DEMO_*_PORT suelto)
+#   llamada        DEMO_WITH_CALL=1: contenedor $PREFIX-livekit (señal +3,
+#   (opcional)     RTC TCP +4, RTC UDP +5) y agente de voz (+6), con claves
+#                  propias de la instancia en $STATE/call (0700)
 #   orígenes       DEMO_DASHBOARD_ORIGIN / DEMO_CHECKOUT_ORIGIN
 #                  (por defecto http://127.0.0.1:<puerto>)
 #
@@ -45,16 +48,31 @@ demo_config() {
   DASHBOARD_PORT="${DEMO_DASHBOARD_PORT:-$((PORT_BASE + 2))}"
   PG_PORT="${DEMO_PG_PORT:-55432}"
   REDIS_PORT="${DEMO_REDIS_PORT:-56379}"
-  for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT" "$PG_PORT" "$REDIS_PORT"; do
+  LIVEKIT_PORT="${DEMO_LIVEKIT_PORT:-$((PORT_BASE + 3))}"
+  LIVEKIT_TCP_PORT="${DEMO_LIVEKIT_TCP_PORT:-$((PORT_BASE + 4))}"
+  LIVEKIT_UDP_PORT="${DEMO_LIVEKIT_UDP_PORT:-$((PORT_BASE + 5))}"
+  AGENT_PORT="${DEMO_AGENT_PORT:-$((PORT_BASE + 6))}"
+  WITH_CALL="${DEMO_WITH_CALL:-0}"
+  for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT" "$PG_PORT" "$REDIS_PORT" \
+    "${DEMO_WORKER_METRICS_PORT:-$((PORT_BASE + 9))}" "$LIVEKIT_PORT" "$LIVEKIT_TCP_PORT" \
+    "$LIVEKIT_UDP_PORT" "$AGENT_PORT"; do
     [[ "$p" =~ ^[0-9]{2,5}$ ]] || die "puerto inválido: $p"
   done
 
   PG_CONTAINER="$PREFIX-pg"
   REDIS_CONTAINER="$PREFIX-redis"
+  LK_CONTAINER="$PREFIX-livekit"
+  # Imagen del servidor de llamadas (Apache-2.0), versión fijada.
+  LK_IMAGE="${DEMO_LIVEKIT_IMAGE:-livekit/livekit-server:v1.13.7}"
+  CALL_DIR="$STATE/call"
   VOLUME="$PREFIX-pgdata"
   DASHBOARD_ORIGIN="${DEMO_DASHBOARD_ORIGIN:-http://$H:$DASHBOARD_PORT}"
   CHECKOUT_ORIGIN="${DEMO_CHECKOUT_ORIGIN:-http://$H:$CHECKOUT_PORT}"
-  SERVICES=(api checkout dashboard)
+  # worker: opcional (DEMO_WITH_WORKER=1); se lista siempre para que stop/purge
+  # reconozcan su PID si se arrancó.
+  # voice-agent: opcional (DEMO_WITH_CALL=1); se lista por la misma razón.
+  SERVICES=(api checkout dashboard worker voice-agent)
+  WORKER_METRICS_PORT="${DEMO_WORKER_METRICS_PORT:-$((PORT_BASE + 9))}"
 }
 
 demo_print_config() {
@@ -67,6 +85,9 @@ volumen       $VOLUME
 puertos       API $API_PORT · checkout $CHECKOUT_PORT · dashboard $DASHBOARD_PORT · PG $PG_PORT · Redis $REDIS_PORT
 orígenes      dashboard $DASHBOARD_ORIGIN · checkout $CHECKOUT_ORIGIN
 EOF
+  if [ "$WITH_CALL" = 1 ]; then
+    echo "llamada       $LK_CONTAINER ($LK_IMAGE) · señal $LIVEKIT_PORT · RTC TCP $LIVEKIT_TCP_PORT · RTC UDP $LIVEKIT_UDP_PORT · agente $AGENT_PORT"
+  fi
 }
 
 # Una instancia NO por defecto no puede usar los puertos de la demo por
@@ -83,6 +104,17 @@ demo_guard_default_ports() {
 }
 
 port_busy() { (exec 3<>"/dev/tcp/$H/$1") 2>/dev/null; }
+
+# UDP no se puede sondear con /dev/tcp: se mira la tabla del kernel (Linux y
+# WSL). En otros sistemas devuelve «libre» y el propio `docker run` fallaría.
+udp_busy() {
+  local hex f files=()
+  hex="$(printf '%04X' "$1")"
+  # Solo las tablas que existen (mawk aborta si falta una, p. ej. sin IPv6).
+  for f in /proc/net/udp /proc/net/udp6; do [ -r "$f" ] && files+=("$f"); done
+  [ "${#files[@]}" -gt 0 ] || return 1
+  awk -v h=":$hex" 'FNR > 1 && toupper($2) ~ h"$" { f = 1 } END { exit !f }' "${files[@]}"
+}
 
 # Directorio de trabajo de un proceso (Linux/WSL por /proc; macOS por lsof).
 proc_cwd() {
@@ -172,6 +204,7 @@ verify_instance() {
   done
   container_exists "$PG_CONTAINER" && { owns_resource container "$PG_CONTAINER" || ok=1; }
   container_exists "$REDIS_CONTAINER" && { owns_resource container "$REDIS_CONTAINER" || ok=1; }
+  container_exists "$LK_CONTAINER" && { owns_resource container "$LK_CONTAINER" || ok=1; }
   if container_exists "$PG_CONTAINER"; then
     docker inspect -f '{{ range .Mounts }}{{ .Name }} {{ end }}' "$PG_CONTAINER" | grep -qw "$VOLUME" ||
       { echo "  $PG_CONTAINER no monta el volumen $VOLUME" >&2; ok=1; }

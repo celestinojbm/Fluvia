@@ -7,3 +7,5 @@ export * from './installments-calc.js';
 export * from './customers.js';
 export * from './demo-images.js';
 export * from './inventory.js';
+export * from './directory.js';
+export * from './presentation-images.js';

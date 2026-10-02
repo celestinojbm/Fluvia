@@ -15,7 +15,7 @@ export type CallResult<T = unknown> =
 
 export async function clientCall<T = unknown>(
   url: string,
-  init: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown; idempotencyKey?: string } = {}
+  init: { method?: 'GET' | 'POST' | 'PATCH' | 'PUT'; body?: unknown; idempotencyKey?: string } = {}
 ): Promise<CallResult<T>> {
   const method = init.method ?? 'GET';
   const headers: Record<string, string> = {};
@@ -60,6 +60,10 @@ export function errorMessage(r: Exclude<CallResult, { kind: 'ok' }>): string {
   switch (r.code) {
     case 'catalog_version_conflict':
       return 'Otra persona modificó este producto mientras lo editabas. Recarga para ver la versión actual.';
+    case 'directory_version_conflict':
+      return 'Otra persona cambió este perfil mientras lo editabas. Recarga para ver la versión actual.';
+    case 'directory_slug_taken':
+      return 'Esa dirección pública ya está en uso. Elige otra.';
     case 'catalog_duplicate':
       return 'Ya existe un elemento con ese nombre o SKU.';
     case 'order_total_changed':

@@ -12,7 +12,8 @@ import { assertConsumerActive } from './wallet.js';
 
 export const PAYMENT_CODE_PREFIX = 'fcp';
 const PAYMENT_CODE_TTL_MS = 10 * 60 * 1000;
-const MAX_LIVE_CARDS = 5;
+/** Tarjetas vivas (no cerradas) por cliente. Público: lo explica la presentación. */
+export const MAX_LIVE_CARDS = 5;
 
 export type CardStatus = 'requested' | 'inactive' | 'active' | 'blocked' | 'replaced' | 'closed';
 export type FundingMode = 'wallet_first' | 'wallet_only' | 'credit_only';

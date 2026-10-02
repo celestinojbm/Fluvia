@@ -993,3 +993,28 @@
     animation: none;
   }
 }
+
+/* Entre 1024 y 1499 px la barra superior no tiene sitio para el nombre junto
+   al botón del asistente: el nombre queda solo para lectores de pantalla. */
+@media (min-width: 1024px) and (max-width: 1499px) {
+  .px-rail-foot p {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Descubrimiento comercial en Inicio: aparte del dinero. */
+.px-discover {
+  margin-top: var(--fx-s6, 32px);
+}
+.px-discover-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}

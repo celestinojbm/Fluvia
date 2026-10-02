@@ -41,7 +41,7 @@ for _ in $(seq 1 20); do
 done
 rm -f "$STATE"/*.pid
 
-for c in "$PG_CONTAINER" "$REDIS_CONTAINER"; do
+for c in "$PG_CONTAINER" "$REDIS_CONTAINER" "$LK_CONTAINER"; do
   if container_exists "$c"; then
     docker stop "$c" >/dev/null && echo "   $c: detenido (se conserva)"
   fi

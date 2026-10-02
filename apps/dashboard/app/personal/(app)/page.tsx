@@ -3,6 +3,11 @@ import { money, shortDate, Status, INSTALLMENT_STATUS, CARD_STATUS } from '../li
 import { readPersonal } from '../lib/server';
 import type { Application, Balance, Card, Installment, StatementLine } from '../lib/types';
 import { ErrorPanel } from '../lib/panels';
+import { CardRail } from '../../lib/card-rail';
+import { CATEGORIES } from '../../lib/categories';
+import { MerchantCard, PhotoCard } from '../../lib/public-cards';
+import { searchDirectory } from '../../lib/public-api';
+import '../../publico.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +30,10 @@ export default async function PersonalHome({
   searchParams: Promise<{ moneda?: string }>;
 }) {
   const sp = await searchParams;
-  const r = await readPersonal<Overview>('/overview');
+  const [r, discover] = await Promise.all([
+    readPersonal<Overview>('/overview'),
+    searchDirectory({}),
+  ]);
   if (r.kind !== 'ok') return <ErrorPanel />;
   const { balances, upcoming, cards, pending_application, recent } = r.data;
   const b = balances.find((x) => x.currency === sp.moneda) ?? balances[0];
@@ -281,6 +289,51 @@ export default async function PersonalHome({
           </section>
         </div>
       </div>
+
+      {/* Descubrimiento comercial: aparte del dinero; solo comercios publicados. */}
+      <section className="px-section px-discover" aria-labelledby="px-discover">
+        <div className="px-discover-head">
+          <div>
+            <h2 id="px-discover" className="px-eyebrow">
+              Descubre dónde comprar
+            </h2>
+            <p className="px-muted" style={{ margin: 0 }}>
+              Comercios que publicaron su perfil en Fluvia.
+            </p>
+          </div>
+          <a className="pb-more" href="/donde-comprar">
+            Ver todos <Icon name="arrow-right" size={16} />
+          </a>
+        </div>
+        {discover.kind === 'ok' && discover.data.data.length > 0 ? (
+          <CardRail label="Comercios publicados">
+            {discover.data.data.slice(0, 8).map((e) => (
+              <li key={e.slug}>
+                <MerchantCard entry={e} />
+              </li>
+            ))}
+            {CATEGORIES.slice(0, 4).map((c) => (
+              <li key={c.slug}>
+                <PhotoCard
+                  href={`/donde-comprar?categoria=${c.slug}`}
+                  photo={c.photo}
+                  alt={c.alt}
+                  title={c.label}
+                  text={c.blurb}
+                />
+              </li>
+            ))}
+          </CardRail>
+        ) : discover.kind === 'ok' ? (
+          <div className="px-empty">
+            <p>Aún no hay comercios publicados.</p>
+          </div>
+        ) : (
+          <div className="px-empty" role="status">
+            <p>No pudimos cargar el directorio ahora. Tu dinero no se ve afectado.</p>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

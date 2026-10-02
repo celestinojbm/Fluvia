@@ -242,6 +242,9 @@ describe('loadConfig', () => {
   it('parses the worker metrics port with the standard default (F1-07)', () => {
     expect(loadConfig({}).workerMetricsPort).toBe(9464);
     expect(loadConfig({ WORKER_METRICS_PORT: '9100' }).workerMetricsPort).toBe(9100);
+    expect(loadConfig({}).workerMetricsHost).toBe('0.0.0.0');
+    expect(loadConfig({ WORKER_METRICS_HOST: '127.0.0.1' }).workerMetricsHost).toBe('127.0.0.1');
+    expect(() => loadConfig({ WORKER_METRICS_HOST: 'evil.example.com' })).toThrow();
     expect(() => loadConfig({ WORKER_METRICS_PORT: '0' })).toThrow(ConfigError);
   });
 

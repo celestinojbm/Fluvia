@@ -133,6 +133,18 @@ describe('mantenimiento del programa y de inciertos del comercio', () => {
     );
     await refunds.execute(merchantOrg, r.id);
 
+    // Un programa que aún no ofrece crédito (sin política activa) no es un fallo.
+    const noCredit = await ctx.createTenant(`Sin crédito ${randomUUID().slice(0, 6)}`);
+    await p.programs.setupProgram(
+      noCredit,
+      { name: 'Sin crédito', currencies: ['VES'] },
+      { kind: 'system' }
+    );
+    await ctx.admin.query(
+      `UPDATE credit_policies SET status = 'retired' WHERE tenant_id = $1 AND status = 'active'`,
+      [noCredit]
+    );
+
     const result = await job.runOnce();
     expect(result.failures).toBe(0);
     expect(result.withdrawalsResolved).toBeGreaterThanOrEqual(1);

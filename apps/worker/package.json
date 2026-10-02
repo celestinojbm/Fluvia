@@ -16,6 +16,7 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@fluvia/assistant": "workspace:*",
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
     "@fluvia/inbox": "workspace:*",

@@ -293,6 +293,25 @@ export async function seedDemo(env: string, pools: SeedPools): Promise<SeedRepor
     [DEMO.merchantId, DEMO.organizationId, DEMO.merchantName]
   );
 
+  // --- Directorio «Dónde comprar» (0054): UN perfil, el del comercio de
+  // demostración, marcado `is_demo` y publicado de forma explícita aquí. Nunca
+  // se publica automáticamente ningún otro comercio.
+  await pools.admin.query(
+    `INSERT INTO merchant_directory_profiles
+       (id, tenant_id, merchant_id, slug, display_name, category, city, area, summary,
+        channels, photo_ref, visibility, is_demo, published_at)
+     VALUES ($1, $2, $3, 'bodega-demo', 'Bodega de demostración', 'alimentacion', 'Caracas',
+             NULL, $4, '{in_store,online}', 'presentacion/bodega-demo.jpg',
+             'published', true, now())
+     ON CONFLICT (tenant_id, merchant_id) DO NOTHING`,
+    [
+      seedUuid('directory:demo-store'),
+      DEMO.organizationId,
+      DEMO.merchantId,
+      'Catálogo de ejemplo para probar cobros, ventas y cuotas en el entorno sandbox.',
+    ]
+  );
+
   // --- Catálogo de DEMO (comercio minorista genérico, datos sintéticos) -----
   // Precios en unidades menores con la regla de VISUALIZACIÓN vigente para COP
   // (exponente 0 en pantalla; PEND-008 sin decidir). Idempotente por ids fijos.

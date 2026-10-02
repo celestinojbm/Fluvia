@@ -24,6 +24,7 @@
     "drill:load-chaos": "tsx drills/load-chaos-drill.ts"
   },
   "dependencies": {
+    "@fluvia/assistant": "workspace:*",
     "@fluvia/audit": "workspace:*",
     "@fluvia/auth": "workspace:*",
     "@fluvia/commerce": "workspace:*",
