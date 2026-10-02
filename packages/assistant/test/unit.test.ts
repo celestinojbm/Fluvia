@@ -83,6 +83,12 @@ describe('validación de audio (formato y duración leídos del contenedor)', ()
     expect(Math.abs(r.durationMs - 2500)).toBeLessThan(120);
   });
 
+  it('grabación REAL de MediaRecorder (Chromium, tamaños desconocidos, troceos de 250 ms)', () => {
+    const r = inspectAudio(fx('mediarecorder-3s.webm'), AUD);
+    expect(r.mime).toBe('audio/webm');
+    expect(Math.abs(r.durationMs - 3000)).toBeLessThan(300);
+  });
+
   it('demasiado larga → too_long', () => {
     expect(() => inspectAudio(fx('long.ogg'), AUD)).toThrow('too_long');
   });

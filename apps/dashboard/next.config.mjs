@@ -16,7 +16,9 @@ const nextConfig = {
       "default-src 'self'",
       `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
+      // Notas de voz (escucha previa) y respuesta hablada del asistente: blobs locales.
+      "media-src 'self' blob:",
       "font-src 'self'",
       "connect-src 'self'",
       "base-uri 'none'",

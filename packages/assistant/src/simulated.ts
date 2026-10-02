@@ -114,7 +114,9 @@ export class SimulatedConversationProvider implements ConversationProvider {
         }
         text = images
           ? `${SIM_PREFIX}Recibí ${images === 1 ? 'una imagen' : `${images} imágenes`}. El proveedor simulado no analiza su contenido: cuéntame qué necesitas sobre ella.`
-          : `${SIM_PREFIX}Puedo consultar tu saldo, crédito, cuotas, tarjetas o movimientos, y llevarte a la pantalla correcta. ¿Qué necesitas?`;
+          : req.tools.some((t) => t.name === 'get_sales_summary')
+            ? `${SIM_PREFIX}Puedo consultar tus ventas, cobros por confirmar o tu perfil en el directorio, y llevarte a la pantalla correcta. ¿Qué necesitas?`
+            : `${SIM_PREFIX}Puedo consultar tu saldo, crédito, cuotas, tarjetas o movimientos, y llevarte a la pantalla correcta. ¿Qué necesitas?`;
       }
     }
     yield* this.emit(text, signal);
@@ -166,7 +168,7 @@ export class SimulatedTextToSpeech implements TextToSpeechProvider {
   readonly simulated = true;
   async synthesize(text: string): Promise<SpeechAudio> {
     const rate = 8000;
-    const seconds = Math.min(2, 0.4 + text.length / 400);
+    const seconds = Math.min(4, 0.5 + text.length / 60);
     const n = Math.round(rate * seconds);
     const data = Buffer.alloc(44 + n * 2);
     data.write('RIFF', 0, 'ascii');

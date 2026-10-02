@@ -255,57 +255,54 @@ function vint(b: Buffer, i: number, keepMarker: boolean): { value: number; len: 
 }
 
 /**
- * WebM (MediaRecorder): la cabecera suele no traer Duration; se toma el mayor
- * tiempo de bloque (Cluster.Timecode + SimpleBlock relativo) × TimecodeScale.
+ * WebM (MediaRecorder): la cabecera suele no traer Duration y Segment/Cluster
+ * llegan con tamaño «desconocido». Se recorre LINEALMENTE (los contenedores
+ * se abren en el mismo nivel, sin recursión) y se toma el mayor tiempo de
+ * bloque (Cluster.Timecode + SimpleBlock relativo) × TimecodeScale.
  */
 function webmDuration(b: Buffer): number | null {
-  const SEGMENT = 0x18538067;
-  const CLUSTER = 0x1f43b675;
-  const INFO = 0x1549a966;
+  const CONTAINERS = new Set([0x18538067, 0x1f43b675, 0x1549a966, 0xa0]); // Segment, Cluster, Info, BlockGroup
   let scale = 1_000_000; // ns por tick (por defecto 1 ms)
   let declared: number | null = null;
   let maxTicks = 0;
   let clusterTc = 0;
-  const walk = (start: number, end: number, depth: number) => {
-    let i = start;
-    while (i < end && depth < 5) {
-      const id = vint(b, i, true);
-      if (!id) return;
-      const size = vint(b, i + id.len, false);
-      if (!size) return;
-      const body = i + id.len + size.len;
-      const stop = size.value < 0 ? end : Math.min(body + size.value, end);
-      switch (id.value) {
-        case SEGMENT:
-        case CLUSTER:
-        case INFO:
-          walk(body, stop, depth + 1);
-          break;
-        case 0x2ad7b1: // TimecodeScale
-          scale = b.readUIntBE(body, Math.min(size.value, 6));
-          break;
-        case 0x4489: // Duration (float, en ticks)
-          declared = size.value === 4 ? b.readFloatBE(body) : b.readDoubleBE(body);
-          break;
-        case 0xe7: // Cluster Timecode
-          clusterTc = b.readUIntBE(body, Math.min(Math.max(size.value, 1), 6));
-          break;
-        case 0xa3: {
-          // SimpleBlock: track (vint) + timecode relativo int16
-          const tr = vint(b, body, false);
-          if (tr && body + tr.len + 2 <= b.length) {
-            maxTicks = Math.max(maxTicks, clusterTc + b.readInt16BE(body + tr.len));
-          }
-          break;
-        }
-        default:
-          break;
-      }
-      if (size.value < 0 && id.value !== SEGMENT && id.value !== CLUSTER) return;
-      i = stop;
+  let i = 0;
+  let guard = 0;
+  while (i < b.length && guard++ < 1_000_000) {
+    const id = vint(b, i, true);
+    if (!id) break;
+    const size = vint(b, i + id.len, false);
+    if (!size) break;
+    const body = i + id.len + size.len;
+    if (CONTAINERS.has(id.value)) {
+      i = body; // abrir el contenedor en el mismo nivel
+      continue;
     }
-  };
-  walk(0, b.length, 0);
+    if (size.value < 0 || body + size.value > b.length) break;
+    switch (id.value) {
+      case 0x2ad7b1: // TimecodeScale
+        scale = b.readUIntBE(body, Math.min(Math.max(size.value, 1), 6));
+        break;
+      case 0x4489: // Duration (float, en ticks)
+        declared = size.value === 4 ? b.readFloatBE(body) : b.readDoubleBE(body);
+        break;
+      case 0xe7: // Cluster Timecode
+        clusterTc = b.readUIntBE(body, Math.min(Math.max(size.value, 1), 6));
+        break;
+      case 0xa3: // SimpleBlock
+      case 0xa1: {
+        // Block: track (vint) + timecode relativo int16
+        const tr = vint(b, body, false);
+        if (tr && body + tr.len + 2 <= b.length) {
+          maxTicks = Math.max(maxTicks, clusterTc + b.readInt16BE(body + tr.len));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    i = body + size.value;
+  }
   const ticks = declared !== null && declared > 0 ? declared : maxTicks;
   return (ticks * scale) / 1_000_000;
 }

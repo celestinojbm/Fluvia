@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { FluviaLogo } from './brand';
 import { Icon, type IconName } from './icons';
+import { AssistantRoot, AssistantTrigger } from './assistant/assistant';
 
 /**
  * Estructura común de la plataforma del comercio: barra lateral en escritorio
@@ -125,91 +126,95 @@ export function AppShell({
   }, [open, close]);
 
   return (
-    <div className="app-shell">
-      <a className="fx-skip" href="#fx-main">
-        Saltar al contenido
-      </a>
-      <div className="fx-top">
-        <button
-          ref={btnRef}
-          type="button"
-          className="fx-menu-btn"
-          aria-expanded={open}
-          aria-controls="fx-side"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" />
-          </svg>
-          <span className="sr-only">{open ? 'Cerrar menú' : 'Abrir menú'}</span>
-        </button>
-        <a className="fx-brand" href={`/o/${orgId}`}>
-          <FluviaLogo height={22} />
+    <AssistantRoot base={`/api/assistant/o/${orgId}`} surface="commerce">
+      <div className="app-shell">
+        <a className="fx-skip" href="#fx-main">
+          Saltar al contenido
         </a>
-        <span className="fx-top-org">{orgName}</span>
-      </div>
+        <div className="fx-top">
+          <button
+            ref={btnRef}
+            type="button"
+            className="fx-menu-btn"
+            aria-expanded={open}
+            aria-controls="fx-side"
+            onClick={() => setOpen((v) => !v)}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            <span className="sr-only">{open ? 'Cerrar menú' : 'Abrir menú'}</span>
+          </button>
+          <a className="fx-brand" href={`/o/${orgId}`}>
+            <FluviaLogo height={22} />
+          </a>
+          <span className="fx-top-org">{orgName}</span>
+          <AssistantTrigger className="as-trigger as-trigger-icon" compact />
+        </div>
 
-      <nav
-        id="fx-side"
-        ref={sideRef}
-        className="fx-side"
-        data-open={open ? 'true' : 'false'}
-        aria-label="Navegación principal"
-      >
-        <a className="fx-brand" href={`/o/${orgId}`}>
-          <FluviaLogo height={26} />
-        </a>
-        <div className="fx-org">
-          <span className="fx-org-avatar" aria-hidden="true">
-            {(orgName.trim()[0] ?? 'F').toUpperCase()}
-          </span>
-          <div>
-            <strong>{orgName}</strong>
-            <span>Comercio · {roleLabel}</span>
+        <nav
+          id="fx-side"
+          ref={sideRef}
+          className="fx-side"
+          data-open={open ? 'true' : 'false'}
+          aria-label="Navegación principal"
+        >
+          <a className="fx-brand" href={`/o/${orgId}`}>
+            <FluviaLogo height={26} />
+          </a>
+          <div className="fx-org">
+            <span className="fx-org-avatar" aria-hidden="true">
+              {(orgName.trim()[0] ?? 'F').toUpperCase()}
+            </span>
+            <div>
+              <strong>{orgName}</strong>
+              <span>Comercio · {roleLabel}</span>
+            </div>
           </div>
-        </div>
-        <a
-          className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
-          href={`/o/${orgId}/sell`}
-          aria-current={pathname.startsWith(`/o/${orgId}/sell`) ? 'page' : undefined}
-        >
-          <Icon name="plus" />
-          Nueva venta
-        </a>
-        <div className="fx-nav">
-          {sections.map((s) => (
-            <section key={s.title} aria-labelledby={`nav-${s.title}`}>
-              <h2 id={`nav-${s.title}`}>{s.title}</h2>
-              <ul>
-                {s.items.map((item) => (
-                  <li key={item.href}>
-                    <a
-                      href={item.href}
-                      aria-current={isActive(pathname, item) ? 'page' : undefined}
-                    >
-                      <Icon name={item.icon} />
-                      <span>{item.label}</span>
-                      {item.tag ? <span className="fx-tag">{item.tag}</span> : null}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-        <div className="fx-side-foot">
-          {userEmail ? <p>{userEmail}</p> : null}
-          <p>
-            <a href="/">Cambiar de organización</a>
-          </p>
-          <a href="/logout">Cerrar sesión</a>
-        </div>
-      </nav>
+          <a
+            className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
+            href={`/o/${orgId}/sell`}
+            aria-current={pathname.startsWith(`/o/${orgId}/sell`) ? 'page' : undefined}
+          >
+            <Icon name="plus" />
+            Nueva venta
+          </a>
+          <div className="fx-nav">
+            {sections.map((s) => (
+              <section key={s.title} aria-labelledby={`nav-${s.title}`}>
+                <h2 id={`nav-${s.title}`}>{s.title}</h2>
+                <ul>
+                  {s.items.map((item) => (
+                    <li key={item.href}>
+                      <a
+                        href={item.href}
+                        aria-current={isActive(pathname, item) ? 'page' : undefined}
+                      >
+                        <Icon name={item.icon} />
+                        <span>{item.label}</span>
+                        {item.tag ? <span className="fx-tag">{item.tag}</span> : null}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+          <AssistantTrigger />
+          <div className="fx-side-foot">
+            {userEmail ? <p>{userEmail}</p> : null}
+            <p>
+              <a href="/">Cambiar de organización</a>
+            </p>
+            <a href="/logout">Cerrar sesión</a>
+          </div>
+        </nav>
 
-      {/* Cada página aporta su propio <main> (un único landmark principal). */}
-      <div id="fx-main" className="fx-main" tabIndex={-1}>
-        {children}
+        {/* Cada página aporta su propio <main> (un único landmark principal). */}
+        <div id="fx-main" className="fx-main" tabIndex={-1}>
+          {children}
+        </div>
       </div>
-    </div>
+    </AssistantRoot>
   );
 }
