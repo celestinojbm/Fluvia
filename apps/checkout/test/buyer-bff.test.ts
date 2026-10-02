@@ -8,10 +8,11 @@ import {
 } from '../app/api/asistente/buyer-bff';
 
 describe('BFF del asistente del comprador', () => {
-  const sessionId = 'cbb7e41a-9965-4d40-bc3f-ae01e4b6d9df';
+  const sessionId = '00000000-0000-4000-8000-000000000001';
 
   it('acepta el client_secret real (base64url, con «-» y «_»)', () => {
-    const secret = 'cs_sla4L_FTjCsUUMicbMvGC-BFUOV6MDUqeqhhEi2Abn4LMWtP';
+    // Forma real (cs_ + base64url con «-» y «_»), valor sintético.
+    const secret = 'cs_fixture-only_' + 'a-b_'.repeat(8);
     const c = parseCredential({ checkout_session_id: sessionId, client_secret: secret });
     expect(c).toEqual({ kind: 'checkout', sessionId, secret });
     expect(decodeCredential(encodeCredential(c!))).toEqual(c);
