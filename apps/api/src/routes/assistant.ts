@@ -21,7 +21,7 @@ import {
   type Surface,
 } from '@fluvia/assistant';
 import type { Security } from '../security.js';
-import { FixedWindowLimiter, ipKey, rateLimit, type RateLimiter } from '../rate-limit.js';
+import { FixedWindowLimiter, rateLimit, type RateLimiter } from '../rate-limit.js';
 
 /**
  * Asistente «Fluvia» en dos planos que NO se mezclan:
