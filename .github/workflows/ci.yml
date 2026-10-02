@@ -358,3 +358,101 @@ jobs:
         run: |
           for f in "$RUNNER_TEMP"/logs/*.log; do echo "::group::$f"; tail -n 200 "$f"; echo "::endgroup::"; done
           docker logs --tail 200 livekit || true
+
+  e2e-restaurant:
+    # Restaurante y cobro presencial de punta a punta: PG, API, panel y
+    # checkout REALES (sin proveedores externos). Configuración por el dueño,
+    # mesero (390) y cocina (tablet) en dispositivos distintos con corte de red
+    # y reconexión del KDS, cuenta dividida pagada por el checkout y por el
+    # SIMULADOR de cobro presencial (marcado como tal), comensal por QR,
+    # independiente «Cobrar» y aislamiento entre organizaciones. Ninguna
+    # lectura de tarjeta física: el terminal es el simulador de sandbox.
+    name: E2E restaurante y cobro presencial (stack real)
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: local
+      NEXT_TELEMETRY_DISABLED: '1'
+      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/fluvia
+      APP_DATABASE_URL: postgres://fluvia_app:fluvia_app_dev_password@127.0.0.1:5432/fluvia
+      WORKER_DATABASE_URL: postgres://fluvia_worker:fluvia_worker_dev_password@127.0.0.1:5432/fluvia
+      RELAY_DATABASE_URL: postgres://fluvia_relay:fluvia_relay_dev_password@127.0.0.1:5432/fluvia
+      INBOX_DATABASE_URL: postgres://fluvia_inbox:fluvia_inbox_dev_password@127.0.0.1:5432/fluvia
+      AUTH_DATABASE_URL: postgres://fluvia_auth:fluvia_auth_dev_password@127.0.0.1:5432/fluvia
+      WEBHOOK_DATABASE_URL: postgres://fluvia_webhook:fluvia_webhook_dev_password@127.0.0.1:5432/fluvia
+      REDIS_URL: redis://127.0.0.1:6379
+      FLUVIA_PROGRAM_TENANT_ID: e744e6eb-95cf-5762-95a7-268a0917e747
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fluvia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fluvia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (reproducible)
+        run: pnpm install --frozen-lockfile
+
+      - name: Migraciones y seed de demo (sintético)
+        run: pnpm migrate && pnpm seed
+
+      - name: Chromium de Playwright (versión del lockfile)
+        run: pnpm --filter @fluvia/dashboard exec playwright install --with-deps chromium
+
+      - name: Build del panel y del checkout
+        run: |
+          pnpm --filter @fluvia/dashboard exec next build
+          pnpm --filter @fluvia/checkout exec next build
+
+      - name: Arrancar API, checkout y panel
+        run: |
+          L="$RUNNER_TEMP/logs"; mkdir -p "$L"
+          (cd apps/api && HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
+            nohup node --import tsx src/server.ts >"$L/api.log" 2>&1 &)
+          (cd apps/checkout && FLUVIA_API_URL=http://127.0.0.1:3340 \
+            nohup npx next start -H 127.0.0.1 -p 3341 >"$L/checkout.log" 2>&1 &)
+          (cd apps/dashboard && FLUVIA_API_URL=http://127.0.0.1:3340 \
+            FLUVIA_DASHBOARD_ORIGIN=http://127.0.0.1:3342 \
+            nohup npx next start -H 127.0.0.1 -p 3342 >"$L/dashboard.log" 2>&1 &)
+          for url in http://127.0.0.1:3340/health http://127.0.0.1:3341/m/x http://127.0.0.1:3342/login; do
+            for _ in $(seq 1 90); do curl -s -o /dev/null "$url" && break; sleep 1; done
+            curl -s -o /dev/null -w "$url %{http_code}\n" "$url"
+          done
+
+      - name: E2E restaurante y cobro presencial
+        run: >-
+          pnpm --filter @fluvia/dashboard exec playwright test
+          -c e2e/real-stack/playwright.config.ts restaurante-cobro
+        env:
+          CI: 'true'
+          DEMO_APP_URL: http://127.0.0.1:3342
+          API_URL: http://127.0.0.1:3340
+
+      - name: Logs de los servicios (si falla)
+        if: failure()
+        run: |
+          for f in "$RUNNER_TEMP"/logs/*.log; do echo "::group::$f"; tail -n 200 "$f"; echo "::endgroup::"; done

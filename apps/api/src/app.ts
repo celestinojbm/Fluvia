@@ -509,6 +509,7 @@ export function buildApp({
       billService: new BillService(appPool, paymentLinkService, diningService),
       sandboxSimulation,
       limiter: rateLimiter,
+      checkoutBaseUrl: config.checkoutBaseUrl,
     });
     // Cobro presencial: sobre ventas de cobro único existentes; resultado
     // fijado por el servidor desde el intent. Simulador solo en local/test.

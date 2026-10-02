@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { AppShell } from '../../lib/app-shell';
+import { AppShell, type NavProfile } from '../../lib/app-shell';
 import { orgPath, readApi, type Member, type SessionInfo } from '../../lib/commerce-api';
 import { roleLabel } from '../../lib/ui';
 import '../../platform.css';
@@ -64,7 +64,13 @@ export default async function OrgLayout({
     );
   }
 
-  const members = await readApi<{ members: Member[] }>(token, orgPath(orgId, '/members'));
+  const [members, biz] = await Promise.all([
+    readApi<{ members: Member[] }>(token, orgPath(orgId, '/members')),
+    readApi<{ business_type: NavProfile['businessType']; modules: string[] }>(
+      token,
+      orgPath(orgId, '/business-profile')
+    ),
+  ]);
   const email =
     members.kind === 'ok'
       ? (members.data.members.find((m) => m.user_id === session.data.user_id)?.email ?? null)
@@ -76,6 +82,15 @@ export default async function OrgLayout({
       orgName={membership.organization_name}
       roleLabel={roleLabel(membership.role)}
       userEmail={email}
+      profile={
+        biz.kind === 'ok'
+          ? {
+              businessType: biz.data.business_type,
+              modules: biz.data.modules,
+              role: membership.role,
+            }
+          : { businessType: 'retail', modules: [], role: membership.role }
+      }
     >
       {children}
     </AppShell>

@@ -341,6 +341,8 @@ export interface DiningRoutesOptions {
   limiter?: RateLimiter;
   /** Intervalo de sondeo del stream del KDS (ms). */
   streamPollMs?: number;
+  /** Base pública del checkout: el QR de mesa apunta a `{base}/m/{token}`. */
+  checkoutBaseUrl?: string;
 }
 
 export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOptions): void {
@@ -370,6 +372,8 @@ export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOption
     ]),
   };
   const base = '/v1/organizations/:orgId';
+  const checkoutBase = (o.checkoutBaseUrl ?? 'https://checkout.fluvia.local').replace(/\/+$/, '');
+  const menuUrl = (token: string) => `${checkoutBase}/m/${token}`;
 
   // ── Perfil de negocio y habilitación de cobro ────────────────────────────
   app.get(`${base}/business-profile`, member, async (req) => {
@@ -453,6 +457,7 @@ export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOption
           capacity: t.capacity,
           // El token del QR da acceso al menú de la mesa: solo quien configura.
           qr_token: canConfigure ? t.qrToken : null,
+          menu_url: canConfigure ? menuUrl(t.qrToken) : null,
         })),
         stations: b.stations.map((s) => ({ id: s.id, code: s.code, name: s.name })),
       })),
@@ -496,13 +501,14 @@ export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOption
       label: t.label,
       capacity: t.capacity,
       qr_token: t.qrToken,
+      menu_url: menuUrl(t.qrToken),
     });
   });
 
   app.post(`${base}/venue/tables/:id/rotate-qr`, admin, async (req) => {
     const { id } = IdParams.parse(req.params);
     const t = await venue.rotateTableQr(tenant(req), id);
-    return { id: t.id, label: t.label, qr_token: t.qrToken };
+    return { id: t.id, label: t.label, qr_token: t.qrToken, menu_url: menuUrl(t.qrToken) };
   });
 
   app.post(`${base}/venue/stations`, admin, async (req, reply) => {

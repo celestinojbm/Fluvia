@@ -31,14 +31,76 @@ export interface ShellNavSection {
   items: ShellNavItem[];
 }
 
-export function orgNav(orgId: string): ShellNavSection[] {
+/** Lo mínimo del perfil de negocio que decide la navegación (pista de UX). */
+export interface NavProfile {
+  businessType: 'retail' | 'restaurant' | 'quick_service' | 'services';
+  modules: string[];
+  role: string;
+}
+
+export function orgNav(orgId: string, profile?: NavProfile): ShellNavSection[] {
   const o = `/o/${orgId}`;
+  const mods = new Set(profile?.modules ?? []);
+  const type = profile?.businessType ?? 'retail';
+  const venue = mods.has('tables') || mods.has('kitchen');
+  // Personal del local: solo sus pantallas de trabajo (el API decide igual).
+  if (profile?.role === 'staff') {
+    return [
+      {
+        title: 'Trabajo',
+        items: [
+          ...(mods.has('tables') || type === 'quick_service'
+            ? [{ href: `${o}/sala`, label: 'Sala', icon: 'list' as const }]
+            : []),
+          ...(mods.has('kitchen')
+            ? [{ href: `${o}/cocina`, label: 'Cocina', icon: 'flag' as const }]
+            : []),
+          ...(mods.has('in_person')
+            ? [{ href: `${o}/cobrar`, label: 'Cobrar', icon: 'wallet' as const }]
+            : []),
+        ],
+      },
+    ];
+  }
+  if (type === 'services') {
+    return [
+      {
+        title: 'Cobrar',
+        items: [
+          { href: o, label: 'Inicio', icon: 'home', exact: true },
+          { href: `${o}/cobrar`, label: 'Cobrar', icon: 'wallet' },
+        ],
+      },
+      {
+        title: 'Mis cobros',
+        items: [
+          { href: `${o}/payments`, label: 'Pagos', icon: 'card' },
+          { href: `${o}/refunds`, label: 'Devoluciones', icon: 'undo' },
+          { href: `${o}/por-confirmar`, label: 'Por confirmar', icon: 'clock' },
+        ],
+      },
+      {
+        title: 'Cuenta',
+        items: [
+          { href: `${o}/negocio`, label: 'Negocio', icon: 'gear' },
+          { href: `${o}/settings`, label: 'Configuración', icon: 'tools' },
+        ],
+      },
+    ];
+  }
   return [
     {
       title: 'Vender',
       items: [
         { href: o, label: 'Inicio', icon: 'home', exact: true },
-        { href: `${o}/pos`, label: 'Cobrar', icon: 'terminal' },
+        ...(venue ? [{ href: `${o}/sala`, label: 'Sala', icon: 'list' as const }] : []),
+        ...(mods.has('kitchen')
+          ? [{ href: `${o}/cocina`, label: 'Cocina', icon: 'flag' as const }]
+          : []),
+        { href: `${o}/pos`, label: venue ? 'Caja' : 'Cobrar', icon: 'terminal' },
+        ...(mods.has('in_person')
+          ? [{ href: `${o}/cobrar`, label: 'Cobro presencial', icon: 'wallet' as const }]
+          : []),
       ],
     },
     {
@@ -62,6 +124,7 @@ export function orgNav(orgId: string): ShellNavSection[] {
     {
       title: 'Cuenta',
       items: [
+        { href: `${o}/negocio`, label: 'Negocio', icon: 'layers' },
         { href: `${o}/team`, label: 'Equipo', icon: 'team' },
         { href: `${o}/directorio`, label: 'Directorio', icon: 'pin' },
         { href: `${o}/settings`, label: 'Configuración', icon: 'gear' },
@@ -81,19 +144,21 @@ export function AppShell({
   orgName,
   roleLabel,
   userEmail,
+  profile,
   children,
 }: {
   orgId: string;
   orgName: string;
   roleLabel: string;
   userEmail: string | null;
+  profile?: NavProfile;
   children: ReactNode;
 }) {
   const pathname = usePathname() ?? '';
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const sideRef = useRef<HTMLElement>(null);
-  const sections = orgNav(orgId);
+  const sections = orgNav(orgId, profile);
 
   const close = useCallback((restoreFocus: boolean) => {
     setOpen(false);
@@ -171,14 +236,27 @@ export function AppShell({
               <span>Comercio · {roleLabel}</span>
             </div>
           </div>
-          <a
-            className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
-            href={`/o/${orgId}/sell`}
-            aria-current={pathname.startsWith(`/o/${orgId}/sell`) ? 'page' : undefined}
-          >
-            <Icon name="plus" />
-            Nueva venta
-          </a>
+          {/* Acción principal según el negocio: el personal no vende por su
+              cuenta y el independiente cobra (no crea ventas de catálogo). */}
+          {profile?.role === 'staff' ? null : profile?.businessType === 'services' ? (
+            <a
+              className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
+              href={`/o/${orgId}/cobrar`}
+              aria-current={pathname.startsWith(`/o/${orgId}/cobrar`) ? 'page' : undefined}
+            >
+              <Icon name="wallet" />
+              Cobrar
+            </a>
+          ) : (
+            <a
+              className="fx-btn fx-btn-primary fx-btn-block fx-side-cta"
+              href={`/o/${orgId}/sell`}
+              aria-current={pathname.startsWith(`/o/${orgId}/sell`) ? 'page' : undefined}
+            >
+              <Icon name="plus" />
+              Nueva venta
+            </a>
+          )}
           <div className="fx-nav">
             {sections.map((s) => (
               <section key={s.title} aria-labelledby={`nav-${s.title}`}>

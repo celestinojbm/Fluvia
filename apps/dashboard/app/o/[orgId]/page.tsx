@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { orgContext } from '../../lib/org-context';
 import {
   orgPath,
@@ -62,6 +63,11 @@ export default async function OrgHomePage({
   const key: PeriodKey = sp.period && sp.period in PERIODS ? (sp.period as PeriodKey) : 'today';
   const wanted = sp.currency && /^[A-Z]{3}$/.test(sp.currency) ? sp.currency : undefined;
   const { token, role } = await orgContext(orgId);
+  // El personal del local no ve ventas ni pagos de la organización: va a su
+  // pantalla de trabajo. El independiente empieza en «Cobrar».
+  if (role === 'staff') redirect(`/o/${orgId}/sala`);
+  const biz = await readApi<{ business_type: string }>(token, orgPath(orgId, '/business-profile'));
+  if (biz.kind === 'ok' && biz.data.business_type === 'services') redirect(`/o/${orgId}/cobrar`);
   const r = range(key);
   const q = `from=${r.from}&to=${r.to}`;
   const [summary, insights, recent, products, directory] = await Promise.all([
