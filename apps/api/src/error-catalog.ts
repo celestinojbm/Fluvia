@@ -696,6 +696,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   BillNotFoundError: 'not_found',
   BillAllocationError: 'bill_allocation_invalid',
   AllocationHeldError: 'allocation_payment_held',
+  InPersonNotFoundError: 'not_found',
+  InPersonStateError: 'invalid_state_transition',
+  InPersonKeyMismatchError: 'idempotency_key_reuse',
 };
 
 export interface PublicErrorBody {

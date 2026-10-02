@@ -48,7 +48,9 @@ CREATE TABLE in_person_payments (
   intent_id       UUID,
   attempt_id      UUID,
   device_id       UUID,
-  method          TEXT NOT NULL CHECK (method IN ('tap_to_pay', 'external_reader')),
+  -- `simulator`: terminal de SANDBOX explícito (solo local/test). Queda
+  -- registrado como tal: nunca se confunde con una lectura NFC real.
+  method          TEXT NOT NULL CHECK (method IN ('tap_to_pay', 'external_reader', 'simulator')),
   provider        TEXT NOT NULL CHECK (char_length(provider) BETWEEN 1 AND 40),
   state           TEXT NOT NULL CHECK (state IN (
                     'device_incompatible', 'preparing', 'ready', 'waiting_card',

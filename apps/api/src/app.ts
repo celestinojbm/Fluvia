@@ -46,6 +46,7 @@ import {
   VenueService,
   DiningService,
   BillService,
+  InPersonService,
   OrderService,
   SummaryService,
   isInstallmentPlanActive,
@@ -80,6 +81,7 @@ import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
 import { registerDiningRoutes } from './routes/dining.js';
+import { registerInPersonRoutes } from './routes/in-person.js';
 import { registerDirectoryRoutes } from './routes/directory.js';
 import { registerAssistantRoutes } from './routes/assistant.js';
 import { commerceTools, personalTools } from './assistant-tools.js';
@@ -495,15 +497,31 @@ export function buildApp({
     // mesa, KDS en vivo y QR público (menú + pedido propio). Permisos de local
     // (venue_staff) evaluados en el servidor.
     const diningService = new DiningService(appPool);
+    const businessService = new BusinessProfileService(appPool);
+    const venueService = new VenueService(appPool);
+    const sandboxSimulation = config.env === 'local' || config.env === 'test';
     registerDiningRoutes(app, {
       security,
       idempotencyService,
-      businessService: new BusinessProfileService(appPool),
-      venueService: new VenueService(appPool),
+      businessService,
+      venueService,
       diningService,
       billService: new BillService(appPool, paymentLinkService, diningService),
-      sandboxSimulation: config.env === 'local' || config.env === 'test',
+      sandboxSimulation,
       limiter: rateLimiter,
+    });
+    // Cobro presencial: sobre ventas de cobro único existentes; resultado
+    // fijado por el servidor desde el intent. Simulador solo en local/test.
+    registerInPersonRoutes(app, {
+      security,
+      venueService,
+      sandboxSimulation,
+      inPersonService: new InPersonService(appPool, {
+        business: businessService,
+        paymentLinks: paymentLinkService,
+        checkout: checkoutSessionService,
+        sandbox: sandboxSimulation,
+      }),
     });
     // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
     // comercio; lectura pública limitada por IP.
