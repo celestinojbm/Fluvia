@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 /**
  * Jornada «presentación comercial + asistente», contra el STACK REAL local
@@ -45,10 +45,9 @@ async function noHorizontalScroll(p: Page) {
 }
 
 // Una sola sesión por plano (el login tiene límite por correo).
-let personalState: Awaited<
-  ReturnType<import('@playwright/test').BrowserContext['storageState']>
-> | null = null;
-let merchantState: typeof personalState = null;
+type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
+let personalState: StorageState | null = null;
+let merchantState: StorageState | null = null;
 
 const TRACK_SPY = () => {
   const w = window as unknown as { __tracks: MediaStreamTrack[] };
