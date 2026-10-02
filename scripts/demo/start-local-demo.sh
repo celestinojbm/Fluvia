@@ -133,7 +133,8 @@ start dashboard apps/dashboard env FLUVIA_API_URL="http://$H:$API_PORT" \
 # vigilancias): misma BD y Redis de la instancia, métricas en su propio puerto.
 if [ "${DEMO_WITH_WORKER:-0}" = 1 ]; then
   echo "==> Arrancando worker (DEMO_WITH_WORKER=1, métricas en $H:$WORKER_METRICS_PORT)"
-  start worker apps/worker env WORKER_METRICS_PORT="$WORKER_METRICS_PORT" npx tsx src/main.ts
+  start worker apps/worker env WORKER_METRICS_HOST=$H WORKER_METRICS_PORT="$WORKER_METRICS_PORT" \
+    npx tsx src/main.ts
 fi
 
 for url in "http://$H:$API_PORT/health" "http://$H:$CHECKOUT_PORT" "http://$H:$DASHBOARD_PORT/login"; do

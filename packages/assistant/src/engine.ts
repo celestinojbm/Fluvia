@@ -1,13 +1,19 @@
 import type { AssistantLimits } from './config.js';
+import {
+  ConcurrencyBackendError,
+  MemoryConcurrencyGate,
+  type ConcurrencyGate,
+} from './concurrency.js';
 import type { BlobStorage } from './storage.js';
 import { redactSecrets, resolveActions, systemPrompt, type Surface } from './policy.js';
-import type {
-  ChatMessage,
-  ConversationProvider,
-  ImagePart,
-  ProviderErrorCode,
-  ToolCall,
-  ToolSpec,
+import {
+  ProviderError,
+  type ChatMessage,
+  type ConversationProvider,
+  type ImagePart,
+  type ProviderErrorCode,
+  type ToolCall,
+  type ToolSpec,
 } from './providers.js';
 import {
   AssistantNotFoundError,
@@ -77,8 +83,11 @@ const SUGGEST: ToolSpec = {
   },
 };
 
+/** Arriendo de una respuesta en curso (vence solo si la réplica muere). */
+const STREAM_LEASE_MS = 180_000;
+
 export class AssistantEngine {
-  private readonly active = new Map<string, number>();
+  private readonly gate: ConcurrencyGate;
 
   constructor(
     private readonly deps: {
@@ -87,8 +96,12 @@ export class AssistantEngine {
       provider: ConversationProvider;
       limits: AssistantLimits;
       tools: (surface: Surface) => AssistantTool[];
+      /** Redis en despliegues con varias réplicas; memoria por defecto (una réplica). */
+      concurrency?: ConcurrencyGate;
     }
-  ) {}
+  ) {
+    this.gate = deps.concurrency ?? new MemoryConcurrencyGate();
+  }
 
   get providerInfo() {
     return { name: this.deps.provider.name, simulated: this.deps.provider.simulated };
@@ -108,22 +121,24 @@ export class AssistantEngine {
     signal: AbortSignal
   ): Promise<void> {
     const { owner, limits } = { owner: input.owner, limits: this.deps.limits };
-    const key = `${owner.tenantId}:${owner.ownerId}`;
-    if ((this.active.get(key) ?? 0) >= limits.concurrentStreams) {
-      throw new AssistantLimitError('busy');
-    }
     const text = input.text.trim().slice(0, limits.maxInputChars);
     if (!text && input.attachmentIds.length === 0) throw new AssistantLimitError('empty');
     if (input.attachmentIds.length > limits.maxImagesPerMessage) {
       throw new AssistantLimitError('invalid_attachment');
     }
-    this.active.set(key, (this.active.get(key) ?? 0) + 1);
+    const key = `${owner.tenantId}:${owner.ownerId}`;
+    let lease: string | null;
+    try {
+      lease = await this.gate.acquire(key, limits.concurrentStreams, STREAM_LEASE_MS);
+    } catch (e) {
+      if (e instanceof ConcurrencyBackendError) throw new ProviderError('unavailable');
+      throw e;
+    }
+    if (!lease) throw new AssistantLimitError('busy');
     try {
       await this.run({ ...input, text }, emit, signal);
     } finally {
-      const n = (this.active.get(key) ?? 1) - 1;
-      if (n <= 0) this.active.delete(key);
-      else this.active.set(key, n);
+      await this.gate.release(key, lease);
     }
   }
 

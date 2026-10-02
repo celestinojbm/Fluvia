@@ -89,6 +89,22 @@ describe('validación de audio (formato y duración leídos del contenedor)', ()
     expect(Math.abs(r.durationMs - 3000)).toBeLessThan(300);
   });
 
+  it('MP4 FRAGMENTADO (como el de Safari): duración por los fragmentos, no por mvhd=0', () => {
+    const r = inspectAudio(fx('tone-frag.m4a'), AUD);
+    expect(r.mime).toBe('audio/mp4');
+    expect(Math.abs(r.durationMs - 3000)).toBeLessThan(150);
+  });
+
+  it('duración desconocida se RECHAZA (no se acepta como ilimitada)', () => {
+    // WebM solo con cabecera EBML y un Segment vacío: ni Duration ni bloques.
+    const ebml = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80, 0x18, 0x53, 0x80, 0x67, 0x80]);
+    expect(() => inspectAudio(ebml, AUD)).toThrow('duration_unknown');
+    // MP4 fragmentado sin ningún fragmento: moov con mvhd=0.
+    const frag = fx('tone-frag.m4a');
+    const firstMoof = frag.indexOf(Buffer.from('moof')) - 4;
+    expect(() => inspectAudio(frag.subarray(0, firstMoof), AUD)).toThrow('duration_unknown');
+  });
+
   it('demasiado larga → too_long', () => {
     expect(() => inspectAudio(fx('long.ogg'), AUD)).toThrow('too_long');
   });

@@ -129,8 +129,18 @@ export function registerDirectoryRoutes(
       { keyOf: ipKey('directory:ip'), rule: { max: 600, windowMs: 60_000 } },
     ]),
   };
-  const read = { preHandler: [security.session, security.org('payments:read')] };
-  const write = { preHandler: [security.session, security.org('merchants:write')] };
+  // Gestión del perfil: límite por USUARIO autenticado en su organización.
+  const perUser = rateLimit(limiter ?? new FixedWindowLimiter(), [
+    {
+      keyOf: (req) =>
+        req.identity && req.org
+          ? `directory:user:${req.org.organizationId}:${req.identity.userId}`
+          : null,
+      rule: { max: 120, windowMs: 60_000 },
+    },
+  ]);
+  const read = { preHandler: [security.session, security.org('payments:read'), perUser] };
+  const write = { preHandler: [security.session, security.org('merchants:write'), perUser] };
   const tenant = (req: FastifyRequest) => req.org!.organizationId;
   const auditor =
     (req: FastifyRequest, action: AuditAction) => (c: PoolClient, p: DirectoryProfileDto) =>

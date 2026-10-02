@@ -10,3 +10,4 @@ export * from './anthropic.js';
 export * from './speech-http.js';
 export * from './livekit.js';
 export * from './factory.js';
+export * from './concurrency.js';

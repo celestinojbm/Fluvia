@@ -19,6 +19,8 @@ export interface AssistantLimits {
   maxOutputTokens: number;
   /** Rondas máximas de herramientas por respuesta. */
   maxToolRounds: number;
+  /** Peticiones por titular y minuto (la organización: ×10). */
+  requestsPerMinute: number;
 }
 
 export interface AssistantProviderConfig {
@@ -56,6 +58,7 @@ export function loadAssistantLimits(env: Record<string, string | undefined>): As
     retentionDays: int(env.ASSISTANT_RETENTION_DAYS, 30, 1, 365),
     maxOutputTokens: int(env.ASSISTANT_MAX_OUTPUT_TOKENS, 700, 64, 4096),
     maxToolRounds: int(env.ASSISTANT_MAX_TOOL_ROUNDS, 3, 1, 6),
+    requestsPerMinute: int(env.ASSISTANT_REQUESTS_PER_MINUTE, 60, 5, 10_000),
   };
 }
 

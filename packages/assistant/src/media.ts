@@ -17,7 +17,13 @@ export type AudioMime = 'audio/webm' | 'audio/ogg' | 'audio/mp4' | 'audio/wav';
 export class MediaRejectedError extends Error {
   constructor(
     readonly reason:
-      'unsupported_format' | 'too_large' | 'too_many_pixels' | 'too_long' | 'empty' | 'malformed'
+      | 'unsupported_format'
+      | 'too_large'
+      | 'too_many_pixels'
+      | 'too_long'
+      | 'empty'
+      | 'malformed'
+      | 'duration_unknown'
   ) {
     super(`media rejected: ${reason}`);
     this.name = new.target.name;
@@ -201,6 +207,9 @@ export function inspectAudio(
           ? webmDuration(b)
           : mp4Duration(b);
   if (ms === null || !Number.isFinite(ms) || ms < 0) throw new MediaRejectedError('malformed');
+  // Duración desconocida (0 en un contenedor con audio) NUNCA se acepta como
+  // ilimitada: se rechaza con un motivo propio.
+  if (ms === 0) throw new MediaRejectedError('duration_unknown');
   if (ms > limits.maxSeconds * 1000) throw new MediaRejectedError('too_long');
   return { mime, durationMs: Math.round(ms) };
 }
@@ -307,36 +316,94 @@ function webmDuration(b: Buffer): number | null {
   return (ticks * scale) / 1_000_000;
 }
 
-/** MP4/M4A: moov → mvhd (duration / timescale). */
+/**
+ * MP4/M4A. Con `moov/mvhd` completo: duración / escala. En MP4 FRAGMENTADO
+ * (MediaRecorder de Safari) `mvhd` suele traer 0: se suman las duraciones de
+ * muestra de cada `moof/traf/trun` (o la duración por defecto de `tfhd`/`trex`)
+ * con la escala de `mdhd`. Si nada de eso existe, la duración es desconocida.
+ */
 function mp4Duration(b: Buffer): number | null {
-  const find = (start: number, end: number, path: string[]): number | null => {
+  interface Box {
+    type: string;
+    start: number; // inicio del contenido (tras la cabecera)
+    end: number;
+  }
+  const children = (start: number, end: number): Box[] | null => {
+    const out: Box[] = [];
     let i = start;
     while (i + 8 <= end) {
       let size = b.readUInt32BE(i);
       const type = b.toString('ascii', i + 4, i + 8);
       let header = 8;
-      if (size === 1 && i + 16 <= end) {
+      if (size === 1) {
+        if (i + 16 > end) return null;
         size = Number(b.readBigUInt64BE(i + 8));
         header = 16;
       } else if (size === 0) size = end - i;
       if (size < header || i + size > end) return null;
-      if (type === path[0]) {
-        if (path.length === 1) return i + header;
-        return find(i + header, i + size, path.slice(1));
-      }
+      out.push({ type, start: i + header, end: i + size });
       i += size;
     }
-    return null;
+    return out;
   };
-  const m = find(0, b.length, ['moov', 'mvhd']);
-  if (m === null || m + 32 > b.length) return null;
-  const version = b[m]!;
-  if (version === 1) {
-    const ts = b.readUInt32BE(m + 20);
-    const dur = Number(b.readBigUInt64BE(m + 24));
-    return ts ? (dur / ts) * 1000 : null;
+  const find = (list: Box[] | null, type: string) => list?.find((x) => x.type === type) ?? null;
+  const top = children(0, b.length);
+  if (!top) return null;
+  const moov = find(top, 'moov');
+  if (!moov) return null;
+  const moovKids = children(moov.start, moov.end);
+  const mvhd = find(moovKids, 'mvhd');
+  if (!mvhd || mvhd.start + 24 > b.length) return null;
+  const v = b[mvhd.start]!;
+  const mvTs = v === 1 ? b.readUInt32BE(mvhd.start + 20) : b.readUInt32BE(mvhd.start + 12);
+  const mvDur =
+    v === 1 ? Number(b.readBigUInt64BE(mvhd.start + 24)) : b.readUInt32BE(mvhd.start + 16);
+  if (mvTs && mvDur) return (mvDur / mvTs) * 1000;
+
+  // ── Fragmentado ──
+  const trak = find(moovKids, 'trak');
+  const mdia = trak ? find(children(trak.start, trak.end), 'mdia') : null;
+  const mdhd = mdia ? find(children(mdia.start, mdia.end), 'mdhd') : null;
+  if (!mdhd) return 0;
+  const mv = b[mdhd.start]!;
+  const timescale = mv === 1 ? b.readUInt32BE(mdhd.start + 20) : b.readUInt32BE(mdhd.start + 12);
+  if (!timescale) return null;
+  let trexDefault = 0;
+  const mvex = find(moovKids, 'mvex');
+  const trex = mvex ? find(children(mvex.start, mvex.end), 'trex') : null;
+  if (trex && trex.start + 20 <= trex.end) trexDefault = b.readUInt32BE(trex.start + 12);
+
+  let ticks = 0;
+  for (const moof of top.filter((x) => x.type === 'moof')) {
+    for (const traf of (children(moof.start, moof.end) ?? []).filter((x) => x.type === 'traf')) {
+      const kids = children(traf.start, traf.end) ?? [];
+      let def = trexDefault;
+      const tfhd = find(kids, 'tfhd');
+      if (tfhd) {
+        const flags = b.readUInt32BE(tfhd.start) & 0xffffff;
+        let o = tfhd.start + 8; // versión/flags + track_ID
+        if (flags & 0x1) o += 8; // base_data_offset
+        if (flags & 0x2) o += 4; // sample_description_index
+        if (flags & 0x8 && o + 4 <= tfhd.end) def = b.readUInt32BE(o);
+      }
+      for (const trun of kids.filter((x) => x.type === 'trun')) {
+        const flags = b.readUInt32BE(trun.start) & 0xffffff;
+        const count = b.readUInt32BE(trun.start + 4);
+        let o = trun.start + 8;
+        if (flags & 0x1) o += 4; // data_offset
+        if (flags & 0x4) o += 4; // first_sample_flags
+        const per =
+          (flags & 0x100 ? 4 : 0) +
+          (flags & 0x200 ? 4 : 0) +
+          (flags & 0x400 ? 4 : 0) +
+          (flags & 0x800 ? 4 : 0);
+        if (!(flags & 0x100)) {
+          ticks += count * def;
+          continue;
+        }
+        for (let k = 0; k < count && o + 4 <= trun.end; k++, o += per) ticks += b.readUInt32BE(o);
+      }
+    }
   }
-  const ts = b.readUInt32BE(m + 12);
-  const dur = b.readUInt32BE(m + 16);
-  return ts ? (dur / ts) * 1000 : null;
+  return (ticks / timescale) * 1000;
 }

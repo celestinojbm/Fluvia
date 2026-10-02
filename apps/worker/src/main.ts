@@ -553,8 +553,11 @@ worker
     } else {
       logger.info({}, 'webhook deliverer disabled by config (WEBHOOK_DELIVERY_ENABLED=false)');
     }
-    metricsServer.listen(config.workerMetricsPort, '0.0.0.0', () => {
-      logger.info({ port: config.workerMetricsPort }, 'worker metrics server listening');
+    metricsServer.listen(config.workerMetricsPort, config.workerMetricsHost, () => {
+      logger.info(
+        { host: config.workerMetricsHost, port: config.workerMetricsPort },
+        'worker metrics server listening'
+      );
     });
   })
   .catch((err: unknown) => {

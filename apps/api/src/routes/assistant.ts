@@ -48,6 +48,7 @@ export class MediaUnsupportedError extends NamedError {}
 export class MediaTooLargeError extends NamedError {}
 export class MediaTooLongError extends NamedError {}
 export class MediaMalformedError extends NamedError {}
+export class MediaDurationUnknownError extends NamedError {}
 export class AssistantProviderUnavailableError extends NamedError {}
 
 function mapError(e: unknown): unknown {
@@ -62,6 +63,7 @@ function mapError(e: unknown): unknown {
     if (e.reason === 'too_large' || e.reason === 'too_many_pixels')
       return new MediaTooLargeError(e.message);
     if (e.reason === 'too_long') return new MediaTooLongError(e.message);
+    if (e.reason === 'duration_unknown') return new MediaDurationUnknownError(e.message);
     return new MediaMalformedError(e.message);
   }
   if (e instanceof ProviderError) return new AssistantProviderUnavailableError(e.message);
@@ -149,8 +151,23 @@ export interface AssistantRoutesOptions {
 export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutesOptions): void {
   const pm = (m: MessageDto, orgId: string | null, surface: Surface) =>
     publicMessage(m, orgId, surface, o.resolveActions);
-  const ipLimit = rateLimit(o.limiter ?? new FixedWindowLimiter(), [
-    { keyOf: ipKey('assistant:ip'), rule: { max: 240, windowMs: 60_000 } },
+  // Límites por IDENTIDAD autenticada (titular y organización), no por la IP
+  // del BFF: todas las peticiones del panel llegan desde la misma IP. Se
+  // aplican DESPUÉS de autenticar, con la identidad de la sesión.
+  const limiter = o.limiter ?? new FixedWindowLimiter();
+  const perOwner = rateLimit(limiter, [
+    {
+      keyOf: (req) =>
+        req.assistantOwner
+          ? `assistant:owner:${req.assistantOwner.tenantId}:${req.assistantOwner.ownerId}`
+          : null,
+      rule: { max: o.limits.requestsPerMinute, windowMs: 60_000 },
+    },
+    {
+      // Toda una organización de Comercio comparte un techo (varios usuarios).
+      keyOf: (req) => (req.assistantOrg ? `assistant:org:${req.assistantOrg}` : null),
+      rule: { max: o.limits.requestsPerMinute * 10, windowMs: 60_000 },
+    },
   ]);
 
   // Cuerpo binario de adjuntos: el formato REAL se decide por contenido.
@@ -186,10 +203,10 @@ export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutes
   };
 
   const planes: Array<{ prefix: string; pre: unknown[] }> = [
-    { prefix: '/v1/personal/assistant', pre: [ipLimit, consumer] },
+    { prefix: '/v1/personal/assistant', pre: [consumer, perOwner] },
     {
       prefix: '/v1/organizations/:orgId/assistant',
-      pre: [ipLimit, o.security.session, o.security.org('payments:read'), operator],
+      pre: [o.security.session, o.security.org('payments:read'), operator, perOwner],
     },
   ];
 

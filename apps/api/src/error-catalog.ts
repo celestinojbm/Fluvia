@@ -313,6 +313,11 @@ export const ERROR_CATALOG = {
     type: 'unprocessable_error',
     message: 'The recording is too long',
   },
+  media_duration_unknown: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The recording duration could not be determined; record again or use another format',
+  },
   media_malformed: {
     status: 422,
     type: 'unprocessable_error',
@@ -585,6 +590,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   MediaTooLargeError: 'media_too_large',
   MediaTooLongError: 'media_too_long',
   MediaMalformedError: 'media_malformed',
+  MediaDurationUnknownError: 'media_duration_unknown',
   AssistantProviderUnavailableError: 'assistant_provider_unavailable',
   AssistantNotFoundError: 'not_found',
   DirectoryProfileNotFoundError: 'not_found',

@@ -416,6 +416,11 @@
       "status": 422,
       "type": "unprocessable_error",
       "message": "The file is damaged or incomplete"
+    },
+    "media_duration_unknown": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The recording duration could not be determined; record again or use another format"
     }
   },
   "domain_error_codes": {
@@ -540,6 +545,7 @@
     "MediaTooLongError": "media_too_long",
     "MediaMalformedError": "media_malformed",
     "AssistantProviderUnavailableError": "assistant_provider_unavailable",
-    "AssistantNotFoundError": "not_found"
+    "AssistantNotFoundError": "not_found",
+    "MediaDurationUnknownError": "media_duration_unknown"
   }
 }

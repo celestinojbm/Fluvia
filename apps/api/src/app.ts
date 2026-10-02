@@ -88,6 +88,7 @@ import {
   resolveActions,
   type AssistantProviders,
   type BlobStorage,
+  type ConcurrencyGate,
 } from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
@@ -136,6 +137,8 @@ export interface BuildAppOptions {
     env?: Record<string, string | undefined>;
     storage?: BlobStorage;
     providers?: AssistantProviders;
+    /** Respuestas en curso por titular: Redis con varias réplicas (server.ts). */
+    concurrency?: ConcurrencyGate;
   };
 }
 
@@ -537,6 +540,7 @@ export function buildApp({
         provider: providers.conversation,
         limits,
         tools: (surface) => (surface === 'personal' ? pTools : cTools),
+        concurrency: assistant?.concurrency,
       }),
       store,
       storage,

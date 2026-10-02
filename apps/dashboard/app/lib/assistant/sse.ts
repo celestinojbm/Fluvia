@@ -119,6 +119,8 @@ export function assistantError(status: number, code?: string): string {
       return 'El archivo es demasiado grande.';
     case 'media_too_long':
       return 'La nota de voz es demasiado larga.';
+    case 'media_duration_unknown':
+      return 'No pudimos saber cuánto dura la grabación. Vuelve a grabarla.';
     case 'media_malformed':
       return 'El archivo está dañado o incompleto.';
     case 'assistant_provider_unavailable':

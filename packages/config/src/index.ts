@@ -45,6 +45,12 @@ const EnvSchema = z.object({
   DRIFT_CHECK_ENABLED: z.enum(['true', 'false']).default('true'),
   DRIFT_CHECK_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
+  // Interfaz del servidor de métricas del worker. Por defecto todas (lo que
+  // espera el scrape en contenedor); las demos locales usan 127.0.0.1.
+  WORKER_METRICS_HOST: z
+    .string()
+    .regex(/^(\d{1,3}(\.\d{1,3}){3}|::1?|localhost)$/, 'IP literal, :: o localhost')
+    .default('0.0.0.0'),
   PURGE_ENABLED: z.enum(['true', 'false']).default('true'),
   PURGE_INTERVAL_MS: z.coerce.number().int().min(1000).max(86_400_000).default(3_600_000),
   INBOX_ENABLED: z.enum(['true', 'false']).default('true'),
@@ -176,6 +182,7 @@ export interface AppConfig {
   };
   /** Puerto de /health y /metrics del worker (F1-07; default estandar 9464). */
   workerMetricsPort: number;
+  workerMetricsHost: string;
   /** Job de purga de datos tecnicos (F1-09; la politica vive en la BD). */
   purge: {
     enabled: boolean;
@@ -400,6 +407,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       intervalMs: e.DRIFT_CHECK_INTERVAL_MS,
     },
     workerMetricsPort: e.WORKER_METRICS_PORT,
+    workerMetricsHost: e.WORKER_METRICS_HOST,
     purge: {
       enabled: e.PURGE_ENABLED === 'true',
       intervalMs: e.PURGE_INTERVAL_MS,
