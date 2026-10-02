@@ -62,6 +62,7 @@ export function orgNav(orgId: string): ShellNavSection[] {
       title: 'Cuenta',
       items: [
         { href: `${o}/team`, label: 'Equipo', icon: 'team' },
+        { href: `${o}/directorio`, label: 'Directorio', icon: 'pin' },
         { href: `${o}/settings`, label: 'Configuración', icon: 'gear' },
         { href: `${o}/activity`, label: 'Operación avanzada', icon: 'tools' },
       ],

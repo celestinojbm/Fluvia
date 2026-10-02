@@ -716,3 +716,33 @@ describe('rechazos, límites, bloqueo y aislamiento', () => {
     expect(b.held).toBe('0');
   });
 });
+
+describe('condiciones públicas del programa (presentación)', () => {
+  it('sin sesión: devuelve los parámetros de la política ACTIVA, marcada como sintética', async () => {
+    const r = await app.inject({ method: 'GET', url: `/v1/public/programs/${program}/terms` });
+    expect(r.statusCode).toBe(200);
+    const t = r.json();
+    expect(t).toMatchObject({
+      object: 'program_terms',
+      sandbox: true,
+      policy: {
+        code: 'ref-sandbox',
+        synthetic: true,
+        installment_counts: [1, 3, 6],
+        interval_days: 30,
+        down_payment_bps: 2500,
+        interest_bps: 0,
+        late_fee_bps: 0,
+      },
+      cards: { max_live: 5 },
+    });
+    // Solo parámetros de producto: nada de ids, aprobadores ni clientes.
+    const raw = JSON.stringify(t);
+    expect(raw).not.toMatch(/approved_by|created_by|consumer|"id"/);
+  });
+
+  it('una organización que no es programa → 404', async () => {
+    const r = await app.inject({ method: 'GET', url: `/v1/public/programs/${otherOrg}/terms` });
+    expect(r.statusCode).toBe(404);
+  });
+});

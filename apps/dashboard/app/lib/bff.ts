@@ -21,7 +21,7 @@ export function validIds(...ids: string[]): boolean {
 
 export async function forward(
   req: Request,
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   apiPath: string,
   opts: { idempotent?: boolean } = {}
 ): Promise<NextResponse> {

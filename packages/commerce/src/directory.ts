@@ -242,7 +242,8 @@ export class DirectoryService {
           id = up.rows[0]!.id;
         }
       } catch (err) {
-        if (isUniqueViolation(err, 'merchant_directory_slug_uniq')) throw new DirectorySlugTakenError();
+        if (isUniqueViolation(err, 'merchant_directory_slug_uniq'))
+          throw new DirectorySlugTakenError();
         throw err;
       }
       const dto = await this.byId(c, id);

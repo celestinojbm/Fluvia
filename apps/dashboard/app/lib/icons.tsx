@@ -38,6 +38,27 @@ import {
   UsersRound,
   Wallet,
   Wrench,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Globe,
+  Image,
+  LoaderCircle,
+  MapPin,
+  MessageCircle,
+  Mic,
+  MicOff,
+  MonitorUp,
+  Paperclip,
+  Phone,
+  PhoneOff,
+  Play,
+  RotateCcw,
+  Sparkles,
+  Square,
+  Video,
+  Volume2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -86,7 +107,28 @@ export type IconName =
   | 'flag'
   | 'list'
   | 'send'
-  | 'truck';
+  | 'truck'
+  | 'chevron-left'
+  | 'chevron-right'
+  | 'pin'
+  | 'chat'
+  | 'mic'
+  | 'mic-off'
+  | 'camera'
+  | 'phone'
+  | 'phone-off'
+  | 'close'
+  | 'ai'
+  | 'image'
+  | 'clip'
+  | 'stop'
+  | 'play'
+  | 'volume'
+  | 'retry'
+  | 'spinner'
+  | 'screen'
+  | 'video'
+  | 'globe';
 
 const ICONS: Record<IconName, LucideIcon> = {
   home: House,
@@ -128,6 +170,27 @@ const ICONS: Record<IconName, LucideIcon> = {
   list: List,
   send: Send,
   truck: Truck,
+  'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
+  pin: MapPin,
+  chat: MessageCircle,
+  mic: Mic,
+  'mic-off': MicOff,
+  camera: Camera,
+  phone: Phone,
+  'phone-off': PhoneOff,
+  close: X,
+  ai: Sparkles,
+  image: Image,
+  clip: Paperclip,
+  stop: Square,
+  play: Play,
+  volume: Volume2,
+  retry: RotateCcw,
+  spinner: LoaderCircle,
+  screen: MonitorUp,
+  video: Video,
+  globe: Globe,
 };
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {

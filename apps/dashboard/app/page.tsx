@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { FluviaLogo } from './lib/brand';
-import { redirect } from 'next/navigation';
 import { apiBase, fetchOrganizations } from './lib/api';
+import { Landing } from './lib/landing';
 import { NoOrgCta } from './lib/no-org-cta';
 import { OrgList } from './lib/org-list';
 import { MESSAGES, normalizeLocale } from './messages';
@@ -9,9 +9,9 @@ import { MESSAGES, normalizeLocale } from './messages';
 export const dynamic = 'force-dynamic';
 
 /**
- * Raíz: elige organización. Lee la cookie de sesión server-side; sin sesión →
- * `/login`. Con sesión, lista las organizaciones del operador (su membresía) y
- * enlaza a `/o/{orgId}`. El token nunca llega al navegador.
+ * Raíz. Sin sesión de comercio: la PRESENTACIÓN pública (portada). Con sesión:
+ * elige organización (la membresía del operador) y enlaza a `/o/{orgId}`. Lee
+ * la cookie server-side; el token nunca llega al navegador.
  */
 export default async function HomePage({
   searchParams,
@@ -19,7 +19,7 @@ export default async function HomePage({
   searchParams: Promise<{ lang?: string }>;
 }) {
   const token = (await cookies()).get('fluvia_session')?.value;
-  if (!token) redirect('/login');
+  if (!token) return <Landing />;
   const { lang } = await searchParams;
   const locale = normalizeLocale(lang);
   const t = MESSAGES[locale];
