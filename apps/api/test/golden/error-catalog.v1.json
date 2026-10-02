@@ -376,6 +376,46 @@
       "status": 409,
       "type": "conflict_error",
       "message": "This public address is already in use; choose another one"
+    },
+    "assistant_quota_exceeded": {
+      "status": 429,
+      "type": "rate_limit_error",
+      "message": "Daily assistant message limit reached; try again tomorrow"
+    },
+    "assistant_busy": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "The assistant is already answering; wait or stop the current answer"
+    },
+    "assistant_invalid_attachment": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "One of the attachments is not available for this message"
+    },
+    "assistant_provider_unavailable": {
+      "status": 503,
+      "type": "internal_error",
+      "message": "The assistant provider is temporarily unavailable"
+    },
+    "media_unsupported": {
+      "status": 415,
+      "type": "validation_error",
+      "message": "Unsupported file format"
+    },
+    "media_too_large": {
+      "status": 413,
+      "type": "validation_error",
+      "message": "The file is too large"
+    },
+    "media_too_long": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The recording is too long"
+    },
+    "media_malformed": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The file is damaged or incomplete"
     }
   },
   "domain_error_codes": {
@@ -490,6 +530,16 @@
     "DirectoryProfileNotFoundError": "not_found",
     "DirectoryMerchantNotFoundError": "not_found",
     "DirectoryVersionConflictError": "directory_version_conflict",
-    "DirectorySlugTakenError": "directory_slug_taken"
+    "DirectorySlugTakenError": "directory_slug_taken",
+    "AssistantQuotaError": "assistant_quota_exceeded",
+    "AssistantBusyError": "assistant_busy",
+    "AssistantAttachmentError": "assistant_invalid_attachment",
+    "AssistantEmptyError": "validation_error",
+    "MediaUnsupportedError": "media_unsupported",
+    "MediaTooLargeError": "media_too_large",
+    "MediaTooLongError": "media_too_long",
+    "MediaMalformedError": "media_malformed",
+    "AssistantProviderUnavailableError": "assistant_provider_unavailable",
+    "AssistantNotFoundError": "not_found"
   }
 }

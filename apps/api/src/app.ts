@@ -76,6 +76,19 @@ import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
 import { registerDirectoryRoutes } from './routes/directory.js';
+import { registerAssistantRoutes } from './routes/assistant.js';
+import { commerceTools, personalTools } from './assistant-tools.js';
+import {
+  AssistantEngine,
+  AssistantStore,
+  LocalPrivateStorage,
+  createAssistantProviders,
+  loadAssistantLimits,
+  loadAssistantProviders,
+  resolveActions,
+  type AssistantProviders,
+  type BlobStorage,
+} from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
@@ -114,6 +127,16 @@ export interface BuildAppOptions {
   /** Solo tests: captura el output del logger para verificar la redacción
    *  sobre la instancia REAL de pino del app (no una copia de la config). */
   loggerStream?: { write: (msg: string) => void };
+  /**
+   * Asistente «Fluvia». Por defecto lee process.env (proveedores reales solo
+   * con TODAS sus credenciales; si no, simulados) y guarda adjuntos en
+   * ASSISTANT_STORAGE_DIR. Los tests inyectan almacenamiento y proveedores.
+   */
+  assistant?: {
+    env?: Record<string, string | undefined>;
+    storage?: BlobStorage;
+    providers?: AssistantProviders;
+  };
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -163,6 +186,7 @@ export function buildApp({
   metricsRegistry,
   rateLimiter,
   loggerStream,
+  assistant,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -478,11 +502,48 @@ export function buildApp({
     if (personal) {
       registerPersonalRoutes(app, { personal, rateLimits: authRateLimits, limiter: rateLimiter });
     }
+    const personalOrFallback = personal ?? createPersonalServices({ app: appPool, auth: appPool });
     registerProgramOpsRoutes(app, {
       security,
-      personal: personal ?? createPersonalServices({ app: appPool, auth: appPool }),
+      personal: personalOrFallback,
       merchantResolver,
       sandboxSimulation: config.env === 'local' || config.env === 'test',
+    });
+
+    // Asistente «Fluvia» (Personal y Comercio): herramientas de LECTURA,
+    // proveedores intercambiables, adjuntos en almacenamiento privado.
+    const env = assistant?.env ?? process.env;
+    const limits = loadAssistantLimits(env);
+    const providers = assistant?.providers ?? createAssistantProviders(loadAssistantProviders(env));
+    const storage =
+      assistant?.storage ?? new LocalPrivateStorage(env.ASSISTANT_STORAGE_DIR ?? '.data/assistant');
+    const store = new AssistantStore(appPool);
+    const directory = new DirectoryService(appPool);
+    const pTools = personalTools(personalOrFallback, directory);
+    const cTools = commerceTools({
+      summary: new SummaryService(appPool),
+      directory,
+      listUncertain: (t) => merchantResolver.listUncertain(t),
+    });
+    registerAssistantRoutes(app, {
+      security,
+      authenticateConsumer: async (token) => {
+        const id = await personalOrFallback.consumerAuth.authenticate(token);
+        return { consumerId: id.consumerId, tenantId: id.tenantId };
+      },
+      engine: new AssistantEngine({
+        store,
+        storage,
+        provider: providers.conversation,
+        limits,
+        tools: (surface) => (surface === 'personal' ? pTools : cTools),
+      }),
+      store,
+      storage,
+      providers,
+      limits,
+      resolveActions: (ids, surface, orgId) => resolveActions(ids, surface, orgId),
+      limiter: rateLimiter,
     });
   }
 

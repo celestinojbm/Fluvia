@@ -1,3 +1,5 @@
+import { LocalPrivateStorage, loadAssistantLimits } from '@fluvia/assistant';
+import { AssistantRetentionJob } from './assistant-retention.js';
 import { pino } from 'pino';
 import { loadConfig } from '@fluvia/config';
 import { createPool } from '@fluvia/db';
@@ -208,6 +210,14 @@ const driftWatcher = new ProjectionDriftWatcher(workerPool, logger, {
 });
 // F1-09: purga de datos tecnicos. La politica (clases, retenciones, auditoria
 // atomica) vive en purge_technical_data() (0015); el job solo la invoca.
+// Asistente: retención de conversaciones y adjuntos (0055). Mismo directorio
+// de almacenamiento privado que la API (ASSISTANT_STORAGE_DIR).
+const assistantRetention = new AssistantRetentionJob(
+  workerPool,
+  new LocalPrivateStorage(process.env.ASSISTANT_STORAGE_DIR ?? '.data/assistant'),
+  loadAssistantLimits(process.env).retentionDays,
+  logger
+);
 const purgeJob = new TechnicalPurgeJob(workerPool, logger, {
   onResult: (rows) => {
     purgeRunsTotal.inc();
@@ -392,6 +402,7 @@ async function shutdown(signal: string): Promise<void> {
   relay.stop();
   driftWatcher.stop();
   purgeJob.stop();
+  assistantRetention.stop();
   inboxProcessor.stop();
   attemptsWatchdog.stop();
   checkoutWatchdog.stop();
@@ -441,6 +452,7 @@ worker
     }
     if (config.purge.enabled) {
       purgeJob.start(config.purge.intervalMs);
+      assistantRetention.start(config.purge.intervalMs);
       logger.info({ intervalMs: config.purge.intervalMs }, 'technical purge job started');
     } else {
       logger.info({}, 'technical purge job disabled by config (PURGE_ENABLED=false)');
