@@ -12,18 +12,31 @@ Estados: **hecho** (código + prueba contra PostgreSQL real), **parcial**,
 
 | # | Bloque | Estado | Evidencia |
 |---|--------|--------|-----------|
-| R1 | Modelo: tipo de negocio, módulos, habilitación de cobro presencial, rol `staff` | hecho | `0057`, `business.ts`, `rbac.test.ts` |
-| R1 | Estructura del local: sucursales, salones, mesas (QR), estaciones, modificadores, disponibilidad, roles de local | hecho (dominio) | `0058`, `venue.ts`, `dining.test.ts` |
-| R1 | Pedidos, líneas con precio histórico, comandas por estación con revisiones, eventos | hecho (dominio) | `0059`, `dining.ts`, `dining.test.ts` |
-| R1 | Cuenta y asignaciones de pago (modelo + invariantes en BD) | parcial: esquema e invariantes; falta servicio | `0060` |
-| R1 | Cobro presencial (modelo + máquina de estados en BD) | parcial: esquema; falta servicio y simulador | `0061` |
-| R2 | API: perfil de negocio, habilitación, configuración del local, personal | pendiente | |
-| R3 | API + UI: POS de mesero, KDS (snapshot + eventos, reconexión) | pendiente | |
-| R4 | `BillService`: cuenta completa, por monto, por ítems; resto; verificación de pagado | pendiente | |
-| R4 | Cliente: menú QR, pedido, seguimiento, atención; asistente del comprador acotado | pendiente | |
-| R5 | `InPersonService`, simulador explícito de terminal, pantalla «Cobrar» independiente | pendiente | |
-| R5 | Tap to Pay real (SDK + proveedor + dispositivo) | **bloqueado** — ver abajo | |
-| R6 | Lima en Personal/comprador, E2E en CI, capturas 390/768/1440 + KDS, instancia, docs | pendiente | |
+| R1 | Modelo: tipo de negocio, módulos, habilitación, rol `staff` | hecho | `0057`, `business.ts`, `rbac.test.ts` |
+| R2 | Local: sucursales, salones, mesas QR, estaciones, modificadores, personal (API + UI) | hecho | `0058`, `venue.ts`, `dining-routes.test.ts`, E2E |
+| R3 | Pedidos, comandas con revisiones, KDS en vivo con reconexión (API + UI) | hecho | `0059`, `dining.ts`, SSE, E2E con corte de red |
+| R4 | Cuenta completa/dividida sobre ventas de cobro único; menú QR y seguimiento | hecho | `0060`, `bills.ts`, `dining-bills.test.ts`, E2E |
+| R4 | Asistente del comprador (checkout y seguimiento, solo lectura) | **pendiente** | — |
+| R5 | Contrato presencial, simulador explícito, «Cobrar» del independiente | hecho | `0061`, `in-person.ts`, `in-person-routes.test.ts`, E2E |
+| R5 | Tap to Pay real (SDK, proveedor, dispositivo) | **bloqueado** — TAP-TO-PAY.md | — |
+| R6 | Lima en restaurante, KDS, «Cobrar» y comprador (menú QR) | hecho | capturas en `evidence/` |
+| R6 | Lima en Personal (inicio, tarjetas) | **pendiente** | — |
+| R6 | E2E en CI, capturas 390/768/1440 y KDS 1024/1920, instancia, docs | hecho | job `e2e-restaurant`, `README.md`, `scripts/instancia-restaurantes.sh` |
+
+## Siguiente al retomar
+
+1. **Asistente del comprador.** Superficie `buyer` acotada al token de checkout o
+   de seguimiento. Herramientas de lectura: estado del pedido y de la cuenta,
+   menú del catálogo, cómo pagar. Sin billetera, sin datos internos y sin
+   pedidos ajenos. Reutiliza conversación, fotos y notas con el mismo
+   almacenamiento privado.
+2. **Lima en Personal.** Acciones rápidas, categorías y detalles
+   seleccionados; aplicarlo con la misma regla de contraste (texto y borde
+   negros).
+3. **Fragilidad preexistente.** `apps/worker/test/payouts-redriver.test.ts`
+   reclama un lote de 20 en una BD compartida. En una BD local de larga vida
+   con más de 20 payouts `requested` antiguos falla de forma intermitente; en
+   CI (BD nueva) pasa. No se cambió en esta rama.
 
 ## Reglas de diseño ya fijadas (no reabrir sin motivo)
 

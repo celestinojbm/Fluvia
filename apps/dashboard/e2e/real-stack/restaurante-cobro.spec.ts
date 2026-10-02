@@ -39,8 +39,23 @@ test.use({
     : {},
 });
 
-const sql = (q: string) =>
-  execFileSync('psql', [ADMIN_DB, '-Atq', '-c', q], { encoding: 'utf8' }).trim();
+/**
+ * SQL de siembra con VALORES por variables de psql (`:'var'`, citadas por
+ * psql) y la sentencia como literal fijo por stdin: ninguna interpolación de
+ * valores en SQL (candado de parametrización, threat model §5).
+ */
+const sql = (q: string, vars: Record<string, string>) =>
+  execFileSync(
+    'psql',
+    [
+      ADMIN_DB,
+      '-Atq',
+      '-v',
+      'ON_ERROR_STOP=1',
+      ...Object.entries(vars).flatMap(([k, v]) => ['-v', `${k}=${v}`]),
+    ],
+    { encoding: 'utf8', input: q }
+  ).trim();
 
 async function api(method: string, path: string, body?: unknown, token?: string) {
   const res = await fetch(`${API}${path}`, {
@@ -69,16 +84,23 @@ async function newUser(tag: string): Promise<{ id: string; email: string }> {
 }
 
 function newOrg(name: string, currency = 'USD'): string {
-  const id = sql(
-    `INSERT INTO organizations (name, slug) VALUES ('${name} ${RUN}', 'e2e-${RUN}-${randomUUID().slice(0, 6)}') RETURNING id`
-  );
+  const label = `${name} ${RUN}`;
+  const id = sql("INSERT INTO organizations (name, slug) VALUES (:'label', :'slug') RETURNING id", {
+    label,
+    slug: `e2e-${RUN}-${randomUUID().slice(0, 6)}`,
+  });
   sql(
-    `INSERT INTO merchants (tenant_id, name, default_currency) VALUES ('${id}', '${name} ${RUN}', '${currency}')`
+    "INSERT INTO merchants (tenant_id, name, default_currency) VALUES (:'org', :'label', :'currency')",
+    { org: id, label, currency }
   );
   return id;
 }
 const member = (org: string, user: string, role: string) =>
-  sql(`INSERT INTO memberships (tenant_id, user_id, role) VALUES ('${org}', '${user}', '${role}')`);
+  sql("INSERT INTO memberships (tenant_id, user_id, role) VALUES (:'org', :'user', :'role')", {
+    org,
+    user,
+    role,
+  });
 
 async function login(
   browser: Browser,
