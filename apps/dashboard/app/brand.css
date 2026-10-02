@@ -1,0 +1,237 @@
+/* ==========================================================================
+   Fluvia — identidad «Menta» (docs/design/identidad-menta.md)
+   FUENTE ÚNICA de color y tipografía para Comercios, Personal, Operaciones y
+   checkout. Este fichero es idéntico en apps/dashboard y apps/checkout (lo
+   comprueba test/brand-tokens.test.ts). Ninguna pantalla define colores
+   propios: usa estos tokens.
+   ========================================================================== */
+
+:root {
+  /* Paleta de marca — valores exactos del encargo. */
+  --fl-mint: #b2fce4; /* RGB 178 252 228: lienzo y marca */
+  --fl-black: #000000; /* texto principal, controles primarios, identidad */
+  --fl-white: #ffffff; /* superficies de lectura */
+  --fl-ink-2: #404040; /* texto secundario: 8.9:1 sobre menta, 10.4:1 sobre blanco */
+  --fl-line: #d9e2de; /* divisores decorativos (no delimitan controles) */
+
+  /* Derivados neutros (no son «otro menta»). */
+  --fl-surface: var(--fl-white);
+  --fl-surface-2: #f4f7f6; /* cabeceras de tabla, zonas hundidas sobre blanco */
+  --fl-control-line: var(--fl-ink-2); /* borde de campos: 10.4:1 sobre blanco (≥ 3:1) */
+  --fl-black-hover: #2b2b2b;
+  --fl-bad-strong: #8f1c13;
+  --fl-bad-on-dark: #ff9d90; /* errores sobre negro: 10.6:1 */
+  --fl-scrim: rgba(0, 0, 0, 0.5);
+
+  /* Semánticos — texto ≥ 4.5:1 sobre menta, blanco y su fondo suave. */
+  --fl-ok: #146c2e;
+  --fl-ok-soft: #e3f4e8;
+  --fl-warn: #8a4b00;
+  --fl-warn-soft: #fdf0dc;
+  --fl-bad: #b42318;
+  --fl-bad-soft: #fde8e6;
+  --fl-credit: #2c4a9a; /* crédito: nunca para dinero propio */
+  --fl-credit-soft: #e8edf9;
+  --fl-sim: #5a3b9c; /* simulación / proveedor simulado */
+  --fl-sim-soft: #efeafa;
+
+  /* Tipografía: Manrope (OFL-1.1) alojada localmente vía @fontsource-variable. */
+  --fl-font:
+    'Manrope Variable', Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --fl-fs-display: clamp(2.25rem, 4.6vw, 3.5rem);
+  --fl-fs-h1: clamp(1.75rem, 2.6vw, 2.25rem);
+  --fl-fs-h2: 1.25rem;
+  --fl-fs-h3: 1.0625rem;
+  --fl-fs-body: 0.9375rem;
+  --fl-fs-sm: 0.8125rem;
+  --fl-fs-xs: 0.75rem;
+
+  /* Forma y ritmo */
+  --fl-radius-sm: 10px;
+  --fl-radius: 16px;
+  --fl-radius-lg: 24px;
+  --fl-pill: 999px;
+  --fl-focus: var(--fl-black);
+  --fl-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* ---- Alias de los sistemas anteriores («Corriente», panel heredado,
+     checkout). Las pantallas existentes leen estos nombres: aquí se apuntan a
+     la paleta Menta para que NINGUNA superficie conserve arena/verde azulado. */
+  --fx-ink: var(--fl-black);
+  --fx-ink-2: var(--fl-ink-2);
+  --fx-ink-3: var(--fl-ink-2);
+  --fx-surface: var(--fl-white);
+  --fx-canvas: var(--fl-mint);
+  --fx-sunken: var(--fl-surface-2);
+  --fx-line: var(--fl-line);
+  --fx-line-strong: var(--fl-control-line);
+  --fx-river: var(--fl-black);
+  --fx-river-strong: var(--fl-black);
+  --fx-river-soft: var(--fl-mint);
+  --fx-deep: var(--fl-black);
+  --fx-deep-2: var(--fl-black-hover);
+  --fx-sand: var(--fl-mint);
+  --fx-sun: var(--fl-mint);
+  --fx-sun-soft: var(--fl-warn-soft);
+  --fx-sun-ink: var(--fl-warn);
+  --fx-ok: var(--fl-ok);
+  --fx-ok-soft: var(--fl-ok-soft);
+  --fx-warn: var(--fl-warn);
+  --fx-warn-soft: var(--fl-warn-soft);
+  --fx-bad: var(--fl-bad);
+  --fx-bad-soft: var(--fl-bad-soft);
+  --fx-sim: var(--fl-sim);
+  --fx-sim-soft: var(--fl-sim-soft);
+  --fx-focus: var(--fl-focus);
+  --fx-radius: var(--fl-radius);
+  --fx-radius-sm: var(--fl-radius-sm);
+  --fx-shadow: none;
+  --fx-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.18);
+  --fx-font: var(--fl-font);
+  --fx-ease: var(--fl-ease);
+  --fx-s1: 4px;
+  --fx-s2: 8px;
+  --fx-s3: 12px;
+  --fx-s4: 16px;
+  --fx-s5: 24px;
+  --fx-s6: 32px;
+  --fx-s7: 48px;
+  --px-credit: var(--fl-credit);
+  --px-credit-soft: var(--fl-credit-soft);
+  /* panel heredado y checkout */
+  --bg: var(--fl-white);
+  --fg: var(--fl-black);
+  --muted: var(--fl-ink-2);
+  --brand: var(--fl-black);
+  --brand-strong: var(--fl-black-hover);
+  --brand-soft: var(--fl-mint);
+  --canvas: var(--fl-mint);
+  --sand: var(--fl-mint);
+  --sun: var(--fl-mint);
+  --ok: var(--fl-ok);
+  --bad: var(--fl-bad);
+  --warn: var(--fl-warn);
+  --border: var(--fl-control-line);
+  --line: var(--fl-line);
+  --font: var(--fl-font);
+}
+
+/* ---- Base ---------------------------------------------------------------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--fl-mint);
+  color: var(--fl-black);
+  font-family: var(--fl-font);
+  font-size: var(--fl-fs-body);
+  font-weight: 500;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' 0;
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--fl-font);
+  color: var(--fl-black);
+}
+::selection {
+  background: var(--fl-black);
+  color: var(--fl-mint);
+}
+
+/* Cifras: alineadas y comparables (tabulares, de altura fija). */
+.fl-num,
+.num,
+output {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Foco: anillo negro con separación (visible sobre menta y sobre blanco). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--fl-focus);
+  outline-offset: 2px;
+}
+
+/* ---- Marca ---------------------------------------------------------------- */
+.fl-logo {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  line-height: 1;
+}
+.fl-logo svg {
+  display: block;
+  flex: none;
+}
+.fl-logo-label {
+  padding-left: 0.6em;
+  border-left: 2px solid currentColor;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.fl-logo[data-tone='white'] {
+  color: var(--fl-white);
+}
+
+/* ---- Barra de entorno: negra, compacta, siempre arriba -------------------- */
+.sandbox-badge {
+  position: relative;
+  z-index: 60;
+  margin: 0;
+  min-height: 28px;
+  padding: 5px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--fl-black);
+  color: var(--fl-white);
+  border: none;
+  font-family: var(--fl-font);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.sandbox-badge::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fl-mint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+@media print {
+  body {
+    background: var(--fl-white);
+  }
+  .sandbox-badge {
+    display: none !important;
+  }
+}

@@ -52,6 +52,7 @@ const RESTRICTED = new Set([
   'CC-BY-3.0',
   'Python-2.0',
   'Artistic-2.0',
+  'OFL-1.1',
 ]);
 const PROHIBITED_PATTERNS = [
   /^GPL-/i,

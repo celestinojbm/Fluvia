@@ -28,6 +28,20 @@
       "approvalDate": "2026-07-10",
       "reviewBy": "revision legal LGPLv3 antes del primer release publico/comercial",
       "notes": "Aceptacion condicionada al modo de uso actual: binario dinamico, sin modificaciones, componente separado y producto aun sandbox; no equivale a aprobacion de produccion"
+    },
+    {
+      "package": "@fontsource-variable/manrope",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "status": "aceptada",
+      "scope": "produccion (fuente tipografica de la interfaz; ficheros woff2 servidos por apps/{checkout,dashboard} desde /_next/static)",
+      "dependencyPath": "apps/{checkout,dashboard} > @fontsource-variable/manrope@5.3.0",
+      "reason": "Fuente de la identidad visual solicitada por el propietario. OFL-1.1 permite uso, incrustacion y redistribucion con el software, incluido uso comercial; no impone licencia al producto",
+      "obligations": "Conservar el aviso de copyright y el texto OFL al redistribuir la fuente; no vender la fuente por separado; no usar el nombre reservado si se modifica la fuente (aqui no se modifica)",
+      "approvedBy": "Celestino Briceño",
+      "approvalDate": "2026-10-01",
+      "reviewBy": "confirmar en la revision del PR de la jornada de diseño; re-evaluar en el gate de primer release publico/comercial",
+      "notes": "Registrada por el agente a partir de la instruccion escrita del propietario en el encargo «Jornada de diseño» (2026-10-01): «Tipografia: utiliza Manrope alojada localmente para la interfaz». El propietario debe confirmarla o revertirla en la revision; si la rechaza, se retira la dependencia y la interfaz vuelve a la pila del sistema"
     }
   ]
 }
