@@ -219,6 +219,47 @@ test.describe('asistente', () => {
     await ctx.close();
   });
 
+  test('reintento tras desconexión: no duplica el mensaje ni la respuesta (T-07)', async ({
+    browser,
+  }) => {
+    const { ctx, p } = await personal(browser);
+    await openAssistant(p);
+    const MSGS = '**/api/assistant/personal/conversations/*/messages';
+    const turn = async (text: string, cut: 'after_server' | 'before_server') => {
+      let pending = true;
+      await p.route(MSGS, async (route) => {
+        if (route.request().method() !== 'POST' || !pending) return route.continue();
+        pending = false;
+        // after_server: el servidor responde ENTERO y la conexión se corta de
+        // camino al navegador. before_server: la petición nunca llega.
+        if (cut === 'after_server') await route.fetch();
+        await route.abort('connectionreset');
+      });
+      await p.locator('#as-input').fill(text);
+      await p.keyboard.press('Enter');
+      const retry = p.getByRole('button', { name: /Reintentar/ });
+      await expect(retry).toBeVisible({ timeout: 20_000 });
+      await retry.click();
+      await expect(p.getByText('Respuesta lista.')).toBeAttached({ timeout: 20_000 });
+      await p.unroute(MSGS);
+    };
+    await turn('¿Cuál es mi saldo?', 'after_server');
+    await turn('¿Y mis cuotas?', 'before_server');
+    await expect(p.locator('.as-msg[data-role="user"]')).toHaveCount(2);
+    await expect(p.locator('.as-msg[data-role="assistant"]')).toHaveCount(2);
+    // En el servidor: exactamente dos turnos, sin duplicados.
+    const roles = await p.evaluate(async () => {
+      const convs = await (await fetch('/api/assistant/personal/conversations')).json();
+      const id = convs.data[0].id as string;
+      const hist = await (
+        await fetch(`/api/assistant/personal/conversations/${id}/messages`)
+      ).json();
+      return (hist.data as Array<{ role: string }>).map((m) => m.role);
+    });
+    expect(roles).toEqual(['user', 'assistant', 'user', 'assistant']);
+    await ctx.close();
+  });
+
   test('una orden de mover dinero no se ejecuta', async ({ browser }) => {
     const { ctx, p } = await personal(browser);
     const before = await inPage(p, `${APP}/api/personal/wallet/balances`);

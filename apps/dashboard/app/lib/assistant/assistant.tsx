@@ -44,6 +44,9 @@ interface Msg {
   status: 'complete' | 'cancelled' | 'error' | 'streaming';
   error?: string;
   retryText?: string;
+  /** Clave del turno: el reintento reutiliza la misma (sin duplicar el mensaje). */
+  clientId?: string;
+  retryIds?: string[];
 }
 interface Conv {
   id: string;
@@ -274,7 +277,7 @@ function AssistantPanel({
   // ── Enviar con streaming ───────────────────────────────────────────────────
   const send = async (
     override?: string,
-    opts: { ids?: string[]; mode?: 'call' } = {}
+    opts: { ids?: string[]; mode?: 'call'; clientId?: string } = {}
   ): Promise<string | null> => {
     const body = (override ?? text).trim();
     const ids =
@@ -300,7 +303,9 @@ function AssistantPanel({
       id = c.body.id;
       setConvId(id);
     }
+    const clientId = opts.clientId ?? crypto.randomUUID();
     const tempUser: Msg = {
+      clientId,
       id: `tmp-u-${Date.now()}`,
       role: 'user',
       content: body,
@@ -311,6 +316,7 @@ function AssistantPanel({
       status: 'complete',
     };
     const tempAsst: Msg = {
+      clientId,
       id: `tmp-a-${Date.now()}`,
       role: 'assistant',
       content: '',
@@ -341,6 +347,7 @@ function AssistantPanel({
         body: JSON.stringify({
           text: body,
           attachment_ids: ids,
+          client_message_id: clientId,
           input_mode: mode,
           context: { route: window.location.pathname, ...(task ? { task } : {}) },
         }),
@@ -359,14 +366,17 @@ function AssistantPanel({
           status: 'error',
           error: assistantError(res.status, code),
           retryText: body,
+          retryIds: ids,
         }));
         setNotice('No se pudo enviar.');
         return null;
       }
       for await (const ev of readSse(res)) {
         if (ev.event === 'start') {
-          const u = ev.data.user_message as Msg;
-          setMsgs((all) => all.map((m) => (m.id === tempUser.id ? u : m)));
+          const u = { ...(ev.data.user_message as Msg), clientId };
+          setMsgs((all) =>
+            all.filter((m) => m.id !== u.id).map((m) => (m.id === tempUser.id ? u : m))
+          );
         } else if (ev.event === 'delta') {
           patch((m) => ({ ...m, content: m.content + String(ev.data.text ?? '') }));
         } else if (ev.event === 'tool') {
@@ -383,6 +393,7 @@ function AssistantPanel({
             status: 'error',
             error: assistantError(500, String(ev.data.code ?? '')),
             retryText: body,
+            retryIds: ids,
           }));
           setNotice('La respuesta no se completó.');
         }
@@ -392,7 +403,13 @@ function AssistantPanel({
         patch((m) => ({ ...m, status: 'cancelled' }));
         setNotice('Respuesta detenida.');
       } else {
-        patch((m) => ({ ...m, status: 'error', error: assistantError(0), retryText: body }));
+        patch((m) => ({
+          ...m,
+          status: 'error',
+          error: assistantError(0),
+          retryText: body,
+          retryIds: ids,
+        }));
         setNotice('Se perdió la conexión.');
       }
     } finally {
@@ -597,8 +614,17 @@ function AssistantPanel({
                                 type="button"
                                 className="as-btn"
                                 onClick={() => {
-                                  setMsgs((all) => all.filter((x) => x.id !== m.id));
-                                  void send(m.retryText);
+                                  // Mismo turno: se quitan sus burbujas y se reenvía con
+                                  // la MISMA clave (el servidor no lo duplica).
+                                  setMsgs((all) =>
+                                    all.filter((x) =>
+                                      m.clientId ? x.clientId !== m.clientId : x.id !== m.id
+                                    )
+                                  );
+                                  void send(m.retryText, {
+                                    ids: m.retryIds ?? [],
+                                    clientId: m.clientId,
+                                  });
                                 }}
                                 disabled={busy}
                               >

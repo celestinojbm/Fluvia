@@ -120,6 +120,11 @@
 
 - **No verificado:** conversación inteligente por voz con proveedores externos. Falta X-01 y X-02.
 
+### Robustez del agente y de los turnos
+
+- Cada tarea asíncrona de una llamada (hablar, transcribir, escuchar, colgar) pasa por `CallSession.task()`: un fallo se registra con su sala y limpia el estado de **esa** sesión (deja de «hablar» y avisa). El manejador global de rechazos no es la red de seguridad: si algo llega allí, se registra como error y se cuenta en `/health` (`unhandled`), sin ocultarlo.
+- Un turno del chat lleva `client_message_id`. Reintentar el mismo turno nunca crea otro mensaje de usuario: si la respuesta ya estaba completa se reproduce (sin proveedor ni herramientas); si se cortó o falló, se regenera sobre el mismo mensaje y sin consumir cuota. La misma clave con otro texto es un 409.
+
 ## 7. Coste operativo estimado (supuestos explícitos)
 
 Son órdenes de magnitud para decidir, **no precios**: consulta las tarifas vigentes de cada proveedor antes de activarlo.

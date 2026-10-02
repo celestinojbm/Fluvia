@@ -65,6 +65,10 @@ export interface MessageDto {
   simulated: boolean;
   status: 'complete' | 'cancelled' | 'error';
   createdAt: string;
+  /** Clave de turno enviada por el cliente (solo mensajes de usuario). */
+  clientMessageId?: string | null;
+  /** Mensaje de usuario al que responde (solo respuestas). */
+  replyTo?: string | null;
 }
 
 export interface AttachmentDto {
@@ -99,6 +103,8 @@ const msg = (r: Record<string, unknown>): MessageDto => ({
   simulated: r.simulated as boolean,
   status: r.status as MessageDto['status'],
   createdAt: (r.created_at as Date).toISOString(),
+  clientMessageId: (r.client_message_id as string | null) ?? null,
+  replyTo: (r.reply_to as string | null) ?? null,
 });
 const att = (r: Record<string, unknown>): AttachmentDto => ({
   id: r.id as string,
@@ -173,8 +179,8 @@ export class AssistantStore {
     const r = await c.query(
       `INSERT INTO assistant_messages
          (tenant_id, owner_id, conversation_id, role, content, input_mode, attachment_ids,
-          actions, tools_used, provider, simulated, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+          actions, tools_used, provider, simulated, status, client_message_id, reply_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
         owner.tenantId,
         owner.ownerId,
@@ -188,9 +194,34 @@ export class AssistantStore {
         m.provider,
         m.simulated,
         m.status,
+        m.clientMessageId ?? null,
+        m.replyTo ?? null,
       ]
     );
     return msg(r.rows[0]);
+  }
+
+  /** Turno ya guardado con esa clave del cliente en la conversación (si existe). */
+  async findUserTurn(
+    c: PoolClient,
+    conversationId: string,
+    clientMessageId: string
+  ): Promise<MessageDto | null> {
+    const r = await c.query(
+      `SELECT * FROM assistant_messages
+        WHERE conversation_id = $1 AND role = 'user' AND client_message_id = $2`,
+      [conversationId, clientMessageId]
+    );
+    return r.rows[0] ? msg(r.rows[0]) : null;
+  }
+
+  /** Última respuesta guardada para un mensaje de usuario. */
+  async latestReply(c: PoolClient, userMessageId: string): Promise<MessageDto | null> {
+    const r = await c.query(
+      `SELECT * FROM assistant_messages WHERE reply_to = $1 ORDER BY created_at DESC LIMIT 1`,
+      [userMessageId]
+    );
+    return r.rows[0] ? msg(r.rows[0]) : null;
   }
 
   /** Mensajes de usuario de hoy (UTC) para la cuota diaria. */

@@ -42,6 +42,7 @@ class NamedError extends Error {
 }
 export class AssistantQuotaError extends NamedError {}
 export class AssistantBusyError extends NamedError {}
+export class AssistantIdempotencyError extends NamedError {}
 export class AssistantAttachmentError extends NamedError {}
 export class AssistantEmptyError extends NamedError {}
 export class MediaUnsupportedError extends NamedError {}
@@ -56,6 +57,7 @@ function mapError(e: unknown): unknown {
     if (e.code === 'quota_exceeded') return new AssistantQuotaError(e.message);
     if (e.code === 'busy') return new AssistantBusyError(e.message);
     if (e.code === 'empty') return new AssistantEmptyError(e.message);
+    if (e.code === 'idempotency_mismatch') return new AssistantIdempotencyError(e.message);
     return new AssistantAttachmentError(e.message);
   }
   if (e instanceof MediaRejectedError) {
@@ -83,6 +85,8 @@ const SendBody = z
     text: z.string().max(8000).default(''),
     attachment_ids: z.array(z.string().uuid()).max(10).default([]),
     input_mode: z.enum(['text', 'voice', 'call']).default('text'),
+    // Clave del turno (la genera el cliente; un reintento reutiliza la misma).
+    client_message_id: z.string().uuid().optional(),
     context: z
       .object({ route: z.string().max(300).optional(), task: z.string().max(60).optional() })
       .strict()
@@ -326,6 +330,7 @@ export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutes
             inputMode: b.input_mode,
             attachmentIds: b.attachment_ids,
             context: sanitizeContext(b.context, org(req)),
+            clientMessageId: b.client_message_id,
           },
           write,
           controller.signal

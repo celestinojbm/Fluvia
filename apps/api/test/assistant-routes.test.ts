@@ -39,6 +39,19 @@ let program: string;
 let orgA: string;
 let orgB: string;
 const storage = new MemoryStorage();
+// Cuenta las llamadas reales al modelo: una reproducción idempotente no debe
+// llamar al proveedor (ni, por tanto, ejecutar herramientas).
+let providerCalls = 0;
+const simulatedConversation = new SimulatedConversationProvider(40);
+const countingProvider = {
+  name: simulatedConversation.name,
+  simulated: simulatedConversation.simulated,
+  vision: simulatedConversation.vision,
+  stream: (...args: Parameters<SimulatedConversationProvider['stream']>) => {
+    providerCalls++;
+    return simulatedConversation.stream(...args);
+  },
+};
 const PASSWORD = 'asistente fluvia 2026';
 type Headers = Record<string, string>;
 let opOwner: Headers;
@@ -133,7 +146,7 @@ beforeAll(async () => {
       env: { ASSISTANT_MESSAGES_PER_DAY: '6', ASSISTANT_MAX_AUDIO_SECONDS: '120' },
       storage,
       providers: {
-        conversation: new SimulatedConversationProvider(40),
+        conversation: countingProvider,
         stt: new SimulatedSpeechToText(),
         tts: new SimulatedTextToSpeech(),
         call: new SimulatedCallTransport(),
@@ -166,6 +179,12 @@ afterAll(async () => {
 
 const P = '/v1/personal/assistant';
 const C = (org: string) => `/v1/organizations/${org}/assistant`;
+
+let address: string | null = null;
+async function listenOnce(): Promise<string> {
+  address ??= await app.listen({ port: 0, host: '127.0.0.1' });
+  return address;
+}
 
 async function newConversation(base: string, h: Headers): Promise<string> {
   const r = await app.inject({
@@ -506,7 +525,7 @@ describe('límites y cancelación', () => {
   });
 
   it('cancelar a mitad: se guarda lo mostrado con estado «cancelled»', async () => {
-    const address = await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = await listenOnce();
     const h = await consumer();
     const conv = await newConversation(P, h);
     const ac = new AbortController();
@@ -519,7 +538,11 @@ describe('límites y cancelación', () => {
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
     let seen = '';
-    while (!seen.includes('event: delta')) seen += dec.decode((await reader.read()).value);
+    while (!seen.includes('event: delta')) {
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error(`el stream terminó sin delta: ${res.status} ${seen}`);
+      seen += dec.decode(chunk.value);
+    }
     ac.abort();
     await new Promise((r) => setTimeout(r, 600));
     const hist = await app.inject({
@@ -530,6 +553,117 @@ describe('límites y cancelación', () => {
     const last = hist.json().data.at(-1);
     expect(last).toMatchObject({ role: 'assistant', status: 'cancelled' });
     expect(last.content.length).toBeGreaterThan(0);
+  });
+});
+
+describe('reintentos idempotentes (T-07)', () => {
+  const rows = async (conv: string) =>
+    (
+      await adminPool.query<{ role: string; status: string; reply_to: string | null }>(
+        `SELECT role, status, reply_to FROM assistant_messages WHERE conversation_id = $1 ORDER BY created_at`,
+        [conv]
+      )
+    ).rows;
+
+  it('respuesta ya completa: el reintento la reproduce sin proveedor, herramientas ni mensajes nuevos', async () => {
+    const h = await consumer();
+    const conv = await newConversation(P, h);
+    const id = randomUUID();
+    const first = parseSse(
+      (await send(P, h, conv, { text: '¿Cuál es mi saldo?', client_message_id: id })).body
+    );
+    const done1 = first.find((e) => e.event === 'done')!.data.message as Record<string, unknown>;
+    expect(done1.tools_used).toEqual(['get_balances']);
+    const calls = providerCalls;
+
+    const again = parseSse(
+      (await send(P, h, conv, { text: '¿Cuál es mi saldo?', client_message_id: id })).body
+    );
+    const start2 = again.find((e) => e.event === 'start')!.data.user_message as { id: string };
+    const done2 = again.find((e) => e.event === 'done')!.data.message as Record<string, unknown>;
+    expect(start2.id).toBe((first[0]!.data.user_message as { id: string }).id);
+    expect(done2.id).toBe(done1.id);
+    expect(done2.content).toBe(done1.content);
+    expect(again.some((e) => e.event === 'tool')).toBe(false);
+    expect(providerCalls).toBe(calls);
+    expect((await rows(conv)).map((r) => r.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('desconexión a mitad: el reintento regenera sobre el MISMO mensaje de usuario', async () => {
+    const address = await listenOnce();
+    const h = await consumer();
+    const conv = await newConversation(P, h);
+    const id = randomUUID();
+    const ac = new AbortController();
+    const res = await fetch(`${address}${P}/conversations/${conv}/messages`, {
+      method: 'POST',
+      headers: { ...h, 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'cuéntame qué puedes hacer', client_message_id: id }),
+      signal: ac.signal,
+    });
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let seen = '';
+    while (!seen.includes('event: delta')) {
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error(`el stream terminó sin delta: ${res.status} ${seen}`);
+      seen += dec.decode(chunk.value);
+    }
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 600));
+    expect((await rows(conv)).map((r) => `${r.role}:${r.status}`)).toEqual([
+      'user:complete',
+      'assistant:cancelled',
+    ]);
+
+    const retry = parseSse(
+      (await send(P, h, conv, { text: 'cuéntame qué puedes hacer', client_message_id: id })).body
+    );
+    expect(retry.find((e) => e.event === 'done')).toBeTruthy();
+    const all = await rows(conv);
+    // Un solo mensaje de usuario; la respuesta nueva contesta a ese mismo mensaje.
+    expect(all.filter((r) => r.role === 'user')).toHaveLength(1);
+    expect(all.map((r) => `${r.role}:${r.status}`)).toEqual([
+      'user:complete',
+      'assistant:cancelled',
+      'assistant:complete',
+    ]);
+    const userId = (retry[0]!.data.user_message as { id: string }).id;
+    expect(all.slice(1).every((r) => r.reply_to === userId)).toBe(true);
+
+    // Un tercer intento ya reproduce la respuesta completa.
+    const calls = providerCalls;
+    await send(P, h, conv, { text: 'cuéntame qué puedes hacer', client_message_id: id });
+    expect(providerCalls).toBe(calls);
+    expect(await rows(conv)).toHaveLength(3);
+  });
+
+  it('misma clave con otro texto → 409 assistant_idempotency_mismatch', async () => {
+    const h = await consumer();
+    const conv = await newConversation(P, h);
+    const id = randomUUID();
+    await send(P, h, conv, { text: 'hola', client_message_id: id });
+    const r = await send(P, h, conv, { text: 'otra cosa', client_message_id: id });
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error.code).toBe('assistant_idempotency_mismatch');
+    expect(await rows(conv)).toHaveLength(2);
+  });
+
+  it('dos envíos simultáneos del mismo turno: un solo mensaje y una sola ejecución', async () => {
+    const h = await consumer();
+    const conv = await newConversation(P, h);
+    const id = randomUUID();
+    const calls = providerCalls;
+    const [a, b] = await Promise.all([
+      send(P, h, conv, { text: '¿Cuál es mi saldo?', client_message_id: id }),
+      send(P, h, conv, { text: '¿Cuál es mi saldo?', client_message_id: id }),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    const all = await rows(conv);
+    expect(all.filter((r) => r.role === 'user')).toHaveLength(1);
+    expect(all.filter((r) => r.role === 'assistant')).toHaveLength(1);
+    // get_balances: una ronda con herramienta + una de respuesta = 2 llamadas.
+    expect(providerCalls - calls).toBe(2);
   });
 });
 

@@ -64,7 +64,10 @@ export type EngineErrorCode =
   ProviderErrorCode | 'quota_exceeded' | 'busy' | 'invalid_attachment' | 'empty';
 
 export class AssistantLimitError extends Error {
-  constructor(readonly code: 'quota_exceeded' | 'busy' | 'invalid_attachment' | 'empty') {
+  constructor(
+    readonly code:
+      'quota_exceeded' | 'busy' | 'invalid_attachment' | 'empty' | 'idempotency_mismatch'
+  ) {
     super(`assistant limit: ${code}`);
     this.name = new.target.name;
   }
@@ -116,6 +119,8 @@ export class AssistantEngine {
       inputMode: 'text' | 'voice' | 'call';
       attachmentIds: string[];
       context: { route: string | null; task: string | null };
+      /** Clave del turno: el mismo turno reintentado no se guarda ni se ejecuta dos veces. */
+      clientMessageId?: string;
     },
     emit: (e: EngineEvent) => void,
     signal: AbortSignal
@@ -154,44 +159,95 @@ export class AssistantEngine {
     // 1) Mensaje del usuario + adjuntos (propios, subidos, imágenes) + historial.
     const prep = await store.run(owner, async (c) => {
       await store.getConversation(c, owner, input.conversationId);
-      if ((await store.countUserMessagesToday(c)) >= limits.messagesPerDay) {
-        throw new AssistantLimitError('quota_exceeded');
-      }
+      const existing = input.clientMessageId
+        ? await store.findUserTurn(c, input.conversationId, input.clientMessageId)
+        : null;
       const atts = [];
-      for (const id of input.attachmentIds) {
-        let a;
-        try {
-          a = await store.getAttachment(c, id);
-        } catch (e) {
-          if (e instanceof AssistantNotFoundError)
+      let userMessage: MessageDto;
+      let replay: MessageDto | null = null;
+      if (existing) {
+        // Reintento del MISMO turno: nunca otro mensaje de usuario ni otra cuota.
+        if (existing.content !== clean.text) throw new AssistantLimitError('idempotency_mismatch');
+        const last = await store.latestReply(c, existing.id);
+        if (last?.status === 'complete') replay = last;
+        else if (!last && Date.now() - Date.parse(existing.createdAt) < STREAM_LEASE_MS) {
+          // La respuesta original sigue en curso (o acaba de empezar).
+          throw new AssistantLimitError('busy');
+        }
+        for (const id of existing.attachmentIds) {
+          try {
+            const a = await store.getAttachment(c, id);
+            if (a.kind === 'image' && a.status !== 'deleted') atts.push(a);
+          } catch (e) {
+            if (!(e instanceof AssistantNotFoundError)) throw e;
+          }
+        }
+        userMessage = existing;
+      } else {
+        if ((await store.countUserMessagesToday(c)) >= limits.messagesPerDay) {
+          throw new AssistantLimitError('quota_exceeded');
+        }
+        for (const id of input.attachmentIds) {
+          let a;
+          try {
+            a = await store.getAttachment(c, id);
+          } catch (e) {
+            if (e instanceof AssistantNotFoundError)
+              throw new AssistantLimitError('invalid_attachment');
+            throw e;
+          }
+          if (a.kind !== 'image' || a.status !== 'uploaded') {
             throw new AssistantLimitError('invalid_attachment');
+          }
+          atts.push(a);
+        }
+        try {
+          userMessage = await store.addMessage(c, owner, {
+            conversationId: input.conversationId,
+            role: 'user',
+            content: clean.text,
+            inputMode: input.inputMode,
+            attachmentIds: atts.map((a) => a.id),
+            actions: [],
+            toolsUsed: [],
+            provider: null,
+            simulated: false,
+            status: 'complete',
+            clientMessageId: input.clientMessageId ?? null,
+          });
+        } catch (e) {
+          // Dos envíos simultáneos del mismo turno: gana uno; el otro espera.
+          if ((e as { code?: string }).code === '23505') throw new AssistantLimitError('busy');
           throw e;
         }
-        if (a.kind !== 'image' || a.status !== 'uploaded') {
-          throw new AssistantLimitError('invalid_attachment');
-        }
-        atts.push(a);
+        await store.markSent(
+          c,
+          atts.map((a) => a.id)
+        );
       }
-      const history = await store.listMessages(c, input.conversationId, 20);
-      const userMessage = await store.addMessage(c, owner, {
-        conversationId: input.conversationId,
-        role: 'user',
-        content: clean.text,
-        inputMode: input.inputMode,
-        attachmentIds: atts.map((a) => a.id),
-        actions: [],
-        toolsUsed: [],
-        provider: null,
-        simulated: false,
-        status: 'complete',
-      });
-      await store.markSent(
-        c,
-        atts.map((a) => a.id)
+      const history = (await store.listMessages(c, input.conversationId, 21)).filter(
+        (m) => m.id !== userMessage.id && m.replyTo !== userMessage.id
       );
-      await store.touchConversation(c, input.conversationId);
-      return { atts, history, userMessage };
+      if (!replay) await store.touchConversation(c, input.conversationId);
+      return { atts, history, userMessage, replay };
     });
+
+    if (prep.replay) {
+      // Ya respondido (p. ej. la conexión se cortó al final): se reproduce lo
+      // guardado, sin proveedor ni herramientas.
+      emit({
+        type: 'start',
+        userMessage: prep.userMessage,
+        simulated: prep.replay.simulated,
+        provider: prep.replay.provider ?? provider.name,
+      });
+      emit({
+        type: 'done',
+        message: prep.replay,
+        actions: resolveActions(prep.replay.actions, owner.surface, input.orgId),
+      });
+      return;
+    }
 
     emit({
       type: 'start',
@@ -327,6 +383,7 @@ export class AssistantEngine {
         provider: provider.name,
         simulated: provider.simulated,
         status,
+        replyTo: prep.userMessage.id,
       });
       await store.touchConversation(c, input.conversationId);
       return m;

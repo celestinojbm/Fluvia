@@ -288,6 +288,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'The assistant is already answering; wait or stop the current answer',
   },
+  assistant_idempotency_mismatch: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This message id was already used with different content',
+  },
   assistant_invalid_attachment: {
     status: 422,
     type: 'unprocessable_error',
@@ -584,6 +589,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   CatalogDuplicateError: 'catalog_duplicate',
   AssistantQuotaError: 'assistant_quota_exceeded',
   AssistantBusyError: 'assistant_busy',
+  AssistantIdempotencyError: 'assistant_idempotency_mismatch',
   AssistantAttachmentError: 'assistant_invalid_attachment',
   AssistantEmptyError: 'validation_error',
   MediaUnsupportedError: 'media_unsupported',
