@@ -42,6 +42,9 @@ import {
   CustomerDirectory,
   InstallmentSandboxService,
   InventoryService,
+  BusinessProfileService,
+  VenueService,
+  DiningService,
   OrderService,
   SummaryService,
   isInstallmentPlanActive,
@@ -75,6 +78,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
+import { registerDiningRoutes } from './routes/dining.js';
 import { registerDirectoryRoutes } from './routes/directory.js';
 import { registerAssistantRoutes } from './routes/assistant.js';
 import { commerceTools, personalTools } from './assistant-tools.js';
@@ -485,6 +489,18 @@ export function buildApp({
       summaryService: new SummaryService(appPool),
       installmentService: new InstallmentSandboxService(appPool, orderService),
       inventoryService: new InventoryService(appPool),
+    });
+    // Restaurantes / tipo de negocio: configuración del local, pedidos de
+    // mesa, KDS en vivo y QR público (menú + pedido propio). Permisos de local
+    // (venue_staff) evaluados en el servidor.
+    registerDiningRoutes(app, {
+      security,
+      idempotencyService,
+      businessService: new BusinessProfileService(appPool),
+      venueService: new VenueService(appPool),
+      diningService: new DiningService(appPool),
+      sandboxSimulation: config.env === 'local' || config.env === 'test',
+      limiter: rateLimiter,
     });
     // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
     // comercio; lectura pública limitada por IP.

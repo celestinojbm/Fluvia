@@ -608,8 +608,19 @@ export class DiningService {
       expectedTotal: bigint;
     }
   ): Promise<{ order: DiningOrderDto; trackingToken: string }> {
+    return withTenantTransaction(this.appPool, tenantId, (c) =>
+      this.createCustomerOrderIn(c, tenantId, input)
+    );
+  }
+
+  /** Igual, dentro de una tx ajena (p. ej. la de Idempotency-Key). */
+  async createCustomerOrderIn(
+    c: PoolClient,
+    tenantId: string,
+    input: Parameters<DiningService['createCustomerOrder']>[1]
+  ): Promise<{ order: DiningOrderDto; trackingToken: string }> {
     const token = randomBytes(24).toString('base64url');
-    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+    {
       const currency = await this.currencyIn(c);
       const id = await this.insertOrderIn(c, tenantId, {
         branchId: input.branchId,
@@ -641,7 +652,7 @@ export class DiningService {
         null
       );
       return { order: await this.getIn(c, id), trackingToken: token };
-    });
+    }
   }
 
   async acceptCustomerOrder(
@@ -711,6 +722,34 @@ export class DiningService {
       }
     });
     return true;
+  }
+
+  /** El personal atiende el llamado del cliente (lo deja registrado). */
+  async clearAttention(
+    tenantId: string,
+    access: VenueAccess,
+    orderId: string,
+    expectedVersion: number
+  ): Promise<DiningOrderDto> {
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const o = await this.lockIn(c, orderId, expectedVersion);
+      assertVenue(access, 'orders:view', o.branch_id);
+      await c.query(`UPDATE dining_orders SET attention_requested_at = NULL WHERE id = $1`, [
+        orderId,
+      ]);
+      await this.bumpIn(c, orderId);
+      await this.event(
+        c,
+        tenantId,
+        o.branch_id,
+        orderId,
+        null,
+        'attention_cleared',
+        {},
+        access.userId
+      );
+      return this.getIn(c, orderId);
+    });
   }
 
   async resolveTracking(token: string): Promise<{ tenantId: string; orderId: string } | null> {

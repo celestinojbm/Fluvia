@@ -427,6 +427,40 @@ export class VenueService {
     });
   }
 
+  /**
+   * QR público de mesa → contexto mínimo (organización, sucursal, mesa). No
+   * revela pedidos: con esto solo se lee el menú y se crea un pedido PROPIO.
+   */
+  async tableByToken(token: string): Promise<{
+    tenantId: string;
+    branchId: string;
+    tableId: string;
+    tableLabel: string;
+    branchName: string;
+    merchantName: string | null;
+  } | null> {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+    const r = await this.appPool.query<{
+      tenant_id: string;
+      branch_id: string;
+      table_id: string;
+      table_label: string;
+      branch_name: string;
+      merchant_name: string | null;
+    }>(`SELECT * FROM venue_table_by_token($1)`, [token]);
+    const t = r.rows[0];
+    return t
+      ? {
+          tenantId: t.tenant_id,
+          branchId: t.branch_id,
+          tableId: t.table_id,
+          tableLabel: t.table_label,
+          branchName: t.branch_name,
+          merchantName: t.merchant_name,
+        }
+      : null;
+  }
+
   /** Menú de una sucursal: SOLO datos del catálogo del comercio. */
   async menu(tenantId: string, branchId: string): Promise<MenuProductDto[]> {
     return withTenantTransaction(this.appPool, tenantId, (c) => this.menuIn(c, branchId));

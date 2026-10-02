@@ -484,6 +484,37 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'The idempotency key was already used with different parameters',
   },
+  // Restaurantes y cobro presencial.
+  version_conflict: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This record was modified by someone else; reload it and try again',
+  },
+  table_occupied: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The table already has an open order',
+  },
+  venue_conflict: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The venue configuration conflicts with an existing record',
+  },
+  modifier_selection_invalid: {
+    status: 422,
+    type: 'unprocessable_error',
+    message: 'The selected options are not valid for this product',
+  },
+  module_not_enabled: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This feature is not enabled for the business',
+  },
+  collection_not_enabled: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'In-person collection is not enabled for this account',
+  },
 } as const satisfies Record<string, ErrorCatalogEntry>;
 
 export type ErrorCode = keyof typeof ERROR_CATALOG;
@@ -639,6 +670,19 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   ConsumerSessionInvalidError: 'consumer_session_invalid',
   ConsumerLockedError: 'consumer_locked',
   ApplicationPendingError: 'application_pending',
+  // Restaurantes y cobro presencial.
+  BusinessProfileVersionConflictError: 'version_conflict',
+  ModuleNotEnabledError: 'module_not_enabled',
+  EnablementTransitionError: 'invalid_state_transition',
+  CollectionNotEnabledError: 'collection_not_enabled',
+  VenueForbiddenError: 'insufficient_permissions',
+  VenueNotFoundError: 'not_found',
+  VenueConflictError: 'venue_conflict',
+  DiningVersionConflictError: 'version_conflict',
+  DiningStateError: 'invalid_state_transition',
+  TableOccupiedError: 'table_occupied',
+  ModifierSelectionError: 'modifier_selection_invalid',
+  DiningProductUnavailableError: 'product_unavailable',
 };
 
 export interface PublicErrorBody {
