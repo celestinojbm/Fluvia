@@ -1,4 +1,4 @@
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../csrf-header';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
 
 /** Llamadas del navegador al BFF del asistente (con la cabecera anti-CSRF). */
 export async function call<T>(
@@ -105,6 +105,13 @@ export async function* readSse(
 /** Texto para el usuario según el código de error del catálogo. */
 export function assistantError(status: number, code?: string): string {
   if (status === 0) return 'Sin conexión con Fluvia. Revisa tu red y vuelve a intentarlo.';
+  // Comprador: su credencial es el enlace de pago o de pedido, no una sesión.
+  if (code === 'buyer_session_expired') {
+    return 'Este enlace de pago o de pedido ya caducó. Pide uno nuevo al comercio.';
+  }
+  if (code === 'buyer_session_invalid') {
+    return 'No pudimos validar tu enlace de pago o de pedido. Ábrelo de nuevo desde el comercio.';
+  }
   if (status === 401) return 'Tu sesión caducó. Vuelve a entrar para seguir.';
   switch (code) {
     case 'assistant_quota_exceeded':

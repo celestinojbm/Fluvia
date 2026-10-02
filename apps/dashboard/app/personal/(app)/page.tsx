@@ -88,7 +88,7 @@ export default async function PersonalHome({
               <a className="px-btn" href="/personal/movimientos?accion=enviar">
                 <Icon name="send" /> Enviar
               </a>
-              <a className="px-btn" href="/personal/tarjetas?accion=pagar">
+              <a className="px-btn px-btn-lime" href="/personal/tarjetas?accion=pagar">
                 <Icon name="card" /> Pagar en comercio
               </a>
             </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Room, RemoteTrack } from 'livekit-client';
-import { Icon } from '../icons';
+import { Icon } from './icons';
 import { assistantError, call, upload } from './sse';
 
 /**

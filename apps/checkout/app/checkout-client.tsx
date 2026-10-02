@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FluviaSymbol } from './brand';
 import { formatAmount, MESSAGES, type Locale } from './messages';
 import { InstallmentsOption, OrderSummary, PlanBox, type CheckoutOrderView } from './order-panels';
+import { BuyerAssistant } from './buyer-assistant';
 
 /**
  * Página de checkout alojada (F3-05c-iv). Consume los route handlers
@@ -272,7 +273,14 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         </span>
       </p>
 
+      <BuyerAssistant
+        credential={
+          clientSecret() ? { checkout_session_id: sessionId, client_secret: clientSecret() } : null
+        }
+      />
+
       <p
+        id="estado"
         ref={statusRef}
         tabIndex={-1}
         className={`status status-${tone}`}
@@ -284,7 +292,11 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
         <span>{statusMessage}</span>
       </p>
 
-      {orderView ? <OrderSummary view={orderView} locale={locale} receipt={done} /> : null}
+      {orderView ? (
+        <div id="pedido">
+          <OrderSummary view={orderView} locale={locale} receipt={done} />
+        </div>
+      ) : null}
 
       {pending && (
         <button
@@ -301,6 +313,7 @@ export function CheckoutClient({ sessionId, locale }: { sessionId: string; local
 
       {canPay && (
         <form
+          id="pagar"
           onSubmit={(e) => {
             e.preventDefault();
             void pay();

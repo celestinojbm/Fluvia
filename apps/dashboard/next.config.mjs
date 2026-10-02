@@ -5,6 +5,9 @@ const nextConfig = {
   // server components) reenviando la sesión desde una cookie httpOnly; el
   // navegador jamás conoce la URL de la API ni sostiene el token de sesión.
   reactStrictMode: true,
+  // Asistente compartido (panel y checkout del comprador): TS/TSX de un
+  // paquete del monorepo, compilado por Next.
+  transpilePackages: ['@fluvia/assistant-ui'],
   poweredByHeader: false,
   async headers() {
     const dev = process.env.NODE_ENV !== 'production';

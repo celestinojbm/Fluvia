@@ -43,5 +43,5 @@ export function encode(m: AgentToUser): Uint8Array {
 }
 
 /** Salas que la API crea para el asistente; el agente no entra en otras. */
-export const ROOM_RE = /^fluvia-(personal|commerce)-[0-9a-f-]{36}$/;
-export const IDENTITY_RE = /^(consumer|user):[0-9a-f-]{36}$/;
+export const ROOM_RE = /^fluvia-(personal|commerce|buyer)-[0-9a-f-]{36}$/;
+export const IDENTITY_RE = /^(consumer|user|buyer):[0-9a-f-]{36}$/;

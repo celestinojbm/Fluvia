@@ -510,6 +510,16 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This feature is not enabled for the business',
   },
+  buyer_session_invalid: {
+    status: 401,
+    type: 'authentication_error',
+    message: 'The checkout or order link is missing or invalid',
+  },
+  buyer_session_expired: {
+    status: 401,
+    type: 'authentication_error',
+    message: 'This checkout or order link has expired',
+  },
   bill_allocation_invalid: {
     status: 409,
     type: 'conflict_error',
@@ -699,6 +709,8 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   InPersonNotFoundError: 'not_found',
   InPersonStateError: 'invalid_state_transition',
   InPersonKeyMismatchError: 'idempotency_key_reuse',
+  BuyerSessionInvalidError: 'buyer_session_invalid',
+  BuyerSessionExpiredError: 'buyer_session_expired',
 };
 
 export interface PublicErrorBody {

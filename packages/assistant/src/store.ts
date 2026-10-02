@@ -10,8 +10,13 @@ import type { Surface } from './policy.js';
 export interface Owner {
   tenantId: string;
   ownerId: string;
-  kind: 'consumer' | 'user';
+  kind: 'consumer' | 'user' | 'buyer';
   surface: Surface;
+  /**
+   * Comprador: lo ÚNICO que puede consultar (su checkout o su pedido). Lo fija
+   * el servidor al validar la credencial; nunca viene del cuerpo ni del chat.
+   */
+  scope?: { kind: 'checkout' | 'tracking'; id: string };
 }
 
 export class AssistantNotFoundError extends Error {

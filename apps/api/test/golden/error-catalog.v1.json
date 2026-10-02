@@ -466,6 +466,16 @@
       "status": 409,
       "type": "conflict_error",
       "message": "This part of the bill has a payment charged or in progress"
+    },
+    "buyer_session_invalid": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "The checkout or order link is missing or invalid"
+    },
+    "buyer_session_expired": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "This checkout or order link has expired"
     }
   },
   "domain_error_codes": {
@@ -610,6 +620,8 @@
     "AllocationHeldError": "allocation_payment_held",
     "InPersonNotFoundError": "not_found",
     "InPersonStateError": "invalid_state_transition",
-    "InPersonKeyMismatchError": "idempotency_key_reuse"
+    "InPersonKeyMismatchError": "idempotency_key_reuse",
+    "BuyerSessionInvalidError": "buyer_session_invalid",
+    "BuyerSessionExpiredError": "buyer_session_expired"
   }
 }

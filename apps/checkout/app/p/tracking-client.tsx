@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatAmount } from '../lib/money-format';
+import { BuyerAssistant } from '../buyer-assistant';
 
 /**
  * Seguimiento del PROPIO pedido (token privado en el fragmento de la URL):
@@ -127,7 +128,7 @@ export function TrackingClient() {
   }
   return (
     <main className="mesa" aria-labelledby="trk-title">
-      <header className="mesa-head">
+      <header className="mesa-head" id="estado">
         <p className="co-muted">
           Pedido #{view.number}
           {view.table_label ? ` · Mesa ${view.table_label}` : ''}
@@ -139,7 +140,8 @@ export function TrackingClient() {
           </p>
         ) : null}
       </header>
-      <ul className="order-lines" aria-label="Tus platos">
+      {token ? <BuyerAssistant credential={{ tracking_token: token }} /> : null}
+      <ul className="order-lines" aria-label="Tus platos" id="pedido">
         {view.lines.map((l, i) => (
           <li key={i}>
             <span>
@@ -160,6 +162,7 @@ export function TrackingClient() {
       </p>
       {['pending_acceptance', 'open', 'bill_requested'].includes(view.status) ? (
         <button
+          id="llamar"
           type="button"
           className="secondary"
           onClick={() => void callStaff()}
@@ -170,7 +173,7 @@ export function TrackingClient() {
       ) : null}
       {called ? <p role="status">{called}</p> : null}
 
-      <section aria-labelledby="bill-title" className="mesa-review">
+      <section aria-labelledby="bill-title" className="mesa-review" id="pagar">
         <h2 id="bill-title">Cuenta</h2>
         {!bill ? (
           <p className="co-muted">

@@ -82,6 +82,8 @@ import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
 import { registerDiningRoutes } from './routes/dining.js';
 import { registerInPersonRoutes } from './routes/in-person.js';
+import { buyerTools } from './buyer-tools.js';
+import { buyerAuthenticator } from './buyer-auth.js';
 import { registerDirectoryRoutes } from './routes/directory.js';
 import { registerAssistantRoutes } from './routes/assistant.js';
 import { commerceTools, personalTools } from './assistant-tools.js';
@@ -497,6 +499,7 @@ export function buildApp({
     // mesa, KDS en vivo y QR público (menú + pedido propio). Permisos de local
     // (venue_staff) evaluados en el servidor.
     const diningService = new DiningService(appPool);
+    const billService = new BillService(appPool, paymentLinkService, diningService);
     const businessService = new BusinessProfileService(appPool);
     const venueService = new VenueService(appPool);
     const sandboxSimulation = config.env === 'local' || config.env === 'test';
@@ -506,7 +509,7 @@ export function buildApp({
       businessService,
       venueService,
       diningService,
-      billService: new BillService(appPool, paymentLinkService, diningService),
+      billService,
       sandboxSimulation,
       limiter: rateLimiter,
       checkoutBaseUrl: config.checkoutBaseUrl,
@@ -566,8 +569,19 @@ export function buildApp({
       directory,
       listUncertain: (t) => merchantResolver.listUncertain(t),
     });
+    const bTools = buyerTools({
+      appPool,
+      dining: diningService,
+      bills: billService,
+      venue: venueService,
+    });
     registerAssistantRoutes(app, {
       security,
+      authenticateBuyer: buyerAuthenticator({
+        appPool,
+        checkout: checkoutSessionService,
+        dining: diningService,
+      }),
       authenticateConsumer: async (token) => {
         const id = await personalOrFallback.consumerAuth.authenticate(token);
         return { consumerId: id.consumerId, tenantId: id.tenantId };
@@ -577,7 +591,9 @@ export function buildApp({
         storage,
         provider: providers.conversation,
         limits,
-        tools: (surface) => (surface === 'personal' ? pTools : cTools),
+        // Mapa EXPLÍCITO: cada superficie solo ve sus herramientas.
+        tools: (surface) =>
+          surface === 'personal' ? pTools : surface === 'buyer' ? bTools : cTools,
         concurrency: assistant?.concurrency,
       }),
       store,

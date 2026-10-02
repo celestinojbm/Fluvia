@@ -20,8 +20,9 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
  * dispositivo; corte de red de la cocina y reconexión sin pérdida ni
  * duplicados; agregado posterior como revisión; cuenta dividida, una parte
  * por QR/checkout y otra por cobro presencial SIMULADO; cierre verificado;
- * comensal por QR con aceptación y seguimiento; independiente «Cobrar»; y
- * aislamiento entre organizaciones.
+ * comensal por QR con aceptación y seguimiento; asistente del comprador
+ * (aislamiento entre comensales, anclas que conservan la credencial del hash,
+ * caducidad); independiente «Cobrar»; y aislamiento entre organizaciones.
  */
 const APP = process.env.DEMO_APP_URL ?? 'http://127.0.0.1:3342';
 const API = process.env.API_URL ?? 'http://127.0.0.1:3340';
@@ -132,6 +133,44 @@ async function noHorizontalScroll(p: Page) {
     cw: document.documentElement.clientWidth,
   }));
   expect(r.sw, p.url()).toBeLessThanOrEqual(r.cw + 1);
+}
+
+/**
+ * Abre el asistente del comprador, envía `q` y devuelve la respuesta ya
+ * completa. Exige el indicador de proveedor simulado (CI no usa proveedores
+ * reales) y que la respuesta lo marque.
+ */
+async function askBuyer(p: Page, q: string) {
+  if (!(await p.getByRole('dialog', { name: 'Fluvia · Tu pedido' }).isVisible())) {
+    await p.getByRole('button', { name: 'Pregunta a Fluvia' }).click();
+  }
+  const dlg = p.getByRole('dialog', { name: 'Fluvia · Tu pedido' });
+  await expect(dlg.getByText('Proveedor simulado')).toBeVisible();
+  const before = await dlg.locator('li.as-msg[data-role="assistant"]').count();
+  await dlg.getByLabel('Mensaje para Fluvia').fill(q);
+  await dlg.getByLabel('Mensaje para Fluvia').press('Enter');
+  const reply = dlg.locator('li.as-msg[data-role="assistant"]').nth(before);
+  await expect(reply).toHaveAttribute('data-status', 'complete', { timeout: 20_000 });
+  await expect(reply.getByText('Simulado', { exact: true })).toBeVisible();
+  return reply;
+}
+
+/** Un comensal pide `dish` por el QR (dispositivo propio) y queda en su seguimiento. */
+async function guestOrder(browser: Browser, dish: string, name: string) {
+  const ctx = await browser.newContext({ viewport: MOBILE, locale: 'es-VE' });
+  const g = await ctx.newPage();
+  await g.goto(menuUrl);
+  await g.getByRole('button', { name: `Agregar ${dish}` }).click();
+  await g
+    .getByRole('dialog')
+    .getByRole('button', { name: /Agregar/ })
+    .click();
+  await g.getByRole('button', { name: 'Revisar pedido' }).click();
+  await g.getByLabel('Tu nombre (opcional)').fill(name);
+  await g.getByRole('button', { name: /Confirmar pedido/ }).click();
+  await g.waitForURL(/\/p#/);
+  await expect(g.getByRole('button', { name: 'Pregunta a Fluvia' })).toBeVisible();
+  return g;
 }
 
 const MOBILE = { width: 390, height: 844 };
@@ -322,6 +361,17 @@ test('mesa → cocina en otro dispositivo → reconexión → cuenta dividida �
   const payUrl = (await parts.first().getByRole('link').first().getAttribute('href'))!;
   const buyer = await browser.newPage({ viewport: MOBILE });
   await buyer.goto(payUrl);
+  await buyer.waitForURL(/\/c\/[0-9a-f-]{36}#cs_/);
+  const checkoutUrl = buyer.url();
+  // Asistente del comprador en el checkout: SU pago, con proveedor simulado
+  // declarado; «Ir a pagar» lleva al formulario sin borrar el secreto del hash.
+  const reply = await askBuyer(buyer, '¿Ya está pagada mi cuenta?');
+  await expect(reply).toContainText('4,75 USD');
+  await expect(reply).toContainText('pendiente de pago');
+  await reply.getByRole('link', { name: 'Ir a pagar' }).click();
+  await expect(buyer.getByRole('dialog')).toHaveCount(0);
+  expect(buyer.url()).toBe(checkoutUrl);
+  await expect(buyer.locator('#pagar')).toBeFocused();
   await buyer.getByText('Tarjeta de prueba (aprobada)').click();
   await buyer.getByRole('button', { name: /^Pagar/ }).click();
   await expect(buyer.getByText(/Pago completado/)).toBeVisible({ timeout: 20_000 });
@@ -377,6 +427,57 @@ test('comensal por QR: menú del catálogo, pedido sujeto a aceptación y seguim
   expect(pub).not.toMatch(/tracking|order_id|"orders"/);
   await w.context().close();
   await g.close();
+});
+
+test('asistente del comprador: solo su pedido, anclas sin perder la credencial, caducidad', async ({
+  browser,
+}) => {
+  const nameA = `Ana ${RUN}`;
+  const a = await guestOrder(browser, 'Arepa', nameA);
+  const b = await guestOrder(browser, 'Agua', `Beto ${RUN}`);
+  const urlA = a.url();
+
+  // A: su pedido (no el de B), alérgenos solo del catálogo, sin garantías.
+  const order = await askBuyer(a, '¿Cómo va mi pedido?');
+  await expect(order).toContainText('Arepa');
+  await expect(order).not.toContainText('Agua');
+  const allergens = await askBuyer(a, '¿Qué alérgenos tiene la arepa?');
+  await expect(allergens).toContainText('alérgenos no informados');
+  await expect(allergens).toContainText('confírmalo con el personal');
+  await shot(a, 'asistente-comprador-390');
+  // Navegación: el ancla lleva al control real y NO toca el token del hash.
+  await order.getByRole('link', { name: 'Ver el estado' }).click();
+  await expect(a.getByRole('dialog')).toHaveCount(0);
+  expect(a.url()).toBe(urlA);
+  await expect(a.locator('#estado')).toBeFocused();
+
+  // B (otro dispositivo): no ve la conversación de A y solo su pedido.
+  await b.getByRole('button', { name: 'Pregunta a Fluvia' }).click();
+  const dlgB = b.getByRole('dialog', { name: 'Fluvia · Tu pedido' });
+  await dlgB.getByRole('button', { name: 'Historial' }).click();
+  const hist = dlgB.getByRole('region', { name: 'Historial de conversaciones' });
+  await expect(hist).toBeVisible();
+  await expect(hist).not.toContainText('¿Cómo va mi pedido?');
+  await dlgB.getByRole('button', { name: 'Historial' }).click();
+  const orderB = await askBuyer(b, '¿Cómo va mi pedido?');
+  await expect(orderB).toContainText('Agua');
+  await expect(orderB).not.toContainText('Arepa');
+
+  // Caducidad: el pedido de A se anuló hace más de 24 h → el asistente lo dice.
+  sql(
+    "UPDATE dining_orders SET status = 'cancelled', updated_at = now() - interval '25 hours' WHERE tenant_id = :'org' AND customer_name = :'name'",
+    { org, name: nameA }
+  );
+  await a.reload();
+  await expect(a.getByRole('status').filter({ hasText: 'Asistente no disponible' })).toContainText(
+    'caducó'
+  );
+  await expect(a.getByRole('button', { name: 'Pregunta a Fluvia' })).toHaveCount(0);
+  // Y B sigue funcionando.
+  await b.reload();
+  await expect(b.getByRole('button', { name: 'Pregunta a Fluvia' })).toBeVisible();
+  await a.context().close();
+  await b.context().close();
 });
 
 test('independiente: «Cobrar» en el teléfono con habilitación y simulador explícito', async ({
