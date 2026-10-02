@@ -82,7 +82,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 16px;
     border-radius: var(--fl-pill);
     color: var(--fl-black);
@@ -300,7 +300,7 @@
 .px-currency-switch a {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 14px;
   border-radius: var(--fl-pill);
   font-size: var(--fl-fs-sm);

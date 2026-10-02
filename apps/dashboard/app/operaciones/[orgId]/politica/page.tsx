@@ -35,7 +35,12 @@ export default async function Politica({ params }: { params: Promise<{ orgId: st
         {app.data.data.length === 0 ? (
           <div className="ox-empty">No hay aprobaciones.</div>
         ) : (
-          <div className="ox-table-wrap">
+          <div
+            className="ox-table-wrap"
+            tabIndex={0}
+            role="region"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table className="ox-table is-stack">
               <thead>
                 <tr>
@@ -111,7 +116,12 @@ export default async function Politica({ params }: { params: Promise<{ orgId: st
 
       <section className="ox-section" aria-labelledby="ox-versions">
         <h2 id="ox-versions">Versiones</h2>
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="region"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

@@ -468,7 +468,7 @@
 .fx-seg a {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 var(--fx-s4);
   border-radius: var(--fl-pill);
   color: var(--fl-black);
@@ -1028,7 +1028,7 @@
   transform: none;
 }
 .fx-btn-sm {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 var(--fx-s3);
   font-size: var(--fl-fs-sm);
 }
@@ -1849,7 +1849,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 var(--fx-s4);
   border: 1.5px solid var(--fl-black);
   border-radius: var(--fl-pill);
@@ -1997,7 +1997,7 @@
   width: 100%;
   justify-content: space-between;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1.5px solid var(--fl-black);
   border-radius: var(--fl-pill);
@@ -2425,4 +2425,77 @@
 }
 .app-shell .pos-status {
   border-radius: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Justificante: ticket con la firma de la marca, importe protagonista y
+   borde troquelado; en papel, negro sobre blanco sin fondos.
+   -------------------------------------------------------------------------- */
+.app-shell .pos-receipt {
+  position: relative;
+  max-width: 36rem;
+  padding: var(--fx-s6) var(--fx-s5) var(--fx-s5);
+  border-radius: var(--fl-radius-lg) var(--fl-radius-lg) 6px 6px;
+}
+.app-shell article.pos-receipt::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 10px;
+  background: radial-gradient(circle at 10px -2px, var(--fl-white) 9px, transparent 10px) 0 0 / 20px
+    10px repeat-x;
+}
+.pos-receipt-brand {
+  margin: 0 0 var(--fx-s4);
+  padding-bottom: var(--fx-s4);
+  border-bottom: 2px dashed var(--fl-line);
+}
+.app-shell .pos-receipt-head h2 {
+  font-size: var(--fl-fs-h2);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.app-shell .pos-receipt-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: var(--fx-s4) 0;
+  padding: var(--fx-s4) var(--fx-s5);
+  border-radius: var(--fl-radius);
+  border-bottom: none;
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.app-shell .pos-receipt-total-label {
+  color: var(--fl-mint);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.app-shell .pos-receipt-total-amount {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+@media print {
+  .app-shell .pos-receipt {
+    max-width: none;
+    padding: 0;
+  }
+  .app-shell article.pos-receipt::after {
+    content: none;
+  }
+  .app-shell .pos-receipt-total {
+    background: none;
+    color: #000;
+    border: 2px solid #000;
+  }
+  .app-shell .pos-receipt-total-label {
+    color: #000;
+  }
 }

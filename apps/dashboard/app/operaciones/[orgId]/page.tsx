@@ -67,7 +67,12 @@ export default async function OpsHome({ params }: { params: Promise<{ orgId: str
         {o.by_currency.length === 0 ? (
           <div className="ox-empty">Aún no hay movimientos en el programa.</div>
         ) : (
-          <div className="ox-table-wrap">
+          <div
+            className="ox-table-wrap"
+            tabIndex={0}
+            role="region"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table className="ox-table is-stack">
               <thead>
                 <tr>

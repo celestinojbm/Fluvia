@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { FluviaMark } from '../../lib/app-shell';
+import { FluviaLogo } from '../../lib/brand';
 import { clientCall } from '../../lib/client-call';
 import { personalError } from '../lib/client';
 
@@ -42,10 +42,7 @@ export function EntrarClient({
   return (
     <div className="px-auth">
       <p className="px-brand">
-        <FluviaMark size={32} />
-        <span>
-          Fluvia <em>Personal</em>
-        </span>
+        <FluviaLogo height={26} label="Personal" />
       </p>
       {expired ? (
         <p className="px-alert px-alert-warn" role="status">

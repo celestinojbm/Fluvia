@@ -248,7 +248,7 @@ export default async function OrderPage({
                   </span>
                 </li>
                 {pay.checkout_count > 0 ? (
-                  <li style={{ ['--tone' as string]: 'var(--fx-sun)' }}>
+                  <li style={{ ['--tone' as string]: 'var(--fl-warn)' }}>
                     <strong>
                       {pay.checkout_count}{' '}
                       {pay.checkout_count === 1 ? 'checkout abierto' : 'checkouts abiertos'}
@@ -257,7 +257,7 @@ export default async function OrderPage({
                   </li>
                 ) : null}
                 {charged ? (
-                  <li style={{ ['--tone' as string]: 'var(--fx-ok)' }}>
+                  <li style={{ ['--tone' as string]: 'var(--fl-ok)' }}>
                     <strong>Cobro confirmado</strong>
                     <span>
                       {pay.amount_refunded > 0
@@ -267,7 +267,7 @@ export default async function OrderPage({
                   </li>
                 ) : null}
                 {ord.cancellation ? (
-                  <li style={{ ['--tone' as string]: 'var(--fx-line-strong)' }}>
+                  <li style={{ ['--tone' as string]: 'var(--fl-ink-2)' }}>
                     <strong>Venta anulada</strong>
                     <span>
                       {dateTime(ord.cancellation.created_at)} · {ord.cancellation.reason}

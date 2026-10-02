@@ -1,5 +1,6 @@
 'use client';
 
+import { Icon } from '../../lib/icons';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { clientCall } from '../../lib/client-call';
 import { StepUpModal } from '../../lib/step-up-modal';
@@ -140,11 +141,19 @@ export function OpsAction({
           onClick={() => setOpen(true)}
           aria-expanded={false}
           aria-controls={id}
+          data-sensitive={reason ? 'true' : undefined}
         >
+          {reason ? <Icon name="lock" size={15} /> : null}
           {label}
         </button>
       ) : (
-        <form id={id} className="ox-action-form" onSubmit={submit} aria-label={label}>
+        <form
+          id={id}
+          className="ox-action-form"
+          data-tone={tone}
+          onSubmit={submit}
+          aria-label={label}
+        >
           <p className="ox-action-title">{label}</p>
           {fields.map((fd) => (
             <label key={fd.name} className="ox-field">

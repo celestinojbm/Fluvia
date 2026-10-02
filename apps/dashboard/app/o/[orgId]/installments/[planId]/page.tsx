@@ -115,7 +115,7 @@ export default async function PlanPage({
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                borderTop: '2px solid var(--fx-ink)',
+                borderTop: '2px solid var(--fl-black)',
                 paddingTop: 12,
               }}
             >

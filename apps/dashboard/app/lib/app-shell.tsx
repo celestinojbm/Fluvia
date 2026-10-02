@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { FluviaLogo, FluviaSymbol } from './brand';
+import { FluviaLogo } from './brand';
 import { Icon, type IconName } from './icons';
 
 /**
@@ -28,11 +28,6 @@ export interface ShellNavItem {
 export interface ShellNavSection {
   title: string;
   items: ShellNavItem[];
-}
-
-/** Símbolo de la marca (compatibilidad: superficies que aún lo importan aquí). */
-export function FluviaMark({ size = 28 }: { size?: number }) {
-  return <FluviaSymbol size={size} />;
 }
 
 export function orgNav(orgId: string): ShellNavSection[] {

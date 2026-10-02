@@ -96,7 +96,13 @@ export default async function Transacciones({
               <dd className="ox-mono">{detail.data.authorization.network_ref}</dd>
             </div>
           </dl>
-          <div className="ox-table-wrap" style={{ marginTop: 10 }}>
+          <div
+            className="ox-table-wrap"
+            tabIndex={0}
+            role="region"
+            aria-label="Tabla (desplazable con teclado)"
+            style={{ marginTop: 10 }}
+          >
             <table className="ox-table is-stack">
               <thead>
                 <tr>
@@ -161,7 +167,12 @@ export default async function Transacciones({
       {r.data.data.length === 0 ? (
         <div className="ox-empty">Sin transacciones en este filtro.</div>
       ) : (
-        <div className="ox-table-wrap">
+        <div
+          className="ox-table-wrap"
+          tabIndex={0}
+          role="region"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table className="ox-table is-stack">
             <thead>
               <tr>

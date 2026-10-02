@@ -147,6 +147,13 @@ h4 {
   font-family: var(--fl-font);
   color: var(--fl-black);
 }
+a {
+  color: var(--fl-black);
+  text-underline-offset: 3px;
+}
+a:hover {
+  text-decoration-thickness: 2px;
+}
 ::selection {
   background: var(--fl-black);
   color: var(--fl-mint);

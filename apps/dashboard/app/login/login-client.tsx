@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FluviaLogo } from '../lib/brand';
 import { MESSAGES, type Locale } from '../messages';
 
 /**
@@ -40,6 +41,9 @@ export function LoginForm({ locale }: { locale: Locale }) {
 
   return (
     <main className="auth" aria-labelledby="login-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
       <h1 id="login-title">{t.loginTitle}</h1>
       <form onSubmit={submit}>
         <label htmlFor="email">{t.emailLabel}</label>
