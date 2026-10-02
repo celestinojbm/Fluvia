@@ -27,7 +27,7 @@ verify_instance || DIE_CODE=3 die "la verificación de pertenencia falló; no se
 [ -z "$(live_pids 2>/dev/null)" ] || die "la instancia sigue en marcha; párala antes con stop-local-demo.sh"
 
 for c in "$PG_CONTAINER" "$REDIS_CONTAINER" "$LK_CONTAINER"; do
-  container_exists "$c" && docker rm -f "$c" >/dev/null && echo "   $c: eliminado"
+  container_exists "$c" && docker rm -f -v "$c" >/dev/null && echo "   $c: eliminado"
 done
 volume_exists "$VOLUME" && docker volume rm "$VOLUME" >/dev/null && echo "   $VOLUME: eliminado"
 # El marcador se conserva: identifica la instancia de este checkout y permite

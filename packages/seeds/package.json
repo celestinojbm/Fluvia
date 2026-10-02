@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "vitest run",
-    "seed": "tsx src/run.ts"
+    "seed": "tsx src/run.ts",
+    "seed:restaurantes": "tsx src/run-restaurantes.ts"
   },
   "dependencies": {
     "@fluvia/auth": "workspace:*",

@@ -42,6 +42,11 @@ import {
   CustomerDirectory,
   InstallmentSandboxService,
   InventoryService,
+  BusinessProfileService,
+  VenueService,
+  DiningService,
+  BillService,
+  InPersonService,
   OrderService,
   SummaryService,
   isInstallmentPlanActive,
@@ -75,6 +80,10 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerSettlementRoutes } from './routes/settlements.js';
 import { registerCaseRoutes } from './routes/cases.js';
 import { registerCommerceRoutes } from './routes/commerce.js';
+import { registerDiningRoutes } from './routes/dining.js';
+import { registerInPersonRoutes } from './routes/in-person.js';
+import { buyerTools } from './buyer-tools.js';
+import { buyerAuthenticator } from './buyer-auth.js';
 import { registerDirectoryRoutes } from './routes/directory.js';
 import { registerAssistantRoutes } from './routes/assistant.js';
 import { commerceTools, personalTools } from './assistant-tools.js';
@@ -486,6 +495,38 @@ export function buildApp({
       installmentService: new InstallmentSandboxService(appPool, orderService),
       inventoryService: new InventoryService(appPool),
     });
+    // Restaurantes / tipo de negocio: configuración del local, pedidos de
+    // mesa, KDS en vivo y QR público (menú + pedido propio). Permisos de local
+    // (venue_staff) evaluados en el servidor.
+    const diningService = new DiningService(appPool);
+    const billService = new BillService(appPool, paymentLinkService, diningService);
+    const businessService = new BusinessProfileService(appPool);
+    const venueService = new VenueService(appPool);
+    const sandboxSimulation = config.env === 'local' || config.env === 'test';
+    registerDiningRoutes(app, {
+      security,
+      idempotencyService,
+      businessService,
+      venueService,
+      diningService,
+      billService,
+      sandboxSimulation,
+      limiter: rateLimiter,
+      checkoutBaseUrl: config.checkoutBaseUrl,
+    });
+    // Cobro presencial: sobre ventas de cobro único existentes; resultado
+    // fijado por el servidor desde el intent. Simulador solo en local/test.
+    registerInPersonRoutes(app, {
+      security,
+      venueService,
+      sandboxSimulation,
+      inPersonService: new InPersonService(appPool, {
+        business: businessService,
+        paymentLinks: paymentLinkService,
+        checkout: checkoutSessionService,
+        sandbox: sandboxSimulation,
+      }),
+    });
     // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
     // comercio; lectura pública limitada por IP.
     registerDirectoryRoutes(app, {
@@ -528,8 +569,19 @@ export function buildApp({
       directory,
       listUncertain: (t) => merchantResolver.listUncertain(t),
     });
+    const bTools = buyerTools({
+      appPool,
+      dining: diningService,
+      bills: billService,
+      venue: venueService,
+    });
     registerAssistantRoutes(app, {
       security,
+      authenticateBuyer: buyerAuthenticator({
+        appPool,
+        checkout: checkoutSessionService,
+        dining: diningService,
+      }),
       authenticateConsumer: async (token) => {
         const id = await personalOrFallback.consumerAuth.authenticate(token);
         return { consumerId: id.consumerId, tenantId: id.tenantId };
@@ -539,7 +591,9 @@ export function buildApp({
         storage,
         provider: providers.conversation,
         limits,
-        tools: (surface) => (surface === 'personal' ? pTools : cTools),
+        // Mapa EXPLÍCITO: cada superficie solo ve sus herramientas.
+        tools: (surface) =>
+          surface === 'personal' ? pTools : surface === 'buyer' ? bTools : cTools,
         concurrency: assistant?.concurrency,
       }),
       store,

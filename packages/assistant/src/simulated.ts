@@ -37,6 +37,13 @@ const INTENTS: Array<{ re: RegExp; tool: string; input?: Record<string, unknown>
   },
   { re: /\b(directorio|perfil p[uú]blico)\b/i, tool: 'get_directory_status' },
   { re: /\b(d[oó]nde (comprar|pagar)|comercios?)\b/i, tool: 'find_merchants', input: { q: '' } },
+  // Comprador (checkout o seguimiento del pedido).
+  {
+    re: /\b(al[eé]rgen\w*|ingrediente\w*|lleva|contiene|gluten|man[ií])\b/i,
+    tool: 'get_menu_info',
+  },
+  { re: /\b(pag(o|ar|u[eé]|ado)|cuenta|cobr\w*|parte)\b/i, tool: 'get_payment_status' },
+  { re: /\b(mi pedido|estado|listo|cocina|cu[aá]nto falta|plato)\b/i, tool: 'get_my_order' },
 ];
 
 const SENSITIVE =
@@ -92,21 +99,33 @@ export class SimulatedConversationProvider implements ConversationProvider {
         yield* this.emit(text, signal);
         yield {
           type: 'tool_call',
-          call: { id: 'sim-actions', name: 'suggest_actions', input: { ids: guessActions(said) } },
+          call: {
+            id: 'sim-actions',
+            name: 'suggest_actions',
+            input: {
+              ids: req.tools.some((t) => t.name === 'get_payment_status')
+                ? ['buyer.pay']
+                : guessActions(said),
+            },
+          },
         };
         yield { type: 'done', stop: 'tool_use' };
         return;
       } else {
-        const intent = INTENTS.find((i) => i.re.test(said));
-        const usable = intent && req.tools.some((t) => t.name === intent.tool);
+        // La primera intención cuya herramienta EXISTE en esta superficie.
+        const intent = INTENTS.find(
+          (i) => i.re.test(said) && req.tools.some((t) => t.name === i.tool)
+        );
+        const usable = Boolean(intent);
         if (usable) {
           if (signal.aborted) return;
           yield {
             type: 'tool_call',
             call: {
               id: `sim-${createHash('sha256').update(said).digest('hex').slice(0, 12)}`,
-              name: intent.tool,
-              input: intent.input ?? {},
+              name: intent!.tool,
+              input:
+                intent!.tool === 'get_menu_info' ? { q: said.slice(0, 80) } : (intent!.input ?? {}),
             },
           };
           yield { type: 'done', stop: 'tool_use' };
@@ -114,9 +133,11 @@ export class SimulatedConversationProvider implements ConversationProvider {
         }
         text = images
           ? `${SIM_PREFIX}Recibí ${images === 1 ? 'una imagen' : `${images} imágenes`}. El proveedor simulado no analiza su contenido: cuéntame qué necesitas sobre ella.`
-          : req.tools.some((t) => t.name === 'get_sales_summary')
-            ? `${SIM_PREFIX}Puedo consultar tus ventas, cobros por confirmar o tu perfil en el directorio, y llevarte a la pantalla correcta. ¿Qué necesitas?`
-            : `${SIM_PREFIX}Puedo consultar tu saldo, crédito, cuotas, tarjetas o movimientos, y llevarte a la pantalla correcta. ¿Qué necesitas?`;
+          : req.tools.some((t) => t.name === 'get_payment_status')
+            ? `${SIM_PREFIX}Puedo decirte el estado de tu pedido o de tu pago, qué lleva un plato según el menú del comercio y llevarte a pagar o a llamar al personal. ¿Qué necesitas?`
+            : req.tools.some((t) => t.name === 'get_sales_summary')
+              ? `${SIM_PREFIX}Puedo consultar tus ventas, cobros por confirmar o tu perfil en el directorio, y llevarte a la pantalla correcta. ¿Qué necesitas?`
+              : `${SIM_PREFIX}Puedo consultar tu saldo, crédito, cuotas, tarjetas o movimientos, y llevarte a la pantalla correcta. ¿Qué necesitas?`;
       }
     }
     yield* this.emit(text, signal);

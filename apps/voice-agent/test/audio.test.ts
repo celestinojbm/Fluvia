@@ -105,5 +105,9 @@ describe('protocolo', () => {
     expect(ROOM_RE.test('otra-sala')).toBe(false);
     expect(IDENTITY_RE.test('consumer:8a3cc936-0c79-49bb-a95d-f999a16f3e8e')).toBe(true);
     expect(IDENTITY_RE.test('agente-fluvia')).toBe(false);
+    // Comprador (checkout o seguimiento): misma forma, otro prefijo.
+    expect(ROOM_RE.test('fluvia-buyer-8a3cc936-0c79-49bb-a95d-f999a16f3e8e')).toBe(true);
+    expect(IDENTITY_RE.test('buyer:8a3cc936-0c79-49bb-a95d-f999a16f3e8e')).toBe(true);
+    expect(IDENTITY_RE.test('admin:8a3cc936-0c79-49bb-a95d-f999a16f3e8e')).toBe(false);
   });
 });

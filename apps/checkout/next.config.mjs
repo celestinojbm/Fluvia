@@ -1,10 +1,13 @@
-/* global process */
+/* global process, URL */
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // La página alojada consume la API de Fluvia vía route handlers server-side
   // (FLUVIA_API_URL); el navegador jamás llama a la API directamente ni conoce
   // su URL. Cabeceras de seguridad mínimas para una página de pago.
   reactStrictMode: true,
+  // Asistente compartido (panel y checkout del comprador): TS/TSX de un
+  // paquete del monorepo, compilado por Next.
+  transpilePackages: ['@fluvia/assistant-ui'],
   poweredByHeader: false,
   async headers() {
     const dev = process.env.NODE_ENV !== 'production';
@@ -14,13 +17,18 @@ const nextConfig = {
     // inyecta scripts/estilos inline (hydration/RSC) y en dev usa eval (HMR), de ahí
     // 'unsafe-inline' (+ 'unsafe-eval' solo en dev); una CSP con nonce es el
     // endurecimiento siguiente (requiere middleware + E2E de navegador para validar).
+    // Asistente del comprador: fotos y audio locales (blob:) y, SOLO si se
+    // configuró al construir, el origen del servidor LiveKit propio para la
+    // llamada. Ningún otro host: el secreto sigue sin poder salir.
+    const livekit = livekitOrigins(process.env.LIVEKIT_PUBLIC_URL);
     const csp = [
       "default-src 'self'",
       `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
+      "media-src 'self' blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      `connect-src 'self'${livekit}`,
       "base-uri 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
@@ -39,5 +47,20 @@ const nextConfig = {
     ];
   },
 };
+
+/** ws(s)://host de LiveKit → los dos orígenes que usa el cliente (ws y http). */
+function livekitOrigins(raw) {
+  if (!raw) return '';
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error('LIVEKIT_PUBLIC_URL no es una URL válida');
+  }
+  if (u.protocol !== 'ws:' && u.protocol !== 'wss:')
+    throw new Error('LIVEKIT_PUBLIC_URL debe ser ws:// o wss://');
+  const http = u.protocol === 'wss:' ? 'https:' : 'http:';
+  return ` ${u.protocol}//${u.host} ${http}//${u.host}`;
+}
 
 export default nextConfig;

@@ -16,6 +16,7 @@ export const ROLE_LABELS: Record<string, string> = {
   support: 'Soporte',
   analyst: 'Análisis',
   read_only: 'Solo lectura',
+  staff: 'Personal del local',
 };
 
 export const roleLabel = (role: string | undefined) =>

@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../csrf-header';
-import { Icon } from '../icons';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
+import { Icon } from './icons';
 import { assistantError, call, upload } from './sse';
 import { recorderMime } from './voice-note';
 import { WebRtcCallPanel } from './call-webrtc';

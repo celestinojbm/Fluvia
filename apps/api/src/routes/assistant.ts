@@ -150,6 +150,11 @@ export interface AssistantRoutesOptions {
   limits: AssistantLimits;
   resolveActions: (ids: string[], surface: Surface, orgId: string | null) => unknown[];
   limiter?: RateLimiter;
+  /**
+   * Comprador (checkout / seguimiento): valida su credencial y devuelve un
+   * titular acotado a SU checkout o pedido. Sin esto, el plano no existe.
+   */
+  authenticateBuyer?: (req: FastifyRequest) => Promise<Owner>;
 }
 
 export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutesOptions): void {
@@ -213,6 +218,21 @@ export function registerAssistantRoutes(app: FastifyInstance, o: AssistantRoutes
       pre: [o.security.session, o.security.org('payments:read'), operator, perOwner],
     },
   ];
+  if (o.authenticateBuyer) {
+    const authBuyer = o.authenticateBuyer;
+    // Plano PÚBLICO: límite por IP antes de autenticar, y por titular después.
+    const perIp = rateLimit(limiter, [
+      {
+        keyOf: (req) => `assistant:buyer:ip:${req.ip}`,
+        rule: { max: o.limits.requestsPerMinute * 3, windowMs: 60_000 },
+      },
+    ]);
+    const buyer = async (req: FastifyRequest): Promise<void> => {
+      req.assistantOwner = await authBuyer(req);
+      req.assistantOrg = null;
+    };
+    planes.push({ prefix: '/v1/buyer/assistant', pre: [perIp, buyer, perOwner] });
+  }
 
   for (const { prefix, pre } of planes) {
     const opts = { preHandler: pre as never };

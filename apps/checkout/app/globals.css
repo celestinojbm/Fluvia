@@ -411,3 +411,32 @@ section > h2 {
   font-size: 0.85rem;
   width: 100%;
 }
+
+/* Asistente del comprador: acceso visible pero secundario a pagar. */
+.ba-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0;
+}
+.ba-trigger {
+  font: inherit;
+  font-weight: 800;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: var(--fl-pill);
+  border: 2px solid var(--fl-black);
+  background: var(--fl-lime);
+  color: var(--fl-black);
+  cursor: pointer;
+}
+.ba-trigger:focus-visible {
+  outline: 3px solid var(--fl-black);
+  outline-offset: 3px;
+}
+.ba-off {
+  font-size: var(--fl-fs-sm);
+  color: var(--fl-ink-2);
+}

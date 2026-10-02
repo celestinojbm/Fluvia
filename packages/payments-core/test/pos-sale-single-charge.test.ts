@@ -520,3 +520,31 @@ describe('derivación de single_charge_link_id: falla cerrado si el link no es v
     expect((await links.getSale(org, link.id)).succeededCount).toBe(1);
   });
 });
+
+describe('link deshabilitado (0060): ningún intent nuevo', () => {
+  it('el motor rechaza un intent sobre un link inactivo, aunque el servicio lo intente', async () => {
+    const link = await newLink(true);
+    await links.disable(org, link.id);
+    await expect(
+      withTenantTransaction(ctx.app, org, (c) =>
+        intents.createIn(c, {
+          tenantId: org,
+          merchantId,
+          amount: Money.of(5_000n, 'COP'),
+          paymentLinkId: link.id,
+        })
+      )
+    ).rejects.toThrow(/FLUVIA_LINK_INACTIVE/);
+    // Un link activo sigue funcionando igual.
+    const live = await newLink(true);
+    const ok = await withTenantTransaction(ctx.app, org, (c) =>
+      intents.createIn(c, {
+        tenantId: org,
+        merchantId,
+        amount: Money.of(5_000n, 'COP'),
+        paymentLinkId: live.id,
+      })
+    );
+    expect(ok.id).toBeTruthy();
+  });
+});

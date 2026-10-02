@@ -144,6 +144,33 @@ export class CheckoutSessionService {
     return tenantId;
   }
 
+  /**
+   * Credencial del COMPRADOR para el asistente del checkout: valida el
+   * `client_secret` (mismo camino que la página alojada) y devuelve SOLO lo
+   * necesario para decidir su vigencia. Inexistente o secreto incorrecto =
+   * not-found (anti-enumeración).
+   */
+  async resolveForBuyer(
+    sessionId: string,
+    clientSecret: string
+  ): Promise<{ tenantId: string; status: string; expiresAt: Date; completedAt: Date | null }> {
+    const tenantId = await this.authenticate(sessionId, clientSecret);
+    return withTenantTransaction(this.appPool, tenantId, async (c) => {
+      const r = await c.query<{ status: string; expires_at: Date; completed_at: Date | null }>(
+        `SELECT status, expires_at, completed_at FROM checkout_sessions WHERE id = $1`,
+        [sessionId]
+      );
+      const row = r.rows[0];
+      if (!row) throw new CheckoutSessionNotFoundError();
+      return {
+        tenantId,
+        status: row.status,
+        expiresAt: row.expires_at,
+        completedAt: row.completed_at,
+      };
+    });
+  }
+
   private toDto(r: SessionRow): CheckoutSessionDto {
     return {
       id: r.id,

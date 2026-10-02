@@ -4,7 +4,7 @@ Estado: Versión inicial · Fase: 0 · Implementación en F1 (RBAC) y F4 (admin)
 
 ## Modelo
 
-- **RBAC por organización** vía `memberships(user, organization, role)`. Roles iniciales: `owner`, `admin`, `developer`, `finance`, `support`, `analyst`, `read_only`.
+- **RBAC por organización** vía `memberships(user, organization, role)`. Roles iniciales: `owner`, `admin`, `developer`, `finance`, `support`, `analyst`, `read_only`; y `staff` (jornada restaurantes: solo `org:read`; lo que puede hacer en el local lo decide `venue_staff` — rol manager/cashier/waiter/kitchen y sucursal — evaluado en el servidor).
 - **API keys con scopes** (lectura, pagos, refunds, webhooks) y entorno (`test`/`live`); una key nunca cruza entornos.
 - **Separación dura dashboard ↔ administración interna**: apps, dominios de sesión y roles distintos; el staff de Fluvia no usa cuentas de comercio.
 - **Step-up authentication** para operaciones sensibles. Implementado hoy sobre `keys:manage` (crear/revocar API keys) y **para TODO usuario** (TM-02): con MFA → verificación TOTP fresca (`/v1/auth/mfa/step-up`); sin MFA → re-autenticación por password (`/v1/auth/step-up/password`, `sessions.password_verified_at`, migración 0040) — el password NUNCA sustituye al TOTP cuando hay MFA, y un fallo cuenta contra el MISMO lockout que el login. La extensión a más superficies (webhooks, datos legales/bancarios, refunds sobre umbral, desactivar MFA, congelar comercios, ajustes contables) queda como diseño para cuando existan esas operaciones por sesión.
@@ -17,22 +17,22 @@ Implementado: registro con verificación de email (token un solo uso, hash en BD
 
 ## Matriz de permisos (v1 — F1-04c, fuente de verdad: `packages/identity/src/rbac.ts`)
 
-| Permiso \ Rol         | owner | admin | developer | finance | support | analyst | read_only |
-| --------------------- | :---: | :---: | :-------: | :-----: | :-----: | :-----: | :-------: |
-| org:read              |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| members:read          |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| merchants:read        |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| merchants:write       |  ✅   |  ✅   |    ❌     |   ❌    |   ❌    |   ❌    |    ❌     |
-| keys:read             |  ✅   |  ✅   |    ✅     |   ✅    |   ❌    |   ❌    |    ❌     |
-| keys:manage           |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
-| audit:read            |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |
-| payments:read         |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |
-| webhooks:manage       |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |
-| reconciliation:manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
-| program:read          |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ✅    |    ✅     |
-| program:credit_manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |
-| program:cards_manage  |  ✅   |  ✅   |    ❌     |   ❌    |   ✅    |   ❌    |    ❌     |
-| program:cases_manage  |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ❌    |    ❌     |
+| Permiso \ Rol         | owner | admin | developer | finance | support | analyst | read_only | staff |
+| --------------------- | :---: | :---: | :-------: | :-----: | :-----: | :-----: | :-------: | :---: |
+| org:read              |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |  ✅   |
+| members:read          |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |  ❌   |
+| merchants:read        |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |  ❌   |
+| merchants:write       |  ✅   |  ✅   |    ❌     |   ❌    |   ❌    |   ❌    |    ❌     |  ❌   |
+| keys:read             |  ✅   |  ✅   |    ✅     |   ✅    |   ❌    |   ❌    |    ❌     |  ❌   |
+| keys:manage           |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |  ❌   |
+| audit:read            |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ✅    |    ❌     |  ❌   |
+| payments:read         |  ✅   |  ✅   |    ✅     |   ✅    |   ✅    |   ✅    |    ✅     |  ❌   |
+| webhooks:manage       |  ✅   |  ✅   |    ✅     |   ❌    |   ❌    |   ❌    |    ❌     |  ❌   |
+| reconciliation:manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |  ❌   |
+| program:read          |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ✅    |    ✅     |  ❌   |
+| program:credit_manage |  ✅   |  ✅   |    ❌     |   ✅    |   ❌    |   ❌    |    ❌     |  ❌   |
+| program:cards_manage  |  ✅   |  ✅   |    ❌     |   ❌    |   ✅    |   ❌    |    ❌     |  ❌   |
+| program:cases_manage  |  ✅   |  ✅   |    ❌     |   ✅    |   ✅    |   ❌    |    ❌     |  ❌   |
 
 **`program:*` (jornada integral, Fluvia Operaciones)**: permisos sobre la organización PROGRAMA de Fluvia Personal (`/v1/programs/:orgId/*`). `program:read` investiga clientes, crédito, tarjetas, transacciones, eventos y casos; `program:credit_manage` decide revisiones, cambia límites y estados de línea, crea/activa políticas y propone/aprueba la aplicación de garantía; `program:cards_manage` bloquea/desbloquea/cierra tarjetas y avanza envíos; `program:cases_manage` trabaja casos y resuelve inciertos por consulta verificada. Las acciones que mueven dinero o cambian riesgo exigen además **step-up** y, para activar políticas o aplicar garantía, **doble aprobación** por identidad (CHECK en BD, 0052). El CLIENTE (consumidor) no es miembro de ninguna organización: se autentica con credenciales y sesiones propias (`fluvia_csess_`) y nunca alcanza estas rutas.
 

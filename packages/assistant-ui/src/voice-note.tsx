@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from '../icons';
+import { Icon } from './icons';
 import { assistantError, call, upload } from './sse';
 
 /** Formato que el navegador sabe grabar y el servidor sabe validar. */

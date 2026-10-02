@@ -159,6 +159,11 @@ export class PaymentLinkService {
     };
   }
 
+  /** URL alojada del link (la misma que devuelve el DTO). */
+  urlFor(linkId: string): string {
+    return `${this.baseUrl}/l/${linkId}`;
+  }
+
   /** Client-bound: compone con la capa de idempotencia (F2-09). */
   async createIn(
     c: import('./service.js').TxClient,

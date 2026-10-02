@@ -98,8 +98,9 @@
     background: var(--fl-black);
     color: var(--fl-white);
   }
+  /* Lima sobre negro (17.9:1): la sección activa se lee al primer vistazo. */
   .px-rail a[aria-current='page'] svg {
-    color: var(--fl-mint);
+    color: var(--fl-lime);
   }
   .px-rail-foot {
     flex: none;
@@ -149,7 +150,7 @@
   height: 44px;
   border-radius: 50%;
   background: var(--fl-black);
-  color: var(--fl-mint) !important;
+  color: var(--fl-lime) !important;
   font-weight: 800;
   text-decoration: none;
 }
@@ -219,7 +220,7 @@
   text-decoration: none;
 }
 .px-tabs a[aria-current='page'] {
-  background: var(--fl-mint);
+  background: var(--fl-lime);
   color: var(--fl-black) !important;
 }
 @media (min-width: 1024px) {
@@ -308,8 +309,9 @@
   text-decoration: none;
 }
 .px-currency-switch a[aria-current='true'] {
-  background: var(--fl-black);
-  color: var(--fl-white);
+  background: var(--fl-lime);
+  color: var(--fl-black);
+  box-shadow: inset 0 0 0 1.5px var(--fl-black);
 }
 
 /* --- composición del dinero propio -------------------------------------- */
@@ -520,7 +522,7 @@
   font-weight: 750;
   text-align: center;
   line-height: 1.1;
-  color: var(--fl-mint);
+  color: var(--fl-lime);
 }
 .px-date-chip strong {
   display: block;
@@ -637,6 +639,15 @@
 .px-btn-primary:hover:not(:disabled) {
   background: var(--fl-black-hover);
 }
+/* Acción destacada secundaria (una por vista): lima, texto y borde negros.
+   El negro sigue siendo la acción principal del dinero. */
+.px-btn-lime {
+  background: var(--fl-lime);
+}
+.px-btn-lime:hover:not(:disabled) {
+  background: var(--fl-lime);
+  box-shadow: inset 0 0 0 1px var(--fl-black);
+}
 .px-btn-danger {
   border-color: var(--fl-bad);
   color: var(--fl-bad) !important;
@@ -747,7 +758,7 @@
 }
 .px-choice label:has(input:checked) {
   border-color: var(--fl-black);
-  background: var(--fl-mint);
+  background: var(--fl-lime);
 }
 .px-alert {
   margin: 0 0 var(--fx-s4);
@@ -797,8 +808,9 @@
 }
 .px-tabs-inline [aria-current='true'],
 .px-tabs-inline [aria-pressed='true'] {
-  background: var(--fl-black);
-  color: var(--fl-white);
+  background: var(--fl-lime);
+  color: var(--fl-black);
+  box-shadow: inset 0 0 0 1px var(--fl-black);
 }
 
 /* --- tarjeta gráfica: negra con el meandro de la marca ------------------- */
