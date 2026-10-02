@@ -59,6 +59,15 @@ demo_config() {
     [[ "$p" =~ ^[0-9]{2,5}$ ]] || die "puerto inválido: $p"
   done
 
+  # Dos servicios no pueden compartir puerto (p. ej. métricas en base+3 con
+  # LiveKit en base+3 si se activa la llamada).
+  local all=("$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT" "$PG_PORT" "$REDIS_PORT")
+  [ "${DEMO_WITH_WORKER:-0}" = 1 ] && all+=("${DEMO_WORKER_METRICS_PORT:-$((PORT_BASE + 9))}")
+  [ "$WITH_CALL" = 1 ] && all+=("$LIVEKIT_PORT" "$LIVEKIT_TCP_PORT" "$LIVEKIT_UDP_PORT" "$AGENT_PORT")
+  local dup
+  dup="$(printf '%s\n' "${all[@]}" | sort | uniq -d | head -1)"
+  [ -z "$dup" ] || die "el puerto $dup está asignado a dos servicios de la instancia"
+
   PG_CONTAINER="$PREFIX-pg"
   REDIS_CONTAINER="$PREFIX-redis"
   LK_CONTAINER="$PREFIX-livekit"
@@ -128,6 +137,89 @@ proc_cwd() {
 
 pid_alive() { kill -0 "$1" 2>/dev/null; }
 
+# ---- Propiedad de procesos ------------------------------------------------
+# Un PID guardado NO basta para parar un proceso (los PID se reciclan). Al
+# arrancar se guarda en $STATE/<svc>.proc: PID, grupo, instante de inicio del
+# proceso (ticks desde el arranque del sistema), boot_id, instancia y
+# checkout; y el proceso hereda FLUVIA_DEMO_INSTANCE=<prefijo>@<checkout>.
+# Antes de parar se exige que TODO coincida (owns_pid).
+boot_id() { cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown; }
+proc_start_ticks() { # campo 22 de /proc/<pid>/stat (tras el «comm» entre paréntesis)
+  [ -r "/proc/$1/stat" ] || return 1
+  sed 's/^.*) //' "/proc/$1/stat" | awk '{ print $20 }'
+}
+proc_pgid() { ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '; }
+instance_tag() { echo "$PREFIX@$ROOT"; }
+proc_has_tag() { # 0 si el entorno del proceso lleva la etiqueta de ESTA instancia
+  [ -r "/proc/$1/environ" ] || return 2
+  tr '\0' '\n' <"/proc/$1/environ" 2>/dev/null | grep -qxF "FLUVIA_DEMO_INSTANCE=$(instance_tag)"
+}
+# Segundos desde epoch en que arrancó el proceso (Linux/WSL).
+proc_start_epoch() {
+  local ticks hz btime
+  ticks="$(proc_start_ticks "$1")" || return 1
+  hz="$(getconf CLK_TCK)"
+  btime="$(awk '/^btime/ { print $2 }' /proc/stat)"
+  echo $((btime + ticks / hz))
+}
+
+record_proc() { # svc pid
+  local svc="$1" pid="$2"
+  {
+    echo "pid=$pid"
+    echo "pgid=$(proc_pgid "$pid")"
+    echo "start_ticks=$(proc_start_ticks "$pid" || echo unknown)"
+    echo "boot_id=$(boot_id)"
+    echo "instance=$PREFIX"
+    echo "root=$ROOT"
+    echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$STATE/$svc.proc"
+}
+proc_field() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+
+# 0 = el proceso vivo `pid` es el servicio `svc` de ESTA instancia.
+# Imprime el motivo en stderr cuando no lo es.
+owns_pid() {
+  local svc="$1" pid="$2" meta="$STATE/$1.proc" cwd want started mtime
+  pid_alive "$pid" || { echo "  $svc: PID $pid ya no existe" >&2; return 1; }
+  cwd="$(proc_cwd "$pid")"
+  if [ -n "$cwd" ] && [ "$cwd" != "$ROOT/apps/$svc" ]; then
+    echo "  $svc: PID $pid corre en ${cwd}, no en $ROOT/apps/$svc" >&2
+    return 1
+  fi
+  if [ -f "$meta" ]; then
+    [ "$(proc_field "$meta" pid)" = "$pid" ] || { echo "  $svc: $meta no es del PID $pid" >&2; return 1; }
+    [ "$(proc_field "$meta" instance)" = "$PREFIX" ] && [ "$(proc_field "$meta" root)" = "$ROOT" ] ||
+      { echo "  $svc: $meta es de otra instancia" >&2; return 1; }
+    [ "$(proc_field "$meta" boot_id)" = "$(boot_id)" ] ||
+      { echo "  $svc: el sistema se reinició desde que se guardó el PID $pid" >&2; return 1; }
+    want="$(proc_field "$meta" start_ticks)"
+    [ "$want" != unknown ] && [ "$(proc_start_ticks "$pid")" != "$want" ] &&
+      { echo "  $svc: el PID $pid es otro proceso (inicio distinto)" >&2; return 1; }
+    [ "$(proc_pgid "$pid")" = "$(proc_field "$meta" pgid)" ] ||
+      { echo "  $svc: el PID $pid cambió de grupo" >&2; return 1; }
+    proc_has_tag "$pid"
+    case $? in
+      0 | 2) ;; # 2: entorno ilegible (otro sistema); el resto ya coincide
+      *) echo "  $svc: el PID $pid no lleva la etiqueta de la instancia" >&2; return 1 ;;
+    esac
+    return 0
+  fi
+  # PID de una versión anterior (sin metadatos): además del checkout, el
+  # proceso tiene que haber nacido cuando se escribió su archivo PID (lo
+  # escribe el propio proceso al arrancar). Un PID reciclado nace después.
+  started="$(proc_start_epoch "$pid")" || {
+    echo "  $svc: sin metadatos ni /proc para comprobar el PID $pid; no se toca" >&2
+    return 1
+  }
+  mtime="$(stat -c %Y "$STATE/$svc.pid" 2>/dev/null || echo 0)"
+  if [ "$started" -lt $((mtime - 30)) ] || [ "$started" -gt $((mtime + 5)) ]; then
+    echo "  $svc: el PID $pid nació en otro momento que su archivo PID (¿reciclado?)" >&2
+    return 1
+  fi
+  return 0
+}
+
 container_exists() { docker inspect "$1" >/dev/null 2>&1; }
 volume_exists() { docker volume inspect "$1" >/dev/null 2>&1; }
 
@@ -175,7 +267,7 @@ legacy_state_ok() {
 # Verifica TODO antes de actuar. Devuelve 0 solo si el estado, los procesos
 # vivos y los recursos de Docker pertenecen a esta instancia. No modifica nada.
 verify_instance() {
-  local ok=0 f pid cwd svc
+  local ok=0 f pid svc
   if [ ! -d "$STATE" ]; then
     echo "  no existe el estado de la instancia: $STATE" >&2
     return 1
@@ -196,11 +288,9 @@ verify_instance() {
     pid="$(cat "$f")"
     [[ "$pid" =~ ^[0-9]+$ ]] || { echo "  PID inválido en $f" >&2; ok=1; continue; }
     pid_alive "$pid" || continue # obsoleto: el proceso ya no existe
-    cwd="$(proc_cwd "$pid")"
-    if [ "$cwd" != "$ROOT/apps/$svc" ]; then
-      echo "  el PID $pid ($svc) no corre en $ROOT/apps/$svc (cwd=${cwd:-desconocido})" >&2
-      ok=1
-    fi
+    # Vivo pero no es de esta instancia (PID reciclado): obsoleto. Se avisa
+    # y NUNCA se toca; no bloquea parar lo que sí es propio.
+    owns_pid "$svc" "$pid" 2>/dev/null || echo "  aviso: $f apunta a un proceso ajeno (PID $pid); se ignora" >&2
   done
   container_exists "$PG_CONTAINER" && { owns_resource container "$PG_CONTAINER" || ok=1; }
   container_exists "$REDIS_CONTAINER" && { owns_resource container "$REDIS_CONTAINER" || ok=1; }
@@ -213,11 +303,29 @@ verify_instance() {
   return "$ok"
 }
 
-live_pids() { # imprime "servicio pid" de los procesos vivos de la instancia
-  local f pid
+live_pids() { # imprime "servicio pid" de los procesos vivos y PROPIOS de la instancia
+  local f pid svc
   for f in "$STATE"/*.pid; do
     [ -e "$f" ] || continue
     pid="$(cat "$f")"
-    pid_alive "$pid" && echo "$(basename "$f" .pid) $pid"
+    svc="$(basename "$f" .pid)"
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    owns_pid "$svc" "$pid" 2>/dev/null && echo "$svc $pid"
   done
+  return 0
+}
+
+container_running() { [ "$(docker inspect -f '{{ .State.Running }}' "$1" 2>/dev/null)" = true ]; }
+
+# Espera la respuesta HTTP ESPERADA (no basta con que responda): un 500 o un
+# 404 no es un arranque correcto. Devuelve 1 con el último código.
+expect_http() { # url código [segundos]
+  local url="$1" want="$2" secs="${3:-90}" code=000
+  for _ in $(seq 1 "$secs"); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)"
+    [ "$code" = "$want" ] && return 0
+    sleep 1
+  done
+  echo "$code"
+  return 1
 }
