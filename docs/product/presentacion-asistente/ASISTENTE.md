@@ -41,17 +41,21 @@
 
 ## 4. Variables de entorno (sin secretos)
 
-| Variable                                                                                        | Por defecto       | Efecto                                                                                                                                      |
-| ----------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ASSISTANT_PROVIDER`                                                                            | (vacío)           | Con valor `anthropic` y **también** `ANTHROPIC_API_KEY` y `ASSISTANT_MODEL`, usa la conversación real. Si falta cualquiera, usa la simulada |
-| `ANTHROPIC_API_KEY`, `ASSISTANT_MODEL`, `ANTHROPIC_BASE_URL`                                    | —, —, API pública | Credencial y modelo del **producto**. No hay modelo por defecto: hay que elegirlo                                                           |
-| `ASSISTANT_SPEECH_PROVIDER`                                                                     | (vacío)           | `openai_compatible` + `SPEECH_API_KEY`, `SPEECH_BASE_URL`, `SPEECH_STT_MODEL`, `SPEECH_TTS_MODEL`, `SPEECH_TTS_VOICE`                       |
-| `ASSISTANT_CALL_PROVIDER`                                                                       | (vacío)           | `livekit` + `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`                                                                          |
-| `ASSISTANT_STORAGE_DIR`                                                                         | `.data/assistant` | Directorio privado, el mismo para la API y el worker                                                                                        |
-| `ASSISTANT_MESSAGES_PER_DAY` · `ASSISTANT_CONCURRENT_STREAMS` · `ASSISTANT_MAX_INPUT_CHARS`     | 200 · 1 · 2000    | Uso                                                                                                                                         |
-| `ASSISTANT_MAX_IMAGE_BYTES` · `ASSISTANT_MAX_IMAGE_PIXELS` · `ASSISTANT_MAX_IMAGES_PER_MESSAGE` | 5 MiB · 40 MP · 3 | Fotos                                                                                                                                       |
-| `ASSISTANT_MAX_AUDIO_BYTES` · `ASSISTANT_MAX_AUDIO_SECONDS` · `ASSISTANT_MAX_CALL_SECONDS`      | 4 MiB · 120 · 600 | Voz y llamada                                                                                                                               |
-| `ASSISTANT_RETENTION_DAYS` · `ASSISTANT_MAX_OUTPUT_TOKENS` · `ASSISTANT_MAX_TOOL_ROUNDS`        | 30 · 700 · 3      | Retención, longitud y coste                                                                                                                 |
+| Variable                                                                                                       | Por defecto             | Efecto                                                                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ASSISTANT_PROVIDER`                                                                                           | (vacío)                 | Con valor `anthropic` y **también** `ANTHROPIC_API_KEY` y `ASSISTANT_MODEL`, usa la conversación real. Si falta cualquiera, usa la simulada                                            |
+| `ANTHROPIC_API_KEY`, `ASSISTANT_MODEL`, `ANTHROPIC_BASE_URL`                                                   | —, —, API pública       | Credencial y modelo del **producto**. No hay modelo por defecto: hay que elegirlo                                                                                                      |
+| `ASSISTANT_SPEECH_PROVIDER`                                                                                    | (vacío)                 | `openai_compatible` + `SPEECH_API_KEY`, `SPEECH_BASE_URL`, `SPEECH_STT_MODEL`, `SPEECH_TTS_MODEL`, `SPEECH_TTS_VOICE`                                                                  |
+| `ASSISTANT_CALL_PROVIDER`                                                                                      | (vacío)                 | `livekit` + `LIVEKIT_URL` (la del navegador), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `ASSISTANT_AGENT_URL` y `ASSISTANT_AGENT_SECRET`. Si falta alguna, la llamada es local simulada |
+| `LIVEKIT_PUBLIC_URL` (panel, **al construir**)                                                                 | (vacío)                 | Añade ese origen a `connect-src` de la CSP                                                                                                                                             |
+| Agente: `LIVEKIT_INTERNAL_URL`, `AGENT_CONTROL_SECRET` (≥ 24), `AGENT_HOST`/`AGENT_PORT`, `AGENT_MAX_SESSIONS` | —, —, 127.0.0.1/3366, 4 | Voz real del agente con las mismas `ASSISTANT_SPEECH_PROVIDER` + `SPEECH_*`                                                                                                            |
+| `ASSISTANT_REQUESTS_PER_MINUTE`                                                                                | 60                      | Peticiones por titular/minuto (organización ×10)                                                                                                                                       |
+| `WORKER_METRICS_HOST`                                                                                          | 0.0.0.0                 | En demos, `127.0.0.1`                                                                                                                                                                  |
+| `ASSISTANT_STORAGE_DIR`                                                                                        | `.data/assistant`       | Directorio privado, el mismo para la API y el worker                                                                                                                                   |
+| `ASSISTANT_MESSAGES_PER_DAY` · `ASSISTANT_CONCURRENT_STREAMS` · `ASSISTANT_MAX_INPUT_CHARS`                    | 200 · 1 · 2000          | Uso                                                                                                                                                                                    |
+| `ASSISTANT_MAX_IMAGE_BYTES` · `ASSISTANT_MAX_IMAGE_PIXELS` · `ASSISTANT_MAX_IMAGES_PER_MESSAGE`                | 5 MiB · 40 MP · 3       | Fotos                                                                                                                                                                                  |
+| `ASSISTANT_MAX_AUDIO_BYTES` · `ASSISTANT_MAX_AUDIO_SECONDS` · `ASSISTANT_MAX_CALL_SECONDS`                     | 4 MiB · 120 · 600       | Voz y llamada                                                                                                                                                                          |
+| `ASSISTANT_RETENTION_DAYS` · `ASSISTANT_MAX_OUTPUT_TOKENS` · `ASSISTANT_MAX_TOOL_ROUNDS`                       | 30 · 700 · 3            | Retención, longitud y coste                                                                                                                                                            |
 
 **Nunca** se usan la sesión ni los créditos de una herramienta de desarrollo (por ejemplo, Claude Code) como credencial del asistente del producto.
 
@@ -66,11 +70,22 @@
    - Exporta `ASSISTANT_SPEECH_PROVIDER=openai_compatible` y las cinco variables `SPEECH_*`.
    - Reinicia la API.
 3. **Llamada.**
-   - Despliega LiveKit (Cloud o autoalojado) y un **agente** con LiveKit Agents que entre a la sala. El agente usa los mismos proveedores de STT, conversación y TTS, y llama a la API del asistente para las herramientas.
-   - Exporta `ASSISTANT_CALL_PROVIDER=livekit`, `LIVEKIT_URL=wss://…`, `LIVEKIT_API_KEY` y `LIVEKIT_API_SECRET`.
-   - Añade `livekit-client` (Apache-2.0) al panel y sustituye la sesión local de `call.tsx` por la conexión a la sala.
-   - Amplía la CSP del panel con `connect-src wss://<host-livekit>`.
-   - **Hasta entonces**, con transporte real configurado, la UI dice «no disponible» y libera el micrófono. No simula una llamada real.
+   - Despliega LiveKit (autoalojado o Cloud) y `apps/voice-agent`, en la misma red privada que la API. El control del agente solo escucha en loopback o en red privada.
+   - Exporta en la API: `ASSISTANT_CALL_PROVIDER=livekit`, `LIVEKIT_URL=wss://…`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `ASSISTANT_AGENT_URL` y `ASSISTANT_AGENT_SECRET`.
+   - En el agente exporta: `LIVEKIT_INTERNAL_URL`, las mismas claves de LiveKit, `AGENT_CONTROL_SECRET` (el mismo secreto) y, para voz real, `ASSISTANT_SPEECH_PROVIDER` + `SPEECH_*`.
+   - Construye el panel con `LIVEKIT_PUBLIC_URL=wss://…`, para la CSP.
+   - En producción hace falta TURN si los clientes están tras NAT estricto. No está probado aquí.
+
+### Flujo de la llamada
+
+1. El navegador pide permiso de micrófono. Si se deniega, no se pide sala.
+2. `POST …/call/token`: la API despacha al agente a una sala nueva, para esa identidad. Solo si el agente responde, emite un token de vida corta, de solo micrófono y para esa sala.
+3. El navegador entra y publica el micrófono. El agente escucha **solo** a esa identidad.
+4. El agente detecta turnos (umbral adaptativo al ruido), transcribe y envía el texto por el canal de datos.
+5. El panel envía el texto a la **misma conversación** del chat. La conversación usa la sesión de la persona y herramientas de solo lectura.
+6. El panel manda la respuesta al agente, que la dice. Si la persona habla mientras el agente habla, el agente se calla (interrupción).
+7. **El agente no tiene credenciales de Fluvia ni acceso a datos.** Solo oye, transcribe y habla.
+8. Al colgar se envía «bye», el agente sale y se libera el micrófono. Si la persona se va sin colgar, el agente espera 20 s por si vuelve (reconexión completa) y luego sale.
 
 ## 6. Evaluación de LiveKit Agents
 
@@ -89,18 +104,21 @@
 
 **Alternativa descartada por ahora:** WebRTC directo contra la API de voz en tiempo real de un proveedor. Es menos infraestructura, pero ata la llamada a un solo proveedor y deja las herramientas y la autorización en el navegador o en un relay propio.
 
-**Hecho en esta jornada.** El servidor emite el token de LiveKit (probado). La llamada **simulada local** prueba en el navegador real:
+**Hecho.**
 
-- el consentimiento
-- los estados
-- silenciar y colgar
-- la elección de dispositivo
-- la interrupción
-- la transcripción
-- la continuidad con el chat
-- la liberación del micrófono
+- **Implementado:** servidor LiveKit, agente propio (`@livekit/rtc-node`) y cliente del panel (`livekit-client`). Se eligió un agente propio en vez del marco LiveKit Agents: pocas piezas, sin credenciales de Fluvia en el agente, y misma lógica de herramientas y autorización en la API.
+- **Verificado:**
+  - transporte WebRTC y audio en ambos sentidos
+  - interrupción
+  - reconexión: cierre de señalización, reconexión completa y congelación real del servidor
+  - colgar
 
-La conexión a LiveKit **no está probada**: no hay servidor ni credenciales en este entorno (dependencia externa X-03).
+  Los entornos y pruebas son:
+  - navegador real: `llamada-webrtc.spec.ts`
+  - cliente `rtc-node`: `webrtc.integration.test.ts` y `speech-contract.integration.test.ts`
+  - CI: job `e2e-assistant`
+
+- **No verificado:** conversación inteligente por voz con proveedores externos. Falta X-01 y X-02.
 
 ## 7. Coste operativo estimado (supuestos explícitos)
 

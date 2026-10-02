@@ -25,17 +25,20 @@
 | Respuesta hablada                                     | «Escuchar» (el texto sigue disponible)                                                                                                        | `POST …/speech` · TTS **simulado** (tono)                                                    | API                                           | Entregado con **TTS simulado**                                                   |
 | «Hablar con Fluvia»                                   | Consentimiento, estados, silencio, colgar, dispositivo, interrupción, transcripción, foto y pantalla voluntarias, resumen, micrófono liberado | `POST …/call/token` · transporte **simulado** (llamada local)                                | E2E con audio falso de locuciones             | **Simulada**. La llamada real está bloqueada por X-03 (y falta `livekit-client`) |
 
-## 2. Real, de prueba o bloqueado
+## 2. Implementado, de prueba o bloqueado
 
-| Capacidad                                                  | Ahora                                          | Para que sea real                                                       |
-| ---------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------- |
-| Conversación + visión                                      | **Proveedor de prueba** (simulado, etiquetado) | `ASSISTANT_PROVIDER=anthropic` + clave y modelo **del producto** (X-01) |
-| Transcripción (STT) / voz (TTS)                            | **Proveedor de prueba**                        | `ASSISTANT_SPEECH_PROVIDER=openai_compatible` + `SPEECH_*` (X-02)       |
-| Llamada WebRTC                                             | **Llamada simulada local**                     | Servidor LiveKit + agente + `livekit-client` en el panel (X-03)         |
-| Almacenamiento de adjuntos                                 | Disco privado local                            | Almacén de objetos privado y cifrado (X-04)                             |
-| Directorio, explicadores, herramientas, límites, retención | **Real** (en este stack)                       | —                                                                       |
+| Capacidad                                         | Implementado y verificado                                                                                                                                                                                                                                                                                         | De prueba (determinista, etiquetado)                                                                    | Bloqueado y por qué                                                                                       |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Conversación + visión                             | Adaptador Anthropic (SSE, herramientas, imagen) probado contra un **servidor de contrato** local que valida el protocolo                                                                                                                                                                                          | Proveedor simulado (sin claves)                                                                         | Proveedor real **no verificado**: no hay clave del producto (X-01)                                        |
+| STT / TTS                                         | Adaptador compatible con OpenAI (multipart, WAV) probado por la API **y por el agente en una llamada WebRTC** contra servidor de contrato                                                                                                                                                                         | Voz/transcripción de prueba                                                                             | Proveedor real **no verificado** (X-02)                                                                   |
+| Llamada WebRTC                                    | **Transporte y audio reales**: navegador (`livekit-client`) ⇄ LiveKit 1.13.7 ⇄ agente (`apps/voice-agent`); token por sala con despacho del agente; consentimiento, silencio, interrupción, reconexión (señal, completa y corte real del servidor), foto, colgar con micrófono liberado; E2E en navegador y en CI | Agente de **prueba**: transcribe con duración y habla con tono sintético, etiquetado «Agente de prueba» | Conversación inteligente por voz con proveedor externo: no ejecutada (X-01, X-02)                         |
+| Llamada sin servidor de llamadas                  | Modo local simulado (sin WebRTC), solo si no hay LiveKit configurado y dicho en pantalla                                                                                                                                                                                                                          | —                                                                                                       | —                                                                                                         |
+| Concurrencia y límites                            | Concurrencia por titular en Redis (varias réplicas, prueba con dos réplicas reales); límites por titular y organización autenticados                                                                                                                                                                              | —                                                                                                       | El directorio **público** (sin sesión) sigue limitado por la IP que ve la API, que es la del panel (T-03) |
+| Audio                                             | Duración leída del contenedor, MP4 fragmentado incluido; duración desconocida → 422                                                                                                                                                                                                                               | —                                                                                                       | —                                                                                                         |
+| Adjuntos                                          | Disco privado local                                                                                                                                                                                                                                                                                               | —                                                                                                       | Almacén de objetos de producción (X-04)                                                                   |
+| Directorio, explicadores, herramientas, retención | Real en este stack                                                                                                                                                                                                                                                                                                | —                                                                                                       | —                                                                                                         |
 
-No se afirma ninguna conversación ni llamada real hecha con un proveedor simulado.
+No se afirma ninguna conversación ni llamada inteligente hecha con un proveedor de prueba.
 
 ## 3. Recursos incorporados y licencias
 
@@ -45,7 +48,9 @@ No se afirma ninguna conversación ni llamada real hecha con un proveedor simula
 | Iconos nuevos (Lucide, ya incluido)                     | ISC                                                                              | Sin dependencia nueva                                                                                                     |
 | Muestras de prueba (`packages/assistant/test/fixtures`) | Propias (generadas con ffmpeg/ImageMagick y una grabación sintética de Chromium) | Solo para pruebas                                                                                                         |
 | Adaptadores Anthropic, OpenAI-compatible y LiveKit      | —                                                                                | **Sin SDK**: `fetch` y `crypto` de Node. No hay dependencias de ejecución nuevas. El gate de licencias pasa en `--strict` |
-| `livekit-client`                                        | Apache-2.0                                                                       | **No incorporado** todavía: no hay servidor contra el que probarlo                                                        |
+| `livekit-client` 2.22.3 (panel, carga diferida)         | Apache-2.0                                                                       | Incorporado; licencias `--strict` OK                                                                                      |
+| `@livekit/rtc-node` 1.1.0 (agente de voz)               | Apache-2.0                                                                       | Incorporado; binario nativo por npm                                                                                       |
+| Servidor LiveKit 1.13.7                                 | Apache-2.0                                                                       | Imagen `livekit/livekit-server:v1.13.7` en demo y CI (en este entorno se compiló desde el módulo Go oficial)              |
 
 ## 4. Verificación
 
@@ -59,24 +64,40 @@ Ver la sección «Resultados» del PR y `BACKLOG.md`. Comprobaciones:
 - a11y con axe de las pantallas nuevas
 - CI del PR
 
-## 5. Instancia independiente
+## 5. Instancia `fluvia-asistente` (procedimiento para Hermes local)
 
-Usa su propio checkout, prefijo, puertos, logs y volúmenes. No toca las demos existentes (3302/3312/3322 ni las otras instancias). Elige un prefijo y una base de puertos libres. Ejemplo:
+Nada de esto se ha arrancado desde la nube en tu MSI. Hermes lo ejecuta en local. Usa un checkout propio, su prefijo, sus puertos, sus logs, su volumen y su contenedor de LiveKit. No toca las demos de 3302/3312/3322 ni las otras instancias.
+
+| Servicio                          | Puerto (solo 127.0.0.1) |
+| --------------------------------- | ----------------------- |
+| API · checkout · panel            | 3360 · 3361 · 3362      |
+| LiveKit señal · RTC TCP · RTC UDP | 3363 · 3364 · 3365/udp  |
+| Agente de voz (control)           | 3366                    |
+| Métricas del worker               | 3369                    |
+| PostgreSQL · Redis                | 55438 · 56385           |
 
 ```bash
-git clone https://github.com/celestinojbm/Fluvia.git fluvia-asistente && cd fluvia-asistente
-git checkout claude/presentacion-asistente-fluvia   # comprobar el SHA entregado en el PR
-ss -ltn | grep -E ':(3360|3361|3362|3369|55438|56385)\b'   # no debe imprimir nada
-pnpm install --frozen-lockfile
-DEMO_PREFIX=fluvia-asistente DEMO_PORT_BASE=3360 DEMO_PG_PORT=55438 DEMO_REDIS_PORT=56385 \
-  DEMO_WITH_WORKER=1 scripts/demo/start-local-demo.sh
-# Parar SOLO esta instancia (conserva su volumen):
-DEMO_PREFIX=fluvia-asistente scripts/demo/stop-local-demo.sh
+# 1. Checkout propio en el SHA del PR
+git clone https://github.com/celestinojbm/Fluvia.git ~/fluvia-asistente && cd ~/fluvia-asistente
+git checkout <SHA del PR #68>
+# 2. Ver la configuración resuelta (no arranca nada)
+export DEMO_PREFIX=fluvia-asistente DEMO_PORT_BASE=3360 DEMO_PG_PORT=55438 DEMO_REDIS_PORT=56385
+DEMO_WITH_CALL=1 DEMO_PRINT_CONFIG=1 scripts/demo/start-local-demo.sh
+# 3. Arrancar (comprueba puertos TCP y UDP y pertenencia ANTES de crear nada)
+DEMO_WITH_WORKER=1 DEMO_WITH_CALL=1 scripts/demo/start-local-demo.sh
+# 4. Parar SOLO esta instancia (conserva volumen y contenedores)
+scripts/demo/stop-local-demo.sh
+# Borrar sus datos (aparte y explícito):
+# scripts/demo/purge-local-demo.sh --yes-delete-data
 ```
 
-- **Portada:** `http://127.0.0.1:3362/`
-- **Personal:** `http://127.0.0.1:3362/personal/entrar`
-- **Comercio:** `http://127.0.0.1:3362/login`
-- **Credenciales de demostración:** las mismas del seed. Ver la salida del script.
-- **Adjuntos del asistente:** `.demo-fluvia-asistente/assistant`, privado y propio de la instancia.
-- **Proveedores:** simulados, salvo que exportes las variables de `ASISTENTE.md` §4 antes de arrancar.
+- **Claves de la llamada:** se generan una vez en `.demo-fluvia-asistente/call/` (0700; `secrets.env` 0600). Llegan a la API y al agente por el entorno, no por la línea de órdenes.
+- **Propiedad de procesos:** cada servicio (API, checkout, panel, worker y agente) tiene su PID en el estado de la instancia. La parada verifica el cwd antes de actuar.
+- **Probar la llamada:** Personal → «Pregunta a Fluvia» → «Hablar con Fluvia». Debe decir «Agente de prueba» salvo que exportes `ASSISTANT_SPEECH_PROVIDER` y `SPEECH_*` antes del paso 3.
+- **Limitaciones de lo verificado:**
+  - El script no se ha ejecutado de principio a fin aquí, porque este entorno no tiene Docker. Sí se verificó:
+    - la configuración resuelta
+    - el rechazo por puerto TCP y UDP ocupado, antes de crear estado
+    - la generación de claves y permisos
+    - que el `livekit.yaml` generado funciona con el servidor LiveKit real y la prueba WebRTC del agente
+  - En Docker Desktop (Windows/WSL) los puertos UDP publicados en 127.0.0.1 suelen funcionar. Si el audio no llega, el cliente cae a TCP (3364).
