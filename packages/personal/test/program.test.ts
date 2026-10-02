@@ -11,6 +11,8 @@ import {
 } from '../src/index.js';
 import { bal, creditReady, fund, harness, key, newConsumer, type Harness } from './helpers.js';
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
 /**
  * Programa de consumo contra PostgreSQL REAL con adaptadores simulados:
  * wallet, garantía, política, crédito, tarjetas, autorizaciones, cuotas,
@@ -424,7 +426,8 @@ describe('tarjetas', () => {
       `SELECT row_to_json(k)::text AS j FROM cards k WHERE id = $1`,
       [card.id]
     );
-    expect(raw.rows[0].j).not.toMatch(/[0-9]{12,19}/);
+    // Sin PAN fuera de los UUID (su último grupo puede salir solo con dígitos).
+    expect(String(raw.rows[0].j).replace(UUID_RE, '')).not.toMatch(/[0-9]{12,19}/);
     const reveal = await h.s.cards.revealSession(h.program, card.id, c.actor);
     expect(reveal.mode).toBe('unavailable');
   });

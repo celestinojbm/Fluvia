@@ -7,6 +7,8 @@ import { AuthService } from '@fluvia/auth';
 import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { buildApp } from '../src/app.js';
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
 /**
  * Recorrido de ACEPTACIÓN de la jornada integral por HTTP, con el backend
  * real, PostgreSQL y adaptadores simulados:
@@ -324,7 +326,9 @@ describe('recorrido de aceptación completo', () => {
     });
     expect(card.statusCode).toBe(201);
     expect(card.json().status).toBe('active');
-    expect(JSON.stringify(card.json())).not.toMatch(/[0-9]{12,19}/);
+    // Sin PAN: ninguna secuencia de 12–19 dígitos fuera de los UUID (cuyo
+    // último grupo hexadecimal puede salir, por azar, solo con dígitos).
+    expect(JSON.stringify(card.json()).replace(UUID_RE, '')).not.toMatch(/[0-9]{12,19}/);
     const cardId = card.json().id as string;
 
     // Oferta visible antes de aceptar; código de pago de un solo uso.
