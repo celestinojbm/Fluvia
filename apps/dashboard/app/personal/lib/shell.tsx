@@ -57,8 +57,8 @@ export function PersonalShell({ name, children }: { name: string; children: Reac
               </li>
             ))}
           </ul>
-          <AssistantTrigger />
           <div className="px-rail-foot">
+            <AssistantTrigger className="as-trigger as-trigger-icon" compact />
             <p>{name}</p>
             <button type="button" className="px-link" onClick={logout} disabled={leaving}>
               {leaving ? 'Cerrando…' : 'Cerrar sesión'}

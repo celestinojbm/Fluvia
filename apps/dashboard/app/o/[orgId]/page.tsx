@@ -64,7 +64,7 @@ export default async function OrgHomePage({
   const { token, role } = await orgContext(orgId);
   const r = range(key);
   const q = `from=${r.from}&to=${r.to}`;
-  const [summary, insights, recent, products] = await Promise.all([
+  const [summary, insights, recent, products, directory] = await Promise.all([
     readApi<CommerceSummary>(token, orgPath(orgId, `/commerce/summary?${q}`)),
     readApi<CommerceInsights>(
       token,
@@ -72,7 +72,11 @@ export default async function OrgHomePage({
     ),
     readApi<OrderList>(token, orgPath(orgId, '/orders?limit=6')),
     readApi<{ data: Product[] }>(token, orgPath(orgId, '/catalog/products?limit=500')),
+    readApi<{ data: Array<{ visibility: string }> }>(token, orgPath(orgId, '/directory/profiles')),
   ]);
+  // Tarea opcional: solo si la lectura funcionó y NINGÚN comercio está publicado.
+  const unpublished =
+    directory.kind === 'ok' && !directory.data.data.some((d) => d.visibility === 'published');
   const o = `/o/${orgId}`;
   const canSell = role !== undefined && SELL_ROLES.has(role);
   const href = (p: PeriodKey, c?: string | null) =>
@@ -255,6 +259,7 @@ export default async function OrgHomePage({
             sum={sum!}
             lowStock={lowStock.length}
             lowStockNames={lowStock.slice(0, 3).map((p) => p.name)}
+            directoryTask={unpublished}
           />
 
           <div className="fx-cols">
@@ -416,15 +421,18 @@ function Alerts({
   sum,
   lowStock,
   lowStockNames,
+  directoryTask,
 }: {
   o: string;
   sum: CommerceSummary;
   lowStock: number;
   lowStockNames: string[];
+  /** Ningún perfil publicado en «Dónde comprar» (tarea opcional). */
+  directoryTask: boolean;
 }) {
   const inFlight = sum.charges_in_flight.reduce((a, f) => a + f.count, 0);
   const refundsOpen = sum.refunds_open.reduce((a, f) => a + f.count, 0);
-  if (lowStock === 0 && inFlight === 0 && refundsOpen === 0) return null;
+  if (lowStock === 0 && inFlight === 0 && refundsOpen === 0 && !directoryTask) return null;
   return (
     <section className="fx-alerts" aria-label="Requiere atención">
       {lowStock > 0 ? (
@@ -448,6 +456,16 @@ function Alerts({
             </strong>
             Resultado pendiente o incierto: no cobres de nuevo.{' '}
             <a href={`${o}/orders?state=payment_in_progress`}>Ver ventas</a>
+          </p>
+        </div>
+      ) : null}
+      {directoryTask ? (
+        <div className="fx-alert" data-tone="info">
+          <Icon name="pin" />
+          <p>
+            <strong>Tu comercio no aparece en «Dónde comprar»</strong>
+            Es opcional: tú decides si publicas tu perfil.{' '}
+            <a href={`${o}/directorio`}>Preparar mi perfil</a>
           </p>
         </div>
       ) : null}

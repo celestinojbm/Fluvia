@@ -97,6 +97,12 @@ export REDIS_URL="redis://$H:$REDIS_PORT"
 # seed (id determinista). La API la usa para enrutar los códigos `fcp_` de los
 # checkouts y el dashboard para las pantalla /personal.
 export FLUVIA_PROGRAM_TENANT_ID=e744e6eb-95cf-5762-95a7-268a0917e747
+# Asistente: adjuntos en un directorio PRIVADO de esta instancia (API y
+# worker comparten el mismo). Proveedores simulados salvo que se exporten las
+# variables ASSISTANT_* / ANTHROPIC_* / SPEECH_* / LIVEKIT_* (ver
+# docs/product/presentacion-asistente/ASISTENTE.md).
+export ASSISTANT_STORAGE_DIR="$STATE/assistant"
+mkdir -p "$ASSISTANT_STORAGE_DIR" && chmod 700 "$ASSISTANT_STORAGE_DIR"
 
 cd "$ROOT"
 echo "==> Dependencias, migraciones y seed de demo (idempotentes)"
@@ -122,6 +128,13 @@ start checkout apps/checkout env FLUVIA_API_URL="http://$H:$API_PORT" \
   npx next start -H $H -p "$CHECKOUT_PORT"
 start dashboard apps/dashboard env FLUVIA_API_URL="http://$H:$API_PORT" \
   FLUVIA_DASHBOARD_ORIGIN="$DASHBOARD_ORIGIN" npx next start -H $H -p "$DASHBOARD_PORT"
+
+# Worker OPCIONAL y aislado (retención del asistente, resoluciones y
+# vigilancias): misma BD y Redis de la instancia, métricas en su propio puerto.
+if [ "${DEMO_WITH_WORKER:-0}" = 1 ]; then
+  echo "==> Arrancando worker (DEMO_WITH_WORKER=1, métricas en $H:$WORKER_METRICS_PORT)"
+  start worker apps/worker env WORKER_METRICS_PORT="$WORKER_METRICS_PORT" npx tsx src/main.ts
+fi
 
 for url in "http://$H:$API_PORT/health" "http://$H:$CHECKOUT_PORT" "http://$H:$DASHBOARD_PORT/login"; do
   for _ in $(seq 1 90); do curl -s -o /dev/null "$url" && break; sleep 1; done

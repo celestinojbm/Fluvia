@@ -45,7 +45,8 @@ demo_config() {
   DASHBOARD_PORT="${DEMO_DASHBOARD_PORT:-$((PORT_BASE + 2))}"
   PG_PORT="${DEMO_PG_PORT:-55432}"
   REDIS_PORT="${DEMO_REDIS_PORT:-56379}"
-  for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT" "$PG_PORT" "$REDIS_PORT"; do
+  for p in "$API_PORT" "$CHECKOUT_PORT" "$DASHBOARD_PORT" "$PG_PORT" "$REDIS_PORT" \
+    "${DEMO_WORKER_METRICS_PORT:-$((PORT_BASE + 9))}"; do
     [[ "$p" =~ ^[0-9]{2,5}$ ]] || die "puerto inválido: $p"
   done
 
@@ -54,7 +55,10 @@ demo_config() {
   VOLUME="$PREFIX-pgdata"
   DASHBOARD_ORIGIN="${DEMO_DASHBOARD_ORIGIN:-http://$H:$DASHBOARD_PORT}"
   CHECKOUT_ORIGIN="${DEMO_CHECKOUT_ORIGIN:-http://$H:$CHECKOUT_PORT}"
-  SERVICES=(api checkout dashboard)
+  # worker: opcional (DEMO_WITH_WORKER=1); se lista siempre para que stop/purge
+  # reconozcan su PID si se arrancó.
+  SERVICES=(api checkout dashboard worker)
+  WORKER_METRICS_PORT="${DEMO_WORKER_METRICS_PORT:-$((PORT_BASE + 9))}"
 }
 
 demo_print_config() {

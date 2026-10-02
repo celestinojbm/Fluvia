@@ -169,3 +169,70 @@ test('Checkout', async ({ browser }) => {
   await audit(await ctx.newPage(), `${CHECKOUT}${CHECKOUT_PATH}`);
   await ctx.close();
 });
+
+test('Presentación pública', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const ctx = await browser.newContext({ locale: 'es-VE' });
+  const p = await ctx.newPage();
+  for (const r of [
+    '/',
+    '/donde-comprar',
+    '/donde-comprar?categoria=moda',
+    '/donde-comprar/bodega-demo',
+    '/conoce/billetera',
+    '/conoce/tarjeta',
+    '/conoce/cuotas',
+    '/como-funciona',
+    '/comercios',
+    '/ayuda',
+    '/creditos',
+  ]) {
+    await audit(p, `${APP}${r}`);
+  }
+  await ctx.close();
+});
+
+test('Asistente abierto (Personal y Comercio) y directorio del comercio', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const ctx = await browser.newContext({ locale: 'es-VE' });
+  const p = await ctx.newPage();
+  await p.goto(`${APP}/personal/entrar`);
+  await p.getByLabel('Correo').fill('cliente@demo.fluvia.test');
+  await p.getByLabel('Contraseña').fill('demo-cliente-password');
+  await p.getByRole('button', { name: 'Entrar', exact: true }).last().click();
+  await p.waitForURL(`${APP}/personal`);
+  await p.goto(`${APP}/login`);
+  await p.getByLabel('Correo').fill('owner@demo.fluvia.test');
+  await p.getByLabel('Contraseña').fill('demo-owner-password');
+  await p.locator('form button[type="submit"]').click();
+  await p.waitForURL((u) => !u.pathname.startsWith('/login'));
+  await audit(p, `${APP}/o/${ORG}/directorio`);
+  for (const [url, width] of [
+    [`${APP}/personal`, 390],
+    [`${APP}/personal`, 1440],
+    [`${APP}/o/${ORG}`, 390],
+    [`${APP}/o/${ORG}`, 1440],
+  ] as const) {
+    await p.setViewportSize({ width, height: width < 500 ? 844 : 900 });
+    await p.goto(url);
+    await p
+      .getByRole('button', { name: 'Pregunta a Fluvia' })
+      .filter({ visible: true })
+      .first()
+      .click();
+    await p.getByRole('dialog').waitFor();
+    await p.waitForTimeout(400);
+    await p.addScriptTag({ content: AXE });
+    const v = await p.evaluate(async () => {
+      // @ts-expect-error axe global inyectado
+      const r = await window.axe.run(document.querySelector('[role=dialog]'), {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa'] },
+      });
+      return r.violations
+        .filter((x: { impact: string }) => x.impact === 'serious' || x.impact === 'critical')
+        .map((x: { id: string }) => x.id);
+    });
+    expect(v, `asistente ${url} @${width}`).toEqual([]);
+  }
+  await ctx.close();
+});
