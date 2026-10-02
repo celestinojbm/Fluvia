@@ -54,7 +54,12 @@ export function DisputesList({
         {disputes.length === 0 ? (
           <p className="empty">{t.disputesEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.disputesTitle}</caption>
               <thead>
@@ -138,7 +143,12 @@ export function DisputesDetail({
       {held && <p className="notice">{t.disputeHeldHint}</p>}
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.disputes}</caption>
             <tbody>

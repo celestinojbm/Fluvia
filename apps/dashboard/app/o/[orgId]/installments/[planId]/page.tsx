@@ -1,4 +1,5 @@
 import { InstallmentActions } from '../../../../lib/installment-actions';
+import { PlanProgress } from '../../../../lib/commerce-ui';
 import { orgContext } from '../../../../lib/org-context';
 import { orgPath, readApi, type InstallmentPlan } from '../../../../lib/commerce-api';
 import {
@@ -74,6 +75,11 @@ export default async function PlanPage({
           <strong>{p.scenario}</strong>.
         </p>
       </Callout>
+      <section className="fx-amount-band" aria-label="Total del plan">
+        <p className="fx-amount-band-value">{money(p.total, p.currency)}</p>
+        <PlanStatus status={p.status} />
+        <PlanProgress installments={p.installments} />
+      </section>
       <div className="fx-grid fx-grid-main">
         <section className="fx-panel" aria-labelledby="sched-title">
           <header>
@@ -103,24 +109,14 @@ export default async function PlanPage({
                         </Status>
                       </span>
                     </span>
-                    <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-                      {money(i.amount, p.currency)}
-                    </strong>
+                    <strong className="num">{money(i.amount, p.currency)}</strong>
                   </li>
                 );
               })}
             </ol>
-            <p
-              className="fx-cell-main"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                borderTop: '2px solid var(--fl-black)',
-                paddingTop: 12,
-              }}
-            >
+            <p className="fx-cart-total">
               <span>Total del plan</span>
-              <span>{money(p.total, p.currency)}</span>
+              <output>{money(p.total, p.currency)}</output>
             </p>
             <p className="fx-hint">
               Las fechas son informativas: el estado de cada cuota solo cambia por un evento
@@ -146,17 +142,15 @@ export default async function PlanPage({
               <h2 id="hist-title">Historial</h2>
             </header>
             <div className="fx-panel-body">
-              <ol className="fx-cart-lines">
+              <ol className="fx-timeline" aria-label="Historial del plan">
                 {p.events.map((e, idx) => (
-                  <li key={idx} className="fx-cart-line" style={{ gridTemplateColumns: '1fr' }}>
+                  <li key={idx}>
+                    <strong>
+                      {EVENT_LABEL[e.kind] ?? e.kind}
+                      {e.seq ? ` · cuota ${e.seq}` : ''}
+                    </strong>
                     <span>
-                      <span className="fx-cell-main">
-                        {EVENT_LABEL[e.kind] ?? e.kind}
-                        {e.seq ? ` · cuota ${e.seq}` : ''}
-                      </span>
-                      <span className="fx-cell-sub">
-                        {ACTOR_LABEL[e.actor]} · {dateTime(e.created_at)}
-                      </span>
+                      {ACTOR_LABEL[e.actor]} · {dateTime(e.created_at)}
                     </span>
                   </li>
                 ))}

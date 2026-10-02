@@ -173,3 +173,25 @@ export function DayBars({
     </figure>
   );
 }
+
+/**
+ * Progreso de un plan de cuotas (simulación): un segmento por cuota —
+ * pagada (negro), vencida (rojo, con trama), pendiente (contorno). El texto
+ * equivalente va en `aria-label`/`title`; nunca solo color.
+ */
+export function PlanProgress({
+  installments,
+}: {
+  installments: Array<{ seq: number; status: string }>;
+}) {
+  const paid = installments.filter((i) => i.status === 'paid_simulated').length;
+  const overdue = installments.filter((i) => i.status === 'overdue_simulated').length;
+  const label = `${paid} de ${installments.length} pagadas${overdue ? `, ${overdue} vencida${overdue > 1 ? 's' : ''}` : ''}`;
+  return (
+    <span className="fx-plan-progress" role="img" aria-label={label} title={label}>
+      {installments.map((i) => (
+        <span key={i.seq} data-status={i.status} />
+      ))}
+    </span>
+  );
+}

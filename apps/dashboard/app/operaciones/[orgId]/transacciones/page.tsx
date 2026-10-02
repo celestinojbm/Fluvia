@@ -99,7 +99,7 @@ export default async function Transacciones({
           <div
             className="ox-table-wrap"
             tabIndex={0}
-            role="region"
+            role="group"
             aria-label="Tabla (desplazable con teclado)"
             style={{ marginTop: 10 }}
           >
@@ -170,7 +170,7 @@ export default async function Transacciones({
         <div
           className="ox-table-wrap"
           tabIndex={0}
-          role="region"
+          role="group"
           aria-label="Tabla (desplazable con teclado)"
         >
           <table className="ox-table is-stack">

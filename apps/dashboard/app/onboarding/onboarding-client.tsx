@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { FluviaLogo } from '../lib/brand';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../lib/csrf-header';
 import { MESSAGES, type Locale } from '../messages';
 import type { InitialMerchant, InitialOrganization } from './resolve';
@@ -175,9 +176,12 @@ export function OnboardingWizard({
   // arbitraria, sin formulario; solo la explicacion y el enlace al panel.
   if (onboardingNotApplicable) {
     return (
-      <main className="auth" aria-labelledby="onboarding-title">
+      <main className="auth onb" aria-labelledby="onboarding-title">
+        <p className="auth-brand">
+          <FluviaLogo height={26} />
+        </p>
         <h1 id="onboarding-title">{t.onboardingTitle}</h1>
-        <p className="notice">{t.onboardingNotApplicableBody}</p>
+        <p className="onb-intro">{t.onboardingNotApplicableBody}</p>
         <p className="notice">{t.sandboxNotice}</p>
         <p>
           <a href={dashboardHref}>{t.goToDashboard}</a>
@@ -187,10 +191,20 @@ export function OnboardingWizard({
   }
 
   return (
-    <main className="auth" aria-labelledby="onboarding-title">
+    <main className="auth onb" aria-labelledby="onboarding-title">
+      <p className="auth-brand">
+        <FluviaLogo height={26} />
+      </p>
+      <ol className="onb-steps" aria-hidden="true">
+        <li data-state={step === 'org' ? 'current' : 'done'}>
+          <span>1</span> Organización
+        </li>
+        <li data-state={step === 'merchant' ? 'current' : 'todo'}>
+          <span>2</span> Comercio
+        </li>
+      </ol>
       <h1 id="onboarding-title">{t.onboardingTitle}</h1>
-      <p className="notice">{t.onboardingIntro}</p>
-      <p className="notice">{t.sandboxNotice}</p>
+      <p className="onb-intro">{t.onboardingIntro}</p>
 
       {step === 'org' && (
         <form onSubmit={submitOrg} aria-labelledby="onboarding-step-org">
@@ -323,6 +337,7 @@ export function OnboardingWizard({
           </button>
         </form>
       )}
+      <p className="notice onb-foot">{t.sandboxNotice}</p>
     </main>
   );
 }

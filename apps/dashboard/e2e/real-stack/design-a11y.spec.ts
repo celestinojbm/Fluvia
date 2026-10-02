@@ -128,6 +128,41 @@ test('Comercios y Operaciones', async ({ browser }) => {
   await ctx.close();
 });
 
+test('Comercios · gestión y técnicas', async ({ browser }) => {
+  test.setTimeout(300_000);
+  const ctx = await browser.newContext({ locale: 'es-VE' });
+  const p = await ctx.newPage();
+  await p.goto(`${APP}/login`);
+  await p.getByLabel('Correo').fill('owner@demo.fluvia.test');
+  await p.getByLabel('Contraseña').fill('demo-owner-password');
+  await p.locator('form button[type="submit"]').click();
+  await p.waitForURL((u) => !u.pathname.startsWith('/login'));
+  const o = `${APP}/o/${ORG}`;
+  const extra = [
+    process.env.DESIGN_RECEIPT_PAYMENT ? `/payments/${process.env.DESIGN_RECEIPT_PAYMENT}` : null,
+    '/payments',
+    '/installments',
+    process.env.DESIGN_PLAN_ID ? `/installments/${process.env.DESIGN_PLAN_ID}` : null,
+    '/reconciliation',
+    process.env.DESIGN_REPORT_ID ? `/reconciliation/${process.env.DESIGN_REPORT_ID}` : null,
+    '/payouts',
+    '/checkout-sessions',
+    '/payment-links',
+    '/webhook-events',
+    '/webhook-endpoints',
+    '/disputes',
+    '/api-keys',
+    '/cases',
+    '/activity',
+    '/merchants',
+    '/team',
+    '/settings',
+  ].filter((r): r is string => r !== null);
+  for (const r of extra) await audit(p, `${o}${r}`);
+  await audit(p, `${APP}/onboarding?orgId=${ORG}`);
+  await ctx.close();
+});
+
 test('Checkout', async ({ browser }) => {
   test.skip(!CHECKOUT_PATH, 'sin checkout abierto');
   const ctx = await browser.newContext({ locale: 'es-VE' });

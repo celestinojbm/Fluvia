@@ -86,7 +86,12 @@ export function MerchantsList({
         ) : merchants.length === 0 ? (
           <p className="empty">{t.merchantsNoMatch}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.merchantsTitle}</caption>
               <thead>

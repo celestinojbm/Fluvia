@@ -94,7 +94,12 @@ export function WebhookEndpointsList({
         {endpoints.length === 0 ? (
           <p className="empty">{t.webhookEndpointsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.webhookEndpointsTitle}</caption>
               <thead>
@@ -287,7 +292,12 @@ export function WebhookEndpointDetailView({
       </header>
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.webhookEndpointDetailTitle}</caption>
             <tbody>

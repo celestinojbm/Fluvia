@@ -51,7 +51,12 @@ export function WebhookEventsList({
         {events.length === 0 ? (
           <p className="empty">{t.webhookEventsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.webhookEventsTitle}</caption>
               <thead>
@@ -145,7 +150,12 @@ export function WebhookEventDetailView({
       </header>
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.webhookEventDetailTitle}</caption>
             <tbody>
@@ -185,7 +195,12 @@ export function WebhookEventDetailView({
         {event.attempts_history.length === 0 ? (
           <p className="empty">{t.attemptsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.attemptsTitle}</caption>
               <thead>

@@ -59,7 +59,12 @@ export function AuditEventsList({
           <p className="empty">{t.eventsEmpty}</p>
         ) : (
           <>
-            <div className="table-wrap">
+            <div
+              className="table-wrap"
+              tabIndex={0}
+              role="group"
+              aria-label="Tabla (desplazable con teclado)"
+            >
               <table>
                 <caption className="sr-only">{t.eventsTitle}</caption>
                 <thead>

@@ -37,11 +37,11 @@
       "scope": "produccion (fuente tipografica de la interfaz; ficheros woff2 servidos por apps/{checkout,dashboard} desde /_next/static)",
       "dependencyPath": "apps/{checkout,dashboard} > @fontsource-variable/manrope@5.3.0",
       "reason": "Fuente de la identidad visual solicitada por el propietario. OFL-1.1 permite uso, incrustacion y redistribucion con el software, incluido uso comercial; no impone licencia al producto",
-      "obligations": "Conservar el aviso de copyright y el texto OFL al redistribuir la fuente; no vender la fuente por separado; no usar el nombre reservado si se modifica la fuente (aqui no se modifica)",
+      "obligations": "Conservar el aviso de copyright (The Manrope Project Authors) y el texto completo de la OFL-1.1 junto a la fuente distribuida: se sirven en /licenses/manrope-OFL-1.1.txt desde apps/{dashboard,checkout}/public y se conservan en node_modules (LICENSE del paquete); no vender la fuente por separado; no modificar la fuente (si se modificara, no usar el nombre reservado «Manrope»)",
       "approvedBy": "Celestino Briceño",
-      "approvalDate": "2026-10-01",
-      "reviewBy": "confirmar en la revision del PR de la jornada de diseño; re-evaluar en el gate de primer release publico/comercial",
-      "notes": "Registrada por el agente a partir de la instruccion escrita del propietario en el encargo «Jornada de diseño» (2026-10-01): «Tipografia: utiliza Manrope alojada localmente para la interfaz». El propietario debe confirmarla o revertirla en la revision; si la rechaza, se retira la dependencia y la interfaz vuelve a la pila del sistema"
+      "approvalDate": "2026-10-02",
+      "reviewBy": "re-evaluar en el gate de primer release publico/comercial",
+      "notes": "Decision del propietario CONFIRMADA por escrito el 2026-10-02: «Mi instruccion de utilizar Manrope incluye autorizacion para incorporarla bajo OFL-1.1, conservando sus avisos y cumpliendo sus terminos.» La excepcion cubre UNICAMENTE @fontsource-variable/manrope (OFL-1.1); no se extiende a otras fuentes ni paquetes."
     }
   ]
 }

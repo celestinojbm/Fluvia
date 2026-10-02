@@ -437,7 +437,7 @@ code {
 }
 .action-form fieldset {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 16px;
   padding: 1rem;
   margin: 0;
 }
@@ -451,15 +451,31 @@ code {
   margin-top: 0.5rem;
 }
 .action-form textarea,
-.action-form input,
+.action-form input:where(:not([type='checkbox'], [type='radio'])),
 .action-form select {
   width: 100%;
-  min-height: 44px;
-  padding: 0.5rem 0.75rem;
+  min-height: 48px;
+  padding: 0.5rem 1rem;
   font-size: 1rem;
   font-family: inherit;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--fl-white);
+}
+.action-form input[type='checkbox'],
+.action-form input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--fl-black);
+}
+.scope-option {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
 }
 .action-form textarea {
   resize: vertical;
@@ -1450,4 +1466,80 @@ a.btn {
     overflow-wrap: anywhere;
     word-break: break-all;
   }
+}
+
+/* Onboarding: asistente de dos pasos (identidad Menta). */
+.auth.onb {
+  max-width: 34rem;
+}
+.onb-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+.onb-steps li {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--fl-line);
+  font-size: var(--fl-fs-sm);
+  font-weight: 750;
+  color: var(--fl-ink-2);
+}
+.onb-steps li span {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font-weight: 800;
+}
+.onb-steps li[data-state='current'] {
+  border-color: var(--fl-black);
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.onb-steps li[data-state='current'] span {
+  background: var(--fl-mint);
+  border-color: var(--fl-mint);
+  color: var(--fl-black);
+}
+.onb-steps li[data-state='done'] {
+  border-color: var(--fl-black);
+  color: var(--fl-black);
+  background: var(--fl-mint);
+}
+.onb-intro {
+  margin: 0.5rem 0 1rem;
+  color: var(--fl-ink-2);
+}
+.onb h2 {
+  margin: 1.25rem 0 0.25rem;
+  font-size: var(--fl-fs-h3);
+  font-weight: 800;
+}
+.onb select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--fl-white);
+  font: inherit;
+  font-weight: 600;
+}
+.onb-foot {
+  margin: 1.5rem 0 0;
+  padding-top: 1rem;
+  border-top: 2px dashed var(--fl-line);
+}
+.auth .notice,
+.picker .notice {
+  text-align: left;
 }

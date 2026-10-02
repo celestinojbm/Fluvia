@@ -10,6 +10,9 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
  *   DESIGN_CAPTURE_DIR=<dir>          carpeta de salida (obligatoria)
  *   DESIGN_RECEIPT_PAYMENT=<uuid>     pago con justificante (opcional)
  *   DESIGN_CHECKOUT_PATH=/c/<id>      checkout abierto (opcional)
+ *   DESIGN_PLAN_ID=<uuid>             plan de cuotas del comercio (opcional)
+ *   DESIGN_REPORT_ID=<uuid>           reporte de liquidación (opcional)
+ *   DESIGN_ONLY=gestion               solo las pantallas de gestión/técnicas
  *
  * Capturas SANEADAS: ids, URLs y códigos de pago enmascarados.
  */
@@ -21,6 +24,9 @@ const OUT = process.env.DESIGN_CAPTURE_DIR ?? '';
 const RECEIPT = process.env.DESIGN_RECEIPT_PAYMENT;
 const CHECKOUT_PATH = process.env.DESIGN_CHECKOUT_PATH;
 const WIDTHS = [390, 768, 1440] as const;
+const PLAN = process.env.DESIGN_PLAN_ID;
+const REPORT = process.env.DESIGN_REPORT_ID;
+const ONLY = process.env.DESIGN_ONLY;
 
 test.describe.configure({ mode: 'serial' });
 test.skip(!OUT, 'DESIGN_CAPTURE_DIR no definido');
@@ -88,7 +94,33 @@ test.afterAll(async () => {
   await merchant?.close();
 });
 
+test('Comercios · gestión y pantallas técnicas', async () => {
+  const o = `${APP}/o/${ORG}`;
+  if (RECEIPT) await shoot(m, `${o}/payments/${RECEIPT}`, 'g01-pago-detalle');
+  await shoot(m, `${o}/installments`, 'g02-cuotas-comercio');
+  if (PLAN) await shoot(m, `${o}/installments/${PLAN}`, 'g03-cuotas-plan');
+  await shoot(m, `${o}/reconciliation`, 'g04-conciliacion');
+  if (REPORT) await shoot(m, `${o}/reconciliation/${REPORT}`, 'g05-conciliacion-reporte');
+  await shoot(m, `${APP}/onboarding?orgId=${ORG}`, 'g06-onboarding');
+  const tech: Array<[string, string]> = [
+    ['payouts', 't01-payouts'],
+    ['checkout-sessions', 't02-sesiones-checkout'],
+    ['payment-links', 't03-enlaces-de-pago'],
+    ['webhook-events', 't04-eventos-webhook'],
+    ['webhook-endpoints', 't05-endpoints-webhook'],
+    ['disputes', 't06-disputas'],
+    ['api-keys', 't07-api-keys'],
+    ['cases', 't08-casos-comercio'],
+    ['activity', 't09-operacion-avanzada'],
+    ['merchants', 't10-comercios'],
+    ['team', 't11-equipo'],
+    ['settings', 't12-configuracion'],
+  ];
+  for (const [r, name] of tech) await shoot(m, `${o}/${r}`, name);
+});
+
 test('públicas: entrar (comercio y Personal)', async ({ browser }) => {
+  test.skip(ONLY === 'gestion', 'DESIGN_ONLY=gestion');
   const ctx = await browser.newContext();
   const pg = await ctx.newPage();
   await shoot(pg, `${APP}/login`, 'a01-login-comercio');
@@ -97,6 +129,7 @@ test('públicas: entrar (comercio y Personal)', async ({ browser }) => {
 });
 
 test('Personal', async () => {
+  test.skip(ONLY === 'gestion', 'DESIGN_ONLY=gestion');
   await shoot(p, `${APP}/personal`, 'p01-personal-inicio');
   await shoot(p, `${APP}/personal/tarjetas`, 'p02-personal-tarjeta');
   await shoot(p, `${APP}/personal/movimientos`, 'p03-personal-movimientos');
@@ -107,6 +140,7 @@ test('Personal', async () => {
 });
 
 test('Comercios', async () => {
+  test.skip(ONLY === 'gestion', 'DESIGN_ONLY=gestion');
   const o = `${APP}/o/${ORG}`;
   await shoot(m, o, 'c01-comercio-dashboard');
   await shoot(m, `${o}/pos`, 'c02-comercio-pos');
@@ -122,6 +156,7 @@ test('Comercios', async () => {
 });
 
 test('Operaciones', async () => {
+  test.skip(ONLY === 'gestion', 'DESIGN_ONLY=gestion');
   const o = `${APP}/operaciones/${PROGRAM}`;
   await shoot(m, o, 'o01-ops-resumen');
   await shoot(m, `${o}/clientes`, 'o02-ops-clientes');
@@ -137,6 +172,7 @@ test('Operaciones', async () => {
 });
 
 test('Checkout', async ({ browser }) => {
+  test.skip(ONLY === 'gestion', 'DESIGN_ONLY=gestion');
   test.skip(!CHECKOUT_PATH, 'sin checkout abierto');
   const ctx = await browser.newContext({ locale: 'es-VE' });
   const pg = await ctx.newPage();

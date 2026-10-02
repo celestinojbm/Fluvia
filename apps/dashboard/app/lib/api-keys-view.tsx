@@ -50,7 +50,12 @@ export function ApiKeysList({
         {keys.length === 0 ? (
           <p className="empty">{t.apiKeysEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.apiKeysTitle}</caption>
               <thead>

@@ -163,7 +163,7 @@ export default async function Cliente360({
             <div
               className="ox-table-wrap"
               tabIndex={0}
-              role="region"
+              role="group"
               aria-label="Tabla (desplazable con teclado)"
             >
               <table className="ox-table is-stack">
@@ -274,7 +274,7 @@ export default async function Cliente360({
               <div
                 className="ox-table-wrap"
                 tabIndex={0}
-                role="region"
+                role="group"
                 aria-label="Tabla (desplazable con teclado)"
                 style={{ marginTop: 12 }}
               >
@@ -324,7 +324,7 @@ export default async function Cliente360({
               <div
                 className="ox-table-wrap"
                 tabIndex={0}
-                role="region"
+                role="group"
                 aria-label="Tabla (desplazable con teclado)"
               >
                 <table className="ox-table is-stack">
@@ -409,7 +409,7 @@ export default async function Cliente360({
               <div
                 className="ox-table-wrap"
                 tabIndex={0}
-                role="region"
+                role="group"
                 aria-label="Tabla (desplazable con teclado)"
               >
                 <table className="ox-table is-stack">
@@ -488,7 +488,7 @@ export default async function Cliente360({
             <div
               className="ox-table-wrap"
               tabIndex={0}
-              role="region"
+              role="group"
               aria-label="Tabla (desplazable con teclado)"
             >
               <table className="ox-table is-stack">
@@ -588,7 +588,7 @@ export default async function Cliente360({
             <div
               className="ox-table-wrap"
               tabIndex={0}
-              role="region"
+              role="group"
               aria-label="Tabla (desplazable con teclado)"
             >
               <table className="ox-table is-stack">

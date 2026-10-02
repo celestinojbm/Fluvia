@@ -47,7 +47,12 @@ function Section({
       {rows.length === 0 ? (
         <p className="empty">{empty}</p>
       ) : (
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{title}</caption>
             <thead>

@@ -49,6 +49,15 @@ describe('identidad Menta: tokens', () => {
     }
   });
 
+  it('el aviso OFL-1.1 de Manrope se distribuye con la fuente en ambas apps', () => {
+    const license = read('node_modules/@fontsource-variable/manrope/LICENSE');
+    expect(license).toContain('The Manrope Project Authors');
+    expect(license).toContain('SIL Open Font License, Version 1.1');
+    for (const app of ['public', '../checkout/public']) {
+      expect(read(`${app}/licenses/manrope-OFL-1.1.txt`)).toBe(license);
+    }
+  });
+
   const mint = token('fl-mint');
   const white = token('fl-white');
   const black = token('fl-black');

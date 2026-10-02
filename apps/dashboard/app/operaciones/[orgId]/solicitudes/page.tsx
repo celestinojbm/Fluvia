@@ -70,7 +70,7 @@ export default async function Solicitudes({
           <div
             className="ox-table-wrap"
             tabIndex={0}
-            role="region"
+            role="group"
             aria-label="Tabla (desplazable con teclado)"
           >
             <table className="ox-table is-stack">
@@ -132,7 +132,7 @@ export default async function Solicitudes({
         <div
           className="ox-table-wrap"
           tabIndex={0}
-          role="region"
+          role="group"
           aria-label="Tabla (desplazable con teclado)"
         >
           <table className="ox-table is-stack">

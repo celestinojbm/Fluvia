@@ -70,7 +70,7 @@ export default async function OpsHome({ params }: { params: Promise<{ orgId: str
           <div
             className="ox-table-wrap"
             tabIndex={0}
-            role="region"
+            role="group"
             aria-label="Tabla (desplazable con teclado)"
           >
             <table className="ox-table is-stack">

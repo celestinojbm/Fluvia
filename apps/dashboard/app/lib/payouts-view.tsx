@@ -46,7 +46,12 @@ export function PayoutsList({
         {payouts.length === 0 ? (
           <p className="empty">{t.payoutsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.payoutsTitle}</caption>
               <thead>
@@ -125,7 +130,12 @@ export function PayoutsDetail({
       {payout.status === 'indeterminate' && <p className="notice">{t.payoutIndeterminateHint}</p>}
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.payouts}</caption>
             <tbody>

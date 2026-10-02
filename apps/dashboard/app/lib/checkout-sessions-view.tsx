@@ -46,7 +46,12 @@ export function CheckoutSessionsList({
         {sessions.length === 0 ? (
           <p className="empty">{t.sessionsEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.sessionsTitle}</caption>
               <thead>
@@ -123,7 +128,12 @@ export function CheckoutSessionDetail({
       </header>
 
       <section className="card">
-        <div className="table-wrap">
+        <div
+          className="table-wrap"
+          tabIndex={0}
+          role="group"
+          aria-label="Tabla (desplazable con teclado)"
+        >
           <table>
             <caption className="sr-only">{t.sessionDetailTitle}</caption>
             <tbody>

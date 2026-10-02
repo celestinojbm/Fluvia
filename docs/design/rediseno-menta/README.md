@@ -4,7 +4,7 @@
 - **Lámina de marca:** [`../brand/lamina-marca.png`](../brand/lamina-marca.png)
 - **SVG de la marca:** [`../brand/svg/`](../brand/svg/)
 - **Rama:** `claude/diseno-identidad-menta`, apilada sobre `claude/jornada-integral-wallet-credito` (`5c8949c`)
-- **Imagen de referencia:** no llegó a esta sesión. La paleta sale del bloque «precisión obligatoria» del encargo.
+- **Imagen de referencia:** no llegó a esta sesión, ni en el encargo inicial ni en el mensaje del 2026-10-02 que la anunciaba adjunta (solo llegó el texto). No se comparó la composición con ella. Se verificó lo que el texto describe: fondo #B2FCE4, negro y blanco, barra Sandbox negra, tipografía geométrica (Manrope) y composición clara. La identidad propia de Fluvia (símbolo y logotipo) se conserva.
 
 ## 1. Comparativas antes/después
 
@@ -15,7 +15,7 @@ Están en `comparativas/<pantalla>-<ancho>.jpg`. Cada fichero muestra la misma r
 
 Las dos capturas usan la misma instancia, el mismo seed y la misma sesión. Ids, URLs y códigos aparecen enmascarados.
 
-- **Anchos:** 390, 768 y 1440 px. Hay 31 pantallas × 3 anchos, más el checkout con sesión nueva.
+- **Anchos:** 390, 768 y 1440 px. Hay 49 pantallas × 3 anchos (147 comparativas): las 31 de la primera entrega más 18 de gestión y técnicas (`g01`–`g06`, `t01`–`t12`), con el checkout con sesión nueva incluido.
 - **Diferencias de datos:**
   - Entre las dos capturas se ejecutaron las pruebas E2E, que crean ventas, cobros y movimientos. Por eso algunas listas tienen más filas o importes distintos en el «después». El diseño se compara pantalla a pantalla, no las cifras.
   - El checkout «antes» quedó capturado con un enlace ya usado. `k01-checkout-*` compara ese mismo estado («enlace inválido o expirado»). `k02-checkout-pago-*` muestra el pago con una sesión nueva, que no tiene «antes».
@@ -46,35 +46,22 @@ En las pantallas de esta sección se cambió la composición, no solo los colore
 
 ## 3. Pantallas pendientes
 
-Estas pantallas solo recibieron paleta, tipografía y componentes. Siguen el sistema, pero su composición es la heredada:
+No queda ninguna pantalla con la identidad anterior.
 
-- Pagos (lista y detalle)
-- Payouts
-- Sesiones de checkout
-- Enlaces de pago
-- Eventos de webhook
-- Endpoints de webhook
-- Disputas
-- Conciliación
-- Claves de API
-- Casos del comercio
-- Operación avanzada
-- Onboarding
-- Comercios del grupo
-- Cuotas del comercio (lista y detalle)
+Las pantallas técnicas listadas arriba usan el **puente común**, no una composición propia por pantalla. Su estructura sigue siendo cabecera + panel con tabla, porque es la adecuada para consulta técnica. Sus tablas se desplazan dentro de un contenedor accesible con teclado a 390 px y no se apilan, porque el marcado heredado no tiene etiquetas por celda. Si se quiere apilarlas, hay que añadir `data-label` a cada vista (cambio pequeño, pantalla a pantalla).
 
-Son pantallas secundarias o técnicas. Las tablas de pagos y webhooks se desplazan dentro de su contenedor a 390 px: la página no desborda, pero no se apilan.
+No incluido en esta jornada (por instrucción): modo oscuro.
 
 ## 4. Verificación
 
-| Comprobación                                                                      | Resultado                                                                                          |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `design-capture` (sin scroll horizontal, sin 5xx)                                 | 31 pantallas × 390/768/1440 ✓                                                                      |
-| `design-a11y` (axe WCAG 2.x A/AA, controles ≥ 44 px, primer Tab con foco visible) | 0 infracciones graves o críticas en 31 pantallas × 390/1440, incluido el contraste de color real ✓ |
-| `integral-real-stack`                                                             | 12/12: Personal, Operaciones y Comercios; teclado; vacíos; sesión caducada ✓                       |
-| `commerce-real-stack`                                                             | 14/14: catálogo, carrito, cobros, rechazo, cuotas, anulación, permisos, sesión caducada ✓          |
-| `journey-real-stack`                                                              | 7/7: POS por teclado a 390 px, devolución, justificante ✓                                          |
-| Unitarias del panel                                                               | 534 + 35 de tokens (paleta, sincronía, 22 contrastes, ausencia de la identidad anterior)           |
+| Comprobación                                                                      | Resultado                                                                                                     |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `design-capture` (sin scroll horizontal, sin 5xx)                                 | 49 pantallas × 390/768/1440 ✓                                                                                 |
+| `design-a11y` (axe WCAG 2.x A/AA, controles ≥ 44 px, primer Tab con foco visible) | 0 infracciones graves o críticas en 50 pantallas × 390/1440, incluido el contraste de color real ✓            |
+| `integral-real-stack`                                                             | 12/12: Personal, Operaciones y Comercios; teclado; vacíos; sesión caducada ✓                                  |
+| `commerce-real-stack`                                                             | 14/14: catálogo, carrito, cobros, rechazo, cuotas, anulación, permisos, sesión caducada ✓                     |
+| `journey-real-stack`                                                              | 7/7: POS por teclado a 390 px, devolución, justificante ✓                                                     |
+| Unitarias del panel                                                               | 570, incluidas las de tokens (paleta, sincronía, 22 contrastes, aviso OFL, ausencia de la identidad anterior) |
 
 Todas las pruebas E2E se ejecutaron contra el **build de producción** (`next build && next start`) en la instancia local `fluvia-ci`. Ninguna de ellas corre en CI, igual que el resto de `real-stack`. CI sí ejecuta las unitarias, el E2E del justificante, el lint, los tipos y el gate de licencias.
 
@@ -88,28 +75,49 @@ Todas las pruebas E2E se ejecutaron contra el **build de producción** (`next bu
 
 ## 5. Ejecutar la versión nueva en una instancia independiente
 
-El objetivo es levantar la versión nueva **sin tocar** las demos actuales ni sus checkouts, contenedores o volúmenes. Se usan un checkout aparte, otro prefijo y otros puertos.
+Esto levanta la versión nueva **sin tocar** las cuatro demos existentes ni sus checkouts, contenedores o volúmenes. Usa un checkout aparte, el prefijo `fluvia-menta` y puertos propios. Requiere docker, node y pnpm. El script crea sus propios contenedores PostgreSQL 16 y Redis 7, etiquetados con el prefijo.
 
 ```bash
-# 1. Checkout propio (no reutilizar el de ninguna demo)
-git clone <repo> fluvia-menta && cd fluvia-menta
+# 1. Checkout propio en un directorio nuevo (no reutilizar el de ninguna demo)
+git clone https://github.com/celestinojbm/Fluvia.git fluvia-menta
+cd fluvia-menta
 git checkout claude/diseno-identidad-menta
+git rev-parse HEAD        # debe coincidir con el SHA entregado en el PR #67
+
+# 2. Comprobar que los puertos elegidos están libres (no debe imprimir nada)
+ss -ltn | grep -E ':(3350|3351|3352|55437|56384)\b'
+
+# 3. Instalar dependencias y arrancar la instancia con prefijo y puertos propios.
+#    El script instala, migra, siembra, compila (next build) y arranca.
 pnpm install --frozen-lockfile
-
-# 2. Comprobar que los puertos elegidos están libres en la máquina
-ss -ltn | grep -E ':(335[0-9]|55437|56384)\b' && echo "OCUPADO: elige otros"
-
-# 3. Instancia con prefijo y puertos propios (scripts/demo/lib.sh)
 DEMO_PREFIX=fluvia-menta DEMO_PORT_BASE=3350 DEMO_PG_PORT=55437 DEMO_REDIS_PORT=56384 \
   scripts/demo/start-local-demo.sh
 
-# 4. Parar o retirar SOLO esta instancia
+# 4. Parar SOLO esta instancia (conserva su volumen)
 DEMO_PREFIX=fluvia-menta scripts/demo/stop-local-demo.sh
 ```
 
-- **Puertos:**
-  - No se usan 3302, 3312, 3322 ni 3340–3349 (`fluvia-ci`).
-  - Si las demos actuales ocupan otros puertos, elige una base libre y vuelve a comprobarla con el paso 2.
-- **Aislamiento:** el script se niega a arrancar si el estado o los recursos con ese prefijo pertenecen a otro checkout.
-- **Despliegue:** no se ha desplegado nada.
-- **Demos en esta sesión:** las demos no existen en el contenedor de esta sesión, así que no se han tocado.
+**Direcciones** (solo en esta máquina, 127.0.0.1):
+
+| Servicio    | URL                                                                    |
+| ----------- | ---------------------------------------------------------------------- |
+| API         | http://127.0.0.1:3350                                                  |
+| Checkout    | http://127.0.0.1:3351                                                  |
+| Panel       | http://127.0.0.1:3352/login                                            |
+| Personal    | http://127.0.0.1:3352/personal/entrar                                  |
+| Operaciones | http://127.0.0.1:3352/operaciones/e744e6eb-95cf-5762-95a7-268a0917e747 |
+
+**Credenciales sintéticas del seed:**
+
+- Comercio: `owner@demo.fluvia.test` / `demo-owner-password`
+- Personal: `cliente@demo.fluvia.test` / `demo-cliente-password`
+
+**Garantías del script** (`scripts/demo/lib.sh`):
+
+- Se niega a arrancar si algún puerto coincide con los de la demo por defecto.
+- Se niega a arrancar si el estado o los contenedores con ese prefijo pertenecen a otro checkout.
+- `stop` y `purge` solo actúan sobre recursos etiquetados con `fluvia.demo.prefix=fluvia-menta` y este directorio.
+
+**Puertos.** No se usan 3302, 3312, 3322 ni 3340–3349 (instancia de verificación `fluvia-ci`). Si alguna de las cuatro demos ocupa otros puertos, elige otra base libre y repite el paso 2.
+
+**Despliegue.** No se ha desplegado ni fusionado nada. Las demos no existen en el contenedor de esta sesión y no se han tocado.

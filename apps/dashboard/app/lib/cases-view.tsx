@@ -96,7 +96,12 @@ export function CasesList({
         {cases.length === 0 ? (
           <p className="empty">{t.casesEmpty}</p>
         ) : (
-          <div className="table-wrap">
+          <div
+            className="table-wrap"
+            tabIndex={0}
+            role="group"
+            aria-label="Tabla (desplazable con teclado)"
+          >
             <table>
               <caption className="sr-only">{t.casesTitle}</caption>
               <thead>
@@ -154,7 +159,12 @@ function AdjustmentsTable({
   const dirLabel = (d: CaseAdjustment['direction']) =>
     d === 'debit_differences' ? t.dirDebit : t.dirCredit;
   return (
-    <div className="table-wrap">
+    <div
+      className="table-wrap"
+      tabIndex={0}
+      role="group"
+      aria-label="Tabla (desplazable con teclado)"
+    >
       <table>
         <caption className="sr-only">{t.adjustmentsTitle}</caption>
         <thead>

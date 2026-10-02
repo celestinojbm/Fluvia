@@ -2502,3 +2502,279 @@
     text-transform: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Puente de pantallas técnicas (marcado heredado: .dash/.card/table/.badge):
+   mismo lenguaje que el resto — paneles blancos, tablas con cabecera en
+   versalitas, estados con punto + palabra, ids legibles, foco visible.
+   -------------------------------------------------------------------------- */
+.app-shell .dash-head {
+  align-items: flex-start;
+  margin-bottom: var(--fx-s5);
+}
+.app-shell .dash-head h1 {
+  margin: 0;
+  line-height: 1.08;
+}
+.app-shell .dash-head .org {
+  margin: var(--fx-s2) 0 0;
+  color: var(--fl-ink-2);
+  font-size: var(--fl-fs-sm);
+}
+.app-shell .signout,
+.app-shell .dash-head .signout {
+  /* La sesión se cierra desde el riel: no se duplica en cada cabecera. */
+  display: none;
+}
+.app-shell .card {
+  padding: var(--fx-s5);
+  margin-bottom: var(--fx-s3);
+}
+.app-shell .card > h2 {
+  margin: 0 0 var(--fx-s3);
+  font-size: var(--fl-fs-h3);
+  font-weight: 800;
+}
+.app-shell .count {
+  color: var(--fl-ink-2);
+  font-weight: 650;
+}
+.app-shell .empty {
+  margin: 0;
+  padding: var(--fx-s4) 0;
+  color: var(--fl-ink-2);
+}
+.app-shell .table-wrap {
+  border-radius: 12px;
+}
+.app-shell .table-wrap:focus-visible {
+  outline: 3px solid var(--fl-focus);
+  outline-offset: 2px;
+}
+.app-shell .table-wrap table,
+.app-shell .fx-panel table:not(.fx-table) {
+  font-size: 0.875rem;
+}
+.app-shell .table-wrap th,
+.app-shell .table-wrap td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--fl-line);
+  vertical-align: middle;
+}
+.app-shell .table-wrap thead th {
+  background: var(--fl-surface-2);
+  color: var(--fl-ink-2);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.app-shell .table-wrap thead th:first-child {
+  border-top-left-radius: 12px;
+}
+.app-shell .table-wrap thead th:last-child {
+  border-top-right-radius: 12px;
+}
+.app-shell .table-wrap tbody tr:hover {
+  background: var(--fl-surface-2);
+}
+.app-shell .table-wrap tbody th[scope='row'] {
+  color: var(--fl-ink-2);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.app-shell .table-wrap tr:last-child > * {
+  border-bottom: none;
+}
+.app-shell code,
+.app-shell .fx-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--fl-surface-2);
+  color: var(--fl-black);
+  overflow-wrap: anywhere;
+}
+.app-shell a > code {
+  background: var(--fl-mint);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.app-shell .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.app-shell .badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.app-shell .status-code {
+  font-size: var(--fl-fs-xs);
+}
+.app-shell .timeline li {
+  border-color: var(--fl-line);
+}
+.app-shell .kv dt {
+  color: var(--fl-ink-2);
+  font-weight: 650;
+}
+
+/* Detalle con importe protagonista (pagos, cuotas, conciliación). */
+.fx-amount-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fx-s3) var(--fx-s4);
+  margin-bottom: var(--fx-s3);
+  padding: var(--fx-s4) var(--fx-s5);
+  border-radius: var(--fl-radius-lg);
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.fx-amount-band-value {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.fx-amount-band .badge,
+.fx-amount-band .fx-status {
+  background: var(--fl-white);
+}
+.fx-amount-band code {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--fl-white);
+}
+.fx-section {
+  margin-top: var(--fx-s3);
+}
+.fx-section h2 {
+  margin: 0 0 var(--fx-s3);
+  font-size: var(--fl-fs-h3);
+  font-weight: 800;
+}
+.fx-dl-row {
+  display: contents;
+}
+.fx-amount-lead {
+  font-size: 1rem;
+  font-weight: 800;
+}
+@media (max-width: 860px) {
+  .fx-table.is-stack td.fx-amount-lead {
+    font-size: 1.25rem;
+  }
+}
+
+/* Progreso de un plan de cuotas: un segmento por cuota. */
+.fx-plan-progress {
+  display: inline-flex;
+  gap: 3px;
+  min-width: 6rem;
+  vertical-align: middle;
+}
+.fx-plan-progress > span {
+  flex: 1;
+  height: 10px;
+  min-width: 14px;
+  border-radius: var(--fl-pill);
+  box-shadow: inset 0 0 0 1.5px var(--fl-black);
+}
+.fx-plan-progress > span[data-status='paid_simulated'] {
+  background: var(--fl-black);
+}
+.fx-plan-progress > span[data-status='overdue_simulated'] {
+  background: repeating-linear-gradient(-45deg, var(--fl-bad) 0 3px, var(--fl-bad-soft) 3px 6px);
+  box-shadow: inset 0 0 0 1.5px var(--fl-bad);
+}
+.fx-amount-band .fx-plan-progress > span {
+  box-shadow: inset 0 0 0 1.5px var(--fl-white);
+}
+.fx-amount-band .fx-plan-progress > span[data-status='paid_simulated'] {
+  background: var(--fl-mint);
+}
+
+/* Conciliación: resumen como franja; filas con diferencia marcadas. */
+.app-shell .recon-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 var(--fx-s3);
+  padding: 0;
+  list-style: none;
+  border-radius: var(--fl-radius-lg);
+  background: var(--fl-white);
+  overflow: hidden;
+}
+.app-shell .recon-stat {
+  background: none;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: var(--fx-s4) var(--fx-s5);
+}
+.app-shell .recon-stat + .recon-stat {
+  border-left: 1px solid var(--fl-line);
+}
+.app-shell .recon-n {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .recon-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fl-ink-2);
+}
+.app-shell .recon-label::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fl-ok);
+}
+.app-shell .recon-stat-warn .recon-label::before {
+  background: var(--fl-warn);
+}
+.app-shell .recon-stat-bad .recon-label::before {
+  background: var(--fl-bad);
+}
+.app-shell .recon-stat-bad .recon-n {
+  color: var(--fl-bad);
+}
+@media (max-width: 760px) {
+  .app-shell .recon-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-shell .recon-stat:nth-child(3) {
+    border-left: none;
+  }
+  .app-shell .recon-stat:nth-child(n + 3) {
+    border-top: 1px solid var(--fl-line);
+  }
+}
+.app-shell .recon-row:not([data-status='matched']) td:first-child {
+  box-shadow: inset 4px 0 0 var(--fl-bad);
+}
+.app-shell .recon-row[data-status='amount_mismatch'] td:first-child {
+  box-shadow: inset 4px 0 0 var(--fl-warn);
+}

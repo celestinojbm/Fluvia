@@ -126,7 +126,7 @@ Las tres superficies comparten marca y componentes. La composición cambia segú
 | `@fontsource-variable/manrope` | 5.3.0 (fija)  | OFL-1.1  | Fuente pedida, alojada localmente                                                               | —                      |
 | `lucide-react`                 | 1.49.0 (fija) | ISC      | Sustituye los iconos dibujados a mano detrás de la misma API `Icon` (un solo sistema de iconos) | —                      |
 
-**Licencia de Manrope.** OFL-1.1 no estaba en la política de licencias. Se clasificó como **restringida**, no como permitida. La excepción se registró en `docs/compliance/license-exceptions.json` a partir de la instrucción escrita del propietario. **El propietario debe confirmarla o revertirla en la revisión.**
+**Licencia de Manrope.** OFL-1.1 se clasifica como «restringida» en la política. El propietario **confirmó por escrito** (2026-10-02) la autorización para incorporar Manrope bajo OFL-1.1, conservando sus avisos y cumpliendo sus términos; consta en `docs/compliance/license-exceptions.json` **solo para `@fontsource-variable/manrope`** (no se extiende a otras fuentes ni paquetes). Cumplimiento: el aviso de copyright y el texto íntegro de la licencia se sirven junto a la fuente en `/licenses/manrope-OFL-1.1.txt` (ambas apps; `test/brand-tokens.test.ts` comprueba que son idénticos al LICENSE del paquete); la fuente no se modifica ni se vende por separado.
 
 **No incorporado: shadcn/ui.** Necesita Tailwind y Radix y habría duplicado el sistema de CSS con tokens que ya cubre botones, campos, tablas, diálogos y estados. Los componentes existentes se personalizaron en su lugar.
 
@@ -134,9 +134,8 @@ Las tres superficies comparten marca y componentes. La composición cambia segú
 
 ## 7. Pendiente y limitaciones conocidas
 
-- Varias pantallas heredadas del panel antiguo, menos usadas, reciben la paleta, la tipografía y los componentes, pero **no** se recompusieron:
-  - pagos, payouts, eventos de webhook, disputas, conciliación y claves de API
-  - sus tablas a 390 px se desplazan dentro de su contenedor; la página no desborda
-- No hay modo oscuro.
-- Las capturas son JPEG con calidad 72, no PNG cuantizado.
+- Las pantallas técnicas usan el puente común: paneles, tablas, estados y foco del sistema. No tienen composición propia. Sus tablas se desplazan con teclado en móvil y no se apilan (detalle en `rediseno-menta/README.md` §3).
+- Sin modo oscuro (fuera de esta jornada).
+- Capturas en JPEG con calidad 62–72.
 - La identidad no tiene validación de marca registrada.
+- La imagen de referencia no llegó a la sesión. Ver `rediseno-menta/README.md`.
