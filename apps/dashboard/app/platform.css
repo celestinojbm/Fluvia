@@ -2495,7 +2495,10 @@
     color: #000;
     border: 2px solid #000;
   }
+  /* En papel, el texto tal cual (sin versalitas): legible y copiable. */
   .app-shell .pos-receipt-total-label {
     color: #000;
+    letter-spacing: normal;
+    text-transform: none;
   }
 }
