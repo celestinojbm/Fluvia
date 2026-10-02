@@ -120,6 +120,9 @@ server.listen(PORT, HOST, () =>
   })
 );
 
+// Un fallo inesperado en UNA llamada no debe tumbar las demás.
+process.on('unhandledRejection', (err) => log('unhandled rejection', { err: String(err) }));
+
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {
     server.close();

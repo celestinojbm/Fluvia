@@ -23,6 +23,7 @@ const TOPIC = 'fluvia-call';
 const AGENT = 'agente-fluvia';
 const AGENT_JOIN_MS = 15_000;
 const AGENT_LEFT_GRACE_MS = 5_000;
+const BYE_WAIT_MS = 2_000;
 
 type State = 'consent' | 'connecting' | 'connected' | 'reconnecting' | 'ended' | 'denied' | 'error';
 
@@ -116,7 +117,9 @@ export function WebRtcCallPanel({
   const hangUp = useCallback(
     async (reason?: string) => {
       const r = room.current;
-      if (r?.localParticipant) {
+      // Desde aquí la salida de Fluvia es la esperada, no un aviso.
+      live.current = false;
+      if (r?.localParticipant && r.getParticipantByIdentity(AGENT)) {
         await r.localParticipant
           .publishData(new TextEncoder().encode(JSON.stringify({ t: 'bye' })), {
             reliable: true,
@@ -124,6 +127,13 @@ export function WebRtcCallPanel({
             destinationIdentities: [AGENT],
           })
           .catch(() => undefined);
+        // Se mantiene la conexión hasta que Fluvia sale (máx. 2 s): si se
+        // cortara enseguida, el «bye» podría perderse y el agente esperaría
+        // el margen de reconexión ocupando la sala.
+        const end = Date.now() + BYE_WAIT_MS;
+        while (r.getParticipantByIdentity(AGENT) && Date.now() < end) {
+          await new Promise((ok) => setTimeout(ok, 50));
+        }
       }
       await release();
       if (reason) say('sistema', reason);

@@ -215,7 +215,19 @@ export class CallSession {
       if (my !== this.speakToken || this.closed) return;
       const chunk = pcm.subarray(o, Math.min(o + step, pcm.length));
       const frame = new AudioFrame(Int16Array.from(chunk), RATE, 1, chunk.length);
-      await this.source.captureFrame(frame);
+      try {
+        await this.source.captureFrame(frame);
+      } catch (err) {
+        // Pista no disponible (p. ej. durante una reconexión): se abandona
+        // ESTA frase; la llamada y el proceso siguen. La respuesta queda por
+        // escrito en el panel.
+        this.cfg.log('speak aborted', { room: this.cfg.room, err: String(err) });
+        if (my === this.speakToken) {
+          this.speaking = false;
+          await this.send({ t: 'speaking', on: false });
+        }
+        return;
+      }
     }
     await this.source.waitForPlayout().catch(() => undefined);
     if (my === this.speakToken) {
