@@ -45,6 +45,7 @@ import {
   BusinessProfileService,
   VenueService,
   DiningService,
+  BillService,
   OrderService,
   SummaryService,
   isInstallmentPlanActive,
@@ -493,12 +494,14 @@ export function buildApp({
     // Restaurantes / tipo de negocio: configuración del local, pedidos de
     // mesa, KDS en vivo y QR público (menú + pedido propio). Permisos de local
     // (venue_staff) evaluados en el servidor.
+    const diningService = new DiningService(appPool);
     registerDiningRoutes(app, {
       security,
       idempotencyService,
       businessService: new BusinessProfileService(appPool),
       venueService: new VenueService(appPool),
-      diningService: new DiningService(appPool),
+      diningService,
+      billService: new BillService(appPool, paymentLinkService, diningService),
       sandboxSimulation: config.env === 'local' || config.env === 'test',
       limiter: rateLimiter,
     });

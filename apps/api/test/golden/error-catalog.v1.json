@@ -456,6 +456,16 @@
       "status": 409,
       "type": "conflict_error",
       "message": "In-person collection is not enabled for this account"
+    },
+    "bill_allocation_invalid": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "The bill split is not valid for the current bill state"
+    },
+    "allocation_payment_held": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This part of the bill has a payment charged or in progress"
     }
   },
   "domain_error_codes": {
@@ -594,6 +604,9 @@
     "DiningStateError": "invalid_state_transition",
     "TableOccupiedError": "table_occupied",
     "ModifierSelectionError": "modifier_selection_invalid",
-    "DiningProductUnavailableError": "product_unavailable"
+    "DiningProductUnavailableError": "product_unavailable",
+    "BillNotFoundError": "not_found",
+    "BillAllocationError": "bill_allocation_invalid",
+    "AllocationHeldError": "allocation_payment_held"
   }
 }

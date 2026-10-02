@@ -7,6 +7,8 @@ import {
 } from '@fluvia/idempotency';
 import {
   BUSINESS_TYPES,
+  type BillDto,
+  type BillService,
   MODULES,
   VENUE_PERMISSIONS,
   VENUE_ROLES,
@@ -261,12 +263,79 @@ export function publicKitchenTicket(t: KitchenTicketView) {
   };
 }
 
+export function publicBill(b: BillDto) {
+  return {
+    id: b.id,
+    object: 'dining_bill',
+    order_id: b.orderId,
+    order_number: b.orderNumber,
+    table_label: b.tableLabel,
+    currency: b.currency,
+    total: n(b.total),
+    status: b.status,
+    version: b.version,
+    allocated: n(b.allocated),
+    remainder: n(b.remainder),
+    charged: n(b.charged),
+    lines: b.lines.map((l) => ({
+      id: l.id,
+      name: l.name,
+      quantity: l.quantity,
+      line_total: n(l.lineTotal),
+      modifiers: l.modifiers,
+      allocation_id: l.allocationId,
+    })),
+    allocations: b.allocations.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      amount: n(a.amount),
+      label: a.label,
+      payment_link_id: a.paymentLinkId,
+      pay_url: a.voided || a.charge === 'charged' ? null : a.payUrl,
+      voided: a.voided,
+      void_reason: a.voidReason,
+      // Derivado de los intents en el servidor: none | failed | in_progress | charged.
+      charge: a.charge,
+      payment_intent_id: a.chargeIntentId,
+      bill_line_ids: a.lineIds,
+      created_at: a.createdAt,
+    })),
+    anomalies: b.anomalies.map((x) => ({
+      allocation_id: x.allocationId,
+      payment_intent_id: x.paymentIntentId,
+    })),
+    created_at: b.createdAt,
+    closed_at: b.closedAt,
+  };
+}
+
+/** Cuenta para el comensal: importes y estado de cada parte, sin ids internos de pago. */
+export function customerBillView(b: BillDto) {
+  return {
+    object: 'customer_bill',
+    currency: b.currency,
+    total: n(b.total),
+    status: b.status,
+    remainder: n(b.remainder),
+    charged: n(b.charged),
+    parts: b.allocations
+      .filter((a) => !a.voided)
+      .map((a) => ({
+        label: a.label,
+        amount: n(a.amount),
+        charge: a.charge,
+        pay_url: a.charge === 'none' || a.charge === 'failed' ? a.payUrl : null,
+      })),
+  };
+}
+
 export interface DiningRoutesOptions {
   security: Security;
   idempotencyService: IdempotencyService;
   businessService: BusinessProfileService;
   venueService: VenueService;
   diningService: DiningService;
+  billService: BillService;
   /** Solo local/test: decisión simulada del proveedor de cobro presencial. */
   sandboxSimulation: boolean;
   limiter?: RateLimiter;
@@ -275,7 +344,13 @@ export interface DiningRoutesOptions {
 }
 
 export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOptions): void {
-  const { security, businessService: biz, venueService: venue, diningService: dining } = o;
+  const {
+    security,
+    businessService: biz,
+    venueService: venue,
+    diningService: dining,
+    billService: bills,
+  } = o;
   const member = { preHandler: [security.session, security.org('org:read')] };
   const admin = { preHandler: [security.session, security.org('merchants:write')] };
   const tenant = (req: FastifyRequest) => req.org!.organizationId;
@@ -697,6 +772,75 @@ export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOption
     );
   });
 
+  // ── Cuenta y pagos (división) ─────────────────────────────────────────────
+  app.post(`${orderPath}/bill`, member, async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const b = await bills.open(tenant(req), await access(req), id);
+    return reply.code(201).send(publicBill(b));
+  });
+
+  app.get(`${orderPath}/bill`, member, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const b = await bills.forOrder(tenant(req), await access(req), id);
+    if (!b) throw new VenueNotFoundError('Bill');
+    return publicBill(b);
+  });
+
+  app.get(`${base}/dining/bills/:id`, member, async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return publicBill(await bills.get(tenant(req), await access(req), id));
+  });
+
+  app.post(`${base}/dining/bills/:id/allocations`, member, async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const b = z
+      .object({
+        kind: z.enum(['full', 'amount', 'items']),
+        amount: z.number().int().positive().refine(Number.isSafeInteger).optional(),
+        bill_line_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
+        label: z.string().trim().min(1).max(60).nullable().optional(),
+        expected_version: Version,
+      })
+      .strict()
+      .refine((x) => x.kind !== 'amount' || x.amount !== undefined, 'amount required')
+      .refine((x) => x.kind !== 'items' || x.bill_line_ids !== undefined, 'bill_line_ids required')
+      .parse(req.body);
+    const bill = await bills.allocate(tenant(req), await access(req), id, {
+      kind: b.kind,
+      amount: b.amount === undefined ? undefined : BigInt(b.amount),
+      billLineIds: b.bill_line_ids,
+      label: b.label ?? null,
+      expectedVersion: b.expected_version,
+    });
+    return reply.code(201).send(publicBill(bill));
+  });
+
+  app.post(`${base}/dining/bills/:id/allocations/equal`, member, async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const b = z
+      .object({ parts: z.number().int().min(2).max(20), expected_version: Version })
+      .strict()
+      .parse(req.body);
+    await requireModule(req, 'split_bill');
+    const bill = await bills.allocateEqual(tenant(req), await access(req), id, {
+      parts: b.parts,
+      expectedVersion: b.expected_version,
+    });
+    return reply.code(201).send(publicBill(bill));
+  });
+
+  app.post(`${base}/dining/bills/:id/allocations/:allocationId/void`, member, async (req) => {
+    const p = IdParams.extend({ allocationId: z.string().uuid() }).parse(req.params);
+    const b = z.object({ reason: Reason, expected_version: Version }).strict().parse(req.body);
+    return publicBill(
+      await bills.voidAllocation(tenant(req), await access(req), p.id, {
+        allocationId: p.allocationId,
+        reason: b.reason,
+        expectedVersion: b.expected_version,
+      })
+    );
+  });
+
   // ── Cocina (KDS) ──────────────────────────────────────────────────────────
   const KitchenQuery = z
     .object({ branch_id: z.string().uuid(), station: StationCode.optional() })
@@ -903,6 +1047,13 @@ export function registerDiningRoutes(app: FastifyInstance, o: DiningRoutesOption
     const r = await dining.byTrackingToken(tracking);
     if (!r) throw new VenueNotFoundError('Order');
     return customerOrderView(r.order);
+  });
+
+  app.get('/v1/public/dining/orders/:tracking/bill', publicRead, async (req) => {
+    const { tracking } = z.object({ tracking: Token }).parse(req.params);
+    const r = await bills.forTracking(tracking);
+    if (!r) throw new VenueNotFoundError('Bill');
+    return customerBillView(r.bill);
   });
 
   app.post('/v1/public/dining/orders/:tracking/attention', publicWrite, async (req) => {

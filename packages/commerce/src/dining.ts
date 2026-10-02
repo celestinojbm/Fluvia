@@ -253,50 +253,62 @@ export class DiningService {
       const o = await this.lockIn(c, orderId, expectedVersion);
       assertVenue(access, 'orders:send', o.branch_id);
       if (o.status !== 'open') throw new DiningStateError('Only open orders can be sent');
-      const drafts = await c.query<{ id: string; station_code: string }>(
-        `SELECT id, station_code FROM dining_order_lines
-          WHERE order_id = $1 AND ticket_id IS NULL AND voided_at IS NULL ORDER BY seq`,
-        [orderId]
-      );
-      const created: TicketDto[] = [];
-      if (drafts.rows.length > 0) {
-        const rev = await this.nextRevisionIn(c, orderId);
-        const first = rev === 1;
-        const stations = [...new Set(drafts.rows.map((d) => d.station_code))];
-        for (const station of stations) {
-          const t = await this.insertTicketIn(c, tenantId, {
-            branchId: o.branch_id,
-            orderId,
-            revision: rev,
-            kind: first ? 'new' : 'addition',
-            station,
-            actor: access.userId,
-          });
-          await c.query(
-            `UPDATE dining_order_lines SET ticket_id = $2, prep_status = 'queued'
-              WHERE order_id = $1 AND ticket_id IS NULL AND voided_at IS NULL AND station_code = $3`,
-            [orderId, t.id, station]
-          );
-          created.push(t);
-          await this.event(
-            c,
-            tenantId,
-            o.branch_id,
-            orderId,
-            t.id,
-            'ticket_created',
-            {
-              station,
-              revision: rev,
-              kind: t.kind,
-            },
-            access.userId
-          );
-        }
-        await this.bumpIn(c, orderId);
-      }
+      const created = await this.sendDraftsIn(c, tenantId, o.branch_id, orderId, access.userId);
+      if (created.length > 0) await this.bumpIn(c, orderId);
       return { order: await this.getIn(c, orderId), tickets: created };
     });
+  }
+
+  /** Envía a cocina las líneas en borrador: una comanda por estación, revisión nueva. */
+  private async sendDraftsIn(
+    c: PoolClient,
+    tenantId: string,
+    branchId: string,
+    orderId: string,
+    actor: string | null
+  ): Promise<TicketDto[]> {
+    const drafts = await c.query<{ id: string; station_code: string }>(
+      `SELECT id, station_code FROM dining_order_lines
+          WHERE order_id = $1 AND ticket_id IS NULL AND voided_at IS NULL ORDER BY seq`,
+      [orderId]
+    );
+    const created: TicketDto[] = [];
+    if (drafts.rows.length > 0) {
+      const rev = await this.nextRevisionIn(c, orderId);
+      const first = rev === 1;
+      const stations = [...new Set(drafts.rows.map((d) => d.station_code))];
+      for (const station of stations) {
+        const t = await this.insertTicketIn(c, tenantId, {
+          branchId,
+          orderId,
+          revision: rev,
+          kind: first ? 'new' : 'addition',
+          station,
+          actor: actor,
+        });
+        await c.query(
+          `UPDATE dining_order_lines SET ticket_id = $2, prep_status = 'queued'
+              WHERE order_id = $1 AND ticket_id IS NULL AND voided_at IS NULL AND station_code = $3`,
+          [orderId, t.id, station]
+        );
+        created.push(t);
+        await this.event(
+          c,
+          tenantId,
+          branchId,
+          orderId,
+          t.id,
+          'ticket_created',
+          {
+            station,
+            revision: rev,
+            kind: t.kind,
+          },
+          actor
+        );
+      }
+    }
+    return created;
   }
 
   async voidLine(
@@ -651,6 +663,8 @@ export class DiningService {
         },
         null
       );
+      // Sin aceptación previa, el pedido del cliente va directo a cocina.
+      if (!input.needsAcceptance) await this.sendDraftsIn(c, tenantId, input.branchId, id, null);
       return { order: await this.getIn(c, id), trackingToken: token };
     }
   }
@@ -669,6 +683,8 @@ export class DiningService {
         orderId,
         input.accept ? 'open' : 'rejected',
       ]);
+      // Aceptado = llega a cocina en ese momento (antes, nunca).
+      if (input.accept) await this.sendDraftsIn(c, tenantId, o.branch_id, orderId, access.userId);
       await this.bumpIn(c, orderId);
       await this.event(
         c,

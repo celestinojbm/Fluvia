@@ -105,9 +105,18 @@ DECLARE
   v_sum BIGINT;
   v_bad INT;
 BEGIN
-  v_bill := CASE TG_TABLE_NAME WHEN 'dining_bills' THEN NEW.id ELSE NEW.bill_id END;
+  -- IF y no CASE: plpgsql resuelve NEW.bill_id aunque la rama no se use.
+  IF TG_TABLE_NAME = 'dining_bills' THEN
+    v_bill := NEW.id;
+  ELSE
+    v_bill := NEW.bill_id;
+  END IF;
+  -- FOR UPDATE serializa a dos cajeros que asignan a la vez: el segundo
+  -- espera al COMMIT del primero y la suma siguiente (instantánea nueva en
+  -- READ COMMITTED) ya ve sus asignaciones. Sin este lock, cada tx vería solo
+  -- las suyas y ambas podrían confirmar una sobreasignación.
   SELECT total, currency, merchant_id INTO v_total, v_currency, v_merchant
-    FROM dining_bills WHERE id = v_bill;
+    FROM dining_bills WHERE id = v_bill FOR UPDATE;
   SELECT COALESCE(SUM(amount), 0) INTO v_sum
     FROM dining_bill_allocations WHERE bill_id = v_bill AND voided_at IS NULL;
   IF v_sum > v_total THEN
@@ -147,6 +156,31 @@ END $$;
 CREATE TRIGGER dining_bill_allocations_guard
   BEFORE UPDATE ON dining_bill_allocations
   FOR EACH ROW EXECUTE FUNCTION fluvia_dining_allocation_guard();
+
+-- ----------------------------------------------------------------------------
+-- Ningún intent NUEVO sobre un link deshabilitado. Anular una asignación
+-- deshabilita su link con el link bloqueado; un checkout que lo resolvió
+-- justo antes espera aquí (FOR SHARE) y, al ver el link deshabilitado, no
+-- crea el intent: una fracción anulada no puede volver a cobrarse.
+-- Solo endurece: el plano público ya resolvía únicamente links activos.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fluvia_intent_requires_active_link()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v_status TEXT;
+BEGIN
+  IF NEW.payment_link_id IS NULL THEN RETURN NEW; END IF;
+  SELECT status INTO v_status FROM payment_links WHERE id = NEW.payment_link_id FOR SHARE;
+  IF v_status IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'FLUVIA_LINK_INACTIVE: payment link is not active'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+-- Nombre elegido para dispararse DESPUÉS de payment_intents_link_derive (orden
+-- alfabético): un link invisible sigue fallando con FLUVIA_LINK_NOT_VISIBLE.
+CREATE TRIGGER payment_intents_link_requires_active
+  BEFORE INSERT ON payment_intents
+  FOR EACH ROW EXECUTE FUNCTION fluvia_intent_requires_active_link();
 
 DO $$
 DECLARE t TEXT;

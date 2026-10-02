@@ -510,6 +510,16 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'This feature is not enabled for the business',
   },
+  bill_allocation_invalid: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'The bill split is not valid for the current bill state',
+  },
+  allocation_payment_held: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This part of the bill has a payment charged or in progress',
+  },
   collection_not_enabled: {
     status: 409,
     type: 'conflict_error',
@@ -683,6 +693,9 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   TableOccupiedError: 'table_occupied',
   ModifierSelectionError: 'modifier_selection_invalid',
   DiningProductUnavailableError: 'product_unavailable',
+  BillNotFoundError: 'not_found',
+  BillAllocationError: 'bill_allocation_invalid',
+  AllocationHeldError: 'allocation_payment_held',
 };
 
 export interface PublicErrorBody {

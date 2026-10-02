@@ -12,3 +12,4 @@ export * from './presentation-images.js';
 export * from './business.js';
 export * from './venue.js';
 export * from './dining.js';
+export * from './bills.js';

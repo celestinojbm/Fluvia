@@ -377,10 +377,27 @@ describe('pedido del cliente (QR)', () => {
       expectedVersion: order.version,
     });
     expect(acc.status).toBe('open');
+    // Aceptar = llega a cocina en ese momento; un envío posterior no duplica.
+    expect(acc.tickets).toHaveLength(1);
+    expect(acc.lines.every((l) => l.prepStatus === 'queued')).toBe(true);
     expect((await dining.sendToKitchen(tenant, waiter, acc.id, acc.version)).tickets).toHaveLength(
-      1
+      0
     );
     expect(await dining.requestAttention(trackingToken)).toBe(true);
+  });
+
+  it('sin aceptación previa, el pedido del cliente llega directo a cocina', async () => {
+    const { order } = await dining.createCustomerOrder(tenant, {
+      branchId: branch,
+      tableId: null,
+      mode: 'pickup',
+      needsAcceptance: false,
+      lines: [{ productId: soda, quantity: 1 }],
+      expectedTotal: 300n,
+    });
+    expect(order.status).toBe('open');
+    expect(order.tickets).toHaveLength(1);
+    expect(order.tickets[0]!.kind).toBe('new');
   });
 
   it('el total mostrado debe coincidir con el del servidor', async () => {
