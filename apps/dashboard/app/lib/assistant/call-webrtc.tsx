@@ -232,6 +232,15 @@ export function WebRtcCallPanel({
       return;
     }
     setState('connecting');
+    // Permiso de micrófono ANTES de pedir sala y agente: si se deniega, no se
+    // despacha a nadie ni se abre conexión.
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach((t) => t.stop());
+    } catch {
+      setState('denied');
+      return;
+    }
     // El AudioContext se crea dentro del clic (políticas de reproducción).
     ctx.current = new AudioContext();
     const g = await call<{
