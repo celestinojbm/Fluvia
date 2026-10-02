@@ -13,6 +13,10 @@ export const ROLES = [
   'support',
   'analyst',
   'read_only',
+  // Jornada restaurantes: personal de sala/cocina/caja. Solo entra a la
+  // organización; lo que puede hacer en el local lo decide `venue_staff`
+  // (rol y sucursal), evaluado en el servidor por VenueService.
+  'staff',
 ] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -93,6 +97,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'program:read',
   ],
   read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read', 'program:read'],
+  // Sin payments:read: un mesero no ve las ventas ni los pagos de la organización.
+  staff: ['org:read'],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

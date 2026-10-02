@@ -125,6 +125,23 @@ const EXPECTED: Record<string, Record<string, boolean>> = {
     'program:cards_manage': false,
     'program:cases_manage': false,
   },
+
+  staff: {
+    'org:read': true,
+    'members:read': false,
+    'merchants:read': false,
+    'merchants:write': false,
+    'keys:read': false,
+    'keys:manage': false,
+    'audit:read': false,
+    'payments:read': false,
+    'webhooks:manage': false,
+    'reconciliation:manage': false,
+    'program:read': false,
+    'program:credit_manage': false,
+    'program:cards_manage': false,
+    'program:cases_manage': false,
+  },
 };
 
 describe('RBAC matrix (F1-04c)', () => {

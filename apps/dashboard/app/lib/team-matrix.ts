@@ -11,6 +11,7 @@ export const ROLE_ORDER = [
   'support',
   'analyst',
   'read_only',
+  'staff',
 ] as const;
 
 export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readonly string[]> = {
@@ -85,6 +86,7 @@ export const ROLE_PERMISSIONS_MIRROR: Record<(typeof ROLE_ORDER)[number], readon
     'program:read',
   ],
   read_only: ['org:read', 'members:read', 'merchants:read', 'payments:read', 'program:read'],
+  staff: ['org:read'],
 };
 
 /** Capacidades de producto ↔ permiso que las protege en el servidor. */
