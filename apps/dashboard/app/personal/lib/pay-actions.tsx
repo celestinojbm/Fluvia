@@ -34,32 +34,42 @@ export function PayScreen({
   const [tab, setTab] = useState<'code' | 'scan'>('code');
   return (
     <div>
-      <div className="pm-chips" role="tablist" aria-label="Cómo pagar" style={{ marginBottom: 8 }}>
-        <button
-          type="button"
-          role="tab"
-          className="pm-chip"
-          aria-selected={tab === 'code'}
-          aria-pressed={tab === 'code'}
-          onClick={() => setTab('code')}
-        >
-          <Icon name="qr" size={16} /> Mostrar código
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className="pm-chip"
-          aria-selected={tab === 'scan'}
-          aria-pressed={tab === 'scan'}
-          onClick={() => setTab('scan')}
-        >
-          <Icon name="scan" size={16} /> Escanear
-        </button>
+      <div className="pm-chips" style={{ marginBottom: 8 }}>
+        <div role="tablist" aria-label="Cómo pagar" style={{ display: 'contents' }}>
+          <button
+            type="button"
+            role="tab"
+            id="pm-pay-tab-code"
+            className="pm-chip"
+            aria-selected={tab === 'code'}
+            aria-controls="pm-pay-panel"
+            onClick={() => setTab('code')}
+          >
+            <Icon name="qr" size={16} /> Mostrar código
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="pm-pay-tab-scan"
+            className="pm-chip"
+            aria-selected={tab === 'scan'}
+            aria-controls="pm-pay-panel"
+            onClick={() => setTab('scan')}
+          >
+            <Icon name="scan" size={16} /> Escanear
+          </button>
+        </div>
         <a className="pm-chip" href="/personal/movimientos?accion=enviar">
           <Icon name="send" size={16} /> Enviar a una persona
         </a>
       </div>
-      {tab === 'code' ? <ShowCode cards={cards} installments={installments} /> : <Scan />}
+      <div
+        role="tabpanel"
+        id="pm-pay-panel"
+        aria-labelledby={tab === 'code' ? 'pm-pay-tab-code' : 'pm-pay-tab-scan'}
+      >
+        {tab === 'code' ? <ShowCode cards={cards} installments={installments} /> : <Scan />}
+      </div>
     </div>
   );
 }

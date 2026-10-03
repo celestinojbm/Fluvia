@@ -50,7 +50,8 @@ export function HideAmountsButton() {
       title={hidden ? 'Mostrar importes' : 'Ocultar importes'}
     >
       <Icon name={hidden ? 'eye-off' : 'eye'} size={20} />
-      <span className="sr-only">{hidden ? 'Mostrar importes' : 'Ocultar importes'}</span>
+      {/* Conmutador: nombre fijo; «pulsado» = importes ocultos. */}
+      <span className="sr-only">Ocultar importes</span>
     </button>
   );
 }

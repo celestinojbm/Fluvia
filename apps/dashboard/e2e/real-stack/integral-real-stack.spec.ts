@@ -112,9 +112,11 @@ test.afterAll(async () => {
 });
 
 test('1. Personal · inicio separa saldo propio, garantía y crédito; teclado', async () => {
-  await expect(p.getByRole('heading', { name: 'Tu dinero', exact: true })).toBeVisible();
-  await expect(p.getByText('Saldo propio disponible · VES')).toBeVisible();
-  await expect(p.getByText('Garantía bloqueada').first()).toBeVisible();
+  // Inicio rediseñado (jornada Personal móvil): tres cifras SEPARADAS, nunca sumadas.
+  const own = p.getByRole('region', { name: 'Saldo propio disponible' });
+  await expect(own).toBeVisible();
+  await expect(own.getByText('Garantía bloqueada')).toBeVisible();
+  await expect(own.getByText('Crédito disponible')).toBeVisible();
   await expect(p.getByText('El crédito no es saldo propio', { exact: false })).toBeVisible();
   // Teclado: el primer Tab llega a «Saltar al contenido».
   await p.keyboard.press('Tab');
@@ -285,8 +287,8 @@ test('11. Personal · cuenta nueva con estados vacíos y sesión caducada', asyn
   await pg.getByLabel('Contraseña').fill('una clave larga de prueba');
   await pg.getByRole('button', { name: 'Crear cuenta' }).last().click();
   await pg.waitForURL(`${APP}/personal`);
-  await expect(pg.getByText('No tienes cuotas pendientes.')).toBeVisible();
-  await expect(pg.getByText('Pide tu tarjeta virtual', { exact: false })).toBeVisible();
+  await expect(pg.getByText('Sin cuotas pendientes')).toBeVisible();
+  await expect(pg.getByText('Pide tu tarjeta', { exact: true })).toBeVisible();
   await checkScreen(pg, '16-personal-cuenta-nueva');
   // Sesión caducada/revocada: pantalla propia.
   await c.addCookies([{ name: 'fluvia_personal', value: 'fluvia_csess_revocada', url: APP }]);

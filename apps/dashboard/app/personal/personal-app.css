@@ -505,7 +505,7 @@ a.pm-row:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border-radius: var(--fl-pill);
   border: 1.5px solid rgba(0, 0, 0, 0.18);
@@ -519,7 +519,8 @@ a.pm-row:hover {
   cursor: pointer;
 }
 .pm-chip[aria-current='true'],
-.pm-chip[aria-pressed='true'] {
+.pm-chip[aria-pressed='true'],
+.pm-chip[aria-selected='true'] {
   background: var(--fl-lime);
   border-color: var(--fl-black);
 }
@@ -537,7 +538,7 @@ a.pm-row:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 52px;
+  min-height: 56px;
   padding: 0 6px 0 16px;
   border-radius: var(--fl-pill);
   background: var(--fl-white);
@@ -557,7 +558,7 @@ a.pm-row:hover {
   outline: none;
 }
 .pm-search button {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 16px;
   border: 0;
   border-radius: var(--fl-pill);

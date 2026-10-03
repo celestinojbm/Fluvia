@@ -90,6 +90,46 @@ test('Personal', async ({ browser }) => {
   await ctx.close();
 });
 
+test('Personal · navegación de 5 destinos y Tiendas', async ({ browser }) => {
+  test.setTimeout(300_000);
+  const ctx = await browser.newContext({ locale: 'es-VE' });
+  const p = await ctx.newPage();
+  await p.goto(`${APP}/personal/entrar`);
+  await p.getByLabel('Correo').fill('cliente@demo.fluvia.test');
+  await p.getByLabel('Contraseña').fill('demo-cliente-password');
+  await p.getByRole('button', { name: 'Entrar', exact: true }).last().click();
+  await p.waitForURL(`${APP}/personal`);
+  for (const r of [
+    '/tiendas',
+    '/tiendas?q=lino',
+    '/tiendas/casa-avila',
+    '/carrito',
+    '/pagar',
+    '/actividad',
+    '/actividad?filtro=pedidos',
+    '/cuenta',
+  ]) {
+    await audit(p, `${APP}/personal${r}`);
+  }
+  // Ficha de producto con variantes (requiere `seed:tiendas`).
+  await p.goto(`${APP}/personal/tiendas/taller-caribe`);
+  const href = await p
+    .getByRole('link', { name: /Camisa de lino crudo/ })
+    .first()
+    .getAttribute('href');
+  await audit(p, `${APP}${href}`);
+  await ctx.close();
+
+  const m = await (await browser.newContext({ locale: 'es-VE' })).newPage();
+  await m.goto(`${APP}/login`);
+  await m.getByLabel('Correo').fill('tiendas@demo.fluvia.test');
+  await m.getByLabel('Contraseña').fill('demo-tiendas-password');
+  await m.locator('form button[type="submit"]').click();
+  await m.waitForURL((u) => !u.pathname.startsWith('/login'));
+  const org = (await m.locator('a[href^="/o/"]').first().getAttribute('href'))!.split('/')[2];
+  await audit(m, `${APP}/o/${org}/tienda`);
+});
+
 test('Comercios y Operaciones', async ({ browser }) => {
   const ctx = await browser.newContext({ locale: 'es-VE' });
   const p = await ctx.newPage();

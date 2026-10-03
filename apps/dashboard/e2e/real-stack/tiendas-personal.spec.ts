@@ -272,3 +272,28 @@ test('6. Otro cliente no ve un pedido ajeno', async ({ browser }) => {
   await expect(other.getByText('Casa Ávila')).toHaveCount(0);
   await c.close();
 });
+
+test('7. Enlace profundo sin sesión: «Entrar» devuelve a la misma pantalla', async ({
+  browser,
+}) => {
+  const c = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-VE' });
+  const page = await c.newPage();
+  await page.goto(`${APP}/personal/tiendas/casa-avila?coleccion=Mesa`);
+  await page.waitForURL(/\/personal\/entrar\?next=/);
+  expect(new URL(page.url()).searchParams.get('next')).toBe(
+    '/personal/tiendas/casa-avila?coleccion=Mesa'
+  );
+  await page.getByLabel('Correo').fill('cliente@demo.fluvia.test');
+  await page.getByLabel('Contraseña').fill('demo-cliente-password');
+  await page.getByRole('button', { name: 'Entrar', exact: true }).last().click();
+  await page.waitForURL(`${APP}/personal/tiendas/casa-avila?coleccion=Mesa`);
+  await expect(page.getByRole('heading', { name: 'Casa Ávila' })).toBeVisible();
+  // Un «next» externo se ignora.
+  await c.clearCookies();
+  await page.goto(`${APP}/personal/entrar?next=//evil.example/personal`);
+  await page.getByLabel('Correo').fill('cliente@demo.fluvia.test');
+  await page.getByLabel('Contraseña').fill('demo-cliente-password');
+  await page.getByRole('button', { name: 'Entrar', exact: true }).last().click();
+  await page.waitForURL(`${APP}/personal`);
+  await c.close();
+});
