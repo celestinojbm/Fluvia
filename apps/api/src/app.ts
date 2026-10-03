@@ -579,7 +579,7 @@ export function buildApp({
       assistant?.storage ?? new LocalPrivateStorage(env.ASSISTANT_STORAGE_DIR ?? '.data/assistant');
     const store = new AssistantStore(appPool);
     const directory = new DirectoryService(appPool);
-    const pTools = personalTools(personalOrFallback, directory);
+    const pTools = personalTools(personalOrFallback, directory, shopService);
     const cTools = commerceTools({
       summary: new SummaryService(appPool),
       directory,

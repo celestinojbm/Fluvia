@@ -29,6 +29,10 @@ const INTENTS: Array<{ re: RegExp; tool: string; input?: Record<string, unknown>
   { re: /\b(cr[eé]dito|l[ií]mite)\b/i, tool: 'get_credit_status' },
   { re: /\b(cuota|vence|pr[oó]ximo pago)\b/i, tool: 'list_upcoming_installments' },
   { re: /\b(tarjeta)\b/i, tool: 'list_cards' },
+  // Tiendas (Personal): antes que «compra» para no confundir con el extracto.
+  { re: /\bcarrito\b/i, tool: 'get_my_cart' },
+  { re: /\b(mis pedidos|mi pedido|pedido|env[ií]o)\b/i, tool: 'list_my_shop_orders' },
+  { re: /\b(busca|buscar|venden|tienen|hay)\b/i, tool: 'search_shop_products' },
   { re: /\b(movimiento|compra|gasto)\b/i, tool: 'list_recent_activity' },
   { re: /\b(ventas?|cobrado|resumen)\b/i, tool: 'get_sales_summary' },
   {
@@ -47,7 +51,7 @@ const INTENTS: Array<{ re: RegExp; tool: string; input?: Record<string, unknown>
 ];
 
 const SENSITIVE =
-  /\b(aprueba|apru[eé]bame|transfiere|env[ií]a(me)? dinero|mueve|retira|paga(r)? por m[ií]|emite|emitir|cambia (mi|los) permiso|hazme admin|confirma el pago|cobra otra vez)\b/i;
+  /\b(c[oó]mpra(lo|me|la)?|a[ñn]ade al carrito|haz el pedido|aprueba|apru[eé]bame|transfiere|env[ií]a(me)? dinero|mueve|retira|paga(r)? por m[ií]|emite|emitir|cambia (mi|los) permiso|hazme admin|confirma el pago|cobra otra vez)\b/i;
 const SECRETS =
   /\b(cvv|cvc|c[oó]digo de seguridad|contrase[nñ]a|otp|clave de un solo uso|n[uú]mero completo)\b/i;
 
@@ -125,7 +129,11 @@ export class SimulatedConversationProvider implements ConversationProvider {
               id: `sim-${createHash('sha256').update(said).digest('hex').slice(0, 12)}`,
               name: intent!.tool,
               input:
-                intent!.tool === 'get_menu_info' ? { q: said.slice(0, 80) } : (intent!.input ?? {}),
+                intent!.tool === 'get_menu_info'
+                  ? { q: said.slice(0, 80) }
+                  : intent!.tool === 'search_shop_products'
+                    ? { q: productQuery(said) }
+                    : (intent!.input ?? {}),
             },
           };
           yield { type: 'done', stop: 'tool_use' };
@@ -153,7 +161,19 @@ export class SimulatedConversationProvider implements ConversationProvider {
   }
 }
 
+/** Término de búsqueda: lo que sigue a «busca/venden/tienen/hay», sin artículos. */
+function productQuery(said: string): string {
+  const m = /\b(?:busca|buscar|venden|tienen|hay)\b\s+(.*)$/i.exec(said);
+  const rest = (m?.[1] ?? said)
+    .replace(/[¿?¡!.,]/g, ' ')
+    .replace(/\b(una?|unos|unas|el|la|los|las|de|en|alg[uú]n[ao]?s?|me|por favor)\b/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+  return (rest || said).slice(0, 60);
+}
+
 function guessActions(said: string): string[] {
+  if (/c[oó]mpra|carrito|pedido/i.test(said)) return ['personal.cart'];
   if (/tarjeta|emit/i.test(said)) return ['personal.cards'];
   if (/cr[eé]dito|aprueb/i.test(said)) return ['personal.credit'];
   if (/cobr|pago/i.test(said)) return ['commerce.uncertain'];

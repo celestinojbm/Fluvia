@@ -5,6 +5,13 @@ import { loadConfig } from '@fluvia/config';
 import { createPool, type Pool } from '@fluvia/db';
 import { AuthService } from '@fluvia/auth';
 import { ApiKeyService, IdentityService } from '@fluvia/identity';
+import {
+  MemoryStorage,
+  SimulatedCallTransport,
+  SimulatedConversationProvider,
+  SimulatedSpeechToText,
+  SimulatedTextToSpeech,
+} from '@fluvia/assistant';
 import { buildApp } from '../src/app.js';
 
 /**
@@ -176,6 +183,16 @@ beforeAll(async () => {
       loginPerIp: { max: 10_000, windowMs: 60_000 },
       registerPerIp: { max: 10_000, windowMs: 60_000 },
       mfaPerIp: { max: 10_000, windowMs: 60_000 },
+    },
+    assistant: {
+      env: { ASSISTANT_MESSAGES_PER_DAY: '50' },
+      storage: new MemoryStorage(),
+      providers: {
+        conversation: new SimulatedConversationProvider(0),
+        stt: new SimulatedSpeechToText(),
+        tts: new SimulatedTextToSpeech(),
+        call: new SimulatedCallTransport(),
+      },
     },
   });
   await app.ready();
@@ -542,5 +559,88 @@ describe('cliente: descubrir, favoritos, carrito, pedido, pago', () => {
     expect(unlisted.statusCode).toBe(404);
     // Una sesión de COMERCIO no abre el plano del cliente.
     expect((await call(shopOwner, 'GET', '/v1/personal/shop/cart')).statusCode).toBe(401);
+  });
+});
+
+describe('asistente en Tiendas (solo lectura, datos propios)', () => {
+  const A = '/v1/personal/assistant';
+  const sse = (body: string) =>
+    body
+      .split('\n\n')
+      .filter((b) => b.trim())
+      .map((b) => ({
+        event: /event: (.+)/.exec(b)?.[1] ?? '',
+        data: JSON.parse(/data: (.+)/.exec(b)?.[1] ?? '{}') as Record<string, unknown>,
+      }));
+  async function ask(h: Headers, text: string, route: string) {
+    const conv = await call(h, 'POST', `${A}/conversations`, {});
+    expect(conv.statusCode).toBe(201);
+    const r = await call(h, 'POST', `${A}/conversations/${conv.json().id}/messages`, {
+      text,
+      context: { route },
+    });
+    expect(r.statusCode).toBe(200);
+    const evs = sse(r.body);
+    return evs.find((e) => e.event === 'done')!.data.message as {
+      content: string;
+      tools_used: string[];
+      actions: Array<{ href: string }>;
+    };
+  }
+
+  it('busca productos publicados, lee SU carrito y SUS pedidos; no compra', async () => {
+    const a = await consumer();
+    const b = await consumer();
+    await fund(a.headers, 500_000);
+    const cardId = await card(a.headers);
+    // Precio vigente leído del servidor (otras pruebas del archivo lo cambian).
+    const pdp = await call(
+      a.headers,
+      'GET',
+      `/v1/personal/shop/stores/${slug}/products/${products['Taza de barro']}`
+    );
+    const price = Number(pdp.json().product.price);
+    const orderId = (await addAndOrder(a.headers, products['Taza de barro']!, 1, price))
+      .order_id as string;
+    const pay = await call(
+      a.headers,
+      'POST',
+      `/v1/personal/shop/orders/${orderId}/pay`,
+      { card_id: cardId, mode: 'wallet' },
+      idem()
+    );
+    expect(pay.statusCode).toBe(200);
+    await call(b.headers, 'POST', '/v1/personal/shop/cart/items', {
+      slug,
+      product_id: products['Taza de barro'],
+      quantity: 2,
+    });
+
+    const found = await ask(a.headers, 'busca una taza', `/personal/tiendas/${slug}`);
+    expect(found.tools_used).toEqual(['search_shop_products']);
+    expect(found.content).toMatch(/Taza/);
+    expect(found.content).not.toMatch(/on_hand|reservad|tenant/i);
+
+    const mine = await ask(a.headers, '¿cómo va mi pedido?', '/personal/actividad');
+    expect(mine.tools_used).toEqual(['list_my_shop_orders']);
+    expect(mine.content).toMatch(/pagado/);
+
+    // El carrito de B no aparece en el de A (y viceversa).
+    const cartA = await ask(a.headers, '¿qué tengo en el carrito?', '/personal/carrito');
+    expect(cartA.tools_used).toEqual(['get_my_cart']);
+    expect(cartA.content).toMatch(/vacío/);
+    const cartB = await ask(b.headers, '¿qué tengo en el carrito?', '/personal/carrito');
+    expect(cartB.content).toMatch(/1 línea/);
+    const ordersB = await ask(b.headers, 'mis pedidos', '/personal/actividad');
+    expect(ordersB.content).toMatch(/Aún no tienes pedidos/);
+
+    // Pedir que compre: se niega y lleva a la pantalla; no crea pedido.
+    const before = await call(b.headers, 'GET', '/v1/personal/shop/orders');
+    const refuse = await ask(b.headers, 'cómpralo por mí', `/personal/tiendas/${slug}`);
+    expect(refuse.tools_used).toEqual([]);
+    expect(refuse.content).toMatch(/No puedo hacer operaciones/);
+    expect(refuse.actions.map((x) => x.href)).toContain('/personal/carrito');
+    const after = await call(b.headers, 'GET', '/v1/personal/shop/orders');
+    expect(after.json().data).toHaveLength(before.json().data.length);
   });
 });
