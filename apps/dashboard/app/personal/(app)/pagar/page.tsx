@@ -24,7 +24,7 @@ export default async function PagarPage() {
   return (
     <main aria-labelledby="pm-pay-home">
       <ScreenHead title="Pagar" id="pm-pay-home" />
-      <PayScreen cards={cards} installments={counts.find((n) => n > 1) ?? null} />
+      <PayScreen cards={cards} installments={counts.find((n) => n > 1) ?? counts[0] ?? null} />
       <section className="pm-section" aria-labelledby="pm-pay-notes">
         <h2 id="pm-pay-notes" className="sr-only">
           Otras formas

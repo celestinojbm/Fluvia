@@ -137,7 +137,9 @@ function ShowCode({ cards, installments }: { cards: PayCard[]; installments: num
         <QrCode value={code.code} label="Código de pago de un solo uso" size={240} />
         <p style={{ margin: 0, fontWeight: 800 }}>
           Hasta <span className="pm-money">{money(code.max, card.currency)}</span> ·{' '}
-          {mode === 'wallet' ? 'saldo propio' : `en ${installments} cuotas`}
+          {mode === 'wallet'
+            ? 'saldo propio'
+            : `en ${installments} ${installments === 1 ? 'cuota' : 'cuotas'}`}
         </p>
         <p className="pm-muted" style={{ margin: 0 }}>
           {left > 0 ? `Caduca en ${mm}:${ss}. Válido una sola vez.` : 'Caducó. Genera otro.'}
@@ -207,7 +209,7 @@ function ShowCode({ cards, installments }: { cards: PayCard[]; installments: num
             onClick={() => setMode('installments')}
             style={{ justifyContent: 'center', minHeight: 44 }}
           >
-            En {installments} cuotas
+            En {installments} {installments === 1 ? 'cuota' : 'cuotas'}
           </button>
         ) : null}
       </div>

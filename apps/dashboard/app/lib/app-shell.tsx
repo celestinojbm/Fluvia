@@ -127,6 +127,7 @@ export function orgNav(orgId: string, profile?: NavProfile): ShellNavSection[] {
         { href: `${o}/negocio`, label: 'Negocio', icon: 'layers' },
         { href: `${o}/team`, label: 'Equipo', icon: 'team' },
         { href: `${o}/directorio`, label: 'Directorio', icon: 'pin' },
+        { href: `${o}/tienda`, label: 'Tienda en línea', icon: 'bag' },
         { href: `${o}/settings`, label: 'Configuración', icon: 'gear' },
         { href: `${o}/activity`, label: 'Operación avanzada', icon: 'tools' },
       ],

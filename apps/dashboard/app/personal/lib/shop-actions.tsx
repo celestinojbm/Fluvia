@@ -45,9 +45,8 @@ export function FavoriteButton({
         style={{ background: 'var(--fl-white)' }}
       >
         <Icon name="heart" size={20} />
-        <span className="sr-only">
-          {fav ? `Quitar ${name} de favoritas` : `Guardar ${name} en favoritas`}
-        </span>
+        {/* Botón conmutador: el nombre es fijo y el estado lo da aria-pressed. */}
+        <span className="sr-only">{`Favorita: ${name}`}</span>
       </button>
       {err ? (
         <p className="pm-line-warn is-bad" role="alert">

@@ -487,6 +487,7 @@ a.pm-row:hover {
 
 /* chips / segmentos */
 .pm-chips {
+  position: relative;
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -569,6 +570,8 @@ a.pm-row:hover {
 
 /* --- tiendas ---------------------------------------------------------------- */
 .pm-shop-rail {
+  /* Contiene los .sr-only (absolutos) para que no ensanchen la página. */
+  position: relative;
   list-style: none;
   display: grid;
   grid-auto-flow: column;
@@ -676,13 +679,17 @@ a.pm-row:hover {
 /* Carril horizontal en móvil para no apilar una rejilla interminable;
    en pantallas anchas vuelve a ser rejilla. */
 .pm-grid.is-rail {
+  position: relative;
   grid-auto-flow: column;
   grid-template-columns: none;
-  grid-auto-columns: minmax(150px, 44%);
+  /* Ancho en vw (no %): un % se resuelve contra el contenido y ensancha la página. */
+  grid-auto-columns: min(42vw, 220px);
+  margin: 0 calc(-1 * var(--pm-gutter));
+  padding: 0 var(--pm-gutter) 6px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
-  padding-bottom: 6px;
+  scroll-padding-left: var(--pm-gutter);
   scrollbar-width: none;
 }
 .pm-grid.is-rail > li {
@@ -705,6 +712,8 @@ a.pm-row:hover {
     grid-auto-flow: row;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     overflow: visible;
+    margin: 0;
+    padding: 0;
   }
 }
 @media (min-width: 1200px) {

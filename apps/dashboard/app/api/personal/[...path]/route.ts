@@ -43,7 +43,8 @@ async function handle(req: Request, method: 'GET' | 'POST', segments: string[]) 
   if (key) headers['idempotency-key'] = key;
   let body: string | undefined;
   if (method === 'POST') {
-    body = await req.text();
+    // Fastify rechaza (400) un JSON vacío: una acción sin cuerpo viaja como `{}`.
+    body = (await req.text()) || '{}';
     headers['content-type'] = 'application/json';
   }
   const search = new URL(req.url).search;

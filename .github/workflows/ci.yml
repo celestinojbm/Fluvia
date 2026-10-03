@@ -452,6 +452,17 @@ jobs:
           DEMO_APP_URL: http://127.0.0.1:3342
           API_URL: http://127.0.0.1:3340
 
+      - name: Seed de Tiendas (sintético)
+        run: pnpm --filter @fluvia/seeds run seed:tiendas
+
+      - name: E2E Personal · Tiendas (compra, pago, comercio, aislamiento)
+        run: >-
+          pnpm --filter @fluvia/dashboard exec playwright test
+          -c e2e/real-stack/playwright.config.ts tiendas-personal
+        env:
+          CI: 'true'
+          DEMO_APP_URL: http://127.0.0.1:3342
+
       - name: Logs de los servicios (si falla)
         if: failure()
         run: |
