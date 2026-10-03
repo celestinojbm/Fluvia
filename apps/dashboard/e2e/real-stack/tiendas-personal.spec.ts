@@ -297,3 +297,23 @@ test('7. Enlace profundo sin sesión: «Entrar» devuelve a la misma pantalla', 
   await page.waitForURL(`${APP}/personal`);
   await c.close();
 });
+
+test('8. Pagar: importe con teclado, código QR con caducidad visible y pestañas accesibles', async () => {
+  await p.goto(`${APP}/personal/pagar`);
+  await expect(p.getByRole('tab', { name: 'Mostrar código' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
+  const keypad = p.getByLabel('Teclado');
+  for (const k of ['1', '2', '5'])
+    await keypad.getByRole('button', { name: k, exact: true }).click();
+  await keypad.getByRole('button', { name: '00', exact: true }).click();
+  await expect(p.getByLabel('Importe')).toContainText('125,00');
+  await p.getByRole('button', { name: 'Generar código de pago' }).click();
+  await expect(p.getByRole('img', { name: 'Código de pago de un solo uso' })).toBeVisible();
+  await expect(p.getByText(/Caduca en \d+:\d{2}\. Válido una sola vez\./)).toBeVisible();
+  await shot(p, '12b-pagar-codigo');
+  // Escanear: no pide la cámara sin una acción explícita.
+  await p.getByRole('tab', { name: 'Escanear' }).click();
+  await expect(p.getByRole('tabpanel')).toBeVisible();
+});
