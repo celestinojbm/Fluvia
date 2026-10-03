@@ -6,6 +6,8 @@ import { ApiKeyService, IdentityService } from '@fluvia/identity';
 import { buildApp } from './app.js';
 import { RedisFixedWindowLimiter } from './rate-limit.js';
 import { RedisConcurrencyGate } from '@fluvia/assistant';
+import { FxService } from './fx/service.js';
+import { FxRefresher, fxRefreshConfigFromEnv } from './fx/refresher.js';
 
 const config = loadConfig();
 const appPool = createPool({ connectionString: config.db.app });
@@ -23,6 +25,15 @@ const adminPool = createPool({ connectionString: config.db.admin, max: 2 });
 const redis = createClient({ url: config.redisUrl });
 const rateLimiter = new RedisFixedWindowLimiter(redis, {
   onError: (err) => app.log.error({ err }, 'rate limiter fail-open: redis unavailable'),
+});
+
+// Tasas de referencia: un servicio compartido por la ruta y el refresco.
+const fxCfg = fxRefreshConfigFromEnv(process.env);
+const fx = new FxService(appPool, {
+  refreshEnabled: fxCfg.enabled,
+  bcvIntervalSeconds: fxCfg.bcvIntervalSeconds,
+  usdtIntervalSeconds: fxCfg.usdtIntervalSeconds,
+  coingeckoKey: fxCfg.coingeckoApiKey ? (fxCfg.coingeckoPro ? 'pro' : 'demo') : 'sin_clave',
 });
 
 const app = buildApp({
@@ -43,7 +54,11 @@ const app = buildApp({
   rateLimiter,
   // Varias réplicas: la concurrencia del asistente se coordina en Redis.
   assistant: { concurrency: new RedisConcurrencyGate(redis) },
+  fx,
 });
+
+const fxRefresher = new FxRefresher(appPool, fx, fxCfg, app.log);
+fxRefresher.start();
 
 redis.on('error', (err) => app.log.error({ err }, 'redis client error (rate limiter)'));
 redis.connect().catch((err) => {
@@ -55,6 +70,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   app.log.info({ signal }, 'graceful shutdown started');
+  fxRefresher.stop();
   await app.close();
   redis.destroy();
   await Promise.all([appPool.end(), authPool.end(), adminPool.end()]);

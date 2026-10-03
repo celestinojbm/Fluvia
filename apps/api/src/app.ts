@@ -102,6 +102,9 @@ import {
 } from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerShopMerchantRoutes } from './routes/shops.js';
+import { registerFxRoutes } from './routes/fx.js';
+import { FxService } from './fx/service.js';
+import { fxRefreshConfigFromEnv } from './fx/refresher.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
@@ -151,6 +154,8 @@ export interface BuildAppOptions {
     /** Respuestas en curso por titular: Redis con varias réplicas (server.ts). */
     concurrency?: ConcurrencyGate;
   };
+  /** Tasas de referencia (server.ts arranca el refresco con este servicio). */
+  fx?: FxService;
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -201,6 +206,7 @@ export function buildApp({
   rateLimiter,
   loggerStream,
   assistant,
+  fx,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -529,6 +535,19 @@ export function buildApp({
         sandbox: sandboxSimulation,
       }),
     });
+    // Tasas de referencia (BCV, USDT): lectura de la caché compartida.
+    {
+      const fxCfg = fxRefreshConfigFromEnv(process.env);
+      const fxService =
+        fx ??
+        new FxService(appPool, {
+          refreshEnabled: fxCfg.enabled,
+          bcvIntervalSeconds: fxCfg.bcvIntervalSeconds,
+          usdtIntervalSeconds: fxCfg.usdtIntervalSeconds,
+          coingeckoKey: fxCfg.coingeckoApiKey ? (fxCfg.coingeckoPro ? 'pro' : 'demo') : 'sin_clave',
+        });
+      registerFxRoutes(app, { fx: fxService, limiter: rateLimiter });
+    }
     // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
     // comercio; lectura pública limitada por IP.
     registerDirectoryRoutes(app, {
