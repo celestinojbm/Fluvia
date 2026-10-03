@@ -444,6 +444,29 @@ export class ShopService {
     return { shop, product };
   }
 
+  /** Productos destacados de todas las tiendas visibles (escaparate). */
+  async featuredProducts(limit = 12): Promise<ShopProduct[]> {
+    const rows = await this.appPool.query<ProductRow & { shop_name: string }>(
+      `SELECT r.*, v.display_name AS shop_name
+         FROM shop_product_rows() r JOIN shop_visible_rows() v ON v.slug = r.shop_slug
+        WHERE r.shop_slug IN (SELECT shop_slug FROM shop_product_rows() WHERE featured)`
+    );
+    const bySlug = new Map<string, Array<ProductRow & { shop_name: string }>>();
+    for (const r of rows.rows) bySlug.set(r.shop_slug, [...(bySlug.get(r.shop_slug) ?? []), r]);
+    // Por tienda: disponibles primero y luego por nombre.
+    const queues = [...bySlug.values()].map((list) =>
+      groupProducts(list, list[0]!.shop_name)
+        .filter((p) => p.featured)
+        .sort((a, b) => Number(b.inStock) - Number(a.inStock) || a.name.localeCompare(b.name, 'es'))
+    );
+    // Intercala tiendas (round-robin) para que el escaparate no sea de un solo comercio.
+    const out: ShopProduct[] = [];
+    for (let i = 0; out.length < limit && queues.some((q) => i < q.length); i++) {
+      for (const q of queues) if (i < q.length && out.length < limit) out.push(q[i]!);
+    }
+    return out;
+  }
+
   /** Búsqueda de productos en todas las tiendas visibles. */
   async searchProducts(q: string, limit = 24): Promise<ShopProduct[]> {
     const pattern = shopLikePattern(q);

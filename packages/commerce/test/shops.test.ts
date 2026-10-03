@@ -181,6 +181,24 @@ describe('visibilidad explícita', () => {
       shops.setCartItem(program, randomUUID(), { slug, productId: base.id, quantity: 1 })
     ).rejects.toBeInstanceOf(ShopOrderStateError);
   });
+  it('destacados: solo productos marcados de tiendas visibles, nunca los no publicados', async () => {
+    const star = await product(4_200n, { stock: 1 });
+    const plain = await product(4_300n, { stock: 1 });
+    await shops.setListing(org, star.id, {
+      visible: true,
+      featured: true,
+      collection: null,
+      position: 0,
+    });
+    await listing(plain.id);
+    const unlisted = await product(4_400n, { stock: 1 });
+    const ids = (await shops.featuredProducts(500)).map((p) => p.id);
+    expect(ids).toContain(star.id);
+    expect(ids).not.toContain(plain.id);
+    expect(ids).not.toContain(unlisted.id);
+    const mine = (await shops.featuredProducts(500)).filter((p) => p.shopSlug === slug);
+    expect(mine.every((p) => p.featured)).toBe(true);
+  });
 });
 
 describe('carrito y pedido', () => {

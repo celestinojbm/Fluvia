@@ -211,6 +211,10 @@ export function registerPersonalShopRoutes(
     return snake(await shops.product(slug, id));
   });
 
+  app.get('/v1/personal/shop/featured', auth, async () =>
+    snake({ data: await shops.featuredProducts() })
+  );
+
   app.get('/v1/personal/shop/search', auth, async (req) => {
     const { q } = SearchQuery.parse(req.query ?? {});
     return snake({ data: await shops.searchProducts(q) });

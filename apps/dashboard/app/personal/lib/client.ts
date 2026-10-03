@@ -51,6 +51,20 @@ export function personalError(r: Exclude<CallResult, { kind: 'ok' }>): string {
       return 'Revisa los datos del formulario.';
     case 'not_found':
       return 'No encontramos ese elemento.';
+    case 'order_total_changed':
+      return 'Un precio cambió mientras revisabas. Revisa el carrito con los precios actuales.';
+    case 'insufficient_stock':
+      return 'Ya no hay existencias suficientes de un producto. Ajusta la cantidad.';
+    case 'product_unavailable':
+      return 'Un producto ya no está a la venta. Quítalo del carrito para continuar.';
+    case 'order_currency_mismatch':
+      return 'Los productos están en monedas distintas: se compran por separado.';
+    case 'shop_cart_empty':
+      return 'No hay productos de esta tienda en tu carrito.';
+    case 'shop_fulfillment_unavailable':
+      return 'Elige una forma de entrega que la tienda ofrezca (y escribe la dirección si es a domicilio).';
+    case 'shop_order_state':
+      return 'Esta acción no aplica al estado actual del pedido. Recarga para ver el estado vigente.';
     case 'origin_not_allowed':
       return 'La petición se rechazó por seguridad. Recarga la página.';
     default:

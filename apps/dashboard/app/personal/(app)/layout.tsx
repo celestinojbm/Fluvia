@@ -5,6 +5,7 @@ import { personalToken, readPersonal } from '../lib/server';
 import type { Me } from '../lib/types';
 import '../../platform.css';
 import '../personal.css';
+import '../personal-app.css';
 
 export const dynamic = 'force-dynamic';
 
