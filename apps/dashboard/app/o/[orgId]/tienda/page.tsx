@@ -149,6 +149,34 @@ export default async function ShopAdminPage({ params }: { params: Promise<{ orgI
         })
       )}
 
+      <section className="fx-panel" aria-labelledby="shop-connections">
+        <header>
+          <h2 id="shop-connections">Tiendas conectadas</h2>
+          <span className="fx-status" data-tone="neutral">
+            No conectadas
+          </span>
+        </header>
+        <p className="fx-hint">
+          Si ya vendes en Shopify o WooCommerce, Fluvia podrá mostrar ese catálogo en Personal y
+          enviar al cliente a TU checkout. Hoy no hay ninguna conexión activa y no se puede activar
+          desde aquí.
+        </p>
+        <ul>
+          <li>
+            <strong>Shopify</strong> — requiere que autorices un token privado de Storefront (canal
+            Headless o app personalizada). Lectura del catálogo únicamente.
+          </li>
+          <li>
+            <strong>WooCommerce</strong> — requiere la URL HTTPS de tu tienda y claves REST de solo
+            lectura creadas por ti.
+          </li>
+        </ul>
+        <p className="fx-hint">
+          Las credenciales se guardarían solo en el servidor. Fluvia no cobra en nombre de una
+          tienda conectada ni marca sus pedidos como pagados.
+        </p>
+      </section>
+
       <section className="fx-panel" aria-labelledby="shop-orders">
         <header>
           <h2 id="shop-orders">Pedidos en línea</h2>
