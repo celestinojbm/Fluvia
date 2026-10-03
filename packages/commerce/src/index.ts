@@ -14,3 +14,4 @@ export * from './venue.js';
 export * from './dining.js';
 export * from './bills.js';
 export * from './in-person.js';
+export * from './shops.js';
