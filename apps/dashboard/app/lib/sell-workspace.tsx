@@ -8,6 +8,7 @@ import type { Category, Customer, OrderDetail, Product } from './commerce-api';
 import { ProductThumb, StockBadge, stockLevel } from './commerce-ui';
 import { Icon } from './icons';
 import { currencyName } from './money-format';
+import { currencyLabel } from './fx';
 
 /**
  * Nueva venta: mostrador (catálogo con fotos y variantes) → ticket → cliente
@@ -405,7 +406,7 @@ export function SellWorkspace({
                   >
                     {currencies.map((c) => (
                       <option key={c} value={c} title={currencyName(c, 'es')}>
-                        {c}
+                        {currencyLabel(c)}
                       </option>
                     ))}
                   </select>

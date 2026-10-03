@@ -5,9 +5,12 @@ import { PersonalShell } from '../lib/shell';
 import { personalToken, readPersonal } from '../lib/server';
 import type { Me } from '../lib/types';
 import { safePersonalNext } from '../lib/next-path';
+import { loadFx } from '../../lib/fx-server';
+import { FxProvider } from '../../lib/fx-ui';
 import '../../platform.css';
 import '../personal.css';
 import '../personal-app.css';
+import '../../lib/rates.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,5 +56,10 @@ export default async function PersonalLayout({ children }: { children: ReactNode
       </main>
     );
   }
-  return <PersonalShell name={me.data.consumer.display_name}>{children}</PersonalShell>;
+  const fx = await loadFx();
+  return (
+    <FxProvider initialRates={fx.rates} initialDisplay={fx.display}>
+      <PersonalShell name={me.data.consumer.display_name}>{children}</PersonalShell>
+    </FxProvider>
+  );
 }

@@ -7,14 +7,14 @@ import { parseMajorAmount } from '../app/lib/pos-money';
 const nbsp = (s: string) => s.replace(/\u00a0/g, ' ');
 
 describe('money-format — presentación exacta', () => {
-  it('VES: símbolo Bs., dos decimales, separadores locales', () => {
-    expect(nbsp(formatAmount(123456, 'VES', 'es'))).toBe('Bs. 1.234,56');
-    expect(nbsp(formatAmount(5, 'VES', 'es'))).toBe('Bs. 0,05');
-    expect(nbsp(formatAmount(123456, 'VES', 'en'))).toBe('Bs. 1,234.56');
+  it('VES: etiqueta Bs (sin punto), dos decimales, separadores locales', () => {
+    expect(nbsp(formatAmount(123456, 'VES', 'es'))).toBe('Bs 1.234,56');
+    expect(nbsp(formatAmount(5, 'VES', 'es'))).toBe('Bs 0,05');
+    expect(nbsp(formatAmount(123456, 'VES', 'en'))).toBe('Bs 1,234.56');
   });
 
   it('código ISO solo cuando el símbolo es ambiguo', () => {
-    expect(nbsp(formatAmount(123456, 'VES', 'es', { code: true }))).toBe('Bs. 1.234,56 VES');
+    expect(nbsp(formatAmount(123456, 'VES', 'es', { code: true }))).toBe('Bs 1.234,56');
     expect(nbsp(formatAmount(12000, 'COP', 'es', { code: true }))).toBe('$ 12.000 COP');
     expect(nbsp(formatAmount(1250, 'USD', 'es', { code: true }))).toBe('US$ 12,50');
   });
@@ -29,12 +29,12 @@ describe('money-format — presentación exacta', () => {
   it('sin coma flotante: enteros grandes y string/bigint exactos', () => {
     // 2^53 - 1 en céntimos: con /100 en double saldría ...409,91
     expect(nbsp(formatAmount(Number.MAX_SAFE_INTEGER, 'VES', 'es'))).toBe(
-      'Bs. 90.071.992.547.409,91'
+      'Bs 90.071.992.547.409,91'
     );
     expect(nbsp(formatAmount('900719925474099312', 'VES', 'es'))).toBe(
-      'Bs. 9.007.199.254.740.993,12'
+      'Bs 9.007.199.254.740.993,12'
     );
-    expect(nbsp(formatAmount(-1050n, 'VES', 'es'))).toBe('-Bs. 10,50');
+    expect(nbsp(formatAmount(-1050n, 'VES', 'es'))).toBe('-Bs 10,50');
     expect(minorToDecimalString(7, 2)).toBe('0.07');
     expect(minorToDecimalString(-7, 2)).toBe('-0.07');
     expect(minorToDecimalString(1234, 0)).toBe('1234');

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FluviaLogo } from './brand';
 import { Icon, type IconName } from './icons';
 import { AssistantRoot, AssistantTrigger } from './assistant/assistant';
+import { RatesStrip } from './fx-ui';
 
 /**
  * Estructura común de la plataforma del comercio: barra lateral en escritorio
@@ -291,6 +292,7 @@ export function AppShell({
 
         {/* Cada página aporta su propio <main> (un único landmark principal). */}
         <div id="fx-main" className="fx-main" tabIndex={-1}>
+          <RatesStrip />
           {children}
         </div>
       </div>

@@ -5,6 +5,7 @@ import { PayOrderForm } from '../../../../lib/shop-actions';
 import { Money, ScreenHead } from '../../../../lib/shop-ui';
 import type { Card, Me } from '../../../../lib/types';
 import type { ShopOrder } from '../../../../lib/shop-types';
+import { Equivalence } from '../../../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,7 @@ export default async function PayOrderPage({ params }: { params: Promise<{ id: s
               <dt>Total</dt>
               <dd>
                 <Money minor={o.data.total} currency={o.data.currency} />
+                <Equivalence minor={o.data.total} currency={o.data.currency} />
               </dd>
             </div>
           </dl>

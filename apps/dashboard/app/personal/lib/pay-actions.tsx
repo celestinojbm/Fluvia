@@ -1,5 +1,6 @@
 'use client';
 
+import { currencyLabel } from '../../lib/fx';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../lib/icons';
 import { QrCode } from '../../lib/venue/qr';
@@ -169,7 +170,7 @@ function ShowCode({ cards, installments }: { cards: PayCard[]; installments: num
     <div>
       <div className="pm-amount-entry">
         <p className="pm-muted" style={{ margin: 0 }}>
-          Importe máximo · {card.currency}
+          Importe máximo · {currencyLabel(card.currency)}
         </p>
         <output aria-live="polite" aria-label="Importe">
           {money(minor ?? '0', card.currency)}
@@ -196,7 +197,7 @@ function ShowCode({ cards, installments }: { cards: PayCard[]; installments: num
             >
               {cards.map((c) => (
                 <option key={c.id} value={c.id}>
-                  Tarjeta •••• {c.last4 ?? '····'} · {c.currency}
+                  Tarjeta •••• {c.last4 ?? '····'} · {currencyLabel(c.currency)}
                 </option>
               ))}
             </select>

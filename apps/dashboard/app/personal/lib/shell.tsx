@@ -7,6 +7,7 @@ import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../lib/csrf-header';
 import { Icon, type IconName } from '../../lib/icons';
 import { AssistantRoot, AssistantTrigger } from '../../lib/assistant/assistant';
 import { HideAmountsProvider } from './hide-amounts';
+import { RatesStrip } from '../../lib/fx-ui';
 
 /**
  * Estructura de Fluvia Personal: cinco destinos — Inicio · Tiendas · Pagar ·
@@ -94,6 +95,7 @@ export function PersonalShell({ name, children }: { name: string; children: Reac
             </a>
           </header>
           <div id="px-main" className="px-main" tabIndex={-1}>
+            <RatesStrip />
             {children}
             <p className="px-sandbox-note">
               Entorno de prueba: datos sintéticos, proveedores simulados y sin dinero real. Fluvia

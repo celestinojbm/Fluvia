@@ -19,6 +19,7 @@ import { parseMajorAmount, POS_CURRENCIES } from './pos-money';
 import { POS_MESSAGES, posErrorText } from './pos-messages';
 import { POS_RECEIPT_MESSAGES } from './pos-receipt-messages';
 import { PosRefundPanel } from './pos-refund';
+import { currencyLabel } from './fx';
 
 /**
  * Terminal POS sandbox (cliente). Una venta a la vez:
@@ -1058,7 +1059,7 @@ export function PosTerminal({
               >
                 {currencies.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {currencyLabel(c)}
                   </option>
                 ))}
               </select>

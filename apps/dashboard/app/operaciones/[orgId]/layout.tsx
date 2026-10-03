@@ -8,6 +8,9 @@ import { OpsAction } from '../lib/ops-action';
 import type { Overview, Program } from '../lib/types';
 import '../../platform.css';
 import '../ops.css';
+import '../../lib/rates.css';
+import { loadFx } from '../../lib/fx-server';
+import { FxProvider } from '../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,8 +96,8 @@ export default async function OpsLayout({
               type: 'select',
               list: true,
               options: [
-                { value: 'VES,USD', label: 'VES y USD' },
-                { value: 'VES', label: 'Solo VES' },
+                { value: 'VES,USD', label: 'Bs y USD' },
+                { value: 'VES', label: 'Solo Bs' },
               ],
             },
           ]}
@@ -104,18 +107,21 @@ export default async function OpsLayout({
     );
   }
   const { program, overview } = r.data;
+  const fx = await loadFx();
   return (
-    <OpsShell
-      orgId={orgId}
-      programName={program.name}
-      role={roleLabel(membership.role)}
-      queues={{
-        cases: overview.queues.open_cases,
-        reviews: overview.queues.manual_reviews,
-        uncertain: overview.queues.uncertain,
-      }}
-    >
-      {children}
-    </OpsShell>
+    <FxProvider initialRates={fx.rates} initialDisplay={fx.display}>
+      <OpsShell
+        orgId={orgId}
+        programName={program.name}
+        role={roleLabel(membership.role)}
+        queues={{
+          cases: overview.queues.open_cases,
+          reviews: overview.queues.manual_reviews,
+          uncertain: overview.queues.uncertain,
+        }}
+      >
+        {children}
+      </OpsShell>
+    </FxProvider>
   );
 }

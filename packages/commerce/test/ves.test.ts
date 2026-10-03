@@ -102,7 +102,7 @@ describe('VES — catálogo y venta', () => {
       ],
       30n + 370_368n
     );
-    expect(order.total).toBe(370_398n); // Bs. 3.703,98
+    expect(order.total).toBe(370_398n); // Bs 3.703,98
     expect(order.currency).toBe('VES');
     const detail = await orders.get(org, order.id);
     expect(detail.lines.map((l) => [l.unitPrice, l.quantity, l.lineTotal])).toEqual([
@@ -180,7 +180,7 @@ describe('VES — cobro, devolución parcial y justificante', () => {
       amount: Money.of(25_075n, 'VES'),
     });
 
-    // Devolución parcial de Bs. 100,25.
+    // Devolución parcial de Bs 100,25.
     const r = await withTenantTransaction(ctx.app, org, (c) =>
       refunds.beginIn(c, org, { paymentIntentId: intentId, amount: 10_025n, reason: 'parcial' })
     );
@@ -210,7 +210,7 @@ describe('VES — cobro, devolución parcial y justificante', () => {
 });
 
 describe('VES — cuotas simuladas con suma exacta', () => {
-  it('Bs. 100,00 en 3 cuotas = 33,34 + 33,33 + 33,33; Σ = total en el motor', async () => {
+  it('Bs 100,00 en 3 cuotas = 33,34 + 33,33 + 33,33; Σ = total en el motor', async () => {
     const p = await vesProduct('100.00');
     const order = await sale([{ productId: p.id, quantity: 1 }], 10_000n);
     const s = await links.createSessionFromLink(order.paymentLinkId);

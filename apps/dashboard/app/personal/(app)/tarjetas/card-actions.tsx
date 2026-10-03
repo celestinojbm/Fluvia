@@ -1,5 +1,6 @@
 'use client';
 
+import { currencyLabel } from '../../../lib/fx';
 import { useState, type FormEvent } from 'react';
 import { newKey, personalCall, personalError, toMinor } from '../../lib/client';
 import { money, shortDate } from '../../lib/format';
@@ -127,11 +128,11 @@ export function CardControls({ card }: { card: Card }) {
               </select>
             </div>
             <div className="px-field">
-              <label htmlFor="px-per">Límite por compra ({card.currency})</label>
+              <label htmlFor="px-per">Límite por compra ({currencyLabel(card.currency)})</label>
               <input id="px-per" name="per" inputMode="decimal" placeholder="Sin límite" />
             </div>
             <div className="px-field">
-              <label htmlFor="px-day">Límite diario ({card.currency})</label>
+              <label htmlFor="px-day">Límite diario ({currencyLabel(card.currency)})</label>
               <input id="px-day" name="day" inputMode="decimal" placeholder="Sin límite" />
             </div>
             <button className="px-btn" type="submit" disabled={busy}>
@@ -275,7 +276,9 @@ export function PayCode({
             </select>
           </div>
           <div className="px-field">
-            <label htmlFor="px-sim">Importe aproximado de la compra ({currency})</label>
+            <label htmlFor="px-sim">
+              Importe aproximado de la compra ({currencyLabel(currency)})
+            </label>
             <input
               id="px-sim"
               inputMode="decimal"

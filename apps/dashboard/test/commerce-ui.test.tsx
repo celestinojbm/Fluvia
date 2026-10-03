@@ -27,7 +27,7 @@ describe('piezas visuales del comercio', () => {
     expect(screen.getByText('Quedan 2')).toBeDefined();
   });
 
-  it('barras diarias: tabla equivalente para lectores, con importes exactos en Bs.', () => {
+  it('barras diarias: tabla equivalente para lectores, con importes exactos en Bs', () => {
     render(
       <DayBars
         currency="VES"
@@ -52,7 +52,7 @@ describe('piezas visuales del comercio', () => {
       />
     );
     const table = screen.getByRole('table', { name: /registradas y cobradas/ });
-    expect(table.textContent!.replace(/\u00a0/g, ' ')).toContain('Bs. 1.234,56');
-    expect(table.textContent!.replace(/\u00a0/g, ' ')).toContain('Bs. 0,30');
+    expect(table.textContent!.replace(/\u00a0/g, ' ')).toContain('Bs 1.234,56');
+    expect(table.textContent!.replace(/\u00a0/g, ' ')).toContain('Bs 0,30');
   });
 });

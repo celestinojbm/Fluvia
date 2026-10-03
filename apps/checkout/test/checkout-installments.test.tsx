@@ -245,13 +245,13 @@ describe('bolívares y venta anulada', () => {
     ],
   };
 
-  it('importe en Bs. con código, variante en la línea y el comercio en la cabecera', async () => {
+  it('importe en Bs (sin sufijo VES), variante en la línea y el comercio en la cabecera', async () => {
     mockRoutes((url) =>
       url.endsWith('/order') ? { body: { ...orderView(), order: VES_ORDER } } : { body: VES_VIEW }
     );
     render(<CheckoutClient sessionId="s1" locale="es" />);
     const amount = await screen.findByTestId('amount');
-    expect(amount.textContent!.replace(/\u00a0/g, ' ')).toBe('Bs. 3.703,98 VES');
+    expect(amount.textContent!.replace(/\u00a0/g, ' ')).toBe('Bs 3.703,98');
     expect(await screen.findByText('Café molido · 500 g', { exact: false })).toBeDefined();
     expect(document.querySelector('.co-merchant')!.textContent).toContain('Bodega Caracas');
   });

@@ -1,10 +1,12 @@
 'use client';
 
+import { currencyLabel } from '../../lib/fx';
 import { useMemo, useRef, useState } from 'react';
 import { Icon } from '../../lib/icons';
 import { newKey, personalCall, personalError } from './client';
 import { money, shortDate } from './format';
 import type { ShopOrder, ShopProduct } from './shop-types';
+import { Equivalence } from '../../lib/fx-ui';
 
 /** Favorito persistente (servidor), con estado optimista y reversión si falla. */
 export function FavoriteButton({
@@ -350,6 +352,7 @@ export function CreateOrderForm({
           <p>
             <span className="pm-amount pm-money">{money(total, currency)}</span>
           </p>
+          <Equivalence minor={total} currency={currency} />
         </div>
         <button type="submit" className="pm-cta" disabled={!valid || state.kind === 'busy'}>
           {state.kind === 'busy' ? 'Creando pedido…' : 'Continuar al pago'}
@@ -468,7 +471,7 @@ export function PayOrderForm({
                   Tarjeta Fluvia •••• {c.last4 ?? '····'} · saldo
                 </span>
                 <span className="pm-option-sub">
-                  Se descuenta de tu saldo propio en {c.currency}.
+                  Se descuenta de tu saldo propio en {currencyLabel(c.currency)}.
                 </span>
               </span>
             </label>
@@ -599,8 +602,8 @@ export function PayOrderForm({
 
       {usable.length === 0 ? (
         <p className="pm-banner is-info" style={{ marginTop: 12 }}>
-          No tienes una tarjeta Fluvia activa en {order.currency}. Puedes pagar con otra tarjeta o{' '}
-          <a href="/personal/tarjetas">pedir tu tarjeta</a>.
+          No tienes una tarjeta Fluvia activa en {currencyLabel(order.currency)}. Puedes pagar con
+          otra tarjeta o <a href="/personal/tarjetas">pedir tu tarjeta</a>.
         </p>
       ) : null}
       {state.kind === 'error' ? (
@@ -609,6 +612,13 @@ export function PayOrderForm({
         </p>
       ) : null}
 
+      <p className="rt-charge" data-testid="charge-line">
+        Se cobrará exactamente{' '}
+        <strong className="pm-money">{money(order.total, order.currency)}</strong>, en{' '}
+        {order.currency === 'VES' ? 'bolívares (Bs)' : currencyLabel(order.currency)}, la moneda del
+        pedido. La moneda de visualización solo cambia las equivalencias de referencia, nunca este
+        importe.
+      </p>
       <div className="pm-actionbar">
         <div className="pm-actionbar-total">
           <p className="pm-muted">Total · {order.shop_name}</p>

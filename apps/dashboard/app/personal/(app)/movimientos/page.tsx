@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../../lib/fx';
 import { Icon } from '../../../lib/icons';
 import { dateTime, money, Status } from '../../lib/format';
 import { ErrorPanel } from '../../lib/panels';
@@ -50,14 +51,14 @@ export default async function Movimientos({
           <p className="px-eyebrow">Wallet</p>
           <h1 id="px-mov">Movimientos</h1>
         </div>
-        <nav className="px-tabs-inline" aria-label="Moneda">
+        <nav className="px-tabs-inline" aria-label="Cuenta (moneda real)">
           {currencies.map((c) => (
             <a
               key={c}
               href={`/personal/movimientos?moneda=${c}`}
               aria-current={c === currency ? 'true' : undefined}
             >
-              {c}
+              {currencyLabel(c)}
             </a>
           ))}
         </nav>
@@ -132,13 +133,13 @@ export default async function Movimientos({
       ) : null}
 
       <section className="px-section" aria-labelledby="px-ext">
-        <h2 id="px-ext">Extracto · {currency}</h2>
+        <h2 id="px-ext">Extracto · {currencyLabel(currency)}</h2>
         <p className="px-muted">
           Cada línea es un asiento del registro contable: nada se calcula en tu navegador.
         </p>
         {st.data.data.length === 0 ? (
           <div className="px-empty">
-            <p>Aún no hay movimientos en {currency}.</p>
+            <p>Aún no hay movimientos en {currencyLabel(currency)}.</p>
           </div>
         ) : (
           <ul className="px-list">

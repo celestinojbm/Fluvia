@@ -1,5 +1,6 @@
 'use client';
 
+import { currencyLabel } from '../../../lib/fx';
 import { useState, type FormEvent } from 'react';
 import { newKey, personalCall, personalError, toMinor } from '../../lib/client';
 import { money } from '../../lib/format';
@@ -111,7 +112,7 @@ export function MoveForms({ currency, initial }: { currency: string; initial: st
       {action ? (
         <form className="px-form" onSubmit={submit}>
           <div className="px-field px-field-amount">
-            <label htmlFor="px-amount">Importe en {currency}</label>
+            <label htmlFor="px-amount">Importe en {currencyLabel(currency)}</label>
             <input
               id="px-amount"
               name="amount"

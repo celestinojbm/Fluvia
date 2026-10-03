@@ -5,6 +5,9 @@ import { AppShell, type NavProfile } from '../../lib/app-shell';
 import { orgPath, readApi, type Member, type SessionInfo } from '../../lib/commerce-api';
 import { roleLabel } from '../../lib/ui';
 import '../../platform.css';
+import '../../lib/rates.css';
+import { loadFx } from '../../lib/fx-server';
+import { FxProvider } from '../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,12 +67,13 @@ export default async function OrgLayout({
     );
   }
 
-  const [members, biz] = await Promise.all([
+  const [members, biz, fx] = await Promise.all([
     readApi<{ members: Member[] }>(token, orgPath(orgId, '/members')),
     readApi<{ business_type: NavProfile['businessType']; modules: string[] }>(
       token,
       orgPath(orgId, '/business-profile')
     ),
+    loadFx(),
   ]);
   const email =
     members.kind === 'ok'
@@ -77,22 +81,24 @@ export default async function OrgLayout({
       : null;
 
   return (
-    <AppShell
-      orgId={orgId}
-      orgName={membership.organization_name}
-      roleLabel={roleLabel(membership.role)}
-      userEmail={email}
-      profile={
-        biz.kind === 'ok'
-          ? {
-              businessType: biz.data.business_type,
-              modules: biz.data.modules,
-              role: membership.role,
-            }
-          : { businessType: 'retail', modules: [], role: membership.role }
-      }
-    >
-      {children}
-    </AppShell>
+    <FxProvider initialRates={fx.rates} initialDisplay={fx.display}>
+      <AppShell
+        orgId={orgId}
+        orgName={membership.organization_name}
+        roleLabel={roleLabel(membership.role)}
+        userEmail={email}
+        profile={
+          biz.kind === 'ok'
+            ? {
+                businessType: biz.data.business_type,
+                modules: biz.data.modules,
+                role: membership.role,
+              }
+            : { businessType: 'retail', modules: [], role: membership.role }
+        }
+      >
+        {children}
+      </AppShell>
+    </FxProvider>
   );
 }

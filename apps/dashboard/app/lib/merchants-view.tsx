@@ -1,3 +1,4 @@
+import { currencyLabel } from './fx';
 import { MESSAGES, type Locale } from '../messages';
 import type { Merchant } from './api';
 
@@ -112,7 +113,7 @@ export function MerchantsList({
                       <code>{shortId(m.id)}</code>
                     </td>
                     <td>{m.country}</td>
-                    <td>{m.defaultCurrency}</td>
+                    <td>{currencyLabel(m.defaultCurrency)}</td>
                     <td>
                       <StatusBadge status={m.status} locale={locale} />
                     </td>

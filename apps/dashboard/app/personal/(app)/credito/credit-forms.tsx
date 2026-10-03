@@ -1,5 +1,6 @@
 'use client';
 
+import { currencyLabel } from '../../../lib/fx';
 import { useState, type FormEvent } from 'react';
 import { newKey, personalCall, personalError, toMinor } from '../../lib/client';
 import { money } from '../../lib/format';
@@ -79,7 +80,7 @@ export function CollateralForms({ balances }: { balances: Balance[] }) {
           <select id="px-cccy" name="currency">
             {balances.map((b) => (
               <option key={b.currency} value={b.currency}>
-                {b.currency} · disponible {money(b.available, b.currency)} · garantía{' '}
+                {currencyLabel(b.currency)} · disponible {money(b.available, b.currency)} · garantía{' '}
                 {money(b.collateral, b.currency)}
               </option>
             ))}

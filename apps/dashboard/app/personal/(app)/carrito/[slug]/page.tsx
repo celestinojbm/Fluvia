@@ -1,9 +1,11 @@
+import { currencyLabel } from '../../../../lib/fx';
 import { notFound, redirect } from 'next/navigation';
 import { readPersonal } from '../../../lib/server';
 import { ErrorPanel } from '../../../lib/panels';
 import { CreateOrderForm } from '../../../lib/shop-actions';
 import { Money, ScreenHead, img } from '../../../lib/shop-ui';
 import type { CartGroup, ShopProfile } from '../../../lib/shop-types';
+import { Equivalence } from '../../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,11 +85,13 @@ export default async function ReviewPage({
                 <dt>Total</dt>
                 <dd>
                   <Money minor={g.total} currency={g.currency} />
+                  <Equivalence minor={g.total} currency={g.currency} />
                 </dd>
               </div>
             </dl>
             <p className="pm-muted" style={{ margin: '8px 0 0' }}>
-              Moneda: {g.currency}. Sin cargos adicionales de Fluvia en este entorno de prueba.
+              Moneda: {currencyLabel(g.currency)}. Sin cargos adicionales de Fluvia en este entorno
+              de prueba.
             </p>
           </section>
         </div>

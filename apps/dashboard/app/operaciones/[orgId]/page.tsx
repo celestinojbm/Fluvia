@@ -1,3 +1,5 @@
+import { currencyLabel } from '../../lib/fx';
+import { Equivalence } from '../../lib/fx-ui';
 import { OpsAction } from '../lib/ops-action';
 import { readOps } from '../lib/server';
 import type { Overview, Program } from '../lib/types';
@@ -64,6 +66,10 @@ export default async function OpsHome({ params }: { params: Promise<{ orgId: str
 
       <section className="ox-section" aria-labelledby="ox-money">
         <h2 id="ox-money">Dinero y riesgo por moneda (ledger)</h2>
+        <p className="ox-muted" style={{ margin: '0 0 8px' }}>
+          Cada fila es una moneda real y nunca se suman entre sí. Las cifras con «≈» son
+          equivalentes estimados en la moneda de visualización, a la tasa de referencia actual.
+        </p>
         {o.by_currency.length === 0 ? (
           <div className="ox-empty">Aún no hay movimientos en el programa.</div>
         ) : (
@@ -91,34 +97,42 @@ export default async function OpsHome({ params }: { params: Promise<{ orgId: str
                 {o.by_currency.map((c) => (
                   <tr key={c.currency}>
                     <td data-label="Moneda">
-                      <strong>{c.currency}</strong>
+                      <strong>{currencyLabel(c.currency)}</strong>
                     </td>
                     <td data-label="Propio disponible" className="ox-num">
                       {money(c.wallet_available, c.currency)}
+                      <Equivalence minor={c.wallet_available} currency={c.currency} compact />
                     </td>
                     <td data-label="Retenido" className="ox-num">
                       {money(c.wallet_held, c.currency)}
+                      <Equivalence minor={c.wallet_held} currency={c.currency} compact />
                     </td>
                     <td data-label="Garantía" className="ox-num">
                       {money(c.collateral, c.currency)}
+                      <Equivalence minor={c.collateral} currency={c.currency} compact />
                     </td>
                     <td data-label="Límites aprobados" className="ox-num">
                       {money(c.approved_limits, c.currency)}
+                      <Equivalence minor={c.approved_limits} currency={c.currency} compact />
                     </td>
                     <td data-label="Deuda" className="ox-num ox-credit">
                       {money(c.debt, c.currency)}
+                      <Equivalence minor={c.debt} currency={c.currency} compact />
                     </td>
                     <td data-label="Reservado crédito" className="ox-num">
                       {money(c.reserved, c.currency)}
+                      <Equivalence minor={c.reserved} currency={c.currency} compact />
                     </td>
                     <td
                       data-label="Vencido"
                       className={`ox-num${BigInt(c.overdue) > 0n ? ' ox-bad' : ''}`}
                     >
                       {money(c.overdue, c.currency)}
+                      <Equivalence minor={c.overdue} currency={c.currency} compact />
                     </td>
                     <td data-label="Obligación con la red" className="ox-num">
                       {money(c.network_payable, c.currency)}
+                      <Equivalence minor={c.network_payable} currency={c.currency} compact />
                     </td>
                   </tr>
                 ))}

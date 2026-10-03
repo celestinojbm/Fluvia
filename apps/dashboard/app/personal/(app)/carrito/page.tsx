@@ -1,9 +1,11 @@
+import { currencyLabel } from '../../../lib/fx';
 import { Icon } from '../../../lib/icons';
 import { readPersonal } from '../../lib/server';
 import { ErrorPanel } from '../../lib/panels';
 import { CartLineControls } from '../../lib/shop-actions';
 import { Money, ScreenHead, img } from '../../lib/shop-ui';
 import type { CartGroup, CartLine } from '../../lib/shop-types';
+import { Equivalence } from '../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +66,7 @@ export default async function CartPage() {
                   <a href={`/personal/tiendas/${g.shop_slug}`} style={{ color: 'inherit' }}>
                     {g.shop_name}
                   </a>
-                  <span className="pm-tag">{g.currency}</span>
+                  <span className="pm-tag">{currencyLabel(g.currency)}</span>
                 </h2>
                 <ul className="pm-lines">
                   {g.lines.map((l) => (
@@ -95,6 +97,7 @@ export default async function CartPage() {
                     <dt>Total {changed ? '(precios actuales)' : ''}</dt>
                     <dd>
                       <Money minor={g.total} currency={g.currency} />
+                      <Equivalence minor={g.total} currency={g.currency} />
                     </dd>
                   </div>
                 </dl>

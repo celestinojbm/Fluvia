@@ -6,6 +6,7 @@ import { clientCall, errorMessage } from './client-call';
 import type { CatalogImage, Category, Product } from './commerce-api';
 import { ProductThumb } from './commerce-ui';
 import { POS_CURRENCIES, parseMajorAmount } from './pos-money';
+import { currencyLabel } from './fx';
 
 /**
  * Alta y edición de producto. Precio en unidades MAYORES con la misma regla
@@ -297,7 +298,7 @@ export function ProductForm({
           >
             {[...new Set([defaultCurrency, ...POS_CURRENCIES])].map((c) => (
               <option key={c} value={c}>
-                {c}
+                {currencyLabel(c)}
               </option>
             ))}
           </select>

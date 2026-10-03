@@ -126,7 +126,7 @@ test('1. Personal · inicio separa saldo propio, garantía y crédito; teclado',
 
 test('2. Personal · ingreso: instrucción pendiente hasta que el banco (simulado) confirma', async () => {
   await p.goto(`${APP}/personal/movimientos?accion=ingresar`);
-  await p.getByLabel('Importe en VES').fill('1500,00');
+  await p.getByLabel('Importe en Bs').fill('1500,00');
   await p.getByRole('button', { name: 'Crear instrucción de ingreso' }).click();
   await expect(p.getByText(/Instrucción creada\. Referencia/)).toBeVisible();
   await p.waitForTimeout(1800);

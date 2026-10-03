@@ -5,6 +5,7 @@ import { ErrorPanel } from '../../../../lib/panels';
 import { AddToCart } from '../../../../lib/shop-actions';
 import { Money, img } from '../../../../lib/shop-ui';
 import type { ShopProduct, ShopProfile } from '../../../../lib/shop-types';
+import { Equivalence } from '../../../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,7 @@ export default async function ProductPage({
               </span>
             ) : null}
             <Money minor={product.price} currency={product.currency} />
+            <Equivalence minor={product.price} currency={product.currency} />
           </p>
           <p className="pm-muted" style={{ margin: '4px 0 0' }}>
             {product.in_stock ? 'Disponible' : 'Agotado por ahora'} · vendido por {shop.name}

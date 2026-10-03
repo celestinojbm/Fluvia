@@ -73,6 +73,26 @@ interface Row {
   fetched_at: Date;
 }
 
+/** «2026-10-02» → «02/10/2026» (textos para personas). */
+function dmy(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+const STAMP = new Intl.DateTimeFormat('es-VE', {
+  timeZone: 'America/Caracas',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+/** Instante → «03/10/2026, 14:55» en Caracas. */
+function caracasStamp(iso: string): string {
+  return STAMP.format(new Date(iso));
+}
+
 /** Fecha civil YYYY-MM-DD en Caracas para un instante. */
 export function caracasDate(at: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -226,7 +246,7 @@ export class FxService {
   private outageWarning(s: SourceStatus, name: string, healthy: boolean): string | null {
     if (healthy || !this.cfg.refreshEnabled) return null;
     return s.lastSuccessAt
-      ? `No pudimos consultar ${name} desde ${s.lastSuccessAt}. Se muestra la última lectura válida con su fecha.`
+      ? `No pudimos consultar ${name} desde el ${caracasStamp(s.lastSuccessAt)} (hora de Caracas). Se muestra la última lectura válida con su fecha.`
       : `Aún no hay una consulta exitosa a ${name}.`;
   }
 
@@ -257,7 +277,7 @@ export class FxService {
     };
     if (!row) {
       ref.detail = next
-        ? `La última publicación del BCV rige desde el ${next.value_date}; no hay una tasa aplicable registrada para hoy (${today}).`
+        ? `La última publicación del BCV rige desde el ${dmy(next.value_date!)}; no hay una tasa aplicable registrada para hoy (${dmy(today)}).`
         : 'No hay lecturas del BCV registradas.';
       return ref;
     }
@@ -270,16 +290,16 @@ export class FxService {
     const v = row.value_date!;
     if (v === today) {
       ref.status = 'vigente';
-      ref.detail = `Fecha Valor ${v} (hoy).`;
+      ref.detail = `Fecha Valor ${dmy(v)} (hoy).`;
     } else if (next) {
       ref.status = 'vigente';
-      ref.detail = `Rige la Fecha Valor ${v} hasta la próxima publicada (${next.value_date}).`;
+      ref.detail = `Rige la Fecha Valor ${dmy(v)} hasta la próxima publicada (${dmy(next.value_date!)}).`;
     } else if (healthy && daysBetween(v, today) <= 4) {
       ref.status = 'vigente';
-      ref.detail = `El BCV no ha publicado para hoy; rige la del último día con publicación (${v}).`;
+      ref.detail = `El BCV no ha publicado para hoy; rige la del último día con publicación (${dmy(v)}).`;
     } else {
       ref.status = 'desactualizada';
-      ref.detail = `Última Fecha Valor registrada: ${v}.`;
+      ref.detail = `Última Fecha Valor registrada: ${dmy(v)}.`;
     }
     return ref;
   }
@@ -337,7 +357,7 @@ export class FxService {
       fetchedAt: null,
       status: worst,
       detail: ok
-        ? `Calculada con USDT/USD ${usdt.rate} y USD/Bs ${usd.rate} (Fecha Valor ${usd.valueDate}).`
+        ? `Calculada con USDT/USD ${usdt.rate} y USD/Bs ${usd.rate} (Fecha Valor ${dmy(usd.valueDate!)}).`
         : 'Falta USDT/USD o USD/Bs.',
       warning: usdt.warning ?? usd.warning,
       next: null,

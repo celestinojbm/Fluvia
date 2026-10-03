@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { FluviaLogo } from '../../lib/brand';
 import { Icon, type IconName } from '../../lib/icons';
+import { RatesStrip } from '../../lib/fx-ui';
 
 /**
  * Fluvia Operaciones — «Sala de control»: barra superior oscura con programa,
@@ -81,6 +82,7 @@ export function OpsShell({
         </p>
       </nav>
       <div id="ox-main" className="ox-main" tabIndex={-1}>
+        <RatesStrip />
         {children}
       </div>
     </div>

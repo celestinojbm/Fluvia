@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../lib/fx';
 import { Icon } from '../../lib/icons';
 import { shortDate, CARD_STATUS } from '../lib/format';
 import { readPersonal } from '../lib/server';
@@ -5,6 +6,7 @@ import type { Application, Balance, Card, Installment, Me, StatementLine } from 
 import { ErrorPanel } from '../lib/panels';
 import { HideAmountsButton } from '../lib/hide-amounts';
 import { CartButton, Money, ProductCard } from '../lib/shop-ui';
+import { ConvertedAmount } from '../../lib/fx-ui';
 import { OUTCOME, type CartGroup, type ShopOrder, type ShopProduct } from '../lib/shop-types';
 
 export const dynamic = 'force-dynamic';
@@ -83,7 +85,14 @@ export default async function PersonalHome({
                 Saldo propio disponible
               </p>
               {balances.length > 1 ? (
-                <nav className="pm-chips" aria-label="Moneda" style={{ margin: 0, padding: 0 }}>
+                <nav
+                  className="pm-chips"
+                  aria-label="Cuenta (moneda real del saldo)"
+                  style={{ margin: 0, padding: 0 }}
+                >
+                  <span className="pm-chips-label" aria-hidden="true">
+                    Cuenta
+                  </span>
                   {balances.map((x) => (
                     <a
                       key={x.currency}
@@ -92,25 +101,39 @@ export default async function PersonalHome({
                       href={`/personal?moneda=${x.currency}`}
                       aria-current={x.currency === b.currency ? 'true' : undefined}
                     >
-                      {x.currency}
+                      {currencyLabel(x.currency)}
                     </a>
                   ))}
                 </nav>
               ) : (
-                <span className="pm-hero-cur">{b.currency}</span>
+                <span className="pm-hero-cur">{currencyLabel(b.currency)}</span>
               )}
             </div>
-            <Money minor={b.available} currency={b.currency} className="pm-hero-amount" />
+            <ConvertedAmount minor={b.available} currency={b.currency} className="pm-hero-amount" />
             <dl className="pm-hero-split">
               <div className="pm-hero-cell">
                 <dt>Garantía bloqueada</dt>
                 <dd>
-                  <Money minor={b.collateral} currency={b.currency} />
+                  <ConvertedAmount
+                    minor={b.collateral}
+                    currency={b.currency}
+                    originalLabel="Original"
+                  />
                 </dd>
               </div>
               <div className="pm-hero-cell is-credit">
                 <dt>Crédito disponible</dt>
-                <dd>{c ? <Money minor={c.available} currency={b.currency} /> : 'Sin línea'}</dd>
+                <dd>
+                  {c ? (
+                    <ConvertedAmount
+                      minor={c.available}
+                      currency={b.currency}
+                      originalLabel="Original"
+                    />
+                  ) : (
+                    'Sin línea'
+                  )}
+                </dd>
               </div>
             </dl>
             {BigInt(b.held) > 0n ? (

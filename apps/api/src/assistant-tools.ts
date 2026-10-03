@@ -21,8 +21,13 @@ export function fmt(minor: string | number | bigint, ccy: string): string {
   const base = 10n ** BigInt(exp);
   const int = (abs / base).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const dec = exp ? `,${(abs % base).toString().padStart(exp, '0')}` : '';
+  // Bolívares con la etiqueta visible «Bs» (VES es solo el código interno).
+  if (ccy === 'VES') return `${neg ? '-' : ''}Bs ${int}${dec}`;
   return `${neg ? '-' : ''}${int}${dec} ${ccy}`;
 }
+
+/** Etiqueta visible de una moneda en los resúmenes: VES ⇒ «Bs». */
+const ccyLabel = (ccy: string) => (ccy === 'VES' ? 'Bs' : ccy);
 
 const obj = (props: Record<string, unknown> = {}, required: string[] = []) => ({
   type: 'object',
@@ -117,7 +122,7 @@ export function personalTools(
             ? b
                 .map(
                   (x) =>
-                    `${x.currency}: disponible ${fmt(x.available, x.currency)}, retenido ${fmt(x.held, x.currency)}, garantía ${fmt(x.collateral, x.currency)}${BigInt(x.debt) > 0n ? `; deuda de crédito ${fmt(x.debt, x.currency)} (no es saldo propio)` : ''}.`
+                    `${ccyLabel(x.currency)}: disponible ${fmt(x.available, x.currency)}, retenido ${fmt(x.held, x.currency)}, garantía ${fmt(x.collateral, x.currency)}${BigInt(x.debt) > 0n ? `; deuda de crédito ${fmt(x.debt, x.currency)} (no es saldo propio)` : ''}.`
                 )
                 .join(' ')
             : 'Aún no tienes saldo en ninguna moneda.',
@@ -151,7 +156,7 @@ export function personalTools(
             ? lines
                 .map(
                   (l) =>
-                    `Crédito ${l.currency} (${l.status}): límite ${fmt(l.approvedLimit, l.currency)}, disponible ${fmt(l.available, l.currency)}, usado ${fmt(l.utilized, l.currency)}.`
+                    `Crédito ${ccyLabel(l.currency)} (${l.status}): límite ${fmt(l.approvedLimit, l.currency)}, disponible ${fmt(l.available, l.currency)}, usado ${fmt(l.utilized, l.currency)}.`
                 )
                 .join(' ') + (pending ? ` Tienes ${pending} solicitud(es) en revisión.` : '')
             : `No tienes una línea de crédito aprobada.${pending ? ` Tienes ${pending} solicitud(es) en revisión.` : ''}`,

@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../../lib/fx';
 import { OpsAction } from '../../lib/ops-action';
 import { readOps } from '../../lib/server';
 import { Failed, St, when } from '../../lib/ui';
@@ -88,7 +89,7 @@ export default async function Tarjetas({
                 <tr key={k.id}>
                   <td data-label="Tarjeta">
                     {k.form === 'virtual' ? 'Virtual' : 'Física'} •••• {k.last4 ?? '····'} ·{' '}
-                    {k.currency}
+                    {currencyLabel(k.currency)}
                   </td>
                   <td data-label="Cliente">
                     <a href={`/operaciones/${orgId}/clientes/${k.consumer_id}`}>Ver cliente</a>
