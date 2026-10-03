@@ -4,6 +4,7 @@ import type { PoolClient } from '@fluvia/db';
 import { insertAuditEvent, type AuditAction } from '@fluvia/audit';
 import { assertValidIdempotencyKey } from '@fluvia/idempotency';
 import {
+  DEMO_IMAGE_REFS,
   DIRECTORY_CATEGORIES,
   PRESENTATION_IMAGE_REFS,
   SHOP_FULFILLMENT_STATUSES,
@@ -92,7 +93,9 @@ const SettingsBody = z
       .trim()
       .regex(/^\+?[0-9 ()-]{7,20}$/)
       .nullable(),
-    banner_ref: z.enum(PRESENTATION_IMAGE_REFS as unknown as [string, ...string[]]).nullable(),
+    banner_ref: z
+      .enum([...PRESENTATION_IMAGE_REFS, ...DEMO_IMAGE_REFS] as unknown as [string, ...string[]])
+      .nullable(),
     expected_version: z.number().int().min(0),
   })
   .strict();
