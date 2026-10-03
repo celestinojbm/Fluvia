@@ -186,7 +186,10 @@ export function RevokeKeyButton({
     );
     if (r.ok) {
       setPhase('done');
-      setTimeout(() => window.location.reload(), 600);
+      // Igual que en case-actions: el temporizador no debe romper si el entorno ya no existe.
+      setTimeout(() => {
+        if (typeof window !== 'undefined') window.location.reload();
+      }, 600);
       return;
     }
     if (needsStepUp(r) && !isRetryAfterStepUp) {

@@ -41,7 +41,11 @@ async function postAction(url: string, body?: unknown): Promise<PostResult> {
 }
 
 function reloadSoon(): void {
-  setTimeout(() => window.location.reload(), 400);
+  // En el navegador `window` siempre existe; en pruebas el temporizador puede
+  // dispararse después de desmontar el entorno (jsdom) y no debe romper la suite.
+  setTimeout(() => {
+    if (typeof window !== 'undefined') window.location.reload();
+  }, 400);
 }
 
 export function AckButton({
