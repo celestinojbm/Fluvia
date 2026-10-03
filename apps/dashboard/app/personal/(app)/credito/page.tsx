@@ -1,9 +1,11 @@
+import { currencyLabel } from '../../../lib/fx';
 import { Icon } from '../../../lib/icons';
 import { dateTime, money, Status } from '../../lib/format';
 import { ErrorPanel } from '../../lib/panels';
 import { readPersonal } from '../../lib/server';
 import type { Application, Balance, Line } from '../../lib/types';
 import { CollateralForms, ApplyForm } from './credit-forms';
+import { ConvertedAmount } from '../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,10 +83,16 @@ export default async function Credito() {
       {lines.map((l) => (
         <section key={l.id} className="px-credit" aria-labelledby={`line-${l.id}`}>
           <h2 id={`line-${l.id}`}>
-            <Icon name="shield" /> Línea en {l.currency} · nivel {l.risk_tier} · ×
+            <Icon name="shield" /> Línea en {currencyLabel(l.currency)} · nivel {l.risk_tier} · ×
             {l.multiplier_bps / 10_000}
           </h2>
-          <p className="px-credit-amount">{money(l.available, l.currency)}</p>
+          <p className="px-credit-amount">
+            <ConvertedAmount
+              minor={l.available}
+              currency={l.currency}
+              originalLabel="Disponible original"
+            />
+          </p>
           <p className="px-muted" style={{ margin: 0 }}>
             disponible {l.status !== 'active' ? '· línea congelada por Fluvia' : ''}
           </p>

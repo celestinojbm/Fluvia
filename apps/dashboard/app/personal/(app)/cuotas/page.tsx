@@ -11,6 +11,7 @@ import { ErrorPanel } from '../../lib/panels';
 import { readPersonal } from '../../lib/server';
 import type { Authorization, Plan } from '../../lib/types';
 import { RepayForm } from './repay-form';
+import { ConvertedAmount } from '../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,11 @@ export default async function Cuotas() {
           <h2 id="px-owed">Te queda por pagar</h2>
           {[...owed.entries()].map(([ccy, v]) => (
             <p key={ccy} className="px-credit-amount">
-              {money(v.toString(), ccy)}
+              <ConvertedAmount
+                minor={v.toString()}
+                currency={ccy}
+                originalLabel="Pendiente original"
+              />
             </p>
           ))}
           <RepayForm

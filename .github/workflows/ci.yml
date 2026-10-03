@@ -333,7 +333,7 @@ jobs:
       - name: Arrancar API, agente de voz y dashboard
         run: |
           L="$RUNNER_TEMP/logs"; mkdir -p "$L" "$RUNNER_TEMP/assistant"
-          (cd apps/api && HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
+          (cd apps/api && FX_REFRESH=off HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
             ASSISTANT_STORAGE_DIR="$RUNNER_TEMP/assistant" nohup node --import tsx src/server.ts >"$L/api.log" 2>&1 &)
           (cd apps/voice-agent && nohup node --import tsx src/main.ts >"$L/agent.log" 2>&1 &)
           (cd apps/dashboard && FLUVIA_API_URL=http://127.0.0.1:3340 \
@@ -431,7 +431,7 @@ jobs:
       - name: Arrancar API, checkout y panel
         run: |
           L="$RUNNER_TEMP/logs"; mkdir -p "$L"
-          (cd apps/api && HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
+          (cd apps/api && FX_REFRESH=off HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
             nohup node --import tsx src/server.ts >"$L/api.log" 2>&1 &)
           (cd apps/checkout && FLUVIA_API_URL=http://127.0.0.1:3340 \
             nohup npx next start -H 127.0.0.1 -p 3341 >"$L/checkout.log" 2>&1 &)
@@ -451,6 +451,25 @@ jobs:
           CI: 'true'
           DEMO_APP_URL: http://127.0.0.1:3342
           API_URL: http://127.0.0.1:3340
+
+      - name: Seed de Tiendas (sintético)
+        run: pnpm --filter @fluvia/seeds run seed:tiendas
+
+      - name: E2E Personal · Tiendas (compra, pago, comercio, aislamiento)
+        run: >-
+          pnpm --filter @fluvia/dashboard exec playwright test
+          -c e2e/real-stack/playwright.config.ts tiendas-personal
+        env:
+          CI: 'true'
+          DEMO_APP_URL: http://127.0.0.1:3342
+
+      - name: E2E tasas de referencia y moneda de visualización (fixtures, sin red externa)
+        run: >-
+          pnpm --filter @fluvia/dashboard exec playwright test
+          -c e2e/real-stack/playwright.config.ts tasas-moneda
+        env:
+          CI: 'true'
+          DEMO_APP_URL: http://127.0.0.1:3342
 
       - name: Logs de los servicios (si falla)
         if: failure()

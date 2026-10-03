@@ -117,6 +117,13 @@ export const AUDIT_ACTIONS = [
   'directory_profile.saved',
   'directory_profile.published',
   'directory_profile.hidden',
+  // Tiendas Fluvia (0063): publicación, pedidos en línea y entrega.
+  'shop.settings_saved',
+  'shop.listing_saved',
+  'shop.order_created',
+  'shop.order_cancelled',
+  'shop.return_requested',
+  'shop.fulfillment_changed',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

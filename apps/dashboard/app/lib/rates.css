@@ -1,0 +1,494 @@
+/* ==========================================================================
+   Tasas de referencia: franja compacta, detalle con calculadora e importes
+   convertidos. Identidad Fluvia (menta, lima, negro, Manrope). Prefijo rt-.
+   ========================================================================== */
+
+/* --- franja fija bajo la barra superior --------------------------------- */
+.rt-strip {
+  width: fit-content;
+  position: sticky;
+  top: var(--rt-top, 0px);
+  z-index: 25; /* bajo las barras superiores (30) y la navegación */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0 0 16px;
+  padding: 0 2px 0 0;
+  background: var(--fl-white);
+  border: 1px solid var(--fl-control-line);
+  border-radius: var(--fl-pill);
+  font-size: var(--fl-fs-sm);
+  color: var(--fl-black);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.rt-strip-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  align-self: stretch;
+  padding: 0 4px 0 14px;
+  border: 0;
+  border-radius: var(--fl-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.rt-strip-btn:hover .rt-v {
+  text-decoration: underline;
+}
+.rt-strip-vals {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rt-strip-item {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.rt-k {
+  font-weight: 800;
+}
+.rt-v {
+  font-weight: 600;
+}
+.rt-strip-unit {
+  flex: 0 0 auto;
+  color: var(--fl-ink-2);
+}
+.rt-flag {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: var(--fl-pill);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+}
+.rt-flag-test {
+  background: var(--fl-sim-soft);
+  color: var(--fl-sim);
+}
+.rt-flag-warn {
+  background: var(--fl-warn-soft);
+  color: var(--fl-warn);
+}
+/* En móvil estrecho la franja se recorta con elipsis (el nombre accesible
+   lleva todas las tasas) y nunca empuja la página en horizontal. */
+@media (max-width: 479px) {
+  .rt-strip {
+    font-size: var(--fl-fs-xs);
+  }
+  .rt-strip-btn {
+    gap: 6px;
+    padding-left: 10px;
+    text-overflow: ellipsis;
+  }
+  .rt-strip-unit {
+    display: none;
+  }
+}
+
+.rt-select {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.rt-select label {
+  font-weight: 700;
+}
+.rt-select select {
+  min-height: 44px;
+  padding: 0 28px 0 12px;
+  border: 2px solid var(--fl-black);
+  border-radius: var(--fl-pill);
+  background: var(--fl-lime);
+  color: var(--fl-black);
+  font: inherit;
+  font-weight: 800;
+}
+.rt-select-compact {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.rt-select-compact label {
+  font-size: var(--fl-fs-xs);
+  color: var(--fl-ink-2);
+}
+.rt-select-compact select {
+  min-height: 44px;
+  padding: 0 24px 0 10px;
+}
+@media (max-width: 479px) {
+  .rt-select-compact label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+.rt-hint {
+  flex-basis: 100%;
+  font-size: var(--fl-fs-xs);
+  color: var(--fl-ink-2);
+}
+
+/* Posición de la franja según la barra superior de cada superficie. */
+@media (max-width: 1023px) {
+  .px-shell,
+  .app-shell {
+    --rt-top: 68px;
+  }
+}
+.ox-shell {
+  --rt-top: calc(var(--ox-top, 60px) + 10px);
+}
+@media (min-width: 1024px) {
+  .px-shell,
+  .app-shell {
+    --rt-top: 8px;
+  }
+}
+
+/* --- diálogo de detalle --------------------------------------------------- */
+.rt-dialog {
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 2px solid var(--fl-black);
+  border-radius: var(--fl-radius-lg);
+  background: var(--fl-white);
+  color: var(--fl-black);
+  font-family: var(--fl-font);
+}
+.rt-dialog::backdrop {
+  background: var(--fl-scrim);
+}
+.rt-detail {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+.rt-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rt-detail-head h2 {
+  margin: 0;
+  font-size: var(--fl-fs-h2);
+}
+.rt-close,
+.rt-copy,
+.rt-swap {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  border: 2px solid var(--fl-black);
+  border-radius: var(--fl-pill);
+  background: var(--fl-white);
+  color: var(--fl-black);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.rt-copy {
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.rt-copy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.rt-lead {
+  margin: 0;
+  color: var(--fl-ink-2);
+}
+.rt-refs {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+.rt-ref {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--fl-control-line);
+  border-radius: var(--fl-radius);
+  background: var(--fl-surface-2);
+  min-width: 0;
+}
+.rt-ref header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rt-ref h3 {
+  margin: 0;
+  font-size: var(--fl-fs-h3);
+}
+.rt-ref-rate {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.rt-ref-unit {
+  font-size: var(--fl-fs-sm);
+  font-weight: 600;
+  color: var(--fl-ink-2);
+}
+.rt-ref dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--fl-fs-sm);
+}
+.rt-ref dl div {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 8px;
+}
+.rt-ref dt {
+  color: var(--fl-ink-2);
+}
+.rt-ref dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rt-ref-detail {
+  margin: 0;
+  font-size: var(--fl-fs-sm);
+  color: var(--fl-ink-2);
+}
+.rt-ref-warn {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--fl-radius-sm);
+  background: var(--fl-warn-soft);
+  color: var(--fl-warn);
+  font-size: var(--fl-fs-sm);
+  font-weight: 700;
+}
+.rt-badge {
+  padding: 2px 10px;
+  border-radius: var(--fl-pill);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.rt-badge-vigente {
+  background: var(--fl-ok-soft);
+  color: var(--fl-ok);
+}
+.rt-badge-desactualizada {
+  background: var(--fl-warn-soft);
+  color: var(--fl-warn);
+}
+.rt-badge-no_disponible {
+  background: var(--fl-bad-soft);
+  color: var(--fl-bad-strong);
+}
+.rt-badge-datos_de_prueba {
+  background: var(--fl-sim-soft);
+  color: var(--fl-sim);
+}
+
+/* --- calculadora ---------------------------------------------------------- */
+.rt-calc {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--fl-radius);
+  background: var(--fl-mint);
+}
+.rt-calc h3 {
+  margin: 0;
+  font-size: var(--fl-fs-h3);
+}
+.rt-calc-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+}
+@media (max-width: 559px) {
+  .rt-calc-grid {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+  .rt-field-amount {
+    grid-column: 1 / -1;
+  }
+}
+.rt-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.rt-field label {
+  font-size: var(--fl-fs-sm);
+  font-weight: 700;
+}
+.rt-field input,
+.rt-field select {
+  min-height: 44px;
+  width: 100%;
+  padding: 0 12px;
+  border: 2px solid var(--fl-black);
+  border-radius: var(--fl-radius-sm);
+  background: var(--fl-white);
+  color: var(--fl-black);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.rt-field input[aria-invalid='true'] {
+  border-color: var(--fl-bad);
+}
+.rt-swap {
+  padding: 0 12px;
+  font-size: 1.125rem;
+}
+.rt-calc-err {
+  margin: 0;
+  min-height: 0;
+  color: var(--fl-bad-strong);
+  font-size: var(--fl-fs-sm);
+  font-weight: 700;
+}
+.rt-calc-err:empty {
+  display: none;
+}
+.rt-calc-out p {
+  margin: 0;
+}
+.rt-calc-result {
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.rt-calc-result output {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.rt-calc-rate {
+  font-size: var(--fl-fs-sm);
+  color: var(--fl-ink-2);
+  overflow-wrap: anywhere;
+}
+.rt-calc-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- importes convertidos ------------------------------------------------- */
+.rt-conv {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+.rt-conv > .pm-money {
+  overflow-wrap: anywhere;
+}
+.rt-conv-tag {
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fl-ink-2);
+}
+.rt-conv-sub,
+.rt-eq {
+  display: block;
+  font-size: var(--fl-fs-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fl-ink-2);
+  overflow-wrap: anywhere;
+}
+.rt-cite {
+  font-style: normal;
+}
+.rt-strip-btn:focus-visible,
+.rt-dialog :focus-visible {
+  outline: 3px solid var(--fl-focus);
+  outline-offset: 2px;
+}
+/* «Ocultar importes» (Personal) tapa también las equivalencias: van en .pm-money. */
+@media print {
+  .rt-strip,
+  .rt-dialog {
+    display: none !important;
+  }
+}
+
+/* Línea explícita del importe cobrado (confirmación de pago). */
+.rt-charge {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 2px solid var(--fl-black);
+  border-radius: var(--fl-radius-sm);
+  background: var(--fl-white);
+  font-size: var(--fl-fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Comercio: el protagonista del panel conserva la tipografía de .fx-hero-value. */
+.fx-hero-value-wrap {
+  margin: var(--fx-s2, 8px) 0 0;
+}
+.fx-hero-value-wrap .fx-hero-value {
+  display: block;
+  margin: 0;
+}
+.fx-hero-value-wrap .rt-conv {
+  display: flex;
+}
+
+/* Inicio de Personal: los botones de cuenta («Cuenta: Bs | USD») son cuentas
+   reales; se distinguen del selector de visualización de la franja. */
+.pm-chips-label {
+  align-self: center;
+  margin-right: 2px;
+  font-size: var(--fl-fs-xs);
+  font-weight: 700;
+  color: var(--fl-ink-2);
+}
+/* La fila del saldo puede partir en dos líneas en móvil (etiqueta + cuentas). */
+.pm-hero-top {
+  flex-wrap: wrap;
+}
+/* Si no cabe todo, se recorta USDT con elipsis; el aviso «Prueba»/«Aviso» y el
+   selector siempre quedan visibles. */
+.rt-strip-item:nth-child(3) {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sobre superficies negras (saldo del comercio) el texto secundario hereda el
+   color claro de la superficie: contraste AA. */
+.fx-balance .rt-eq,
+.fx-balance .rt-conv-sub,
+.fx-balance .rt-conv-tag {
+  color: inherit;
+}

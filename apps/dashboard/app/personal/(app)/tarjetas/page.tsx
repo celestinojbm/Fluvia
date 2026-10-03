@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../../lib/fx';
 import {
   CARD_STATUS,
   DECLINE_TEXT,
@@ -109,7 +110,7 @@ export default async function Tarjetas({
                 }}
               >
                 <dt className="px-muted">Moneda</dt>
-                <dd style={{ margin: 0 }}>{selected.currency}</dd>
+                <dd style={{ margin: 0 }}>{currencyLabel(selected.currency)}</dd>
                 <dt className="px-muted">Cómo paga</dt>
                 <dd style={{ margin: 0 }}>{MODE[selected.funding_mode]}</dd>
                 <dt className="px-muted">Límite por compra</dt>

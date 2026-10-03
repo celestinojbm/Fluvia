@@ -41,7 +41,16 @@ export const SCREEN_ACTIONS: readonly ScreenAction[] = [
     path: '/personal/cuotas',
   },
   { id: 'personal.credit', surface: 'personal', label: 'Ir a Crédito', path: '/personal/credito' },
-  { id: 'personal.profile', surface: 'personal', label: 'Ir a Perfil', path: '/personal/perfil' },
+  { id: 'personal.profile', surface: 'personal', label: 'Ir a Cuenta', path: '/personal/cuenta' },
+  { id: 'personal.shops', surface: 'personal', label: 'Ir a Tiendas', path: '/personal/tiendas' },
+  { id: 'personal.cart', surface: 'personal', label: 'Ver mi carrito', path: '/personal/carrito' },
+  {
+    id: 'personal.activity',
+    surface: 'personal',
+    label: 'Ver mi actividad',
+    path: '/personal/actividad',
+  },
+  { id: 'personal.pay', surface: 'personal', label: 'Pagar con código', path: '/personal/pagar' },
   { id: 'public.directory', surface: 'personal', label: 'Dónde comprar', path: '/donde-comprar' },
   { id: 'commerce.home', surface: 'commerce', label: 'Ir al panel', path: '/o/{org}' },
   { id: 'commerce.pos', surface: 'commerce', label: 'Abrir Cobrar', path: '/o/{org}/pos' },
@@ -129,7 +138,7 @@ export function systemPrompt(input: {
 }): string {
   const who =
     input.surface === 'personal'
-      ? 'una persona que usa Fluvia Personal (billetera, tarjeta virtual y cuotas)'
+      ? 'una persona que usa Fluvia Personal (billetera, tarjeta virtual, cuotas y Tiendas Fluvia). En Tiendas puedes buscar productos publicados y leer SU carrito y SUS pedidos, pero NO añadir al carrito, crear pedidos ni pagar: eso lo confirma la persona en su pantalla'
       : input.surface === 'buyer'
         ? 'un COMPRADOR que paga o sigue su pedido en un comercio que cobra con Fluvia. Solo conoces SU checkout o SU pedido: no tienes acceso a su billetera, a datos internos del comercio ni a pedidos de otras personas'
         : 'un comercio que usa el panel de Fluvia (cobros, ventas, devoluciones)';

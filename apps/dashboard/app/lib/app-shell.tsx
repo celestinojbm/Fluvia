@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FluviaLogo } from './brand';
 import { Icon, type IconName } from './icons';
 import { AssistantRoot, AssistantTrigger } from './assistant/assistant';
+import { RatesStrip } from './fx-ui';
 
 /**
  * Estructura común de la plataforma del comercio: barra lateral en escritorio
@@ -127,6 +128,7 @@ export function orgNav(orgId: string, profile?: NavProfile): ShellNavSection[] {
         { href: `${o}/negocio`, label: 'Negocio', icon: 'layers' },
         { href: `${o}/team`, label: 'Equipo', icon: 'team' },
         { href: `${o}/directorio`, label: 'Directorio', icon: 'pin' },
+        { href: `${o}/tienda`, label: 'Tienda en línea', icon: 'bag' },
         { href: `${o}/settings`, label: 'Configuración', icon: 'gear' },
         { href: `${o}/activity`, label: 'Operación avanzada', icon: 'tools' },
       ],
@@ -290,6 +292,7 @@ export function AppShell({
 
         {/* Cada página aporta su propio <main> (un único landmark principal). */}
         <div id="fx-main" className="fx-main" tabIndex={-1}>
+          <RatesStrip />
           {children}
         </div>
       </div>

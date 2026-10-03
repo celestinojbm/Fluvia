@@ -34,7 +34,9 @@ export function ResendButton({
       if (res.status === 201) {
         setPhase('done');
         // Refresca la lista server-rendered (aparece el evento pending fresco).
-        setTimeout(() => window.location.reload(), 400);
+        setTimeout(() => {
+          if (typeof window !== 'undefined') window.location.reload();
+        }, 400);
       } else {
         setPhase('error');
       }

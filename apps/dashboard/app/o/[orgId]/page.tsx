@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../lib/fx';
 import { redirect } from 'next/navigation';
 import { orgContext } from '../../lib/org-context';
 import {
@@ -13,6 +14,7 @@ import {
 import { DayBars, LOW_STOCK, ProductThumb, Segmented, stockLevel } from '../../lib/commerce-ui';
 import { Icon } from '../../lib/icons';
 import { currencyName, formatAmount } from '../../lib/money-format';
+import { ConvertedAmount, Equivalence } from '../../lib/fx-ui';
 import {
   Empty,
   OrderState,
@@ -144,7 +146,7 @@ export default async function OrgHomePage({
             label="Moneda de los indicadores"
             items={currencies.map((c) => ({
               href: href(key, c),
-              label: c,
+              label: currencyLabel(c),
               current: c === cur,
               title: currencyName(c, 'es'),
             }))}
@@ -183,9 +185,14 @@ export default async function OrgHomePage({
                 <h2 id="hero-title" className="fx-hero-label">
                   <span className="fx-dot" /> Cobrado · confirmado
                 </h2>
-                <p className="fx-hero-value">
-                  {amount(pick(sum!.confirmed_charges, cur).amount, cur)}
-                </p>
+                <div className="fx-hero-value-wrap">
+                  <ConvertedAmount
+                    minor={pick(sum!.confirmed_charges, cur).amount}
+                    currency={cur}
+                    className="fx-hero-value"
+                    originalLabel="Cobrado original"
+                  />
+                </div>
                 <p className="fx-hero-sub">
                   {pick(sum!.confirmed_charges, cur).count} cobros confirmados · registrado{' '}
                   {amount(pick(sum!.orders_created, cur).amount, cur)} en{' '}
@@ -228,12 +235,17 @@ export default async function OrgHomePage({
               )}
               <p>
                 Libro contable del sandbox, ahora mismo. Lo cobrado entra como pendiente de
-                liquidación; solo «disponible» se puede usar. <a href={`${o}/cash`}>Ver caja</a>
+                liquidación; solo «disponible» se puede usar. Las cifras con «≈» son equivalentes
+                estimados a la tasa de referencia actual, no saldo.{' '}
+                <a href={`${o}/cash`}>Ver caja</a>
               </p>
             </section>
           </div>
 
-          <section className="fx-strip" aria-label={`Métricas del periodo en ${cur}`}>
+          <section
+            className="fx-strip"
+            aria-label={`Métricas del periodo en ${currencyLabel(cur)}`}
+          >
             <Metric
               title="Ventas registradas"
               tone="orders"
@@ -383,11 +395,17 @@ function BalanceRows({ b }: { b: CommerceInsights['balances'][number] }) {
   return (
     <>
       <dt className="fx-balance-cur">{currencyName(b.currency, 'es')}</dt>
-      <dd className="sr-only">{b.currency}</dd>
+      <dd className="sr-only">{currencyLabel(b.currency)}</dd>
       <dt>Pendiente de liquidación</dt>
-      <dd>{amount(b.pending, b.currency)}</dd>
+      <dd>
+        {amount(b.pending, b.currency)}
+        <Equivalence minor={b.pending} currency={b.currency} compact />
+      </dd>
       <dt>Disponible</dt>
-      <dd>{amount(b.available, b.currency)}</dd>
+      <dd>
+        {amount(b.available, b.currency)}
+        <Equivalence minor={b.available} currency={b.currency} compact />
+      </dd>
       {b.reserve !== 0 ? (
         <>
           <dt>Reserva</dt>

@@ -36,6 +36,11 @@ const READ_TOOLS = [
   'list_upcoming_installments',
   'list_cards',
   'list_recent_activity',
+  // Tiendas (Personal): también de solo lectura y sobre datos propios.
+  'search_shop_products',
+  'get_shop_info',
+  'get_my_cart',
+  'list_my_shop_orders',
   'suggest_actions',
 ];
 

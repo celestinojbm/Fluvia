@@ -20,6 +20,10 @@ const ALLOWED = [
   /^payment-codes$/,
   /^purchases(\/[0-9a-f-]{36})?$/,
   /^(me|overview)$/,
+  // Tiendas Fluvia (plano del cliente).
+  /^shop\/(stores|search|featured|favorites|cart|cart\/items|orders)$/,
+  /^shop\/stores\/[a-z0-9-]{3,48}(\/products\/[0-9a-f-]{36})?$/,
+  /^shop\/orders\/[0-9a-f-]{36}(\/(cancel|return|pay|checkout))?$/,
 ];
 
 async function handle(req: Request, method: 'GET' | 'POST', segments: string[]) {
@@ -39,7 +43,8 @@ async function handle(req: Request, method: 'GET' | 'POST', segments: string[]) 
   if (key) headers['idempotency-key'] = key;
   let body: string | undefined;
   if (method === 'POST') {
-    body = await req.text();
+    // Fastify rechaza (400) un JSON vacío: una acción sin cuerpo viaja como `{}`.
+    body = (await req.text()) || '{}';
     headers['content-type'] = 'application/json';
   }
   const search = new URL(req.url).search;

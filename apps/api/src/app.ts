@@ -48,6 +48,7 @@ import {
   BillService,
   InPersonService,
   OrderService,
+  ShopService,
   SummaryService,
   isInstallmentPlanActive,
   isOrderCancelled,
@@ -100,6 +101,10 @@ import {
   type ConcurrencyGate,
 } from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
+import { registerShopMerchantRoutes } from './routes/shops.js';
+import { registerFxRoutes } from './routes/fx.js';
+import { FxService } from './fx/service.js';
+import { fxRefreshConfigFromEnv } from './fx/refresher.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
@@ -149,6 +154,8 @@ export interface BuildAppOptions {
     /** Respuestas en curso por titular: Redis con varias réplicas (server.ts). */
     concurrency?: ConcurrencyGate;
   };
+  /** Tasas de referencia (server.ts arranca el refresco con este servicio). */
+  fx?: FxService;
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -199,6 +206,7 @@ export function buildApp({
   rateLimiter,
   loggerStream,
   assistant,
+  fx,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -527,6 +535,19 @@ export function buildApp({
         sandbox: sandboxSimulation,
       }),
     });
+    // Tasas de referencia (BCV, USDT): lectura de la caché compartida.
+    {
+      const fxCfg = fxRefreshConfigFromEnv(process.env);
+      const fxService =
+        fx ??
+        new FxService(appPool, {
+          refreshEnabled: fxCfg.enabled,
+          bcvIntervalSeconds: fxCfg.bcvIntervalSeconds,
+          usdtIntervalSeconds: fxCfg.usdtIntervalSeconds,
+          coingeckoKey: fxCfg.coingeckoApiKey ? (fxCfg.coingeckoPro ? 'pro' : 'demo') : 'sin_clave',
+        });
+      registerFxRoutes(app, { fx: fxService, limiter: rateLimiter });
+    }
     // Directorio «Dónde comprar»: perfiles PUBLICADOS explícitamente por cada
     // comercio; lectura pública limitada por IP.
     registerDirectoryRoutes(app, {
@@ -534,6 +555,10 @@ export function buildApp({
       directoryService: new DirectoryService(appPool),
       limiter: rateLimiter,
     });
+    // Tiendas Fluvia: el comercio publica su catálogo existente; el pedido es
+    // un pedido normal del comercio (precio del servidor, reserva, cobro único).
+    const shopService = new ShopService(appPool, orderService);
+    registerShopMerchantRoutes(app, { security, shops: shopService, limiter: rateLimiter });
     // Jornada integral: Fluvia Personal (plano del cliente) y Fluvia
     // Operaciones (plano de operador sobre la organización programa), más la
     // resolución verificable de cobros/devoluciones inciertos del comercio.
@@ -544,7 +569,17 @@ export function buildApp({
       refundService
     );
     if (personal) {
-      registerPersonalRoutes(app, { personal, rateLimits: authRateLimits, limiter: rateLimiter });
+      registerPersonalRoutes(app, {
+        personal,
+        rateLimits: authRateLimits,
+        limiter: rateLimiter,
+        shop: {
+          shops: shopService,
+          links: paymentLinkService,
+          checkout: checkoutSessionService,
+          checkoutBaseUrl: config.checkoutBaseUrl,
+        },
+      });
     }
     const personalOrFallback = personal ?? createPersonalServices({ app: appPool, auth: appPool });
     registerProgramOpsRoutes(app, {
@@ -563,7 +598,7 @@ export function buildApp({
       assistant?.storage ?? new LocalPrivateStorage(env.ASSISTANT_STORAGE_DIR ?? '.data/assistant');
     const store = new AssistantStore(appPool);
     const directory = new DirectoryService(appPool);
-    const pTools = personalTools(personalOrFallback, directory);
+    const pTools = personalTools(personalOrFallback, directory, shopService);
     const cTools = commerceTools({
       summary: new SummaryService(appPool),
       directory,

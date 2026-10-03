@@ -59,6 +59,15 @@ import {
   Video,
   Volume2,
   X,
+  Heart,
+  ShoppingBag,
+  QrCode,
+  ScanLine,
+  EyeOff,
+  SlidersHorizontal,
+  Bell,
+  Building2,
+  ExternalLink,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -128,7 +137,17 @@ export type IconName =
   | 'spinner'
   | 'screen'
   | 'video'
-  | 'globe';
+  | 'globe'
+  | 'heart'
+  | 'bag'
+  | 'shop'
+  | 'qr'
+  | 'scan'
+  | 'eye-off'
+  | 'filter'
+  | 'bell'
+  | 'building'
+  | 'external';
 
 const ICONS: Record<IconName, LucideIcon> = {
   home: House,
@@ -191,6 +210,16 @@ const ICONS: Record<IconName, LucideIcon> = {
   screen: MonitorUp,
   video: Video,
   globe: Globe,
+  heart: Heart,
+  bag: ShoppingBag,
+  shop: Store,
+  qr: QrCode,
+  scan: ScanLine,
+  'eye-off': EyeOff,
+  filter: SlidersHorizontal,
+  bell: Bell,
+  building: Building2,
+  external: ExternalLink,
 };
 
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {

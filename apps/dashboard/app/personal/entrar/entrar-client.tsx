@@ -1,5 +1,6 @@
 'use client';
 
+import { safePersonalNext } from '../lib/next-path';
 import { useState, type FormEvent } from 'react';
 import { FluviaLogo } from '../../lib/brand';
 import { clientCall } from '../../lib/client-call';
@@ -33,7 +34,10 @@ export function EntrarClient({
     });
     setBusy(false);
     if (r.kind === 'ok') {
-      window.location.href = '/personal';
+      // Vuelve al enlace profundo pedido (solo rutas internas de Personal).
+      window.location.href = safePersonalNext(
+        new URLSearchParams(window.location.search).get('next')
+      );
       return;
     }
     setError(personalError(r));

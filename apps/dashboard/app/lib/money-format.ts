@@ -8,18 +8,18 @@
  * - Exponente de PRESENTACIÓN: 0 para COP/JPY/CLP y 2 para el resto (incluido
  *   VES). Para COP difiere de `@fluvia/money` (2): discrepancia preexistente
  *   registrada como PEND-008; aquí NO se toca.
- * - Símbolos: VES se muestra «Bs.» (símbolo del BCV desde la reconversión de
- *   2021; CLDR aún trae «Bs.S»). `code: true` añade el código ISO cuando el
- *   símbolo solo no basta (COP «$», VES «Bs.»), para vistas con varias monedas
- *   y documentos para el comprador.
+ * - Símbolos: VES se muestra «Bs», sin punto ni sufijo de código (etiqueta
+ *   visible acordada; VES sigue siendo el código interno). CLDR trae «Bs.S».
+ *   `code: true` añade el código ISO solo cuando el símbolo es ambiguo
+ *   (COP «$»), para vistas con varias monedas y documentos del comprador.
  * - No convierte, no redondea y no suma monedas distintas.
  */
 
 export type Locale = 'es' | 'en';
 
 const ZERO_EXPONENT = new Set(['COP', 'JPY', 'CLP']);
-const SYMBOL_OVERRIDE: Record<string, string> = { VES: 'Bs.' };
-const AMBIGUOUS_SYMBOL = new Set(['COP', 'VES']);
+const SYMBOL_OVERRIDE: Record<string, string> = { VES: 'Bs' };
+const AMBIGUOUS_SYMBOL = new Set(['COP']);
 
 export function displayExponent(currency: string): 0 | 2 {
   return ZERO_EXPONENT.has(currency) ? 0 : 2;
@@ -44,7 +44,7 @@ export function minorToDecimalString(
 }
 
 export interface FormatOptions {
-  /** Añade el código ISO cuando el símbolo es ambiguo (COP, VES). */
+  /** Añade el código ISO cuando el símbolo es ambiguo (COP). */
   code?: boolean;
 }
 
@@ -68,7 +68,7 @@ export function formatAmount(
     const parts = nf.formatToParts(decimal as unknown as number);
     const symbol = SYMBOL_OVERRIDE[currency];
     text = parts.map((p) => (p.type === 'currency' && symbol ? symbol : p.value)).join('');
-    // «VES 12.50» en inglés → «Bs. 12.50»: el separador viene en `literal`.
+    // «VES 12.50» en inglés → «Bs 12.50»: el separador viene en `literal`.
   } catch {
     text = `${decimal} ${currency}`;
   }

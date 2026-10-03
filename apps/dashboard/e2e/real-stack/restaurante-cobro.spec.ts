@@ -222,9 +222,14 @@ test('el dueño configura el restaurante, la habilitación y el personal', async
   await p.getByRole('button', { name: 'Guardar configuración' }).click();
   await expect(p.getByText('No se borró ningún dato')).toBeVisible();
 
-  for (let i = 0; i < 4; i++)
-    await p.getByRole('button', { name: 'Marcar cumplido' }).first().click();
-  await expect(p.getByRole('button', { name: 'Marcar cumplido' })).toHaveCount(0);
+  // Cada clic espera a que su requisito desaparezca: sin esa espera, dos clics
+  // seguidos podían caer en el MISMO botón antes de refrescar y dejar uno pendiente.
+  const pending = p.getByRole('button', { name: 'Marcar cumplido' });
+  await expect(pending).toHaveCount(4);
+  for (let left = 4; left > 0; left--) {
+    await pending.first().click();
+    await expect(pending).toHaveCount(left - 1);
+  }
   await p.getByRole('button', { name: 'Proveedor habilita' }).click();
   await expect(p.locator('#habilitacion').getByText('Habilitada')).toBeVisible();
 

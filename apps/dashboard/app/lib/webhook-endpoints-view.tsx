@@ -369,7 +369,9 @@ function EndpointActions({
     if (r.ok) {
       setDisabled(true);
       setPhase('idle');
-      setTimeout(() => window.location.reload(), 600);
+      setTimeout(() => {
+        if (typeof window !== 'undefined') window.location.reload();
+      }, 600);
       return;
     }
     if (needsStepUp(r) && !isRetryAfterStepUp) {

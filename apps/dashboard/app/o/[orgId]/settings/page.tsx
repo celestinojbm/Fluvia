@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../../lib/fx';
 import { apiBase, fetchMerchants } from '../../../lib/api';
 import { orgContext } from '../../../lib/org-context';
 import { orgPath, readApi } from '../../../lib/commerce-api';
@@ -110,7 +111,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ orgId
                     <tr key={m.id}>
                       <td data-label="Comercio">{m.name}</td>
                       <td data-label="País">{m.country}</td>
-                      <td data-label="Moneda">{m.defaultCurrency}</td>
+                      <td data-label="Moneda">{currencyLabel(m.defaultCurrency)}</td>
                       <td data-label="Estado">
                         <Status tone={m.status === 'active' ? 'ok' : 'warn'} code={m.status}>
                           {m.status === 'active' ? 'Activo' : 'Congelado'}

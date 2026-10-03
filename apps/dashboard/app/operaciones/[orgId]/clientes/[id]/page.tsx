@@ -1,3 +1,4 @@
+import { currencyLabel } from '../../../../lib/fx';
 import { OpsAction } from '../../../lib/ops-action';
 import { readOps } from '../../../lib/server';
 import type { CaseRow, ConsumerRow } from '../../../lib/types';
@@ -180,7 +181,7 @@ export default async function Cliente360({
                 <tbody>
                   {d.balances.map((b) => (
                     <tr key={b.currency}>
-                      <td data-label="Moneda">{b.currency}</td>
+                      <td data-label="Moneda">{currencyLabel(b.currency)}</td>
                       <td data-label="Disponible" className="ox-num">
                         {money(b.available, b.currency)}
                       </td>
@@ -212,7 +213,7 @@ export default async function Cliente360({
                 <div key={l.id} style={{ marginBottom: 12 }}>
                   <dl className="ox-kv">
                     <div>
-                      <dt>Línea {l.currency}</dt>
+                      <dt>Línea {currencyLabel(l.currency)}</dt>
                       <dd>
                         <St s={l.status} /> · nivel {l.risk_tier} · ×{l.multiplier_bps / 10_000}
                       </dd>
@@ -249,7 +250,7 @@ export default async function Cliente360({
                       fields={[
                         {
                           name: 'new_limit',
-                          label: `Nuevo límite (${l.currency})`,
+                          label: `Nuevo límite (${currencyLabel(l.currency)})`,
                           type: 'amount',
                         },
                       ]}
@@ -341,7 +342,7 @@ export default async function Cliente360({
                       <tr key={k.id}>
                         <td data-label="Tarjeta">
                           {k.form === 'virtual' ? 'Virtual' : 'Física'} •••• {k.last4 ?? '····'} ·{' '}
-                          {k.currency}
+                          {currencyLabel(k.currency)}
                         </td>
                         <td data-label="Estado">
                           <St s={k.status} />

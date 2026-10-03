@@ -244,6 +244,14 @@ SELECT concat_ws(',',
 SQL
 )"
 [ -z "$seed_ok" ] || die "seed incompleto (falta: $seed_ok); ver $STATE/seed.log"
+# Tiendas Fluvia (opcional): tiendas SINTÉTICAS con fotos CC0, directo a la
+# base (idempotente, postcondiciones comprobadas por el propio seed).
+if [ "${DEMO_SEED_SHOPS:-0}" = 1 ]; then
+  echo "==> Seed de Tiendas (DEMO_SEED_SHOPS=1)"
+  pnpm -s --filter @fluvia/seeds run seed:tiendas >"$STATE/seed-tiendas.log" 2>&1 ||
+    { cat "$STATE/seed-tiendas.log" >&2; die "el seed de tiendas falló"; }
+  sed 's/^/   /' "$STATE/seed-tiendas.log"
+fi
 
 echo "==> Build de checkout y dashboard (next build)"
 # El build no debe tocar archivos versionados. Si lo hiciera, se AVISA y no

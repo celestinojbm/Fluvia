@@ -156,7 +156,7 @@ test('1. inicio: navegación lateral, saltar al contenido e indicadores honestos
   // Moneda seleccionable: VES (catálogo) aunque no tenga actividad aún.
   await expect(
     page.getByRole('navigation', { name: 'Moneda de los indicadores' }).getByRole('link', {
-      name: 'VES',
+      name: 'Bs',
     })
   ).toBeVisible();
   await checkScreen(page, '01-inicio');
@@ -466,8 +466,8 @@ test('11. bolívares: venta en VES con variante, SKU por teclado y existencias r
   await search.fill('ve-que-1k');
   await search.press('Enter');
   await expect(page.getByRole('group', { name: 'Cantidad de Queso blanco 1 kg' })).toBeVisible();
-  // 2 × Bs. 420,00 + Bs. 1.150,00 = Bs. 1.990,00 (céntimos exactos).
-  await expect(page.locator('.fx-cart-total output')).toHaveText(/Bs\.\s1\.990,00/);
+  // 2 × Bs 420,00 + Bs 1.150,00 = Bs 1.990,00 (céntimos exactos).
+  await expect(page.locator('.fx-cart-total output')).toHaveText(/Bs\s1\.990,00/);
   await expect(page.getByLabel('Moneda')).toBeDisabled();
   await checkScreen(page, '29-venta-bolivares');
   await page.getByRole('button', { name: 'Revisar venta' }).click();
@@ -486,7 +486,7 @@ test('11. bolívares: venta en VES con variante, SKU por teclado y existencias r
   await expect(page.getByText('Reservadas hasta el cobro').first()).toBeVisible();
   await page.getByRole('main').getByRole('link', { name: 'Cobrar', exact: true }).click();
   const buyer = await openBuyerFromTerminal();
-  await expect(buyer.getByTestId('amount')).toHaveText(/Bs\.\s1\.990,00\sVES/);
+  await expect(buyer.getByTestId('amount')).toHaveText(/Bs\s1\.990,00/);
   await expect(buyer.getByRole('region', { name: 'Resumen de tu compra' })).toContainText(
     'Café molido · 250 g'
   );
@@ -508,7 +508,7 @@ test('11. bolívares: venta en VES con variante, SKU por teclado y existencias r
 
   // Panel en VES: cifra cobrada y más vendidos de bolívares, sin mezclar con COP.
   await page.goto(`${O}?currency=VES`);
-  await expect(page.locator('.fx-hero-value')).toHaveText(/^Bs\.\s[\d.]+,\d\d VES$/);
+  await expect(page.locator('.fx-hero-value')).toHaveText(/^Bs\s[\d.]+,\d\d$/);
   await expect(page.getByRole('region', { name: 'Más vendidos' })).toContainText(
     'Café molido · 250 g'
   );

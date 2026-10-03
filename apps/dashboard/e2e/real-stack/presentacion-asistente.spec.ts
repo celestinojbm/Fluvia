@@ -205,7 +205,7 @@ test.describe('asistente', () => {
     await p.keyboard.press('Enter');
     await expect(p.getByText('Respuesta lista.')).toBeAttached({ timeout: 20_000 });
     const answer = p.locator('.as-msg[data-role="assistant"]').last();
-    await expect(answer).toContainText('[Simulado] VES: disponible');
+    await expect(answer).toContainText('[Simulado] Bs: disponible');
     await expect(answer.getByRole('link', { name: /Ir a Inicio/ })).toHaveAttribute(
       'href',
       '/personal'

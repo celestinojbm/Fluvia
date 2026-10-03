@@ -10,6 +10,7 @@ import {
   type ProgramActor,
 } from '@fluvia/personal';
 import { snake } from './wire.js';
+import { registerPersonalShopRoutes, type PersonalShopDeps } from './shops.js';
 import { DEFAULT_AUTH_RATE_LIMITS, type AuthRateLimits } from './auth.js';
 import { emailKey, ipKey, rateLimit, FixedWindowLimiter, type RateLimiter } from '../rate-limit.js';
 
@@ -30,7 +31,13 @@ import { emailKey, ipKey, rateLimit, FixedWindowLimiter, type RateLimiter } from
 
 declare module 'fastify' {
   interface FastifyRequest {
-    consumer?: { consumerId: string; tenantId: string; sessionId: string };
+    consumer?: {
+      consumerId: string;
+      tenantId: string;
+      sessionId: string;
+      email?: string;
+      displayName?: string;
+    };
   }
 }
 
@@ -146,7 +153,13 @@ function idemKey(req: FastifyRequest): string {
 
 export function registerPersonalRoutes(
   app: FastifyInstance,
-  deps: { personal: PersonalServices; rateLimits?: AuthRateLimits; limiter?: RateLimiter }
+  deps: {
+    personal: PersonalServices;
+    rateLimits?: AuthRateLimits;
+    limiter?: RateLimiter;
+    /** Tiendas Fluvia (plano del cliente), si el servidor las cablea. */
+    shop?: PersonalShopDeps;
+  }
 ): void {
   const p = deps.personal;
   // Mismas ventanas y backend (Redis en despliegues compartidos) que /v1/auth/*,
@@ -169,7 +182,13 @@ export function registerPersonalRoutes(
     const token = bearer(req);
     if (!token) throw new ConsumerSessionInvalidError();
     const id = await p.consumerAuth.authenticate(token);
-    req.consumer = { consumerId: id.consumerId, tenantId: id.tenantId, sessionId: id.sessionId };
+    req.consumer = {
+      consumerId: id.consumerId,
+      tenantId: id.tenantId,
+      sessionId: id.sessionId,
+      email: id.email,
+      displayName: id.displayName,
+    };
   };
   const auth = { preHandler: [consumerSession] };
   const who = (req: FastifyRequest) => req.consumer!;
@@ -595,4 +614,6 @@ export function registerPersonalRoutes(
     );
     return snake({ authorization, plans });
   });
+
+  if (deps.shop) registerPersonalShopRoutes(app, { ...deps.shop, personal: p, auth, who, actor });
 }
