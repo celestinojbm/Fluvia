@@ -399,6 +399,34 @@ describe('carrito y pedido', () => {
     expect((await shops.favoriteMerchants(program, buyer().id)).size).toBe(0);
     await shops.setFavorite(program, c.id, slug, false);
     expect((await shops.favoriteMerchants(program, c.id)).size).toBe(0);
+    // Sin DELETE (0065): desmarcar y volver a marcar reactiva la misma fila.
+    await shops.setFavorite(program, c.id, slug, true);
+    expect((await shops.favoriteMerchants(program, c.id)).size).toBe(1);
+  });
+
+  it('quitar del carrito no borra filas: cantidad 0 no cuenta ni se compra; volver a añadir funciona', async () => {
+    const c = buyer();
+    const p = await product(2_200n, { stock: 5 });
+    await listing(p.id);
+    await shops.setCartItem(program, c.id, { slug, productId: p.id, quantity: 2 });
+    await shops.setCartItem(program, c.id, { slug, productId: p.id, quantity: 0 });
+    expect(await shops.cart(program, c.id)).toEqual([]);
+    await expect(
+      shops.createOrder(program, c, {
+        slug,
+        currency: 'VES',
+        expectedTotal: 4_400n,
+        fulfillment: 'pickup',
+        idempotencyKey: `k-${randomUUID()}`,
+      })
+    ).rejects.toBeInstanceOf(ShopCartEmptyError);
+    await shops.setCartItem(program, c.id, { slug, productId: p.id, quantity: 1 });
+    const cart = await shops.cart(program, c.id);
+    expect(cart[0]!.lines.map((l) => [l.productId, l.quantity])).toEqual([[p.id, 1]]);
+    const runtimeDelete = await ctx.admin.query<{ ok: boolean }>(
+      `SELECT has_table_privilege('fluvia_app', 'consumer_cart_items', 'DELETE') AS ok`
+    );
+    expect(runtimeDelete.rows[0]!.ok).toBe(false);
   });
 
   it('un producto no publicado no entra al carrito', async () => {

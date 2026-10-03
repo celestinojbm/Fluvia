@@ -509,7 +509,8 @@ export class ShopService {
   async favoriteMerchants(programTenantId: string, consumerId: string): Promise<Set<string>> {
     const r = await this.consumerTx(programTenantId, consumerId, (c) =>
       c.query<{ shop_merchant_id: string }>(
-        `SELECT shop_merchant_id FROM consumer_shop_favorites WHERE consumer_id = $1`,
+        `SELECT shop_merchant_id FROM consumer_shop_favorites
+          WHERE consumer_id = $1 AND active`,
         [consumerId]
       )
     );
@@ -528,11 +529,15 @@ export class ShopService {
         ? c.query(
             `INSERT INTO consumer_shop_favorites
                (tenant_id, consumer_id, shop_tenant_id, shop_merchant_id)
-             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (tenant_id, consumer_id, shop_merchant_id)
+             DO UPDATE SET active = true, updated_at = now()`,
             [programTenantId, consumerId, v.tenant_id, v.merchant_id]
           )
         : c.query(
-            `DELETE FROM consumer_shop_favorites WHERE consumer_id = $1 AND shop_merchant_id = $2`,
+            // Sin DELETE para roles de runtime (0065): quitar = desactivar.
+            `UPDATE consumer_shop_favorites SET active = false, updated_at = now()
+              WHERE consumer_id = $1 AND shop_merchant_id = $2`,
             [consumerId, v.merchant_id]
           )
     );
@@ -559,8 +564,10 @@ export class ShopService {
     const v = await this.resolve(input.slug);
     await this.consumerTx(programTenantId, consumerId, async (c) => {
       if (input.quantity === 0) {
+        // Sin DELETE (0065): una línea quitada queda con cantidad 0.
         await c.query(
-          `DELETE FROM consumer_cart_items WHERE consumer_id = $1 AND product_id = $2`,
+          `UPDATE consumer_cart_items SET quantity = 0, updated_at = now()
+            WHERE consumer_id = $1 AND product_id = $2`,
           [consumerId, input.productId]
         );
         return;
@@ -580,7 +587,7 @@ export class ShopService {
       if (!row.in_stock) throw new ShopOrderStateError('out of stock');
       const count = await c.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM consumer_cart_items
-          WHERE consumer_id = $1 AND product_id <> $2`,
+          WHERE consumer_id = $1 AND product_id <> $2 AND quantity > 0`,
         [consumerId, input.productId]
       );
       if ((count.rows[0]?.n ?? 0) >= SHOP_CART_MAX_LINES)
@@ -592,7 +599,9 @@ export class ShopService {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (tenant_id, consumer_id, product_id)
          DO UPDATE SET quantity = EXCLUDED.quantity, unit_price_seen = EXCLUDED.unit_price_seen,
-                       currency = EXCLUDED.currency, updated_at = now()`,
+                       currency = EXCLUDED.currency, updated_at = now(),
+                       added_at = CASE WHEN consumer_cart_items.quantity = 0 THEN now()
+                                       ELSE consumer_cart_items.added_at END`,
         [
           programTenantId,
           consumerId,
@@ -622,7 +631,7 @@ export class ShopService {
         currency: string;
       }>(
         `SELECT shop_merchant_id, product_id, quantity, unit_price_seen::text, btrim(currency) AS currency
-           FROM consumer_cart_items WHERE consumer_id = $1 ORDER BY added_at`,
+           FROM consumer_cart_items WHERE consumer_id = $1 AND quantity > 0 ORDER BY added_at`,
         [consumerId]
       )
     );
@@ -767,7 +776,7 @@ export class ShopService {
     const cart = await this.consumerTx(programTenantId, consumer.id, (c) =>
       c.query<{ product_id: string; quantity: number; currency: string }>(
         `SELECT product_id, quantity, btrim(currency) AS currency FROM consumer_cart_items
-          WHERE consumer_id = $1 AND shop_merchant_id = $2 ORDER BY added_at`,
+          WHERE consumer_id = $1 AND shop_merchant_id = $2 AND quantity > 0 ORDER BY added_at`,
         [consumer.id, v.merchant_id]
       )
     );
@@ -823,7 +832,7 @@ export class ShopService {
     await this.linkOrder(programTenantId, consumer.id, v, orderId);
     await this.consumerTx(programTenantId, consumer.id, (c) =>
       c.query(
-        `DELETE FROM consumer_cart_items
+        `UPDATE consumer_cart_items SET quantity = 0, updated_at = now()
           WHERE consumer_id = $1 AND shop_merchant_id = $2 AND btrim(currency) = $3
             AND product_id = ANY($4::uuid[])`,
         [consumer.id, v.merchant_id, input.currency, lines.map((l) => l.product_id)]

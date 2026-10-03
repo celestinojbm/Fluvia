@@ -383,7 +383,7 @@ export async function seedShopsDemo(env: string, pools: { admin: Pool }): Promis
     `INSERT INTO shop_settings
        (id, tenant_id, merchant_id, enabled, pickup, delivery, delivery_terms, returns_policy,
         contact_email, contact_phone, banner_ref)
-     VALUES ($1, $2, $3, true, true, false, $4, $5, NULL, '+58 212 555 0100', 'presentacion/bodega-demo.jpg')
+     VALUES ($1, $2, $3, true, true, false, $4, $5, NULL, $6, $7)
      ON CONFLICT (tenant_id, merchant_id) DO NOTHING`,
     [
       seedUuid('shop-settings:bodega-demo'),
@@ -391,6 +391,8 @@ export async function seedShopsDemo(env: string, pools: { admin: Pool }): Promis
       DEMO.merchantId,
       'Retiro en la bodega el mismo día, de 8:00 a 19:00.',
       'Productos perecederos sin cambio; el resto, en 3 días con factura.',
+      '+58 212 555 0100',
+      'presentacion/bodega-demo.jpg',
     ]
   );
   await a.query(
