@@ -249,8 +249,15 @@ interface ProductRow {
 }
 
 /** Patrón ILIKE con comodines escapados (la búsqueda nunca interpreta `%`/`_`). */
+/** Minúsculas y sin acentos (misma regla que `fold()` en SQL): «Ávila» = «avila». */
+export function foldText(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
 export function shopLikePattern(q: string | undefined): string | null {
-  const t = (q ?? '').trim();
+  const t = foldText((q ?? '').trim());
   if (!t) return null;
   return `%${t.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
 }
@@ -320,6 +327,9 @@ export function requestHash(consumerId: string, idempotencyKey: string): string 
   return createHash('sha256').update(`shop-order:${consumerId}:${idempotencyKey}`).digest('hex');
 }
 
+/** Gancho de auditoría: corre en la MISMA transacción que la escritura. */
+export type ShopAudit = (c: PoolClient, resourceId: string) => Promise<void>;
+
 export class ShopService {
   constructor(
     /** Pool fluvia_app (RLS forzado). */
@@ -363,10 +373,10 @@ export class ShopService {
              FROM shop_product_rows() r WHERE r.shop_slug = v.slug
          ) p ON true
         WHERE ($1::text IS NULL OR v.category = $1)
-          AND ($2::text IS NULL OR v.display_name ILIKE $2 ESCAPE '\\'
-               OR v.summary ILIKE $2 ESCAPE '\\'
+          AND ($2::text IS NULL OR translate(lower(v.display_name), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $2 ESCAPE '\\'
+               OR translate(lower(v.summary), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $2 ESCAPE '\\'
                OR EXISTS (SELECT 1 FROM shop_product_rows() x
-                           WHERE x.shop_slug = v.slug AND x.name ILIKE $2 ESCAPE '\\'))
+                           WHERE x.shop_slug = v.slug AND translate(lower(x.name), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $2 ESCAPE '\\'))
         ORDER BY v.display_name, v.slug`,
       [opts.category ?? null, pattern]
     );
@@ -442,19 +452,19 @@ export class ShopService {
       `SELECT r.*, v.display_name AS shop_name
          FROM shop_product_rows() r JOIN shop_visible_rows() v ON v.slug = r.shop_slug
         WHERE r.shop_slug IN (SELECT shop_slug FROM shop_product_rows()
-                               WHERE name ILIKE $1 ESCAPE '\\' OR description ILIKE $1 ESCAPE '\\'
-                                  OR variant_label ILIKE $1 ESCAPE '\\')`,
+                               WHERE translate(lower(name), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $1 ESCAPE '\\' OR translate(lower(description), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $1 ESCAPE '\\'
+                                  OR translate(lower(variant_label), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc') LIKE $1 ESCAPE '\\')`,
       [pattern]
     );
     const bySlug = new Map<string, Array<ProductRow & { shop_name: string }>>();
     for (const r of rows.rows) bySlug.set(r.shop_slug, [...(bySlug.get(r.shop_slug) ?? []), r]);
-    const needle = pattern.slice(1, -1).replace(/\\(.)/g, '$1').toLowerCase();
+    const needle = pattern.slice(1, -1).replace(/\\(.)/g, '$1');
     const hits: ShopProduct[] = [];
     for (const [, list] of bySlug) {
       for (const p of groupProducts(list, list[0]!.shop_name)) {
-        const text = [p.name, p.description ?? '', ...p.variants.map((v) => v.label)]
-          .join(' ')
-          .toLowerCase();
+        const text = foldText(
+          [p.name, p.description ?? '', ...p.variants.map((v) => v.label)].join(' ')
+        );
         if (text.includes(needle)) hits.push(p);
       }
     }
@@ -706,7 +716,8 @@ export class ShopService {
       fulfillment: 'pickup' | 'delivery';
       deliveryAddress?: string | null;
       idempotencyKey: string;
-    }
+    },
+    audit?: ShopAudit
   ): Promise<{ order: ShopOrderView; replayed: boolean }> {
     const v = await this.resolve(input.slug);
     const hash = requestHash(consumer.id, input.idempotencyKey);
@@ -775,13 +786,14 @@ export class ShopService {
             address,
           ]
         );
+        await audit?.(c, order.id);
         return order.id;
       });
     } catch (err) {
       // Dos envíos simultáneos con la misma clave: el segundo ve el UNIQUE y
       // devuelve el pedido del primero (sin pedido ni reserva duplicados).
       if ((err as { constraint?: string }).constraint === 'shop_order_requests_hash_uniq') {
-        return this.createOrder(programTenantId, consumer, input);
+        return this.createOrder(programTenantId, consumer, input, audit);
       }
       throw err;
     }
@@ -901,7 +913,8 @@ export class ShopService {
   async cancelOrder(
     programTenantId: string,
     consumerId: string,
-    orderId: string
+    orderId: string,
+    audit?: ShopAudit
   ): Promise<ShopOrderView> {
     const view = await this.getOrder(programTenantId, consumerId, orderId);
     if (view.payment.state === 'cancelled') return view;
@@ -912,13 +925,14 @@ export class ShopService {
     await this.orders.cancel(ref.shop_tenant_id, orderId, {
       reason: 'Anulado por el cliente (Fluvia Tiendas)',
     });
-    await withTenantTransaction(this.appPool, ref.shop_tenant_id, (c) =>
-      c.query(
+    await withTenantTransaction(this.appPool, ref.shop_tenant_id, async (c) => {
+      await c.query(
         `UPDATE shop_order_requests SET fulfillment_status = 'cancelled'
           WHERE order_id = $1 AND fulfillment_status NOT IN ('delivered', 'cancelled')`,
         [orderId]
-      )
-    );
+      );
+      await audit?.(c, orderId);
+    });
     return this.getOrder(programTenantId, consumerId, orderId);
   }
 
@@ -931,7 +945,8 @@ export class ShopService {
     programTenantId: string,
     consumerId: string,
     orderId: string,
-    reason: string
+    reason: string,
+    audit?: ShopAudit
   ): Promise<ShopOrderView> {
     const view = await this.getOrder(programTenantId, consumerId, orderId);
     if (view.payment.state !== 'paid' && view.payment.state !== 'partially_refunded') {
@@ -939,13 +954,14 @@ export class ShopService {
     }
     if (view.returnRequestedAt) return view;
     const ref = await this.ownRef(programTenantId, consumerId, orderId);
-    await withTenantTransaction(this.appPool, ref.shop_tenant_id, (c) =>
-      c.query(
+    await withTenantTransaction(this.appPool, ref.shop_tenant_id, async (c) => {
+      await c.query(
         `UPDATE shop_order_requests SET return_requested_at = now(), return_reason = $2
           WHERE order_id = $1 AND return_requested_at IS NULL`,
         [orderId, reason.trim().slice(0, 280)]
-      )
-    );
+      );
+      await audit?.(c, orderId);
+    });
     return this.getOrder(programTenantId, consumerId, orderId);
   }
 
@@ -1011,7 +1027,8 @@ export class ShopService {
   async upsertSettings(
     tenantId: string,
     merchantId: string,
-    input: Omit<ShopSettingsDto, 'merchantId' | 'version'> & { expectedVersion: number }
+    input: Omit<ShopSettingsDto, 'merchantId' | 'version'> & { expectedVersion: number },
+    audit?: ShopAudit
   ): Promise<ShopSettingsDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       if (input.enabled) {
@@ -1042,6 +1059,7 @@ export class ShopService {
             [tenantId, merchantId, ...vals]
           );
           if (!r.rows[0]) throw new ShopVersionConflictError();
+          await audit?.(c, String(r.rows[0].id));
           return toSettings(r.rows[0]);
         }
         const r = await c.query(
@@ -1052,6 +1070,7 @@ export class ShopService {
           [merchantId, input.expectedVersion, ...vals]
         );
         if (!r.rows[0]) throw new ShopVersionConflictError();
+        await audit?.(c, String(r.rows[0].id));
         return toSettings(r.rows[0]);
       } catch (err) {
         if (isCheckViolation(err, 'shop_settings_fulfillment_chk'))
@@ -1064,7 +1083,8 @@ export class ShopService {
   async setListing(
     tenantId: string,
     productId: string,
-    input: { visible: boolean; featured: boolean; collection: string | null; position: number }
+    input: { visible: boolean; featured: boolean; collection: string | null; position: number },
+    audit?: ShopAudit
   ): Promise<void> {
     await withTenantTransaction(this.appPool, tenantId, async (c) => {
       const p = await c.query<{ variant_of: string | null }>(
@@ -1089,6 +1109,7 @@ export class ShopService {
           input.position,
         ]
       );
+      await audit?.(c, productId);
     });
   }
 
@@ -1141,7 +1162,8 @@ export class ShopService {
   async setFulfillment(
     tenantId: string,
     orderId: string,
-    status: ShopFulfillmentStatus
+    status: ShopFulfillmentStatus,
+    audit?: ShopAudit
   ): Promise<ShopAdminOrder> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const o = await this.orders.getIn(c, orderId);
@@ -1164,6 +1186,7 @@ export class ShopService {
         }
         throw err;
       }
+      await audit?.(c, orderId);
       return this.adminOrderIn(c, orderId);
     });
   }

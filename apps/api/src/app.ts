@@ -48,6 +48,7 @@ import {
   BillService,
   InPersonService,
   OrderService,
+  ShopService,
   SummaryService,
   isInstallmentPlanActive,
   isOrderCancelled,
@@ -100,6 +101,7 @@ import {
   type ConcurrencyGate,
 } from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
+import { registerShopMerchantRoutes } from './routes/shops.js';
 import { registerProgramOpsRoutes } from './routes/program-ops.js';
 import { createSecurity } from './security.js';
 import { registerMetrics } from './metrics.js';
@@ -534,6 +536,10 @@ export function buildApp({
       directoryService: new DirectoryService(appPool),
       limiter: rateLimiter,
     });
+    // Tiendas Fluvia: el comercio publica su catálogo existente; el pedido es
+    // un pedido normal del comercio (precio del servidor, reserva, cobro único).
+    const shopService = new ShopService(appPool, orderService);
+    registerShopMerchantRoutes(app, { security, shops: shopService, limiter: rateLimiter });
     // Jornada integral: Fluvia Personal (plano del cliente) y Fluvia
     // Operaciones (plano de operador sobre la organización programa), más la
     // resolución verificable de cobros/devoluciones inciertos del comercio.
@@ -544,7 +550,17 @@ export function buildApp({
       refundService
     );
     if (personal) {
-      registerPersonalRoutes(app, { personal, rateLimits: authRateLimits, limiter: rateLimiter });
+      registerPersonalRoutes(app, {
+        personal,
+        rateLimits: authRateLimits,
+        limiter: rateLimiter,
+        shop: {
+          shops: shopService,
+          links: paymentLinkService,
+          checkout: checkoutSessionService,
+          checkoutBaseUrl: config.checkoutBaseUrl,
+        },
+      });
     }
     const personalOrFallback = personal ?? createPersonalServices({ app: appPool, auth: appPool });
     registerProgramOpsRoutes(app, {

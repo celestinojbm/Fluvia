@@ -222,10 +222,90 @@
       "type": "conflict_error",
       "message": "This product was modified by someone else; reload it and try again"
     },
+    "assistant_quota_exceeded": {
+      "status": 429,
+      "type": "rate_limit_error",
+      "message": "Daily assistant message limit reached; try again tomorrow"
+    },
+    "assistant_busy": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "The assistant is already answering; wait or stop the current answer"
+    },
+    "assistant_idempotency_mismatch": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This message id was already used with different content"
+    },
+    "assistant_invalid_attachment": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "One of the attachments is not available for this message"
+    },
+    "assistant_provider_unavailable": {
+      "status": 503,
+      "type": "internal_error",
+      "message": "The assistant provider is temporarily unavailable"
+    },
+    "media_unsupported": {
+      "status": 415,
+      "type": "validation_error",
+      "message": "Unsupported file format"
+    },
+    "media_too_large": {
+      "status": 413,
+      "type": "validation_error",
+      "message": "The file is too large"
+    },
+    "media_too_long": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The recording is too long"
+    },
+    "media_duration_unknown": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The recording duration could not be determined; record again or use another format"
+    },
+    "media_malformed": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The file is damaged or incomplete"
+    },
+    "directory_version_conflict": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This directory profile was modified by someone else; reload it and try again"
+    },
+    "directory_slug_taken": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This public address is already in use; choose another one"
+    },
     "catalog_duplicate": {
       "status": 409,
       "type": "conflict_error",
       "message": "A catalog item with this name or SKU already exists"
+    },
+    "shop_cart_empty": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "There is nothing in the cart for this shop and currency"
+    },
+    "shop_fulfillment_unavailable": {
+      "status": 422,
+      "type": "unprocessable_error",
+      "message": "The shop does not offer this fulfillment option, or it needs more details"
+    },
+    "shop_not_publishable": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "Publish the directory profile before enabling the online shop"
+    },
+    "shop_order_state": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "This action does not apply to the current state of the order"
     },
     "order_total_changed": {
       "status": 409,
@@ -367,66 +447,6 @@
       "type": "conflict_error",
       "message": "The idempotency key was already used with different parameters"
     },
-    "directory_version_conflict": {
-      "status": 409,
-      "type": "conflict_error",
-      "message": "This directory profile was modified by someone else; reload it and try again"
-    },
-    "directory_slug_taken": {
-      "status": 409,
-      "type": "conflict_error",
-      "message": "This public address is already in use; choose another one"
-    },
-    "assistant_quota_exceeded": {
-      "status": 429,
-      "type": "rate_limit_error",
-      "message": "Daily assistant message limit reached; try again tomorrow"
-    },
-    "assistant_busy": {
-      "status": 409,
-      "type": "conflict_error",
-      "message": "The assistant is already answering; wait or stop the current answer"
-    },
-    "assistant_idempotency_mismatch": {
-      "status": 409,
-      "type": "conflict_error",
-      "message": "This message id was already used with different content"
-    },
-    "assistant_invalid_attachment": {
-      "status": 422,
-      "type": "unprocessable_error",
-      "message": "One of the attachments is not available for this message"
-    },
-    "assistant_provider_unavailable": {
-      "status": 503,
-      "type": "internal_error",
-      "message": "The assistant provider is temporarily unavailable"
-    },
-    "media_unsupported": {
-      "status": 415,
-      "type": "validation_error",
-      "message": "Unsupported file format"
-    },
-    "media_too_large": {
-      "status": 413,
-      "type": "validation_error",
-      "message": "The file is too large"
-    },
-    "media_too_long": {
-      "status": 422,
-      "type": "unprocessable_error",
-      "message": "The recording is too long"
-    },
-    "media_malformed": {
-      "status": 422,
-      "type": "unprocessable_error",
-      "message": "The file is damaged or incomplete"
-    },
-    "media_duration_unknown": {
-      "status": 422,
-      "type": "unprocessable_error",
-      "message": "The recording duration could not be determined; record again or use another format"
-    },
     "version_conflict": {
       "status": 409,
       "type": "conflict_error",
@@ -452,10 +472,15 @@
       "type": "conflict_error",
       "message": "This feature is not enabled for the business"
     },
-    "collection_not_enabled": {
-      "status": 409,
-      "type": "conflict_error",
-      "message": "In-person collection is not enabled for this account"
+    "buyer_session_invalid": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "The checkout or order link is missing or invalid"
+    },
+    "buyer_session_expired": {
+      "status": 401,
+      "type": "authentication_error",
+      "message": "This checkout or order link has expired"
     },
     "bill_allocation_invalid": {
       "status": 409,
@@ -467,15 +492,10 @@
       "type": "conflict_error",
       "message": "This part of the bill has a payment charged or in progress"
     },
-    "buyer_session_invalid": {
-      "status": 401,
-      "type": "authentication_error",
-      "message": "The checkout or order link is missing or invalid"
-    },
-    "buyer_session_expired": {
-      "status": 401,
-      "type": "authentication_error",
-      "message": "This checkout or order link has expired"
+    "collection_not_enabled": {
+      "status": 409,
+      "type": "conflict_error",
+      "message": "In-person collection is not enabled for this account"
     }
   },
   "domain_error_codes": {
@@ -552,9 +572,33 @@
     "InstallmentPlanNotFoundError": "not_found",
     "ProductVersionConflictError": "catalog_version_conflict",
     "CatalogDuplicateError": "catalog_duplicate",
+    "AssistantQuotaError": "assistant_quota_exceeded",
+    "AssistantBusyError": "assistant_busy",
+    "AssistantIdempotencyError": "assistant_idempotency_mismatch",
+    "AssistantAttachmentError": "assistant_invalid_attachment",
+    "AssistantEmptyError": "validation_error",
+    "MediaUnsupportedError": "media_unsupported",
+    "MediaTooLargeError": "media_too_large",
+    "MediaTooLongError": "media_too_long",
+    "MediaMalformedError": "media_malformed",
+    "MediaDurationUnknownError": "media_duration_unknown",
+    "AssistantProviderUnavailableError": "assistant_provider_unavailable",
+    "AssistantNotFoundError": "not_found",
+    "DirectoryProfileNotFoundError": "not_found",
+    "DirectoryMerchantNotFoundError": "not_found",
+    "DirectoryVersionConflictError": "directory_version_conflict",
+    "DirectorySlugTakenError": "directory_slug_taken",
     "ProductUnavailableError": "product_unavailable",
     "OrderCurrencyMismatchError": "order_currency_mismatch",
     "OrderTotalMismatchError": "order_total_changed",
+    "ShopNotFoundError": "not_found",
+    "ShopProductNotFoundError": "not_found",
+    "ShopCartEmptyError": "shop_cart_empty",
+    "ShopCartCurrencyError": "order_currency_mismatch",
+    "ShopFulfillmentError": "shop_fulfillment_unavailable",
+    "ShopVersionConflictError": "version_conflict",
+    "ShopOrderStateError": "shop_order_state",
+    "ShopNotPublishableError": "shop_not_publishable",
     "OrderAmountOutOfRangeError": "validation_error",
     "InstallmentPlanNotAllowedError": "installment_plan_not_allowed",
     "InstallmentInvalidStateError": "invalid_state_transition",
@@ -587,22 +631,6 @@
     "ConsumerSessionInvalidError": "consumer_session_invalid",
     "ConsumerLockedError": "consumer_locked",
     "ApplicationPendingError": "application_pending",
-    "DirectoryProfileNotFoundError": "not_found",
-    "DirectoryMerchantNotFoundError": "not_found",
-    "DirectoryVersionConflictError": "directory_version_conflict",
-    "DirectorySlugTakenError": "directory_slug_taken",
-    "AssistantQuotaError": "assistant_quota_exceeded",
-    "AssistantBusyError": "assistant_busy",
-    "AssistantIdempotencyError": "assistant_idempotency_mismatch",
-    "AssistantAttachmentError": "assistant_invalid_attachment",
-    "AssistantEmptyError": "validation_error",
-    "MediaUnsupportedError": "media_unsupported",
-    "MediaTooLargeError": "media_too_large",
-    "MediaTooLongError": "media_too_long",
-    "MediaMalformedError": "media_malformed",
-    "AssistantProviderUnavailableError": "assistant_provider_unavailable",
-    "AssistantNotFoundError": "not_found",
-    "MediaDurationUnknownError": "media_duration_unknown",
     "BusinessProfileVersionConflictError": "version_conflict",
     "ModuleNotEnabledError": "module_not_enabled",
     "EnablementTransitionError": "invalid_state_transition",
