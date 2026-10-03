@@ -51,7 +51,9 @@ async function postWithIdempotency(url: string, key: string, body: unknown): Pro
 }
 
 function reloadSoon(): void {
-  setTimeout(() => window.location.reload(), 600);
+  setTimeout(() => {
+    if (typeof window !== 'undefined') window.location.reload();
+  }, 600);
 }
 
 export function CreateRefundForm({

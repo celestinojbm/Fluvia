@@ -50,7 +50,10 @@ export function RespondWithEvidence({
     const ok = await postEvidence(
       `/api/orgs/${encodeURIComponent(orgId)}/disputes/${encodeURIComponent(disputeId)}/evidence`
     );
-    if (ok) setTimeout(() => window.location.reload(), 400);
+    if (ok)
+      setTimeout(() => {
+        if (typeof window !== 'undefined') window.location.reload();
+      }, 400);
     else setPhase('error');
   }
 
