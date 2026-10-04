@@ -431,7 +431,10 @@ jobs:
       - name: Arrancar API, checkout y panel
         run: |
           L="$RUNNER_TEMP/logs"; mkdir -p "$L"
-          (cd apps/api && FX_REFRESH=off HOST=127.0.0.1 PORT=3340 CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
+          # SANDBOX_SCENARIOS=1: importes que terminan en 13 pierden la respuesta
+          # de la red Fluvia (escenario de incierto del E2E del ecosistema).
+          (cd apps/api && FX_REFRESH=off SANDBOX_SCENARIOS=1 HOST=127.0.0.1 PORT=3340 \
+            CHECKOUT_BASE_URL=http://127.0.0.1:3341 \
             nohup node --import tsx src/server.ts >"$L/api.log" 2>&1 &)
           (cd apps/checkout && FLUVIA_API_URL=http://127.0.0.1:3340 \
             nohup npx next start -H 127.0.0.1 -p 3341 >"$L/checkout.log" 2>&1 &)
@@ -459,6 +462,14 @@ jobs:
         run: >-
           pnpm --filter @fluvia/dashboard exec playwright test
           -c e2e/real-stack/playwright.config.ts tiendas-personal
+        env:
+          CI: 'true'
+          DEMO_APP_URL: http://127.0.0.1:3342
+
+      - name: E2E ecosistema (Personal, Comercio y Operaciones ven la misma compra)
+        run: >-
+          pnpm --filter @fluvia/dashboard exec playwright test
+          -c e2e/real-stack/playwright.config.ts ecosistema.spec
         env:
           CI: 'true'
           DEMO_APP_URL: http://127.0.0.1:3342

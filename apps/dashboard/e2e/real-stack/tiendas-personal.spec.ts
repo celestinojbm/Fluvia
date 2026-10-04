@@ -149,10 +149,13 @@ test('3. Pedido con entrega → checkout → volver NO lo marca pagado → anula
   await cta.click();
   await p.waitForURL(/\/personal\/pedidos\/[0-9a-f-]{36}\/pagar$/);
   const orderUrl = p.url().replace(/\/pagar$/, '');
-  // La tarjeta Fluvia es en VES: para USD solo se ofrece otra tarjeta.
-  await expect(p.getByText(/Tarjeta Fluvia .* saldo/)).toHaveCount(0);
+  // La tarjeta Fluvia es en VES: para USD el servidor no ofrece el saldo y
+  // dice por qué; solo queda otra tarjeta.
+  await expect(p.getByRole('radio', { name: /Tarjeta Fluvia · saldo propio/ })).toBeDisabled();
+  await expect(p.getByText(/Necesitas una tarjeta Fluvia activa en/).first()).toBeVisible();
   await shot(p, '06-pago');
   await p.getByRole('radio', { name: /Otra tarjeta/ }).check();
+  await p.getByRole('button', { name: 'Revisar y confirmar' }).click();
   await p.getByRole('button', { name: 'Ir al checkout' }).click();
   // /l/<enlace> crea la sesión y redirige a /c/<sesión> (checkout alojado).
   await p.waitForURL(/\/c\/[^/]+/, { waitUntil: 'commit' });
@@ -204,8 +207,12 @@ test('4. Cambio de precio visible antes de pagar; retiro pagado con la tarjeta F
   await p.getByLabel(/Compartir mi nombre y correo/).check();
   await p.getByRole('button', { name: 'Continuar al pago' }).click();
   await p.waitForURL(/\/pagar$/);
-  await p.getByRole('radio', { name: /Tarjeta Fluvia .* saldo/ }).check();
-  await p.getByRole('button', { name: 'Pagar', exact: true }).click();
+  await p.getByRole('radio', { name: /Tarjeta Fluvia · saldo propio/ }).check();
+  // Confirmación explícita: comercio, método, total y aviso de dinero simulado.
+  await p.getByRole('button', { name: 'Revisar y confirmar' }).click();
+  await expect(p.getByRole('heading', { name: 'Confirma el pago' })).toBeVisible();
+  await expect(p.getByText(/Sandbox: dinero simulado/)).toBeVisible();
+  await p.getByRole('button', { name: /^Confirmar y pagar/ }).click();
   await p.waitForURL(/\/personal\/pedidos\/[0-9a-f-]{36}\?pago=1$/);
   await expect(p.getByText('Pagado', { exact: true })).toBeVisible();
   paidOrderUrl = p.url().replace(/\?pago=1$/, '');
@@ -215,7 +222,7 @@ test('4. Cambio de precio visible antes de pagar; retiro pagado con la tarjeta F
   // Reintento: volver a la pantalla de pago no ofrece pagar otra vez.
   await p.goto(`${paidOrderUrl}/pagar`);
   await p.waitForURL(paidOrderUrl);
-  await expect(p.getByRole('button', { name: 'Pagar', exact: true })).toHaveCount(0);
+  await expect(p.getByRole('button', { name: 'Revisar y confirmar' })).toHaveCount(0);
 });
 
 test('5. Actividad e Inicio reflejan el pedido; navegación de 5 destinos', async () => {

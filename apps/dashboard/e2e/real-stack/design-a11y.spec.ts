@@ -108,9 +108,14 @@ test('Personal · navegación de 5 destinos y Tiendas', async ({ browser }) => {
     '/actividad',
     '/actividad?filtro=pedidos',
     '/cuenta',
+    '/saldos',
   ]) {
     await audit(p, `${APP}/personal${r}`);
   }
+  // Un pedido con su operación (pago, devoluciones, inciertos) del ecosistema.
+  await p.goto(`${APP}/personal/actividad?filtro=pedidos`);
+  const order = await p.locator('a[href^="/personal/pedidos/"]').first().getAttribute('href');
+  if (order) await audit(p, `${APP}${order}`);
   // Ficha de producto con variantes (requiere `seed:tiendas`).
   await p.goto(`${APP}/personal/tiendas/taller-caribe`);
   const href = await p
@@ -162,9 +167,14 @@ test('Comercios y Operaciones', async ({ browser }) => {
     '/casos',
     '/eventos',
     '/politica',
+    '/capacidades',
   ]) {
     await audit(p, `${ops}${r}`);
   }
+  // Caso de una operación (consulta · propuesta · decisión ejecutada).
+  await p.goto(`${ops}/transacciones`);
+  const op = await p.locator('a[href*="/operacion/"]').first().getAttribute('href');
+  if (op) await audit(p, `${APP}${op}`);
   await ctx.close();
 });
 

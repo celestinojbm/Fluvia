@@ -145,7 +145,9 @@ test('1. Franja: tasas de prueba rotuladas, detalle y calculadora con teclado', 
   const strip = p.locator('.rt-strip');
   await expect(strip).toContainText('USD 500,00');
   await expect(strip).toContainText('EUR 550,00');
-  await expect(strip).toContainText('USDT 499,00'); // 0,998 × 500, referencia cruzada
+  // 0,998 × 500, referencia cruzada (con «≈»: no es BCV ni cotización directa).
+  await expect(strip).toContainText(/USDT\s≈\s?499,00/);
+  await expect(strip.locator('.rt-src')).toHaveText('BCV'); // visible desde 481 px
   await expect(strip.locator('.rt-flag-test')).toHaveText('Prueba');
 
   // Teclado: el botón de la franja abre el detalle; Escape cierra y devuelve el foco.
@@ -243,8 +245,11 @@ test('3. Compra: el importe cobrado no cambia con la moneda de visualización', 
   await shot(p, 'fixture-pagar-USDT');
 
   // Paga con USDT como moneda de visualización: se cobra en Bs, por el total.
-  await p.getByRole('radio', { name: /Tarjeta Fluvia .* saldo/ }).check();
-  await p.getByRole('button', { name: 'Pagar', exact: true }).click();
+  await p.getByRole('radio', { name: /Tarjeta Fluvia · saldo propio/ }).check();
+  await p.getByRole('button', { name: 'Revisar y confirmar' }).click();
+  // El botón de confirmación dice el importe en Bs, el que se cobra.
+  await expect(p.getByRole('button', { name: /^Confirmar y pagar Bs/ })).toBeVisible();
+  await p.getByRole('button', { name: /^Confirmar y pagar/ }).click();
   await p.waitForURL(/\/personal\/pedidos\/[0-9a-f-]{36}\?pago=1$/);
   const orderId = p.url().match(/pedidos\/([0-9a-f-]{36})/)![1]!;
   const row = sql(`SELECT o.currency || '|' || o.total FROM commerce_orders o WHERE o.id = :'id'`, {

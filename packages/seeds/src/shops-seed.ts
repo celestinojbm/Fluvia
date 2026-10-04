@@ -129,6 +129,18 @@ export const SHOPS_DEMO = {
           image: 'catalog/tienda-velas.jpg',
           collection: 'Decoración',
         },
+        {
+          // Escenario SANDBOX (solo con SANDBOX_SCENARIOS=1 en la API): el
+          // importe termina en 13 ⇒ la red procesa el pago pero su respuesta
+          // se pierde. Sirve para ver «en confirmación» y su verificación.
+          sku: 'CA-ESCENARIO-13',
+          name: 'Individual de fique (escenario de prueba: respuesta perdida)',
+          description:
+            'Producto de PRUEBA del sandbox: el pago se procesa pero la respuesta de la red se pierde. Verás «en confirmación» hasta que se verifique.',
+          price: 15_013,
+          image: 'catalog/tienda-cucharas-madera.jpg',
+          collection: 'Escenarios de prueba',
+        },
       ],
     },
     {
