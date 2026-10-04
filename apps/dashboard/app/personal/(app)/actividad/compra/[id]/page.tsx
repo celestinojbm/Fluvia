@@ -11,6 +11,7 @@ import {
 } from '../../../../lib/format';
 import { Money, ScreenHead } from '../../../../lib/shop-ui';
 import type { Authorization, Plan } from '../../../../lib/types';
+import { JourneyPanel, type Journey } from '../../../../lib/journey';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,10 @@ export const dynamic = 'force-dynamic';
 export default async function PurchasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const r = await readPersonal<{ authorization: Authorization; plans: Plan[] }>(`/purchases/${id}`);
+  const [r, jr] = await Promise.all([
+    readPersonal<{ authorization: Authorization; plans: Plan[] }>(`/purchases/${id}`),
+    readPersonal<Journey>(`/journeys/${id}`),
+  ]);
   if (r.kind === 'not_found') notFound();
   if (r.kind !== 'ok') return <ErrorPanel />;
   const a = r.data.authorization;
@@ -74,6 +78,43 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
           ) : null}
         </dl>
       </section>
+      {jr.kind === 'ok' ? (
+        <>
+          {jr.data.lines.length ? (
+            <section className="pm-card" aria-labelledby="pm-purchase-lines">
+              <h2 id="pm-purchase-lines">
+                {jr.data.order_number ? `Pedido #${jr.data.order_number}` : 'Lo que compraste'}
+              </h2>
+              <ul className="pm-lines">
+                {jr.data.lines.map((l, i) => (
+                  <li key={i} className="pm-line">
+                    <div className="pm-line-body">
+                      <p className="pm-line-name">
+                        {l.name}
+                        {l.variant_label ? ` · ${l.variant_label}` : ''}
+                      </p>
+                      <p className="pm-muted">
+                        {l.quantity} × <Money minor={l.unit_price} currency={jr.data.currency} />
+                      </p>
+                    </div>
+                    <Money minor={l.line_total} currency={jr.data.currency} />
+                  </li>
+                ))}
+              </ul>
+              {jr.data.channel === 'shop' ? (
+                <a
+                  className="pm-cta is-ghost is-block"
+                  href={`/personal/pedidos/${jr.data.journey_ref}`}
+                  style={{ marginTop: 12 }}
+                >
+                  Ver el pedido y la entrega
+                </a>
+              ) : null}
+            </section>
+          ) : null}
+          <JourneyPanel j={jr.data} />
+        </>
+      ) : null}
       {r.data.plans.map((p) => (
         <section key={p.id} className="pm-card" aria-label="Plan de cuotas">
           <h2>Cuotas</h2>

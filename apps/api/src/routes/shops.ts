@@ -13,7 +13,10 @@ import {
   type ShopService,
 } from '@fluvia/commerce';
 import type { CheckoutSessionService, PaymentLinkService } from '@fluvia/payments-core';
-import type { PersonalServices, ProgramActor } from '@fluvia/personal';
+import { parsePolicyParams, type PersonalServices, type ProgramActor } from '@fluvia/personal';
+import type { CapabilityService } from '@fluvia/capabilities';
+import type { JourneyService } from '../journeys.js';
+import { paymentOptions } from '../payment-options.js';
 import type { Security } from '../security.js';
 import { FixedWindowLimiter, rateLimit, type RateLimiter } from '../rate-limit.js';
 import { snake } from './wire.js';
@@ -147,6 +150,10 @@ export interface PersonalShopDeps {
   checkout: CheckoutSessionService;
   /** Base pública del checkout alojado (`{base}/l/{enlace}`). */
   checkoutBaseUrl: string;
+  /** Lectura común del caso (Personal, Comercio, Operaciones). */
+  journeys: JourneyService;
+  /** Capacidades por mercado: lo que no se ofrece no se ejecuta. */
+  capabilities: CapabilityService;
 }
 
 export function registerPersonalShopRoutes(
@@ -314,6 +321,12 @@ export function registerPersonalShopRoutes(
       }
       return orderOut(before);
     }
+    const market = (await deps.journeys.forConsumer(me.tenantId, me.consumerId, id)).merchant
+      .market;
+    await deps.capabilities.require(
+      market ?? '',
+      b.mode === 'installments' ? 'pay.installments' : 'pay.wallet'
+    );
     const code = await deps.personal.cards.createPaymentCode(
       me.tenantId,
       me.consumerId,
@@ -352,7 +365,71 @@ export function registerPersonalShopRoutes(
     if (o.payment.state !== 'awaiting_payment') {
       throw new ShopOrderStateError('order is not awaiting payment');
     }
+    const market = (await deps.journeys.forConsumer(me.tenantId, me.consumerId, id)).merchant
+      .market;
+    await deps.capabilities.require(market ?? '', 'pay.external_card');
     return { url: `${deps.checkoutBaseUrl.replace(/\/$/, '')}/l/${o.paymentLinkId}` };
+  });
+
+  /**
+   * Métodos de pago del pedido, decididos en el SERVIDOR: capacidades del
+   * mercado del comercio + tarjeta, saldo, línea y política del cliente.
+   */
+  app.get('/v1/personal/shop/orders/:id/payment-options', auth, async (req) => {
+    const { id } = IdParam.parse(req.params);
+    const me = who(req);
+    const p = deps.personal;
+    const [order, journey, cards, balances, policy] = await Promise.all([
+      shops.getOrder(me.tenantId, me.consumerId, id),
+      deps.journeys.forConsumer(me.tenantId, me.consumerId, id),
+      p.cards.listCards(me.tenantId, { consumerId: me.consumerId }, me.consumerId),
+      p.wallet.balances(me.tenantId, me.consumerId),
+      p.programs.getActivePolicy(me.tenantId),
+    ]);
+    const market = journey.merchant.market ?? '';
+    const [wallet, installments, externalCard] = await Promise.all([
+      deps.capabilities.get(market, 'pay.wallet'),
+      deps.capabilities.get(market, 'pay.installments'),
+      deps.capabilities.get(market, 'pay.external_card'),
+    ]);
+    const outcome = outcomeOf(order);
+    const params = parsePolicyParams(policy.params);
+    return snake({
+      orderId: id,
+      market,
+      currency: order.currency,
+      total: order.total,
+      outcome,
+      options: paymentOptions({
+        currency: order.currency,
+        total: order.total,
+        payable: outcome === 'unpaid' || outcome === 'declined',
+        capabilities: { wallet, installments, externalCard },
+        cards,
+        balance: balances.find((x) => x.currency === order.currency),
+        installmentCounts: params.installmentCounts,
+        downPaymentBps: params.downPaymentBps,
+      }),
+    });
+  });
+
+  /** La operación completa vista por el cliente (pedido o compra con tarjeta propia). */
+  app.get('/v1/personal/journeys/:ref', auth, async (req) => {
+    const { ref } = z.object({ ref: z.string().uuid() }).parse(req.params);
+    return snake(await deps.journeys.forConsumer(who(req).tenantId, who(req).consumerId, ref));
+  });
+
+  /** Capacidades del mercado (para decir con honestidad qué es real y qué simulado). */
+  app.get('/v1/personal/capabilities', auth, async (req) => {
+    const { market } = z
+      .object({
+        market: z
+          .string()
+          .regex(/^[A-Z]{2}$/)
+          .default('VE'),
+      })
+      .parse(req.query ?? {});
+    return snake({ market, data: await deps.capabilities.forMarket(market) });
   });
 }
 

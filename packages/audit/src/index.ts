@@ -124,6 +124,10 @@ export const AUDIT_ACTIONS = [
   'shop.order_cancelled',
   'shop.return_requested',
   'shop.fulfillment_changed',
+  // Ecosistema (0067): capacidades por mercado y verificación de inciertos.
+  'capability.withdrawn',
+  'capability.restored',
+  'uncertain.verification_requested',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

@@ -68,6 +68,23 @@
   flex: 0 0 auto;
   color: var(--fl-ink-2);
 }
+/* Fuente de las dos tasas oficiales, visible y separada de la cruzada USDT. */
+.rt-src {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--fl-surface-2);
+  font-size: var(--fl-fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--fl-ink-2);
+}
+@media (max-width: 480px) {
+  /* En móvil no cabe: la fuente se lee en el detalle (un toque). */
+  .rt-src {
+    display: none;
+  }
+}
 .rt-flag {
   flex: 0 0 auto;
   padding: 2px 8px;

@@ -247,7 +247,8 @@ export class FxService {
     if (healthy || !this.cfg.refreshEnabled) return null;
     return s.lastSuccessAt
       ? `No pudimos consultar ${name} desde el ${caracasStamp(s.lastSuccessAt)} (hora de Caracas). Se muestra la última lectura válida con su fecha.`
-      : `Aún no hay una consulta exitosa a ${name}.`;
+      : // `name` ya trae su preposición («al BCV», «a CoinGecko»).
+        `Aún no hay una consulta exitosa ${name}.`;
   }
 
   private officialRef(

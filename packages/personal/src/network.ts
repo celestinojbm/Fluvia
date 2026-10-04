@@ -22,7 +22,19 @@ import { PaymentCodeInvalidError } from './errors.js';
  */
 export interface NetworkFaults {
   /** true ⇒ la respuesta de esa operación se pierde DESPUÉS de procesarse. */
-  dropResponse?: (op: 'purchase' | 'refund', ref: string) => boolean;
+  dropResponse?: (op: 'purchase' | 'refund', ref: string, amount: bigint) => boolean;
+}
+
+/**
+ * Escenario SANDBOX para demos y E2E con el stack real: un cobro o una
+ * devolución cuyo importe termina en 13 unidades menores (p. ej. «Bs 45,13»)
+ * se PROCESA en el emisor pero su respuesta se pierde. El comercio queda en
+ * «por confirmar» hasta una consulta verificable. Solo se activa en
+ * local/test con `SANDBOX_SCENARIOS=1` (lo decide la API al construirse).
+ */
+export const SANDBOX_LOST_RESPONSE_SUFFIX = 13n;
+export function sandboxScenarioFaults(): NetworkFaults {
+  return { dropResponse: (_op, _ref, amount) => amount % 100n === SANDBOX_LOST_RESPONSE_SUFFIX };
 }
 
 export const NETWORK_REF_PREFIX = 'fnet_';
@@ -66,7 +78,7 @@ export class FluviaCardNetwork {
       throw err;
     }
     const outcome = await this.outcomeOf(networkRef, result.authorizationId, true);
-    if (this.faults.dropResponse?.('purchase', input.attemptId)) {
+    if (this.faults.dropResponse?.('purchase', input.attemptId, input.amount)) {
       throw new ProviderTimeoutError('fluvia-network');
     }
     return outcome;
@@ -120,7 +132,7 @@ export class FluviaCardNetwork {
       amount: input.amount,
       idempotencyKey: `acq-refund:${input.refundId}`,
     });
-    if (this.faults.dropResponse?.('refund', input.refundId)) {
+    if (this.faults.dropResponse?.('refund', input.refundId, input.amount)) {
       throw new ProviderTimeoutError('fluvia-network');
     }
     return { outcome: 'approved', providerRef: `${NETWORK_REF_PREFIX}r_${input.refundId}` };

@@ -129,6 +129,18 @@ export const SHOPS_DEMO = {
           image: 'catalog/tienda-velas.jpg',
           collection: 'Decoración',
         },
+        {
+          // Escenario SANDBOX (solo con SANDBOX_SCENARIOS=1 en la API): el
+          // importe termina en 13 ⇒ la red procesa el pago pero su respuesta
+          // se pierde. Sirve para ver «en confirmación» y su verificación.
+          sku: 'CA-ESCENARIO-13',
+          name: 'Individual de fique (escenario de prueba: respuesta perdida)',
+          description:
+            'Producto de PRUEBA del sandbox: el pago se procesa pero la respuesta de la red se pierde. Verás «en confirmación» hasta que se verifique.',
+          price: 15_013,
+          image: 'catalog/tienda-cucharas-madera.jpg',
+          collection: 'Escenarios de prueba',
+        },
       ],
     },
     {
@@ -273,11 +285,16 @@ export async function seedShopsDemo(env: string, pools: { admin: Pool }): Promis
       `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
       [org, `${s.name} (demo)`, `demo-shop-${s.key}`]
     );
+    // Tiendas venezolanas (Caracas, Valencia, Maracaibo): mercado VE. El
+    // default de la tabla es 'CO'; las capacidades por mercado dependen de esto.
     await a.query(
-      `INSERT INTO merchants (id, tenant_id, name, default_currency) VALUES ($1, $2, $3, $4)
-       ON CONFLICT DO NOTHING`,
+      `INSERT INTO merchants (id, tenant_id, name, country, default_currency)
+       VALUES ($1, $2, $3, 'VE', $4) ON CONFLICT DO NOTHING`,
       [merchant, org, s.name, s.currency]
     );
+    await a.query(`UPDATE merchants SET country = 'VE' WHERE id = $1 AND country <> 'VE'`, [
+      merchant,
+    ]);
     await a.query(
       `INSERT INTO memberships (id, tenant_id, user_id, role) VALUES ($1, $2, $3, 'owner')
        ON CONFLICT DO NOTHING`,

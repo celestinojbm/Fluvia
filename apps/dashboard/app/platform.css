@@ -2778,3 +2778,10 @@
 .app-shell .recon-row[data-status='amount_mismatch'] td:first-child {
   box-shadow: inset 4px 0 0 var(--fl-warn);
 }
+
+/* Leyenda de tabla alineada con el texto del panel (no centrada). */
+.fx-caption-start {
+  caption-side: top;
+  text-align: start;
+  padding-bottom: 6px;
+}

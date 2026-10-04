@@ -264,8 +264,18 @@ export function RatesStrip() {
           <span className="rt-strip-item">
             <span className="rt-k">EUR</span> <span className="rt-v">{stripValue(eur)}</span>
           </span>
+          {/* Fuente visible: USD y EUR son del BCV; USDT/Bs es una referencia
+              CRUZADA (USDT/USD de mercado × USD/Bs del BCV), nunca «BCV» ni
+              una cotización directa: lleva «≈». */}
+          <span className="rt-src" aria-hidden="true">
+            BCV
+          </span>
           <span className="rt-strip-item">
-            <span className="rt-k">USDT</span> <span className="rt-v">{stripValue(usdt)}</span>
+            <span className="rt-k">USDT</span>{' '}
+            <span className="rt-v">
+              ≈{'\u202f'}
+              {stripValue(usdt)}
+            </span>
           </span>
           <span className="rt-strip-unit">Bs</span>
         </span>

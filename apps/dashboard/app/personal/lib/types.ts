@@ -75,6 +75,8 @@ export interface StatementLine {
   description: string;
 }
 export interface Authorization {
+  /** Venta o pedido del comercio de esta compra (null si no hay enlace verificable). */
+  journey_ref?: string | null;
   id: string;
   card_id: string;
   currency: string;
@@ -152,5 +154,8 @@ export interface Me {
     down_payment_bps: number;
     interval_days: number;
     interest_bps: number;
+    /** Máximo ilustrativo del límite por garantía (×4 = 40000) y multiplicador por nivel. */
+    max_multiplier_bps?: number;
+    tiers?: Array<{ tier: string; multiplier_bps: number | null }>;
   };
 }

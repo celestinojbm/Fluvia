@@ -197,7 +197,10 @@ beforeAll(async () => {
   });
   await app.ready();
   const m = await adminPool.query<{ id: string }>(
-    `INSERT INTO merchants (tenant_id, name, default_currency) VALUES ($1, 'Casa Ávila', 'VES') RETURNING id`,
+    // Tienda de Caracas: mercado VE (sin país, la tabla asume 'CO' y el saldo
+    // Fluvia —programa VES/USD— no se ofrece en ese mercado).
+    `INSERT INTO merchants (tenant_id, name, country, default_currency)
+     VALUES ($1, 'Casa Ávila', 'VE', 'VES') RETURNING id`,
     [shopOrg]
   );
   merchantId = m.rows[0]!.id;

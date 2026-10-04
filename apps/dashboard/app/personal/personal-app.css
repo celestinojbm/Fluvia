@@ -1415,3 +1415,302 @@ a.pm-row:hover {
   font-size: 0.9375rem;
   font-weight: 750;
 }
+
+/* ── Ecosistema: pago decidido por el servidor, confirmación y operación ── */
+/* Un método no disponible conserva el contraste del motivo (sin opacidad):
+   el porqué es información, no decoración. */
+.pm-option.is-off,
+.pm-option.is-off:has(input:disabled) {
+  opacity: 1;
+  background: var(--fl-surface-2);
+  box-shadow: inset 0 0 0 1.5px var(--fl-line);
+  cursor: default;
+}
+.pm-option.is-off .pm-option-title {
+  color: var(--fl-ink-2);
+}
+.pm-option.is-off .pm-option-sub {
+  color: var(--fl-black);
+}
+.pm-option label {
+  cursor: inherit;
+}
+.pm-option-title .pm-tag {
+  margin-left: 8px;
+  vertical-align: 2px;
+}
+.pm-option-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--fl-surface-2);
+}
+.pm-option-ico.is-installments {
+  background: var(--fl-credit-soft);
+  color: var(--fl-credit);
+}
+.pm-option-ico.is-wallet {
+  background: var(--fl-black);
+  color: var(--fl-mint);
+}
+.pm-banner.is-sim {
+  background: var(--fl-sim-soft);
+  color: var(--fl-sim);
+}
+.pm-confirm .pm-banner {
+  margin-top: 12px;
+}
+.pm-confirm-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+.pm-totals .is-credit dt,
+.pm-totals .is-credit dd {
+  color: var(--fl-credit);
+}
+.pm-journey {
+  display: grid;
+  gap: 12px;
+}
+.pm-journey .pm-totals {
+  margin: 0;
+}
+.pm-journey-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pm-journey-head h2 {
+  margin: 0;
+}
+.pm-journey-foot {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--fl-ink-2);
+}
+.pm-state {
+  font-weight: 800;
+}
+.pm-state.is-ok {
+  color: var(--fl-ok);
+}
+.pm-state.is-warn {
+  color: var(--fl-warn);
+}
+.pm-state.is-bad {
+  color: var(--fl-bad);
+}
+@media (max-width: 420px) {
+  .pm-confirm-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Detalle de saldos: cinco cifras separadas, nunca sumadas. El color de cada
+   celda codifica la naturaleza del importe (propio, crédito, deuda, pendiente)
+   y se acompaña siempre de texto: el color no es la única señal. */
+.pm-ledger {
+  margin-top: 16px;
+}
+.pm-ledger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pm-ledger-head h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 800;
+}
+.pm-ledger-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .pm-ledger-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pm-ledger-cell.is-own {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 1100px) {
+  .pm-ledger-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.pm-ledger-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: var(--pm-r2, 20px);
+  background: var(--fl-white);
+}
+.pm-ledger-cell h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--fl-ink-2);
+}
+.pm-ledger-cell.is-own {
+  background: var(--fl-black);
+  color: var(--fl-white);
+}
+.pm-ledger-cell.is-own h3,
+.pm-ledger-cell.is-own .pm-ledger-note,
+.pm-ledger-cell.is-own .rt-eq {
+  color: var(--fl-mint);
+}
+.pm-ledger-cell.is-credit {
+  background: var(--fl-credit-soft);
+  color: var(--fl-credit);
+}
+.pm-ledger-cell.is-credit h3,
+.pm-ledger-cell.is-credit .pm-totals dt {
+  color: var(--fl-credit);
+}
+.pm-ledger-cell.is-pending {
+  background: var(--fl-warn-soft);
+}
+.pm-ledger-cell.is-pending h3 {
+  color: var(--fl-warn);
+}
+.pm-ledger-amount {
+  margin: 0;
+  font-size: clamp(1.375rem, 4vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pm-ledger-cell.is-own .pm-ledger-amount {
+  font-size: clamp(2rem, 7vw, 3rem);
+}
+.pm-ledger-amount.is-empty {
+  font-size: 1.125rem;
+}
+.pm-ledger-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--fl-ink-2);
+}
+.pm-ledger-cell a {
+  margin-top: auto;
+  font-weight: 800;
+  color: inherit;
+}
+.pm-ledger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.pm-ledger-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+.pm-ledger-list li > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pm-hero-eq {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.pm-hero-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.pm-hero-links a {
+  font-weight: 800;
+  color: var(--fl-black);
+}
+/* Método de pago: título y explicación en líneas propias (el motivo de un
+   método no disponible es un texto completo, no una coletilla). */
+label.pm-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+label.pm-option-body .pm-option-title,
+label.pm-option-body .pm-option-sub {
+  display: block;
+}
+/* Barra de acción: con texto grande (200 %) o etiquetas largas, el total y el
+   botón se apilan en vez de empujar la página hacia los lados. */
+.pm-actionbar {
+  flex-wrap: wrap;
+}
+.pm-actionbar .pm-cta {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  padding-block: 10px;
+}
+/* El total no se estrecha hasta partir «Total · comercio» en tres líneas ni
+   pegar el importe al botón: si no caben juntos, el botón baja de línea. */
+.pm-actionbar-total {
+  flex: 1 1 9rem;
+}
+@media (max-width: 480px) {
+  /* Teléfono: total arriba y botón a todo el ancho, siempre igual. */
+  .pm-actionbar .pm-cta {
+    flex: 1 1 100%;
+  }
+}
+.pm-confirm-actions .pm-cta {
+  white-space: normal;
+  text-align: center;
+  padding-block: 10px;
+}
+/* Texto al 200 %: los importes grandes saltan entre «Bs» y la cifra (como el
+   saldo de Inicio) y las filas etiqueta/importe envuelven en vez de desbordar. */
+.pm-ledger-amount .pm-money {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.pm-totals div {
+  flex-wrap: wrap;
+}
+.pm-totals dd {
+  /* Base 0: la cifra comparte línea con su etiqueta y solo baja si no cabe
+     (texto al 200 %); la equivalencia se parte dentro de su celda. */
+  flex: 1 1 0;
+  min-width: 8rem;
+  margin-left: auto;
+  text-align: right;
+}
+/* La rejilla de la operación no se ensancha con su contenido (texto al 200 %). */
+.pm-journey {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pm-journey-head {
+  flex-wrap: wrap;
+}
+.pm-journey .pm-line > span {
+  flex: none;
+  max-width: 50%;
+  text-align: right;
+}
+.pm-journey .pm-line .pm-money {
+  white-space: normal;
+}

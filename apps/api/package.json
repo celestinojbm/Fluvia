@@ -28,6 +28,7 @@
     "@fluvia/assistant": "workspace:*",
     "@fluvia/audit": "workspace:*",
     "@fluvia/auth": "workspace:*",
+    "@fluvia/capabilities": "workspace:*",
     "@fluvia/commerce": "workspace:*",
     "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",

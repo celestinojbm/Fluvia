@@ -2,6 +2,8 @@ import { orgContext } from '../../../../lib/org-context';
 import { orgPath, readApi, type OrderDetail } from '../../../../lib/commerce-api';
 import { CancelOrder } from '../../../../lib/cancel-order';
 import { OrderLinesTable } from '../../../../lib/order-summary';
+import { MerchantJourneyPanels, type MerchantJourney } from '../../../../lib/merchant-journey';
+import { canManageReconciliation } from '../../../../lib/api';
 import {
   Callout,
   OrderState,
@@ -38,6 +40,8 @@ export default async function OrderPage({
     );
   }
   const ord = read.data;
+  // La operación completa (mismo hecho que ven el cliente y Operaciones).
+  const journey = await readApi<MerchantJourney>(token, orgPath(orgId, `/journeys/${ord.id}`));
   const pay = ord.payment;
   const plan = ord.installments_sandbox;
   const canSell = role !== undefined && SELL_ROLES.has(role);
@@ -123,20 +127,36 @@ export default async function OrderPage({
       ) : null}
 
       <div className="fx-grid fx-grid-main">
-        <section className="fx-panel" aria-labelledby="lines-title">
-          <header>
-            <h2 id="lines-title">Productos</h2>
-            <span className="fx-hint">Precios en el momento de la venta</span>
-          </header>
-          <div className="fx-panel-body">
-            <OrderLinesTable order={ord} />
-            {ord.note ? (
-              <p className="fx-hint" style={{ marginTop: 12 }}>
-                Nota: {ord.note}
+        <div className="fx-grid">
+          <section className="fx-panel" aria-labelledby="lines-title">
+            <header>
+              <h2 id="lines-title">Productos</h2>
+              <span className="fx-hint">Precios en el momento de la venta</span>
+            </header>
+            <div className="fx-panel-body">
+              <OrderLinesTable order={ord} />
+              {ord.note ? (
+                <p className="fx-hint" style={{ marginTop: 12 }}>
+                  Nota: {ord.note}
+                </p>
+              ) : null}
+            </div>
+          </section>
+          {journey.kind === 'ok' ? (
+            <MerchantJourneyPanels
+              j={journey.data}
+              orgId={orgId}
+              canVerify={canManageReconciliation(role)}
+            />
+          ) : (
+            <Callout tone="info" title="Operación no disponible ahora" role="status">
+              <p>
+                No pudimos leer el detalle del cobro. El estado de la venta de arriba es el vigente;
+                recarga en unos segundos.
               </p>
-            ) : null}
-          </div>
-        </section>
+            </Callout>
+          )}
+        </div>
 
         <div className="fx-grid">
           <section className="fx-panel" aria-labelledby="pay-title">
@@ -190,6 +210,11 @@ export default async function OrderPage({
                 <a className="fx-link" href={`${o}/customers/${ord.customer_id}`}>
                   {ord.customer_name ?? 'Ver ficha'}
                 </a>
+              ) : journey.kind === 'ok' && journey.data.fulfillment?.buyer_name ? (
+                <p>
+                  {journey.data.fulfillment.buyer_name}{' '}
+                  <span className="fx-hint">· pedido en línea con Fluvia Personal</span>
+                </p>
               ) : (
                 <p className="fx-hint">Venta sin cliente asignado.</p>
               )}
