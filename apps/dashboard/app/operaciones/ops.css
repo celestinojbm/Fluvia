@@ -721,3 +721,75 @@
     flex: none;
   }
 }
+
+/* Caso de una operación: consulta · propuesta · decisión ejecutada.
+   Tres columnas numeradas que separan lo que se LEE, lo que se PROPONE y lo
+   que se EJECUTÓ; en móvil se apilan en ese mismo orden. */
+.ox-op-alert {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--fl-warn-soft);
+  color: var(--fl-warn);
+  border-left: 4px solid var(--fl-warn);
+}
+.ox-op-alert h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.ox-op-alert p {
+  margin: 0;
+  color: var(--fl-black);
+}
+.ox-op-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1100px) {
+  .ox-op-grid {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+}
+.ox-op-col {
+  min-width: 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--fl-white);
+}
+.ox-op-col h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 1.0625rem;
+}
+.ox-op-step {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--fl-black);
+  color: var(--fl-mint);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.ox-op-list {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ox-op-col .ox-table {
+  margin-top: 12px;
+}
+.ox-op-col .ox-table caption {
+  text-align: left;
+  padding-bottom: 6px;
+}
+/* Los iconos de la navegación no se encogen con etiquetas largas. */
+.ox-nav a svg {
+  flex: none;
+}

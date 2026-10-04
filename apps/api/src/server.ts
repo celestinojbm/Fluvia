@@ -55,6 +55,9 @@ const app = buildApp({
   // Varias réplicas: la concurrencia del asistente se coordina en Redis.
   assistant: { concurrency: new RedisConcurrencyGate(redis) },
   fx,
+  // Escenarios sandbox de la red Fluvia (respuesta perdida en importes que
+  // terminan en 13). La API lo ignora fuera de local/test.
+  sandboxScenarios: process.env.SANDBOX_SCENARIOS === '1',
 });
 
 const fxRefresher = new FxRefresher(appPool, fx, fxCfg, app.log);

@@ -362,12 +362,6 @@ export function CreateOrderForm({
   );
 }
 
-interface PayCard {
-  id: string;
-  last4: string | null;
-  currency: string;
-  funding_mode: string;
-}
 interface Offer {
   amount: string;
   down_payment: string;
@@ -376,34 +370,86 @@ interface Offer {
   terms: { installments_count: number; interval_days: number; interest_bps: number };
 }
 
+/** Método de pago decidido por el SERVIDOR (`GET …/payment-options`). */
+export interface PaymentOption {
+  method: 'wallet' | 'installments' | 'external_card';
+  available: boolean;
+  reason: string | null;
+  capability: { status: string; simulated: boolean; label: string; live_dependency: string };
+  card_id?: string;
+  card_last4?: string | null;
+  balance_available?: string;
+  credit_available?: string;
+  down_payment?: string;
+  financed?: string;
+  installment_counts?: number[];
+}
+
+/** Por qué un método no se ofrece (el motivo lo decide la API). */
+function reasonText(o: PaymentOption, currency: string): React.ReactNode {
+  switch (o.reason) {
+    case 'capability_not_offered':
+      return 'No se ofrece en este mercado en este momento.';
+    case 'order_not_payable':
+      return 'Este pedido ya no admite un pago nuevo.';
+    case 'no_card_in_currency':
+      return (
+        <>
+          Necesitas una tarjeta Fluvia activa en {currencyLabel(currency)}.{' '}
+          <a href="/personal/tarjetas">Pedir tarjeta</a>
+        </>
+      );
+    case 'insufficient_balance':
+      return (
+        <>
+          Tu saldo propio ({money(o.balance_available ?? '0', currency)}) no alcanza.{' '}
+          <a href="/personal/movimientos?accion=ingresar">Ingresar fondos</a>
+        </>
+      );
+    case 'no_credit_line':
+      return (
+        <>
+          Necesitas una línea de crédito aprobada. <a href="/personal/credito">Ver crédito</a>
+        </>
+      );
+    case 'credit_insufficient':
+      return `Tu crédito disponible (${money(o.credit_available ?? '0', currency)}) no cubre la parte financiada.`;
+    case 'down_payment_insufficient':
+      return `Tu saldo no alcanza para la inicial de ${money(o.down_payment ?? '0', currency)}.`;
+    case 'no_installment_plans':
+      return 'El programa no tiene planes de cuotas activos.';
+    default:
+      return 'No disponible.';
+  }
+}
+
+const METHOD_TITLE: Record<PaymentOption['method'], string> = {
+  wallet: 'Tarjeta Fluvia · saldo propio',
+  installments: 'Tarjeta Fluvia · en cuotas',
+  external_card: 'Otra tarjeta',
+};
+
 /**
- * Elegir cómo pagar (tarjeta Fluvia: saldo o cuotas; u otra tarjeta en el
- * checkout alojado) con el total y la acción principal fijos. El resultado
- * viene del servidor (estado derivado), nunca se supone.
+ * Elegir cómo pagar y CONFIRMAR. Los métodos, su disponibilidad y el motivo
+ * cuando no lo están vienen del servidor (capacidades del mercado, tarjeta,
+ * saldo, línea y política). Nada se marca pagado aquí: tras confirmar, el
+ * estado se lee del servidor.
  */
-export function PayOrderForm({
-  order,
-  cards,
-  installmentCounts,
-}: {
-  order: ShopOrder;
-  cards: PayCard[];
-  installmentCounts: number[];
-}) {
-  const usable = cards.filter((c) => c.currency === order.currency);
-  const [method, setMethod] = useState<string>(usable[0] ? `wallet:${usable[0].id}` : 'checkout');
-  const [count, setCount] = useState<number>(installmentCounts[0] ?? 3);
+export function PayOrderForm({ order, options }: { order: ShopOrder; options: PaymentOption[] }) {
+  const firstAvailable = options.find((o) => o.available)?.method ?? null;
+  const [method, setMethod] = useState<PaymentOption['method'] | null>(firstAvailable);
+  const inst = options.find((o) => o.method === 'installments');
+  const counts = inst?.installment_counts ?? [];
+  const [count, setCount] = useState<number>(counts[0] ?? 3);
   const [offer, setOffer] = useState<{ count: number; data: Offer | null; error?: string } | null>(
     null
   );
+  const [step, setStep] = useState<'choose' | 'confirm'>('choose');
   const [state, setState] = useState<{ kind: 'idle' | 'busy' | 'error'; msg?: string }>({
     kind: 'idle',
   });
   const key = useRef(newKey());
-  const [kind, cardId] = method.split(':') as [
-    'wallet' | 'installments' | 'checkout',
-    string | undefined,
-  ];
+  const chosen = options.find((o) => o.method === method) ?? null;
 
   const loadOffer = async (n: number) => {
     setOffer({ count: n, data: null });
@@ -418,8 +464,9 @@ export function PayOrderForm({
   };
 
   const pay = async () => {
+    if (!chosen) return;
     setState({ kind: 'busy' });
-    if (kind === 'checkout') {
+    if (chosen.method === 'external_card') {
       const r = await personalCall<{ url: string }>(`shop/orders/${order.order_id}/checkout`, {
         method: 'POST',
       });
@@ -434,9 +481,9 @@ export function PayOrderForm({
       method: 'POST',
       idempotencyKey: key.current,
       body: {
-        card_id: cardId,
-        mode: kind,
-        ...(kind === 'installments' ? { installments_count: count } : {}),
+        card_id: chosen.card_id,
+        mode: chosen.method,
+        ...(chosen.method === 'installments' ? { installments_count: count } : {}),
       },
     });
     if (r.kind === 'ok' || r.kind === 'network') {
@@ -451,91 +498,148 @@ export function PayOrderForm({
     if (!offer || offer.count !== count || !offer.data) return null;
     return offer.data;
   }, [offer, count]);
+  const charge = money(order.total, order.currency);
+
+  if (step === 'confirm' && chosen) {
+    return (
+      <section className="pm-card pm-confirm" aria-labelledby="pm-confirm-title">
+        <h2 id="pm-confirm-title">Confirma el pago</h2>
+        <dl className="pm-totals">
+          <div>
+            <dt>Comercio</dt>
+            <dd>{order.shop_name}</dd>
+          </div>
+          <div>
+            <dt>Método</dt>
+            <dd>
+              {METHOD_TITLE[chosen.method]}
+              {chosen.card_last4 ? ` •••• ${chosen.card_last4}` : ''}
+              {chosen.method === 'installments' ? ` · ${count} cuotas` : ''}
+            </dd>
+          </div>
+          {chosen.method === 'installments' && chosen.down_payment ? (
+            <div>
+              <dt>Hoy, de tu saldo propio</dt>
+              <dd className="pm-money">{money(chosen.down_payment, order.currency)}</dd>
+            </div>
+          ) : null}
+          {chosen.method === 'installments' && chosen.financed ? (
+            <div className="is-credit">
+              <dt>Con tu crédito (deuda en cuotas)</dt>
+              <dd className="pm-money">{money(chosen.financed, order.currency)}</dd>
+            </div>
+          ) : null}
+          <div className="is-total">
+            <dt>Total</dt>
+            <dd className="pm-money">{charge}</dd>
+          </div>
+        </dl>
+        {chosen.capability.simulated ? (
+          <p className="pm-banner is-sim" role="note">
+            <Icon name="flag" />
+            <span>
+              <strong>Sandbox: dinero simulado.</strong> {chosen.capability.label} no mueve dinero
+              real. Para hacerlo falta: {chosen.capability.live_dependency}
+            </span>
+          </p>
+        ) : null}
+        {state.kind === 'error' ? (
+          <p className="pm-banner is-bad" role="alert">
+            {state.msg}
+          </p>
+        ) : null}
+        <div className="pm-confirm-actions">
+          <button
+            type="button"
+            className="pm-cta is-ghost"
+            onClick={() => {
+              setStep('choose');
+              setState({ kind: 'idle' });
+            }}
+            disabled={state.kind === 'busy'}
+          >
+            Cambiar
+          </button>
+          <button
+            type="button"
+            className="pm-cta"
+            onClick={pay}
+            disabled={state.kind === 'busy'}
+            aria-describedby="pm-confirm-title"
+          >
+            {state.kind === 'busy'
+              ? 'Procesando…'
+              : chosen.method === 'external_card'
+                ? 'Ir al checkout'
+                : `Confirmar y pagar ${charge}`}
+          </button>
+        </div>
+        <p className="pm-muted" style={{ margin: '8px 0 0' }}>
+          Si la red no responde, verás el pago «en confirmación»: no pagues de nuevo.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div>
       <fieldset className="pm-options">
         <legend>Método de pago</legend>
-        {usable.map((c) => (
-          <div key={c.id} style={{ display: 'grid', gap: 8 }}>
-            <label className="pm-option">
+        {options.map((o) => {
+          const id = `pm-method-${o.method}`;
+          return (
+            <div key={o.method} className={`pm-option${o.available ? '' : ' is-off'}`}>
               <input
+                id={id}
                 type="radio"
                 name="method"
-                checked={method === `wallet:${c.id}`}
-                onChange={() => setMethod(`wallet:${c.id}`)}
+                checked={method === o.method}
+                disabled={!o.available}
+                aria-describedby={`${id}-sub`}
+                onChange={() => {
+                  setMethod(o.method);
+                  if (o.method === 'installments') void loadOffer(count);
+                }}
               />
-              <span className="pm-minicard" aria-hidden="true" style={{ width: 48, height: 32 }} />
-              <span className="pm-option-body">
-                <span className="pm-option-title" style={{ display: 'block' }}>
-                  Tarjeta Fluvia •••• {c.last4 ?? '····'} · saldo
-                </span>
-                <span className="pm-option-sub">
-                  Se descuenta de tu saldo propio en {currencyLabel(c.currency)}.
-                </span>
-              </span>
-            </label>
-            {installmentCounts.length ? (
-              <label className="pm-option">
-                <input
-                  type="radio"
-                  name="method"
-                  checked={method === `installments:${c.id}`}
-                  onChange={() => {
-                    setMethod(`installments:${c.id}`);
-                    void loadOffer(count);
-                  }}
+              <span className={`pm-option-ico is-${o.method}`} aria-hidden="true">
+                <Icon
+                  name={
+                    o.method === 'installments'
+                      ? 'calendar'
+                      : o.method === 'wallet'
+                        ? 'wallet'
+                        : 'card'
+                  }
                 />
-                <span
-                  className="pm-icon-btn"
-                  aria-hidden="true"
-                  style={{
-                    width: 40,
-                    height: 40,
-                    background: 'var(--fl-credit-soft)',
-                    color: 'var(--fl-credit)',
-                  }}
-                >
-                  <Icon name="calendar" />
+              </span>
+              <label htmlFor={id} className="pm-option-body">
+                <span className="pm-option-title">
+                  {METHOD_TITLE[o.method]}
+                  {o.card_last4 && o.method !== 'external_card' ? ` •••• ${o.card_last4}` : ''}
+                  {o.capability.simulated ? <span className="pm-tag is-sim">Simulado</span> : null}
                 </span>
-                <span className="pm-option-body">
-                  <span className="pm-option-title" style={{ display: 'block' }}>
-                    Tarjeta Fluvia •••• {c.last4 ?? '····'} · en cuotas
-                  </span>
-                  <span className="pm-option-sub">Usa tu crédito; sujeto a tu línea aprobada.</span>
+                <span className="pm-option-sub" id={`${id}-sub`}>
+                  {!o.available
+                    ? reasonText(o, order.currency)
+                    : o.method === 'wallet'
+                      ? `Se descuenta de tu saldo propio (disponible ${money(o.balance_available ?? '0', order.currency)}).`
+                      : o.method === 'installments'
+                        ? `Inicial ${money(o.down_payment ?? '0', order.currency)} con tu saldo; el resto con tu línea (disponible ${money(o.credit_available ?? '0', order.currency)}).`
+                        : 'Abre el checkout seguro de la tienda (tarjetas de prueba).'}
                 </span>
               </label>
-            ) : null}
-          </div>
-        ))}
-        <label className="pm-option">
-          <input
-            type="radio"
-            name="method"
-            checked={method === 'checkout'}
-            onChange={() => setMethod('checkout')}
-          />
-          <span className="pm-icon-btn" aria-hidden="true" style={{ width: 40, height: 40 }}>
-            <Icon name="card" />
-          </span>
-          <span className="pm-option-body">
-            <span className="pm-option-title" style={{ display: 'block' }}>
-              Otra tarjeta
-            </span>
-            <span className="pm-option-sub">
-              Abre el checkout seguro de la tienda (tarjetas de prueba).
-            </span>
-          </span>
-        </label>
+            </div>
+          );
+        })}
       </fieldset>
 
-      {kind === 'installments' ? (
+      {method === 'installments' && counts.length ? (
         <div className="pm-card" style={{ marginTop: 12 }}>
           <p className="pm-option-title" style={{ margin: '0 0 8px' }}>
             Número de cuotas
           </p>
           <div className="pm-variants">
-            {installmentCounts.map((n) => (
+            {counts.map((n) => (
               <button
                 key={n}
                 type="button"
@@ -590,8 +694,8 @@ export function PayOrderForm({
                 </div>
               </dl>
               <p className="pm-muted" style={{ margin: '8px 0 0' }}>
-                Condiciones del programa de PRUEBA, pendientes de validación comercial. Se aprueba o
-                rechaza al pagar, según tu línea de crédito.
+                Condiciones del programa de PRUEBA, pendientes de validación comercial. El emisor
+                decide al confirmar según tu línea aprobada.
               </p>
             </>
           ) : (
@@ -600,21 +704,15 @@ export function PayOrderForm({
         </div>
       ) : null}
 
-      {usable.length === 0 ? (
-        <p className="pm-banner is-info" style={{ marginTop: 12 }}>
-          No tienes una tarjeta Fluvia activa en {currencyLabel(order.currency)}. Puedes pagar con
-          otra tarjeta o <a href="/personal/tarjetas">pedir tu tarjeta</a>.
-        </p>
-      ) : null}
-      {state.kind === 'error' ? (
-        <p className="pm-banner is-bad" role="alert" style={{ marginTop: 12 }}>
-          {state.msg}
+      {!firstAvailable ? (
+        <p className="pm-banner is-info" style={{ marginTop: 12 }} role="status">
+          Ahora mismo no hay un método disponible para este pedido. Los motivos están en cada
+          opción.
         </p>
       ) : null}
 
       <p className="rt-charge" data-testid="charge-line">
-        Se cobrará exactamente{' '}
-        <strong className="pm-money">{money(order.total, order.currency)}</strong>, en{' '}
+        Se cobrará exactamente <strong className="pm-money">{charge}</strong>, en{' '}
         {order.currency === 'VES' ? 'bolívares (Bs)' : currencyLabel(order.currency)}, la moneda del
         pedido. La moneda de visualización solo cambia las equivalencias de referencia, nunca este
         importe.
@@ -623,11 +721,16 @@ export function PayOrderForm({
         <div className="pm-actionbar-total">
           <p className="pm-muted">Total · {order.shop_name}</p>
           <p>
-            <span className="pm-amount pm-money">{money(order.total, order.currency)}</span>
+            <span className="pm-amount pm-money">{charge}</span>
           </p>
         </div>
-        <button type="button" className="pm-cta" onClick={pay} disabled={state.kind === 'busy'}>
-          {state.kind === 'busy' ? 'Procesando…' : kind === 'checkout' ? 'Ir al checkout' : 'Pagar'}
+        <button
+          type="button"
+          className="pm-cta"
+          onClick={() => setStep('confirm')}
+          disabled={!chosen?.available}
+        >
+          Revisar y confirmar
         </button>
       </div>
     </div>

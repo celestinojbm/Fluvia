@@ -64,7 +64,10 @@ export default async function Transacciones({
       {detail && detail.kind === 'ok' ? (
         <section aria-labelledby="ox-txd" style={{ marginBottom: 24 }}>
           <h2 id="ox-txd" className="ox-eyebrow">
-            Detalle · {detail.data.authorization.merchant_name}
+            Detalle · {detail.data.authorization.merchant_name} ·{' '}
+            <a href={`/operaciones/${orgId}/operacion/${detail.data.authorization.id}`}>
+              ver la operación completa (pedido, cobro y asientos)
+            </a>
           </h2>
           <dl className="ox-kv">
             <div>
@@ -192,7 +195,8 @@ export default async function Transacciones({
                   <td data-label="Comercio">
                     <a href={`${base}?id=${a.id}`}>{a.merchant_name}</a>
                     <div className="ox-muted">
-                      <a href={`/operaciones/${orgId}/clientes/${a.consumer_id}`}>Cliente</a>
+                      <a href={`/operaciones/${orgId}/clientes/${a.consumer_id}`}>Cliente</a> ·{' '}
+                      <a href={`/operaciones/${orgId}/operacion/${a.id}`}>Operación</a>
                     </div>
                   </td>
                   <td data-label="Estado">

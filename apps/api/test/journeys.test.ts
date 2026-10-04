@@ -622,6 +622,12 @@ describe('Fluvia Pay: métodos decididos por el servidor y capacidades', () => {
     await fund(c, 1_000_000);
     const cardId = await card(c);
     const id = await order(c, productId, PRICE);
+    const caps = await call(opOwner, 'GET', `/v1/programs/${program}/capabilities`);
+    expect(caps.json().markets.map((m: { market: string }) => m.market)).toEqual(['VE', 'CO']);
+    const shopCaps = await call(shopOwner, 'GET', `/v1/organizations/${shopOrg}/capabilities`);
+    expect(shopCaps.json().markets).toEqual([
+      expect.objectContaining({ market: 'VE', capabilities: expect.any(Array) }),
+    ]);
     const w = await call(opOwner, 'POST', `/v1/programs/${program}/capabilities/withdrawals`, {
       market: 'VE',
       capability: 'pay.wallet',

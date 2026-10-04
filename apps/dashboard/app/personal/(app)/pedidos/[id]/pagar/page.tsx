@@ -1,31 +1,32 @@
 import { notFound, redirect } from 'next/navigation';
 import { readPersonal } from '../../../../lib/server';
 import { ErrorPanel } from '../../../../lib/panels';
-import { PayOrderForm } from '../../../../lib/shop-actions';
+import { PayOrderForm, type PaymentOption } from '../../../../lib/shop-actions';
 import { Money, ScreenHead } from '../../../../lib/shop-ui';
-import type { Card, Me } from '../../../../lib/types';
 import type { ShopOrder } from '../../../../lib/shop-types';
 import { Equivalence } from '../../../../../lib/fx-ui';
 
 export const dynamic = 'force-dynamic';
 
-/** Elegir el método de pago de un pedido (total y acción principal fijos). */
+/**
+ * Elegir el método de pago de un pedido y confirmarlo. Los métodos y su
+ * disponibilidad los decide la API (`payment-options`): capacidades del
+ * mercado del comercio, tarjeta, saldo, línea de crédito y política.
+ */
 export default async function PayOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [o, cards, me] = await Promise.all([
+  const [o, opts] = await Promise.all([
     readPersonal<ShopOrder>(`/shop/orders/${id}`),
-    readPersonal<{ data: Card[] }>('/cards'),
-    readPersonal<Me>('/me'),
+    readPersonal<{ market: string; options: PaymentOption[] }>(
+      `/shop/orders/${id}/payment-options`
+    ),
   ]);
   if (o.kind === 'not_found') notFound();
-  if (o.kind !== 'ok' || cards.kind !== 'ok' || me.kind !== 'ok') return <ErrorPanel />;
+  if (o.kind !== 'ok' || opts.kind !== 'ok') return <ErrorPanel />;
   // Pagado, en confirmación o anulado: no se ofrece pagar otra vez.
   if (o.data.outcome !== 'unpaid' && o.data.outcome !== 'declined')
     redirect(`/personal/pedidos/${id}`);
-  const active = cards.data.data.filter((c) => c.status === 'active');
-  const counts =
-    (me.data.policy as unknown as { installment_counts?: number[] }).installment_counts ?? [];
   return (
     <main aria-labelledby="pm-pay-title">
       <ScreenHead
@@ -41,7 +42,7 @@ export default async function PayOrderPage({ params }: { params: Promise<{ id: s
               El intento anterior fue rechazado y no se cobró nada.
             </p>
           ) : null}
-          <PayOrderForm order={o.data} cards={active} installmentCounts={counts} />
+          <PayOrderForm order={o.data} options={opts.data.options} />
         </div>
         <aside className="pm-card" aria-label="Resumen">
           <h2>{o.data.shop_name}</h2>

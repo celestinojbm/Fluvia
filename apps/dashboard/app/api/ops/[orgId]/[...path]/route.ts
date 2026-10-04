@@ -26,6 +26,11 @@ const ALLOWED: RegExp[] = [
   /^reconciliation\/run$/,
   /^maintenance\/(overdue|expire-authorizations)$/,
   /^sandbox\/provider-events$/,
+  // Ecosistema: verificar los inciertos de un caso (step-up en la API) y
+  // retirar/restablecer capacidades por mercado (cuatro ojos en la API).
+  new RegExp(`^journeys/${UUID}/verify$`),
+  /^capabilities\/withdrawals$/,
+  new RegExp(`^capabilities/withdrawals/${UUID}/restore$`),
 ];
 
 export async function POST(

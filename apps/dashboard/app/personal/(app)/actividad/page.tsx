@@ -111,7 +111,11 @@ export default async function ActividadPage({
       status: { tone: out.tone, label: out.label },
     });
   }
+  // Una operación, una fila: la compra con tarjeta de un pedido de Tiendas ya
+  // está en la fila del pedido (mismo `journey_ref`, decidido por la API).
+  const orderIds = new Set((orders.kind === 'ok' ? orders.data.data : []).map((o) => o.order_id));
   for (const a of purchases.kind === 'ok' ? purchases.data.data : []) {
+    if (a.journey_ref && orderIds.has(a.journey_ref)) continue;
     const st = PURCHASE_STATUS[a.status] ?? { tone: 'neutral', label: a.status };
     const refunded = BigInt(a.refunded_wallet) + BigInt(a.refunded_credit) > 0n;
     items.push({

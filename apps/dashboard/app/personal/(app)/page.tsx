@@ -6,7 +6,7 @@ import type { Application, Balance, Card, Installment, Me, StatementLine } from 
 import { ErrorPanel } from '../lib/panels';
 import { HideAmountsButton } from '../lib/hide-amounts';
 import { CartButton, Money, ProductCard } from '../lib/shop-ui';
-import { ConvertedAmount } from '../../lib/fx-ui';
+import { Equivalence } from '../../lib/fx-ui';
 import { OUTCOME, type CartGroup, type ShopOrder, type ShopProduct } from '../lib/shop-types';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +55,9 @@ export default async function PersonalHome({
       o.outcome !== 'cancelled'
   );
   const cartGroups = cart.kind === 'ok' ? cart.data.data : [];
+  const unconfirmed = (orders.kind === 'ok' ? orders.data.data : []).filter(
+    (o) => o.outcome === 'pending'
+  ).length;
   const cartCount = cartGroups.reduce((n, g) => n + g.lines.reduce((m, l) => m + l.quantity, 0), 0);
 
   return (
@@ -109,27 +112,28 @@ export default async function PersonalHome({
                 <span className="pm-hero-cur">{currencyLabel(b.currency)}</span>
               )}
             </div>
-            <ConvertedAmount minor={b.available} currency={b.currency} className="pm-hero-amount" />
+            {/* La cifra protagonista es el saldo REAL de la cuenta; la moneda de
+                visualización solo añade una equivalencia marcada debajo. */}
+            <Money minor={b.available} currency={b.currency} className="pm-hero-amount" />
+            <p className="pm-hero-eq">
+              <Equivalence minor={b.available} currency={b.currency} />
+            </p>
             <dl className="pm-hero-split">
               <div className="pm-hero-cell">
                 <dt>Garantía bloqueada</dt>
                 <dd>
-                  <ConvertedAmount
-                    minor={b.collateral}
-                    currency={b.currency}
-                    originalLabel="Original"
-                  />
+                  <Money minor={b.collateral} currency={b.currency} />
+                  <Equivalence minor={b.collateral} currency={b.currency} compact />
                 </dd>
               </div>
               <div className="pm-hero-cell is-credit">
                 <dt>Crédito disponible</dt>
                 <dd>
                   {c ? (
-                    <ConvertedAmount
-                      minor={c.available}
-                      currency={b.currency}
-                      originalLabel="Original"
-                    />
+                    <>
+                      <Money minor={c.available} currency={b.currency} />
+                      <Equivalence minor={c.available} currency={b.currency} compact />
+                    </>
                   ) : (
                     'Sin línea'
                   )}
@@ -142,10 +146,26 @@ export default async function PersonalHome({
                 <Money minor={b.held} currency={b.currency} />.
               </p>
             ) : null}
+            {unconfirmed ? (
+              <p className="pm-hero-note" role="status">
+                <strong>
+                  {unconfirmed} {unconfirmed === 1 ? 'pago' : 'pagos'} en confirmación
+                </strong>{' '}
+                · no pagues de nuevo; el resultado llega de la red.
+              </p>
+            ) : null}
             <p className="pm-hero-note">
               El crédito no es saldo propio: lo que usas se paga en cuotas. La garantía es tu
               dinero, bloqueado como respaldo.
             </p>
+            <div className="pm-hero-links">
+              <a href="/personal/saldos">Detalle de saldos</a>
+              {BigInt(b.debt) > 0n ? (
+                <a href="/personal/cuotas">
+                  Deuda <Money minor={b.debt} currency={b.currency} />
+                </a>
+              ) : null}
+            </div>
           </section>
 
           <ul className="pm-quick" aria-label="Accesos rápidos">

@@ -5,6 +5,7 @@ import { ErrorPanel } from '../../../lib/panels';
 import { dateTime } from '../../../lib/format';
 import { OrderActions } from '../../../lib/shop-actions';
 import { Money, ScreenHead } from '../../../lib/shop-ui';
+import { JourneyPanel, type Journey } from '../../../lib/journey';
 import {
   FULFILLMENT,
   OUTCOME,
@@ -30,7 +31,10 @@ export default async function OrderPage({
   const { id } = await params;
   const { pago } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const r = await readPersonal<ShopOrder>(`/shop/orders/${id}`);
+  const [r, jr] = await Promise.all([
+    readPersonal<ShopOrder>(`/shop/orders/${id}`),
+    readPersonal<Journey>(`/journeys/${id}`),
+  ]);
   if (r.kind === 'not_found') notFound();
   if (r.kind !== 'ok') return <ErrorPanel />;
   const o = r.data;
@@ -77,6 +81,19 @@ export default async function OrderPage({
               {out.text}
             </p>
           </div>
+          {jr.kind === 'ok' ? (
+            <div style={{ marginTop: 12 }}>
+              <JourneyPanel j={jr.data} />
+            </div>
+          ) : (
+            <p className="pm-banner is-info" role="status" style={{ marginTop: 12 }}>
+              <Icon name="alert" />
+              <span>
+                No pudimos leer el detalle del pago ahora. El estado del pedido de arriba es el
+                vigente; recarga en unos segundos.
+              </span>
+            </p>
+          )}
           {o.installments ? (
             <p className="pm-banner is-info" style={{ marginTop: 8 }}>
               <Icon name="calendar" />

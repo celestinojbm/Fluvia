@@ -39,6 +39,7 @@ export function OpsShell({
     { href: `${base}/casos`, label: 'Casos e inciertos', icon: 'flag', badge: queues.cases },
     { href: `${base}/eventos`, label: 'Eventos y conciliación', icon: 'refresh' },
     { href: `${base}/politica`, label: 'Política y aprobaciones', icon: 'layers' },
+    { href: `${base}/capacidades`, label: 'Capacidades', icon: 'globe' },
   ];
   const isActive = (h: string, exact?: boolean) =>
     exact ? path === h : path === h || path.startsWith(`${h}/`);

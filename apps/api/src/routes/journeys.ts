@@ -140,8 +140,11 @@ export function registerJourneyRoutes(app: FastifyInstance, deps: JourneyRouteDe
         `SELECT DISTINCT btrim(country) AS country FROM merchants WHERE deleted_at IS NULL`
       )
     );
-    const out: Record<string, unknown> = {};
-    for (const { country } of markets.rows) out[country] = await capabilities.forMarket(country);
+    // Lista (no objeto con claves de mercado: `snake()` reescribiría «VE»).
+    const out = [];
+    for (const { country } of markets.rows) {
+      out.push({ market: country, capabilities: await capabilities.forMarket(country) });
+    }
     return snake({ markets: out });
   });
 
@@ -178,8 +181,9 @@ export function registerJourneyRoutes(app: FastifyInstance, deps: JourneyRouteDe
   app.get('/v1/programs/:orgId/capabilities', guard('program:read'), async (req) => {
     OrgParam.parse(req.params);
     if (!isProgram(req)) throw new JourneyNotFoundError();
-    const markets: Record<string, unknown> = {};
-    for (const m of MARKETS) markets[m] = await capabilities.forMarket(m);
+    const markets = [];
+    for (const m of MARKETS)
+      markets.push({ market: m, capabilities: await capabilities.forMarket(m) });
     return snake({ markets, history: await capabilities.history(tenant(req)) });
   });
 

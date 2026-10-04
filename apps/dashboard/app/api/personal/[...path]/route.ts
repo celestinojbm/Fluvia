@@ -23,7 +23,10 @@ const ALLOWED = [
   // Tiendas Fluvia (plano del cliente).
   /^shop\/(stores|search|featured|favorites|cart|cart\/items|orders)$/,
   /^shop\/stores\/[a-z0-9-]{3,48}(\/products\/[0-9a-f-]{36})?$/,
-  /^shop\/orders\/[0-9a-f-]{36}(\/(cancel|return|pay|checkout))?$/,
+  /^shop\/orders\/[0-9a-f-]{36}(\/(cancel|return|pay|checkout|payment-options))?$/,
+  // Ecosistema: la operación completa y las capacidades del mercado.
+  /^journeys\/[0-9a-f-]{36}$/,
+  /^capabilities$/,
 ];
 
 async function handle(req: Request, method: 'GET' | 'POST', segments: string[]) {

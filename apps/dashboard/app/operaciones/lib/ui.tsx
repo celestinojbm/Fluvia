@@ -41,6 +41,14 @@ const TONES: Record<string, string> = {
   unmatched: 'bad',
   indeterminate: 'warn',
   draft: 'info',
+  succeeded: 'ok',
+  payment_in_progress: 'warn',
+  awaiting_payment: 'info',
+  partially_refunded: 'info',
+  refunded: 'neutral',
+  created: 'info',
+  ready: 'info',
+  preparing: 'info',
 };
 const LABELS: Record<string, string> = {
   active: 'Activa',
@@ -85,6 +93,15 @@ const LABELS: Record<string, string> = {
   produced: 'Fabricada',
   shipped: 'En camino',
   returned: 'Devuelta',
+  succeeded: 'Confirmado',
+  payment_in_progress: 'Sin confirmar',
+  awaiting_payment: 'Sin cobro',
+  partially_refunded: 'Devolución parcial',
+  refunded: 'Devuelto',
+  created: 'Iniciada',
+  canceled: 'No procesada',
+  ready: 'Listo',
+  preparing: 'En preparación',
 };
 
 export function St({ s }: { s: string }) {
