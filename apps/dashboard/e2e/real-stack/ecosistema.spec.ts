@@ -13,7 +13,10 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
  *  4. devolución que el comercio no puede liquidar: «No procesada», nunca «devuelta»;
  *  5. aislamiento entre clientes y acceso indebido a Operaciones;
  *  6. Operaciones retira una capacidad (Personal deja de ofrecerla) y OTRA
- *     persona la restablece con step-up.
+ *     persona la restablece con step-up;
+ *  7. texto al 200 % y movimiento reducido;
+ *  8. rechazo del emisor (límite por compra de la clienta) sin cobro, y
+ *     recuperación: quitar el límite y reintentar deja un único cobro.
  */
 const APP = process.env.DEMO_APP_URL ?? 'http://127.0.0.1:3342';
 const ADMIN_DB =
@@ -345,4 +348,81 @@ test('7. Texto al 200 % y movimiento reducido: sin desborde en Saldos, pedido y 
     expect(animated, `${path}: animaciones con movimiento reducido`).toBe(0);
   }
   await c.close();
+});
+
+test('8. Rechazo y recuperación: el emisor rechaza sin cobrar; tras quitar el límite, un solo cobro', async () => {
+  const card = sql(
+    `SELECT c.id FROM cards c JOIN consumers k ON k.id = c.consumer_id
+      WHERE k.email = 'cliente@demo.fluvia.test' AND c.currency = 'VES' AND c.status = 'active'
+      ORDER BY c.created_at LIMIT 1`,
+    {}
+  );
+  const before = sql(
+    `SELECT coalesce(limit_per_tx::text, '') || '|' || coalesce(limit_daily::text, '') || '|' || funding_mode
+       FROM cards WHERE id = :'id'`,
+    { id: card }
+  );
+  const attempts = (order: string, status: string) =>
+    sql(
+      `SELECT count(*) FROM card_authorizations a
+         JOIN payment_attempts t ON a.network_ref = 'acq:' || t.id
+         JOIN payment_intents i ON i.id = t.intent_id
+         JOIN commerce_orders o ON o.payment_link_id = i.payment_link_id
+        WHERE o.id = :'id' AND a.status ${status}`,
+      { id: order }
+    );
+  try {
+    // La clienta fija un límite por compra (Bs 1,00) desde su tarjeta.
+    await p.goto(`${APP}/personal/tarjetas?id=${card}`);
+    await p.getByLabel(/Límite por compra/).fill('1');
+    await p.getByRole('button', { name: 'Guardar límites' }).click();
+    await expect(p.getByText('Límites guardados.')).toBeVisible();
+
+    const order = await orderFromProduct(p, /Cucharas de madera/);
+    await p.getByRole('radio', { name: /Tarjeta Fluvia · saldo propio/ }).check();
+    await confirmPay(p);
+    // Un solo resultado por intento: rechazado, sin cargo y con reintento.
+    await expect(p.getByText('Pagado', { exact: true })).toHaveCount(0);
+    const retry = p.getByRole('link', { name: 'Intentar el pago de nuevo' });
+    await expect(retry).toBeVisible();
+    // El motivo se dice (es de su propia tarjeta) y lleva a cambiarlo.
+    await expect(p.getByText(/Motivo: Superaba el límite por compra/)).toBeVisible();
+    await expect(p.getByRole('link', { name: 'Cambiar límites' })).toBeVisible();
+    expect(attempts(order, `= 'declined' AND a.decline_code = 'card_limit_exceeded'`)).toBe('1');
+    expect(attempts(order, `<> 'declined'`)).toBe('0');
+    await noOverflow(p);
+
+    // Comercio ve el intento rechazado; la venta sigue sin cobrar.
+    await m.goto(`${APP}/o/${SHOP_ORG}/orders/${order}`);
+    await expect(m.getByRole('region', { name: 'Operación' }).getByText('Rechazado')).toBeVisible();
+
+    // Recuperación: quita el límite y reintenta desde el pedido.
+    await p.goto(`${APP}/personal/tarjetas?id=${card}`);
+    await p.getByLabel(/Límite por compra/).fill('');
+    await p.getByRole('button', { name: 'Guardar límites' }).click();
+    await expect(p.getByText('Límites guardados.')).toBeVisible();
+    await p.goto(`${APP}/personal/pedidos/${order}`);
+    await p.getByRole('link', { name: 'Intentar el pago de nuevo' }).click();
+    await expect(
+      p.getByText('El intento anterior fue rechazado y no se cobró nada.')
+    ).toBeVisible();
+    await p.getByRole('radio', { name: /Tarjeta Fluvia · saldo propio/ }).check();
+    await confirmPay(p);
+    await expect(p.getByText('Pagado', { exact: true })).toBeVisible();
+    // Dos intentos, un único cobro.
+    expect(attempts(order, `<> 'declined'`)).toBe('1');
+    expect(attempts(order, `= 'declined'`)).toBe('1');
+    await m.reload();
+    const op = m.getByRole('region', { name: 'Operación' });
+    await expect(op.getByText('Rechazado')).toBeVisible();
+    await expect(op.getByText('Aprobado')).toBeVisible();
+  } finally {
+    const [per, day, mode] = before.split('|');
+    sql(
+      `UPDATE cards SET limit_per_tx = nullif(:'per', '')::bigint,
+              limit_daily = nullif(:'day', '')::bigint, funding_mode = :'mode'
+        WHERE id = :'id'`,
+      { id: card, per: per ?? '', day: day ?? '', mode: mode ?? 'wallet_first' }
+    );
+  }
 });

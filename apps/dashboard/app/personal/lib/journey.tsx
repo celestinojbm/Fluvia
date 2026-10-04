@@ -96,6 +96,24 @@ const VERDICT: Record<string, string> = {
   no_response: 'la red no respondió',
 };
 
+/**
+ * Motivo del rechazo del emisor, para la propia clienta: todos los códigos
+ * describen el estado de SU tarjeta o cuenta (ninguno es una señal de riesgo).
+ * Un código desconocido no inventa motivo: queda el texto genérico.
+ */
+export const DECLINE_REASON: Record<string, string> = {
+  card_limit_exceeded: 'Superaba el límite por compra o diario que fijaste en tu tarjeta.',
+  insufficient_funds: 'No había saldo ni crédito suficiente en ese momento.',
+  credit_limit_exceeded: 'El importe superaba tu crédito disponible.',
+  card_blocked: 'La tarjeta está bloqueada.',
+  card_closed: 'La tarjeta ya no está en uso.',
+  card_inactive: 'La tarjeta aún no está activada.',
+  consumer_inactive: 'Tu cuenta no está activa; escribe a soporte.',
+  currency_not_supported: 'La tarjeta no opera en la moneda del pedido.',
+  amount_above_code_limit: 'El importe superaba el máximo del código de pago.',
+  invalid_payment_code: 'El código de pago ya no era válido.',
+};
+
 export function methodLabel(j: Pick<Journey, 'payment' | 'issuer'>): string {
   if (j.payment.method === 'external_card') return 'Otra tarjeta (checkout de la tienda)';
   if (j.payment.method === 'fluvia_card') {

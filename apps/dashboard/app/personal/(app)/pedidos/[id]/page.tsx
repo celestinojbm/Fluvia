@@ -5,7 +5,7 @@ import { ErrorPanel } from '../../../lib/panels';
 import { dateTime } from '../../../lib/format';
 import { OrderActions } from '../../../lib/shop-actions';
 import { Money, ScreenHead } from '../../../lib/shop-ui';
-import { JourneyPanel, type Journey } from '../../../lib/journey';
+import { DECLINE_REASON, JourneyPanel, type Journey } from '../../../lib/journey';
 import {
   FULFILLMENT,
   OUTCOME,
@@ -39,6 +39,12 @@ export default async function OrderPage({
   if (r.kind !== 'ok') return <ErrorPanel />;
   const o = r.data;
   const out = OUTCOME[o.outcome];
+  // Rechazo del emisor: el motivo es de la propia tarjeta de la clienta.
+  const declineCode =
+    o.outcome === 'declined' && jr.kind === 'ok' && jr.data.issuer?.status === 'declined'
+      ? jr.data.issuer.decline_code
+      : null;
+  const declineReason = declineCode ? (DECLINE_REASON[declineCode] ?? null) : null;
   const paid =
     o.outcome === 'approved' || o.outcome === 'partially_refunded' || o.outcome === 'refunded';
   const flow: FulfillmentStatus[] =
@@ -79,6 +85,18 @@ export default async function OrderPage({
             <p>
               <strong>{out.label}</strong>
               {out.text}
+              {declineReason ? (
+                <>
+                  {' '}
+                  Motivo: {declineReason}
+                  {declineCode === 'card_limit_exceeded' ? (
+                    <>
+                      {' '}
+                      <a href="/personal/tarjetas">Cambiar límites</a>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
             </p>
           </div>
           {jr.kind === 'ok' ? (
