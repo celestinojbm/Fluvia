@@ -62,6 +62,7 @@ Capturas reales del stack (no maquetas), 390/768/1440 px, con los mismos datos q
 | Error / lectura perdida | `ErrorPanel` («Tu dinero no se movió»); en pedido y venta, aviso propio si falla solo la lectura de la operación |
 | Sesión caducada         | pantalla propia de Personal; «Tu sesión caducó» en Operaciones                                                   |
 | Acceso denegado         | «Sin acceso» / «Tu rol no incluye Operaciones»; 404 indistinguible para pedidos ajenos                           |
+| Pago rechazado          | «Pago rechazado · No se cobró nada» + motivo de su tarjeta (p. ej. límite) y «Cambiar límites»; reintento        |
 | Resultado incierto      | «En confirmación», «Pago sin confirmar», «Desenlace sin verificar» con siguiente paso                            |
 | Actualización           | «Leído del servidor …» y recarga tras verificar                                                                  |
 | Capacidad retirada      | método deshabilitado con «No se ofrece en este mercado en este momento»                                          |
