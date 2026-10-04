@@ -1660,7 +1660,7 @@ label.pm-option-body .pm-option-sub {
   flex-wrap: wrap;
 }
 .pm-actionbar .pm-cta {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   max-width: 100%;
   white-space: normal;
   text-align: center;
@@ -1681,6 +1681,25 @@ label.pm-option-body .pm-option-sub {
   flex-wrap: wrap;
 }
 .pm-totals dd {
+  /* Base 0: la cifra comparte línea con su etiqueta y solo baja si no cabe
+     (texto al 200 %); la equivalencia se parte dentro de su celda. */
+  flex: 1 1 0;
+  min-width: 8rem;
   margin-left: auto;
   text-align: right;
+}
+/* La rejilla de la operación no se ensancha con su contenido (texto al 200 %). */
+.pm-journey {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pm-journey-head {
+  flex-wrap: wrap;
+}
+.pm-journey .pm-line > span {
+  flex: none;
+  max-width: 50%;
+  text-align: right;
+}
+.pm-journey .pm-line .pm-money {
+  white-space: normal;
 }
