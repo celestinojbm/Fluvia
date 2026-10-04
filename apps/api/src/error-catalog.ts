@@ -358,6 +358,11 @@ export const ERROR_CATALOG = {
     type: 'conflict_error',
     message: 'Publish the directory profile before enabling the online shop',
   },
+  capability_unavailable: {
+    status: 409,
+    type: 'conflict_error',
+    message: 'This capability is not offered in this market right now',
+  },
   shop_order_state: {
     status: 409,
     type: 'conflict_error',
@@ -684,6 +689,11 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   ShopFulfillmentError: 'shop_fulfillment_unavailable',
   ShopVersionConflictError: 'version_conflict',
   ShopOrderStateError: 'shop_order_state',
+  // Ecosistema: capacidades por mercado (0067).
+  CapabilityUnavailableError: 'capability_unavailable',
+  CapabilityRequestError: 'validation_error',
+  CapabilityFourEyesError: 'four_eyes_required',
+  JourneyNotFoundError: 'not_found',
   ShopNotPublishableError: 'shop_not_publishable',
   OrderAmountOutOfRangeError: 'validation_error',
   InstallmentPlanNotAllowedError: 'installment_plan_not_allowed',

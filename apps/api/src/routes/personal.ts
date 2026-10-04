@@ -29,6 +29,9 @@ import { emailKey, ipKey, rateLimit, FixedWindowLimiter, type RateLimiter } from
  * menores como string decimal (sin coma flotante).
  */
 
+/** Mercado del programa Fluvia Personal (monedas VES/USD). */
+const PROGRAM_MARKET = 'VE';
+
 declare module 'fastify' {
   interface FastifyRequest {
     consumer?: {
@@ -303,6 +306,10 @@ export function registerPersonalRoutes(
         downPaymentBps: policy.params.downPaymentBps,
         intervalDays: policy.params.intervalDays,
         interestBps: policy.params.interestBps,
+        // Referencia del límite por garantía (máximo ilustrativo por nivel; no
+        // es una concesión): el cliente ve la regla que se le aplicará.
+        maxMultiplierBps: policy.params.maxMultiplierBps,
+        tiers: policy.params.tiers,
       },
     });
   });
@@ -580,6 +587,12 @@ export function registerPersonalRoutes(
 
   app.post('/v1/personal/payment-codes', auth, async (req, reply) => {
     const b = PaymentCodeBody.parse(req.body);
+    // Un código de pago solo se emite si el método existe en el mercado del
+    // programa (Fluvia Personal opera en VES/USD: Venezuela).
+    await deps.shop?.capabilities.require(
+      PROGRAM_MARKET,
+      b.mode === 'installments' ? 'pay.installments' : 'pay.wallet'
+    );
     const r = await p.cards.createPaymentCode(
       who(req).tenantId,
       who(req).consumerId,
@@ -595,15 +608,21 @@ export function registerPersonalRoutes(
     return reply.code(201).send(snake(r));
   });
 
-  app.get('/v1/personal/purchases', auth, async (req) =>
-    snake({
-      data: await p.authorizations.list(
-        who(req).tenantId,
-        { consumerId: who(req).consumerId },
-        who(req).consumerId
-      ),
-    })
-  );
+  app.get('/v1/personal/purchases', auth, async (req) => {
+    const list = await p.authorizations.list(
+      who(req).tenantId,
+      { consumerId: who(req).consumerId },
+      who(req).consumerId
+    );
+    // `journey_ref`: la venta o el pedido del comercio de esa compra. Actividad
+    // lo usa para no mostrar dos veces la misma operación (pedido + tarjeta).
+    const refs = deps.shop
+      ? await deps.shop.journeys.refsForAuthorizations(
+          list.map((a) => ({ id: a.id, merchantRef: a.merchantRef, networkRef: a.networkRef }))
+        )
+      : new Map<string, string>();
+    return snake({ data: list.map((a) => ({ ...a, journeyRef: refs.get(a.id) ?? null })) });
+  });
 
   app.get('/v1/personal/purchases/:id', auth, async (req) => {
     const { id } = IdParam.parse(req.params);

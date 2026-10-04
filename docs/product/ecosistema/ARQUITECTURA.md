@@ -7,21 +7,21 @@ Rama `claude/fluvia-ecosistema-integrado`, apilada sobre `claude/personal-movil-
 
 ## Inventario (lo que existe y se amplía)
 
-| Pieza | Dónde | Papel en esta jornada |
-|---|---|---|
-| Pedido del comercio con precio del servidor, reserva y enlace de cobro único | `@fluvia/commerce` `OrderService` (0049–0051) | **Fuente canónica del pedido** (`journey_ref`) |
-| Estado de pago **derivado** de los intents del enlace | `ORDER_SELECT` en `orders.ts` | Fuente canónica de «pagado / en confirmación / pendiente» |
-| Intents, attempts y devoluciones con FSM en el motor | `@fluvia/payments-core` (0017, 0020) | Cobro, incertidumbre y devolución |
-| Red Fluvia simulada (`FluviaCardNetwork`) | `@fluvia/personal/network.ts` | Une el attempt del comercio con la autorización del emisor: `network_ref = acq:<attempt_id>`, `merchant_ref = <tenant>:<merchant>` |
-| Autorización, capturas, devoluciones del emisor | `card_authorizations`, `card_authorization_events` (0052) | Lado del cliente: saldo/crédito usado y devuelto |
-| Ledger de doble partida con clave idempotente | `ledger_transactions` | Comercio: `attempt:<id>:capture`, `refund:<id>:*`; programa: `auth:<id>:*` |
-| Resolución de inciertos por consulta verificable | `UncertainPaymentResolver` (comercio), `resolveUncertainWithdrawals` (programa) | Única vía para cerrar un incierto |
-| Tiendas Fluvia: carrito, pedido idempotente, pago con tarjeta Fluvia o checkout alojado | `ShopService`, `/v1/personal/shop/*` (#70) | Recorrido de compra de Personal |
-| POS, cobro presencial (simulador), restaurante y KDS | `/o/:org/pos`, `cobrar`, `sala`, `cocina` (#63–#69) | Recorrido del comercio |
-| Operaciones del programa: autorizaciones, casos, doble aprobación, conciliación | `/v1/programs/:org/*`, `program_cases`, `program_approvals` | Consola de Operaciones |
-| Tasas de referencia BCV/USDT con caché y estado | `apps/api/src/fx`, 0066 | Equivalencias de visualización |
-| Identidad «Menta», tokens CSS, Manrope | `apps/dashboard/app/globals.css`, `docs/design/identidad-menta.md` | Base visual |
-| Instancias aisladas | `scripts/instancia-*.sh` | Demo nueva e independiente |
+| Pieza                                                                                   | Dónde                                                                           | Papel en esta jornada                                                                                                              |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Pedido del comercio con precio del servidor, reserva y enlace de cobro único            | `@fluvia/commerce` `OrderService` (0049–0051)                                   | **Fuente canónica del pedido** (`journey_ref`)                                                                                     |
+| Estado de pago **derivado** de los intents del enlace                                   | `ORDER_SELECT` en `orders.ts`                                                   | Fuente canónica de «pagado / en confirmación / pendiente»                                                                          |
+| Intents, attempts y devoluciones con FSM en el motor                                    | `@fluvia/payments-core` (0017, 0020)                                            | Cobro, incertidumbre y devolución                                                                                                  |
+| Red Fluvia simulada (`FluviaCardNetwork`)                                               | `@fluvia/personal/network.ts`                                                   | Une el attempt del comercio con la autorización del emisor: `network_ref = acq:<attempt_id>`, `merchant_ref = <tenant>:<merchant>` |
+| Autorización, capturas, devoluciones del emisor                                         | `card_authorizations`, `card_authorization_events` (0052)                       | Lado del cliente: saldo/crédito usado y devuelto                                                                                   |
+| Ledger de doble partida con clave idempotente                                           | `ledger_transactions`                                                           | Comercio: `attempt:<id>:capture`, `refund:<id>:*`; programa: `auth:<id>:*`                                                         |
+| Resolución de inciertos por consulta verificable                                        | `UncertainPaymentResolver` (comercio), `resolveUncertainWithdrawals` (programa) | Única vía para cerrar un incierto                                                                                                  |
+| Tiendas Fluvia: carrito, pedido idempotente, pago con tarjeta Fluvia o checkout alojado | `ShopService`, `/v1/personal/shop/*` (#70)                                      | Recorrido de compra de Personal                                                                                                    |
+| POS, cobro presencial (simulador), restaurante y KDS                                    | `/o/:org/pos`, `cobrar`, `sala`, `cocina` (#63–#69)                             | Recorrido del comercio                                                                                                             |
+| Operaciones del programa: autorizaciones, casos, doble aprobación, conciliación         | `/v1/programs/:org/*`, `program_cases`, `program_approvals`                     | Consola de Operaciones                                                                                                             |
+| Tasas de referencia BCV/USDT con caché y estado                                         | `apps/api/src/fx`, 0066                                                         | Equivalencias de visualización                                                                                                     |
+| Identidad «Menta», tokens CSS, Manrope                                                  | `apps/dashboard/app/globals.css`, `docs/design/identidad-menta.md`              | Base visual                                                                                                                        |
+| Instancias aisladas                                                                     | `scripts/instancia-*.sh`                                                        | Demo nueva e independiente                                                                                                         |
 
 ## Desconexiones encontradas (antes de cambiar nada)
 
@@ -54,24 +54,24 @@ devolución ◄─────────────────────�
 
 **Identificadores que unen las vistas**
 
-| Id | Fuente | Personal | Comercio | Operaciones |
-|---|---|---|---|---|
-| `journey_ref` (= id de `commerce_orders`) | comercio | sí | sí | sí |
-| `payment.intent_id` | comercio | sí | sí | sí |
-| `payment.attempts[].id` | comercio | no (solo estado) | sí | sí |
-| `issuer.authorization_id` | programa | sí | **no** (ve `fnet_…` como referencia del proveedor) | sí |
-| `refunds[].id` | comercio | sí | sí | sí |
-| Asientos del ledger | ambos | no | los suyos | ambos lados |
+| Id                                        | Fuente   | Personal         | Comercio                                           | Operaciones |
+| ----------------------------------------- | -------- | ---------------- | -------------------------------------------------- | ----------- |
+| `journey_ref` (= id de `commerce_orders`) | comercio | sí               | sí                                                 | sí          |
+| `payment.intent_id`                       | comercio | sí               | sí                                                 | sí          |
+| `payment.attempts[].id`                   | comercio | no (solo estado) | sí                                                 | sí          |
+| `issuer.authorization_id`                 | programa | sí               | **no** (ve `fnet_…` como referencia del proveedor) | sí          |
+| `refunds[].id`                            | comercio | sí               | sí                                                 | sí          |
+| Asientos del ledger                       | ambos    | no               | los suyos                                          | ambos lados |
 
 **Fuente canónica por estado**
 
-| Estado | Fuente | Regla |
-|---|---|---|
-| Pagado / en confirmación / pendiente / rechazado / anulado | intents del enlace del pedido (derivado) | Nunca del navegador; «volver del checkout» no confirma nada |
-| Devolución | `refunds.status` | `processing`/`indeterminate` = **incierta**, no «devuelta» |
-| Reparto saldo/crédito y devuelto al cliente | `card_authorizations` | Solo cliente y Operaciones |
-| Preparación / entrega | `shop_order_requests.fulfillment_status` | Solo avanza con el pedido cobrado (regla del motor) |
-| Capacidad ofrecida | catálogo `@fluvia/capabilities` + retiradas de Operaciones (0067) | La acción no se ofrece si no existe |
+| Estado                                                     | Fuente                                                            | Regla                                                       |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------- |
+| Pagado / en confirmación / pendiente / rechazado / anulado | intents del enlace del pedido (derivado)                          | Nunca del navegador; «volver del checkout» no confirma nada |
+| Devolución                                                 | `refunds.status`                                                  | `processing`/`indeterminate` = **incierta**, no «devuelta»  |
+| Reparto saldo/crédito y devuelto al cliente                | `card_authorizations`                                             | Solo cliente y Operaciones                                  |
+| Preparación / entrega                                      | `shop_order_requests.fulfillment_status`                          | Solo avanza con el pedido cobrado (regla del motor)         |
+| Capacidad ofrecida                                         | catálogo `@fluvia/capabilities` + retiradas de Operaciones (0067) | La acción no se ofrece si no existe                         |
 
 La composición vive en un único servicio de lectura (`JourneyService`, API). Las tres
 proyecciones filtran campos; ninguna calcula un estado propio.

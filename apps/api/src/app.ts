@@ -58,6 +58,7 @@ import {
   FluviaCardNetwork,
   FluviaRoutingProvider,
   createPersonalServices,
+  sandboxScenarioFaults,
   type PersonalServices,
 } from '@fluvia/personal';
 import { registerAuthRoutes, type AuthRateLimits } from './routes/auth.js';
@@ -102,6 +103,9 @@ import {
 } from '@fluvia/assistant';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerShopMerchantRoutes } from './routes/shops.js';
+import { registerJourneyRoutes } from './routes/journeys.js';
+import { JourneyService } from './journeys.js';
+import { CapabilityService } from '@fluvia/capabilities';
 import { registerFxRoutes } from './routes/fx.js';
 import { FxService } from './fx/service.js';
 import { fxRefreshConfigFromEnv } from './fx/refresher.js';
@@ -156,6 +160,11 @@ export interface BuildAppOptions {
   };
   /** Tasas de referencia (server.ts arranca el refresco con este servicio). */
   fx?: FxService;
+  /**
+   * Escenarios SANDBOX de la red Fluvia (respuesta perdida en importes que
+   * terminan en 13 unidades menores). Solo se honra en local/test.
+   */
+  sandboxScenarios?: boolean;
 }
 
 // F1-08: la taxonomia vive en error-catalog.ts (catalogo versionado con
@@ -207,6 +216,7 @@ export function buildApp({
   loggerStream,
   assistant,
   fx,
+  sandboxScenarios,
 }: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -380,7 +390,13 @@ export function buildApp({
       personal && config.programTenantId
         ? new FluviaRoutingProvider(
             simulatedProvider,
-            new FluviaCardNetwork(config.programTenantId, personal.authorizations)
+            new FluviaCardNetwork(
+              config.programTenantId,
+              personal.authorizations,
+              sandboxScenarios && (config.env === 'local' || config.env === 'test')
+                ? sandboxScenarioFaults()
+                : {}
+            )
           )
         : simulatedProvider;
     const provider = new ResilientProvider(routedProvider);
@@ -568,6 +584,18 @@ export function buildApp({
       confirmationService,
       refundService
     );
+    // Ecosistema: el mismo caso para Personal, Comercio y Operaciones, y las
+    // capacidades por mercado (techo del catálogo − retiradas de Operaciones).
+    const capabilityService = new CapabilityService(appPool, config.programTenantId);
+    const journeyService = new JourneyService(appPool, orderService, config.programTenantId);
+    registerJourneyRoutes(app, {
+      security,
+      appPool,
+      journeys: journeyService,
+      capabilities: capabilityService,
+      resolver: merchantResolver,
+      programTenantId: config.programTenantId,
+    });
     if (personal) {
       registerPersonalRoutes(app, {
         personal,
@@ -578,6 +606,8 @@ export function buildApp({
           links: paymentLinkService,
           checkout: checkoutSessionService,
           checkoutBaseUrl: config.checkoutBaseUrl,
+          journeys: journeyService,
+          capabilities: capabilityService,
         },
       });
     }

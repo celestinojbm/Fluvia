@@ -99,4 +99,9 @@ export {
   type MockWebhookEvent,
 } from './mock-webhook.js';
 export { SqlProviderOperationStore } from './provider-store.js';
-export { UncertainPaymentResolver, type UncertainResolution } from './uncertain-resolver.js';
+export {
+  UncertainPaymentResolver,
+  type UncertainResolution,
+  type VerificationVerdict,
+  type VerificationActor,
+} from './uncertain-resolver.js';

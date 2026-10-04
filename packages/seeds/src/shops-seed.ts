@@ -273,11 +273,16 @@ export async function seedShopsDemo(env: string, pools: { admin: Pool }): Promis
       `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
       [org, `${s.name} (demo)`, `demo-shop-${s.key}`]
     );
+    // Tiendas venezolanas (Caracas, Valencia, Maracaibo): mercado VE. El
+    // default de la tabla es 'CO'; las capacidades por mercado dependen de esto.
     await a.query(
-      `INSERT INTO merchants (id, tenant_id, name, default_currency) VALUES ($1, $2, $3, $4)
-       ON CONFLICT DO NOTHING`,
+      `INSERT INTO merchants (id, tenant_id, name, country, default_currency)
+       VALUES ($1, $2, $3, 'VE', $4) ON CONFLICT DO NOTHING`,
       [merchant, org, s.name, s.currency]
     );
+    await a.query(`UPDATE merchants SET country = 'VE' WHERE id = $1 AND country <> 'VE'`, [
+      merchant,
+    ]);
     await a.query(
       `INSERT INTO memberships (id, tenant_id, user_id, role) VALUES ($1, $2, $3, 'owner')
        ON CONFLICT DO NOTHING`,
