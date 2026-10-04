@@ -362,13 +362,17 @@ test('8. Rechazo y recuperación: el emisor rechaza sin cobrar; tras quitar el l
        FROM cards WHERE id = :'id'`,
     { id: card }
   );
-  const attempts = (order: string, status: string) =>
+  /** Autorizaciones del pedido: «rechazadas|por límite|no rechazadas». */
+  const attempts = (order: string) =>
     sql(
-      `SELECT count(*) FROM card_authorizations a
+      `SELECT count(*) FILTER (WHERE a.status = 'declined') || '|' ||
+              count(*) FILTER (WHERE a.decline_code = 'card_limit_exceeded') || '|' ||
+              count(*) FILTER (WHERE a.status <> 'declined')
+         FROM card_authorizations a
          JOIN payment_attempts t ON a.network_ref = 'acq:' || t.id
          JOIN payment_intents i ON i.id = t.intent_id
          JOIN commerce_orders o ON o.payment_link_id = i.payment_link_id
-        WHERE o.id = :'id' AND a.status ${status}`,
+        WHERE o.id = :'id'`,
       { id: order }
     );
   try {
@@ -388,8 +392,7 @@ test('8. Rechazo y recuperación: el emisor rechaza sin cobrar; tras quitar el l
     // El motivo se dice (es de su propia tarjeta) y lleva a cambiarlo.
     await expect(p.getByText(/Motivo: Superaba el límite por compra/)).toBeVisible();
     await expect(p.getByRole('link', { name: 'Cambiar límites' })).toBeVisible();
-    expect(attempts(order, `= 'declined' AND a.decline_code = 'card_limit_exceeded'`)).toBe('1');
-    expect(attempts(order, `<> 'declined'`)).toBe('0');
+    expect(attempts(order)).toBe('1|1|0');
     await noOverflow(p);
 
     // Comercio ve el intento rechazado; la venta sigue sin cobrar.
@@ -410,8 +413,7 @@ test('8. Rechazo y recuperación: el emisor rechaza sin cobrar; tras quitar el l
     await confirmPay(p);
     await expect(p.getByText('Pagado', { exact: true })).toBeVisible();
     // Dos intentos, un único cobro.
-    expect(attempts(order, `<> 'declined'`)).toBe('1');
-    expect(attempts(order, `= 'declined'`)).toBe('1');
+    expect(attempts(order)).toBe('1|1|1');
     await m.reload();
     const op = m.getByRole('region', { name: 'Operación' });
     await expect(op.getByText('Rechazado')).toBeVisible();
