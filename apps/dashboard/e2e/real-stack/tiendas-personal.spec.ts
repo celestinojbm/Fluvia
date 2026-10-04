@@ -81,7 +81,11 @@ async function emptyCart(page: Page) {
   await page.goto(`${APP}/personal/carrito`);
   // Cada clic recarga con el estado del servidor: «Menos» baja, «Quitar» elimina.
   for (let i = 0; i < 40; i++) {
-    const ctl = page.getByRole('button', { name: /^(Quitar|Menos)$/ }).first();
+    // Solo botones habilitados: con cantidad 1, «Menos» está deshabilitado.
+    const ctl = page
+      .getByRole('button', { name: /^(Quitar|Menos)$/ })
+      .and(page.locator(':enabled'))
+      .first();
     if (!(await ctl.isVisible().catch(() => false))) break;
     await ctl.click();
     await page.waitForLoadState('networkidle');

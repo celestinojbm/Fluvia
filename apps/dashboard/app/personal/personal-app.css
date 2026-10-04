@@ -1666,6 +1666,17 @@ label.pm-option-body .pm-option-sub {
   text-align: center;
   padding-block: 10px;
 }
+/* El total no se estrecha hasta partir «Total · comercio» en tres líneas ni
+   pegar el importe al botón: si no caben juntos, el botón baja de línea. */
+.pm-actionbar-total {
+  flex: 1 1 9rem;
+}
+@media (max-width: 480px) {
+  /* Teléfono: total arriba y botón a todo el ancho, siempre igual. */
+  .pm-actionbar .pm-cta {
+    flex: 1 1 100%;
+  }
+}
 .pm-confirm-actions .pm-cta {
   white-space: normal;
   text-align: center;

@@ -198,10 +198,12 @@ test('2. Cambiar la moneda de visualización no cambia saldos (Inicio)', async (
 
   for (const cur of ['USD', 'EUR', 'USDT'] as const) {
     await setDisplay(p, cur);
-    await expect(hero.locator('.rt-conv-tag').first()).toHaveText('Equivalente estimado');
-    // El original sigue visible e idéntico debajo.
-    await expect(hero.locator('.rt-conv-sub').first()).toContainText(`Saldo original: ${original}`);
-    await expect(hero.locator('.rt-conv-sub').first()).toContainText('Datos de prueba');
+    // La cifra protagonista sigue siendo el saldo REAL, idéntico; la
+    // equivalencia es una línea secundaria rotulada, con su fuente.
+    await expect(hero.locator('.pm-hero-amount')).toHaveText(original.replace(/ /g, '\u00a0'));
+    const eq = hero.locator('.pm-hero-eq .rt-eq');
+    await expect(eq).toContainText('equivalente estimado');
+    await expect(eq).toContainText('Datos de prueba');
     await shot(p, `fixture-inicio-${cur}`);
   }
   // Persistencia por dispositivo: recargar conserva la elección (cookie).
