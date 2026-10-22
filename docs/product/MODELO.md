@@ -22,7 +22,7 @@ Flujo: compra aprobada → plan de cuotas creado → socio financia el adelanto 
 ## 3. Mercado y diferenciación
 
 - **Arranca en Venezuela** (VES/USD) — decisión #15 actualizada el 2026-10-22. **Colombia es la segunda fase** (no descartada); la investigación legal F5.0 se conserva para esa fase. Venezuela tiene su propia revisión legal (BNPL-07).
-- **Frente a Cashea**: Cashea paga al comercio **a medida que el cliente paga**; Fluvia paga al comercio **completo y de una vez**. Esa es la propuesta de valor.
+- **Frente a Cashea**: según TalCual (17-oct-2026, artículo sobre colegios, atribuido a la empresa), en su modelo **Express** Cashea liquida a los aliados **cada 42 días** y **asume las cuotas**, así que el comercio tampoco carga con la morosidad. Fluvia busca liquidar al comercio el total, menos la comisión, en **una sola liquidación** (plazo por definir). La diferencia está en el momento y la forma de la liquidación, no en quién asume el riesgo. Es contexto interno: el copy público no compara con competidores (ver `COPY-COMERCIO.md`).
 - Referentes: **Cashea** (BNPL líder en Venezuela) y **Fina**.
 
 ## 4. Mensajes (copy)
