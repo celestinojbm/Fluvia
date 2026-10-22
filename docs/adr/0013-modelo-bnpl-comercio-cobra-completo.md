@@ -9,7 +9,7 @@ Fluvia se construyó como infraestructura de pagos con ledger de doble partida (
 
 ## Decisión
 1. El comercio recibe el **total** de la venta en una sola liquidación, menos la comisión de Fluvia.
-2. El cliente paga en **cuotas sin interés**.
+2. El cliente paga en **cuotas (condiciones de interés y mora pendientes de BNPL-07)**.
 3. Ingreso de Fluvia: **comisión al comercio**.
 4. El adelanto lo financia un **socio financiero** (banco o fondo); Fluvia no presta con balance propio.
 5. Mercado inicial: **Venezuela**; **Colombia** en segunda fase.

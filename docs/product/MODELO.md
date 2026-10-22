@@ -6,13 +6,13 @@ Estado: **BORRADOR** · Definido por el propietario (Celestino Briceño) el 2026
 
 ## 1. En una frase
 
-Fluvia funciona como **Afterpay** (compra ahora, paga después): **el comercio cobra completo de una vez**, **el cliente paga en cuotas sin interés**, y **Fluvia cobra una comisión al comercio**. El adelanto al comercio lo **financia un socio financiero** (banco o fondo).
+Fluvia funciona como **Afterpay** (compra ahora, paga después): **el comercio cobra completo de una vez**, **el cliente paga en cuotas (condiciones de interés y mora pendientes de BNPL-07)**, y **Fluvia cobra una comisión al comercio**. El adelanto al comercio lo **financia un socio financiero** (banco o fondo).
 
 ## 2. Actores y flujo del dinero
 
 | Actor | Qué recibe | Qué paga |
 |---|---|---|
-| Cliente | El producto hoy | El precio en N cuotas **sin interés** |
+| Cliente | El producto hoy | El precio en N **cuotas (condiciones de interés y mora pendientes de BNPL-07)** |
 | Comercio | El **total** de la venta en una sola liquidación (menos la comisión) | Comisión (MDR) a Fluvia |
 | Socio financiero (banco/fondo) | Las cuotas del cliente + su parte de la comisión/fondeo | El adelanto al comercio |
 | Fluvia | Comisión neta | Riesgo operativo/scoring, cobranza |
@@ -33,7 +33,7 @@ Flujo: compra aprobada → plan de cuotas creado → socio financia el adelanto 
 
 ## 5. Implicaciones para el roadmap
 
-1. **Motor de cuotas** (nuevo dominio): plan de pagos (N cuotas, fechas, montos con redondeo por mayor residuo, 0 % interés), FSM de cuota (`scheduled → due → paid | late | defaulted | canceled`), recargos por mora (decisión pendiente), reembolsos/anulaciones que recalculan el plan. Todo sobre el ledger existente.
+1. **Motor de cuotas** (nuevo dominio): plan de pagos (N cuotas (condiciones de interés y mora pendientes de BNPL-07); fechas, montos con redondeo por mayor residuo), FSM de cuota (`scheduled → due → paid | late | defaulted | canceled`), recargos por mora (pendiente de BNPL-07), reembolsos/anulaciones que recalculan el plan. Todo sobre el ledger existente.
 2. **Liquidación al comercio** (reaprovecha settlement/payout F4): liquidación única del total − comisión al aprobar la compra, independiente de las cuotas. Nuevas cuentas: `partner.funding`, `customer.receivable`, `merchant.payable`.
 3. **Socio financiero**: modelo de fondeo (línea de crédito / compra de cartera / pool), cuentas por socio, conciliación de fondeo y de cuotas cobradas; reportes al socio. En sandbox: **socio simulado** (análogo a MockProvider).
 4. **Riesgo / scoring**: límite de compra por cliente, decisión en el checkout, límites por comercio, reglas antifraude, KYC del cliente. Inicialmente reglas simples y deterministas en sandbox.
