@@ -141,3 +141,13 @@ Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real n
 - **Entregables**: `docs/compliance/ve-legal-research.md` con fuentes oficiales (URL + fecha de consulta) y estado epistémico por afirmación; `docs/compliance/ve-legal-questions-checklist.md` para un abogado venezolano; fila Venezuela en `jurisdiction-matrix.md`.
 - **CA**: cada afirmación con fuente y estado; **ninguna conclusión legal definitiva**; preguntas abiertas listadas para el abogado.
 - **Límites**: no autoriza dinero real, `live`, socio real ni contacto con terceros; bloquea la salida de sandbox en Venezuela (no bloquea BNPL-01…06 en sandbox).
+
+## Roadmap BNPL — borrador (2026-10-22, vigilancia de competidores)
+
+Borrador; cada ítem requiere autorización individual. Sandbox cerrado.
+
+| ID | Título | Dominio | Deps | Notas |
+|----|--------|---------|------|-------|
+| BNPL-08 | **Links de pago y facturas en cuotas** para negocios sin e-commerce | Producto | BNPL-01, BNPL-06 | Reutiliza los payment links existentes (F6.5A-bis); la cuota se elige al pagar el link o la factura |
+| BNPL-09 | **Precios en USD y en Bs a tasa BCV** en el checkout | Pagos/FX | BNPL-05 | Mostrar ambos montos; tasa BCV con fecha y fuente; reglas de redondeo; en sandbox, tasa simulada |
+| BNPL-10 | **Verticales del piloto en Venezuela: colegios y agencias de viaje** | Go-to-market | BNPL-01..04, BNPL-07 | Matrículas/mensualidades escolares y paquetes de viaje en cuotas; sin contacto con comercios hasta autorización |
