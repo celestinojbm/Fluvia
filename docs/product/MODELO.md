@@ -27,7 +27,7 @@ Flujo: compra aprobada → plan de cuotas creado → socio financia el adelanto 
 
 ## 4. Mensajes (copy)
 
-- Comercio: **«Tú cobras completo. Tu cliente paga en cuotas.»**
+- Comercio: **«Cobras tu venta de una vez. Tu cliente paga en cuotas.»**
 - Cliente: **«Compra hoy. Paga con calma.»**
 - Mientras sea sandbox: mostrar **«Próximamente»** en toda promesa comercial (cuotas, liquidación, alta de comercio/cliente). Nada de tarifas vigentes ni CTAs de alta real.
 
