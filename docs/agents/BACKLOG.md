@@ -127,3 +127,4 @@ Regla §49 respetada: idempotencia (F2-09) precede a la exposición de la API fi
 - #86 [P1] KYC VE
 - #87 [P1] i18n es-VE/es-CO
 - #88 [P2] Colombia/COP
+- Bloqueos Legal (dependen de BNPL-07, ver docs/legal/RIESGOS-VE.md): #90 SDN, #91 kill switch, #92 bloqueo comercios Gobierno, #93 moneda contrato≠pago, #94 tasa BCV por cuota, #95 mora apagada/sin cobros al cliente

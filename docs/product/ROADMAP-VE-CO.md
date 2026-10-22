@@ -40,3 +40,14 @@ Documento interno; no es copy público (sin cifras en copy público).
 - Sanciones OFAC.
 - Controles cambiarios y uso de la tasa BCV.
 - Licencias/registro para BNPL y cobros.
+
+## Bloqueos de Legal — dependencias de BNPL-07
+Detalle en [docs/legal/RIESGOS-VE.md](../legal/RIESGOS-VE.md) (borrador, no es asesoría).
+1. Sanciones OFAC — dictamen + screening (#82, #90, #91, #92)
+2. Quién es el acreedor y qué licencia aplica (#82)
+3. Socio financiero real y contrato (#82)
+4. Moneda del contrato, indexación, interés y mora (#93, #94, #95)
+5. IGTF y factura SENIAT de la comisión (#82)
+6. Quién recibe los pagos de las cuotas (no custodia) (#85)
+7. Prevención de lavado (PLD/FT) y verificación de clientes y comercios (#86)
+8. Términos de uso, privacidad y divulgación previa (#82)
