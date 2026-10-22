@@ -118,3 +118,17 @@ graph TD
 ```
 
 Regla §49 respetada: idempotencia (F2-09) precede a la exposición de la API financiera mutante (F3-02).
+
+## Modelo BNPL (2026-10-22, borrador — ver `docs/product/MODELO.md`)
+
+Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real ni socio real.
+
+| ID | Título | Dominio | Deps | Riesgo | Talla | CA / Pruebas |
+|----|--------|---------|------|--------|-------|--------------|
+| BNPL-01 | Motor de cuotas: plan N cuotas 0 %, redondeo por mayor residuo, FSM de cuota en el motor | Producto/Ledger | F2, F3 | Alto | L | Σ cuotas = total; FSM con meta-test doc↔TS↔DDL |
+| BNPL-02 | Liquidación única al comercio (total − comisión) al aprobar la compra | Settlement | BNPL-01, F4 | Alto | M | Asientos balanceados; idempotente; independiente de las cuotas |
+| BNPL-03 | Socio financiero simulado: fondeo del adelanto, cuentas por socio, conciliación | Fondeo | BNPL-02 | Alto | L | Adelanto = fondeo; cuotas cobradas reembolsan al socio; cero drift |
+| BNPL-04 | Riesgo/scoring sandbox: límite por cliente, decisión en checkout, límites por comercio | Riesgo | BNPL-01 | Alto | M | Reglas deterministas; decisión auditada |
+| BNPL-05 | VES: montos en bolívares, tasa de referencia, cobro de cuotas por Pago Móvil simulado | Pagos | BNPL-01, #74 | Medio | M | Redondeos VES probados |
+| BNPL-06 | Checkout «Pagar en cuotas» del cliente y POS del comercio | Producto | BNPL-01..04, #73 | Medio | L | Copy con lemas + «Próximamente» |
+| BNPL-07 | Legal Venezuela: repetir F5.0 para BNPL/crédito al consumo y rol del socio | Compliance | — | Alto | M | Checklist para abogado; sin conclusiones legales |

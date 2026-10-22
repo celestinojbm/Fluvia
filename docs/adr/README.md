@@ -16,5 +16,6 @@ Formato: Contexto · Decisión · Alternativas · Consecuencias · Riesgos · Es
 | [0010](0010-fastify-zod-sin-nestjs.md) | Fastify + Zod sin NestJS | Aceptado |
 | [0011](0011-outbox-relay-role.md) | Rol dedicado del outbox relay (sin BYPASSRLS) | Aceptado |
 | [0012](0012-secret-manager-produccion.md) | Secret manager en producción: inyección por env + rotación | Propuesto |
+| [0013](0013-modelo-bnpl-comercio-cobra-completo.md) | Modelo BNPL: el comercio cobra completo, el cliente paga en cuotas | Propuesto |
 
 Los ADR se numeran secuencialmente y nunca se editan tras aceptarse: se sustituyen por uno nuevo (`Superseded by`). Un ADR **Propuesto** aún puede editarse hasta que el propietario lo acepte.
