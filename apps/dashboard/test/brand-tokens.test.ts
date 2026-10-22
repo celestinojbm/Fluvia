@@ -30,8 +30,9 @@ function contrast(a: string, b: string): number {
 }
 
 describe('identidad Menta: tokens', () => {
-  it('brand.css es idéntico en dashboard y checkout', () => {
+  it('brand.css es idéntico en dashboard, checkout y la landing', () => {
     expect(read('../checkout/app/brand.css')).toBe(brand);
+    expect(read('../web/app/brand.css')).toBe(brand);
   });
 
   it('paleta exacta del encargo', () => {
@@ -44,7 +45,11 @@ describe('identidad Menta: tokens', () => {
 
   it('Manrope alojada localmente es la primera fuente', () => {
     expect(brand).toMatch(/--fl-font:\s*'Manrope Variable'/);
-    for (const layout of ['app/layout.tsx', '../checkout/app/layout.tsx']) {
+    for (const layout of [
+      'app/layout.tsx',
+      '../checkout/app/layout.tsx',
+      '../web/app/layout.tsx',
+    ]) {
       expect(read(layout)).toContain("import '@fontsource-variable/manrope';");
     }
   });
@@ -53,7 +58,7 @@ describe('identidad Menta: tokens', () => {
     const license = read('node_modules/@fontsource-variable/manrope/LICENSE');
     expect(license).toContain('The Manrope Project Authors');
     expect(license).toContain('SIL Open Font License, Version 1.1');
-    for (const app of ['public', '../checkout/public']) {
+    for (const app of ['public', '../checkout/public', '../web/public']) {
       expect(read(`${app}/licenses/manrope-OFL-1.1.txt`)).toBe(license);
     }
   });
@@ -113,6 +118,7 @@ describe('identidad Menta: sin restos de la identidad anterior', () => {
     'app/personal/personal.css',
     'app/operaciones/ops.css',
     '../checkout/app/globals.css',
+    '../web/app/globals.css',
   ];
   it.each(SHEETS)('%s no usa colores de la identidad anterior', (sheet) => {
     const css = read(sheet).toLowerCase();
