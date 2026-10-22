@@ -33,7 +33,7 @@ export function Hero() {
         <div className="hero-copy">
           <p className="pill-soon">Próximamente</p>
           <h1 id="hero-title" className="hero-title-bnpl">
-            <span className="hero-line-1">Tú cobras completo.</span>{' '}
+            <span className="hero-line-1">Cobras tu venta de una vez.</span>{' '}
             <span className="hero-line-2">Tu cliente paga en cuotas.</span>
           </h1>
           <p className="lede">

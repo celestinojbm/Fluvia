@@ -5,7 +5,7 @@ import './globals.css';
 import { MotionRoot } from './components/motion';
 
 export const metadata = {
-  title: 'Fluvia — Tú cobras completo. Tu cliente paga en cuotas.',
+  title: 'Fluvia — Cobras tu venta de una vez. Tu cliente paga en cuotas.',
   description:
     'Próximamente en Venezuela: recibes el total de tu venta, menos la comisión, y tu cliente paga en cuotas. En pruebas, sin dinero real.',
 };

@@ -19,7 +19,7 @@ describe('landing Menta', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: /Tú cobras completo\. Tu cliente paga en cuotas\./,
+        name: /Cobras tu venta de una vez\. Tu cliente paga en cuotas\./,
       })
     ).toBeInTheDocument();
     expect(screen.getByText('Próximamente', { selector: '.pill-soon' })).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe('landing Menta', () => {
         .getAllByRole('link', { name: 'Cómo funciona' })
         .some((a) => a.getAttribute('href') === '#como-funciona')
     ).toBe(true);
-    for (const title of ['Cobras completo', 'Sin deuda para ti', 'Tu cliente elige cuotas']) {
+    for (const title of ['Cobras de una vez', 'No es un préstamo', 'Tu cliente elige cuotas']) {
       expect(screen.getByRole('heading', { level: 3, name: title })).toBeInTheDocument();
     }
     expect(screen.getAllByText(/Sin dinero real/).length).toBeGreaterThan(0);
