@@ -16,9 +16,9 @@ const CARDS = [
 
 export function MerchantCards() {
   return (
-    <section id="como-funciona" className="merchant-cards" aria-labelledby="como-funciona-title">
-      <h2 id="como-funciona-title" className="sr-only">
-        Cómo funciona
+    <section id="ventajas" className="merchant-cards" aria-labelledby="ventajas-title">
+      <h2 id="ventajas-title" className="sr-only">
+        Ventajas para tu comercio
       </h2>
       <ul>
         {CARDS.map((card) => (

@@ -1,4 +1,3 @@
-import { ApiPanel } from './components/api-panel';
 import { Cta } from './components/cta';
 import { Faq } from './components/faq';
 import { Features } from './components/features';
@@ -15,10 +14,9 @@ export default function HomePage() {
       <Header />
       <main id="contenido">
         <Hero />
-        <MerchantCards />
         <Steps />
+        <MerchantCards />
         <Features />
-        <ApiPanel />
         <Trust />
         <Faq />
         <Cta />

@@ -5,17 +5,20 @@ import PreciosPage from '../app/precios/page';
 import { MotionRoot } from '../app/components/motion';
 
 describe('precios de ejemplo', () => {
-  it('marca las tarifas como ilustrativas y el 1,9 % como ejemplo', () => {
+  it('no muestra cifras: comisión al comercio y Próximamente', () => {
     render(
       <MotionRoot>
         <PreciosPage />
       </MotionRoot>
     );
-    expect(screen.getByRole('heading', { level: 1, name: /Precios que/ })).toBeInTheDocument();
-    expect(screen.getByText(/Tarifas ilustrativas · por definir/)).toBeInTheDocument();
-    expect(screen.getByText('1,9 %')).toBeInTheDocument();
-    expect(screen.getByText(/Cifra de ejemplo. No es una tarifa vigente./)).toBeInTheDocument();
-    expect(screen.getByText(/ejemplo/i, { selector: '.price-detail' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Precios' })).toBeInTheDocument();
+    expect(screen.getByText('Comisión al comercio · Próximamente')).toBeInTheDocument();
+    expect(screen.getByText('Próximamente', { selector: '.price' })).toBeInTheDocument();
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/\d\s*%|%\s*\d/);
+    expect(text).not.toMatch(
+      /(Bs\.?|USD|\$|€)\s*\d|\d[\d.,]*\s*(Bs\b|USD|bol[ií]vares|d[oó]lares)/i
+    );
   });
 
   it('no tiene violaciones estructurales de axe', async () => {

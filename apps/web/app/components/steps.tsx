@@ -3,7 +3,6 @@
 import { m } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { STEPS } from '../content';
-import { Icon, type IconName } from './icons';
 
 function StepNumber({ to, go }: { to: number; go: boolean }) {
   const [n, setN] = useState(to);
@@ -32,14 +31,10 @@ function StepNumber({ to, go }: { to: number; go: boolean }) {
 export function Steps() {
   const [seen, setSeen] = useState(false);
   return (
-    <section className="steps" id="libro" aria-labelledby="libro-title">
+    <section className="steps" id="como-funciona" aria-labelledby="como-funciona-title">
       <div className="steps-intro">
-        <p className="eyebrow">02 · Cómo funciona</p>
-        <h2 id="libro-title">
-          Tres asientos,
-          <br />
-          cero sorpresas.
-        </h2>
+        <p className="eyebrow">Próximamente</p>
+        <h2 id="como-funciona-title">Cómo funciona</h2>
       </div>
       {STEPS.map((step, index) => (
         <m.article
@@ -52,14 +47,8 @@ export function Steps() {
           onViewportEnter={() => setSeen(true)}
         >
           <StepNumber to={step.n} go={seen} />
-          <h3>
-            <span className="ico">
-              <Icon name={step.icon as IconName} size={20} />
-            </span>
-            {step.title}
-          </h3>
+          <h3>{step.title}</h3>
           <p>{step.body}</p>
-          <p className="step-foot fl-num">{step.foot}</p>
         </m.article>
       ))}
     </section>

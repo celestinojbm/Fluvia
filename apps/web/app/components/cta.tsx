@@ -1,23 +1,19 @@
-import { SANDBOX_HREF } from '../content';
 import { Button } from './button';
 import { Meander } from './meander';
-import { Icon } from './icons';
 
 export function Cta() {
   return (
     <section className="cta grain" id="empezar" aria-labelledby="cta-title">
       <div>
-        <p className="eyebrow">07 · Empieza</p>
+        <p className="eyebrow">Próximamente</p>
         <h2 id="cta-title">
-          Tu primer asiento, <span className="mint">en 5 minutos.</span>
+          Vende en cuotas. <span className="mint">Cobra el total de tu venta.</span>
         </h2>
+        <p>Recibes el total de tu venta, menos la comisión.</p>
       </div>
       <div className="cta-actions">
-        <Button href={SANDBOX_HREF} variant="mint" icon={<Icon name="arrow" size={16} />}>
-          Crear API key de prueba
-        </Button>
-        <Button href="/#contacto" variant="secondary" onDark className="cta-talk">
-          Hablar con el equipo
+        <Button variant="mint" disabled>
+          Avísame cuando esté lista
         </Button>
       </div>
       <Meander tone="mint" />

@@ -56,7 +56,7 @@ export function Header() {
       </nav>
       <div className="header-cta">
         <Button href={SANDBOX_HREF} variant="primary" icon={<Icon name="arrow" size={16} />}>
-          Entrar al sandbox
+          Cómo funciona
         </Button>
         <button
           type="button"
@@ -85,7 +85,7 @@ export function Header() {
           <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
         </nav>
         <Button href={SANDBOX_HREF} variant="primary" icon={<Icon name="arrow" size={16} />}>
-          Entrar al sandbox
+          Cómo funciona
         </Button>
       </div>
     </header>

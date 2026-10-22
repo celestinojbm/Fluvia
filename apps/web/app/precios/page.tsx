@@ -5,8 +5,7 @@ import { Pricing } from '../components/pricing';
 
 export const metadata: Metadata = {
   title: 'Precios — Fluvia',
-  description:
-    'Tarifas ilustrativas de Fluvia, todavía por definir. El sandbox es gratis. Las cifras de comercio son un ejemplo, no una tarifa vigente.',
+  description: 'Fluvia cobra una comisión al comercio por venta en cuotas. Tarifa: Próximamente.',
 };
 
 export default function PreciosPage() {

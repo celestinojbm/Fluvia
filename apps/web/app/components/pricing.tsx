@@ -6,12 +6,8 @@ export function Pricing() {
   return (
     <section className="pricing" aria-labelledby="precios-title">
       <div className="pricing-head">
-        <h1 id="precios-title">
-          Precios que
-          <br />
-          también cuadran.
-        </h1>
-        <p className="price-flag">Tarifas ilustrativas · por definir</p>
+        <h1 id="precios-title">Precios</h1>
+        <p className="price-flag">Comisión al comercio · Próximamente</p>
       </div>
       <div className="price-grid">
         {PLANS.map((plan) => (
@@ -33,9 +29,6 @@ export function Pricing() {
             <Button href={plan.href} variant={plan.variant}>
               {plan.cta}
             </Button>
-            {plan.featured ? (
-              <p className="price-placeholder">Cifra de ejemplo. No es una tarifa vigente.</p>
-            ) : null}
           </article>
         ))}
       </div>

@@ -7,10 +7,10 @@
 export const NAV = [
   { href: '/#producto', label: 'Producto' },
   { href: '/precios', label: 'Precios' },
-  { href: '/#api', label: 'Documentación' },
+  { href: '/#como-funciona', label: 'Cómo funciona' },
 ] as const;
 
-export const SANDBOX_HREF = '/#api';
+export const SANDBOX_HREF = '/#como-funciona';
 
 export const LEDGER_LINES = [
   { account: '1105 Caja comercio', debit: '24.100,00', credit: '—' },
@@ -21,25 +21,15 @@ export const LEDGER_LINES = [
 export const STEPS = [
   {
     n: 1,
-    title: 'Cobras',
-    icon: 'smartphone',
-    body: 'Pago Móvil, link de pago o punto de venta: una sola API.',
-    foot: 'DEBE 1105 · 1.250,00',
+    title: 'Elige pagar en cuotas',
+    body: 'En tu tienda o en tu link, tu cliente elige pagar en cuotas.',
   },
   {
     n: 2,
-    title: 'Fluvia asienta',
-    icon: 'book',
-    body: 'Cada evento genera partidas dobles, firmadas e inmutables.',
-    foot: 'HABER 4101 · 1.212,50',
+    title: 'Tú recibes el total',
+    body: 'Recibes el total de la venta, menos la comisión, en una sola liquidación.',
   },
-  {
-    n: 3,
-    title: 'Liquidas',
-    icon: 'landmark',
-    body: 'Al banco que elijas, con la conciliación ya hecha.',
-    foot: 'LIQ → Banesco · 18.000,00',
-  },
+  { n: 3, title: 'Tu cliente paga sus cuotas', body: 'Las cuotas no las cobras tú.' },
 ] as const;
 
 export const FEATURES = [
@@ -75,63 +65,6 @@ export const FEATURES = [
   },
 ] as const;
 
-export type SampleId = 'curl' | 'node' | 'python';
-
-export const SAMPLES: Record<SampleId, { label: string; lines: string[] }> = {
-  curl: {
-    label: 'cURL',
-    lines: [
-      'curl https://sandbox.fluvia.dev/v1/payments \\',
-      '  -H "Authorization: Bearer flv_test_••••" \\',
-      '  -d amount=125000 -d currency=VES \\',
-      '  -d method=pago_movil',
-      '',
-      '// 201 Created',
-      '{',
-      '  "id": "pay_8F2K", "status": "succeeded",',
-      '  "ledger": { "entries": 3, "balanced": true }',
-      '}',
-    ],
-  },
-  node: {
-    label: 'Node',
-    lines: [
-      'const res = await fetch("https://sandbox.fluvia.dev/v1/payments", {',
-      '  method: "POST",',
-      '  headers: { Authorization: "Bearer flv_test_••••" },',
-      '  body: new URLSearchParams({',
-      '    amount: "125000", currency: "VES", method: "pago_movil",',
-      '  }),',
-      '});',
-      '// 201 Created — ejemplo, no es una llamada real',
-      'const payment = await res.json();',
-      'payment.ledger.balanced; // true',
-    ],
-  },
-  python: {
-    label: 'Python',
-    lines: [
-      'import urllib.request',
-      'req = urllib.request.Request(',
-      '    "https://sandbox.fluvia.dev/v1/payments",',
-      '    data=b"amount=125000&currency=VES&method=pago_movil",',
-      '    headers={"Authorization": "Bearer flv_test_••••"},',
-      '    method="POST",',
-      ')',
-      '# 201 Created — ejemplo, no es una llamada real',
-      '# ledger.entries == 3 and ledger.balanced is True',
-    ],
-  },
-};
-
-export const CONNECTORS = [
-  { icon: 'smartphone', name: 'Pago Móvil', status: 'Simulado', tone: 'sim' },
-  { icon: 'link', name: 'Links de pago', status: 'Listo', tone: 'ok' },
-  { icon: 'store', name: 'Punto de venta', status: 'Listo', tone: 'ok' },
-  { icon: 'webhook', name: 'Webhooks firmados', status: 'Listo', tone: 'ok' },
-  { icon: 'landmark', name: 'Bancos nacionales', status: 'Próximo', tone: 'warn' },
-] as const;
-
 export const PROMISES = [
   {
     icon: 'lock',
@@ -152,60 +85,34 @@ export const PROMISES = [
 
 export const FAQ = [
   {
-    q: '¿Puedo mover dinero real hoy?',
-    a: 'No. Fluvia está en sandbox; las credenciales live están bloqueadas hasta superar los controles de producción.',
+    q: '¿Es un préstamo para mi negocio?',
+    a: 'No. Fluvia no es un crédito para tu negocio: liquida tus ventas en cuotas.',
   },
   {
-    q: '¿Qué pasa si un asiento no cuadra?',
-    a: 'No se registra. Cada transacción tiene que cerrar en cero: si debe y haber no suman lo mismo, el libro rechaza el asiento en lugar de dejarlo a medias.',
+    q: '¿Cuánto cuesta?',
+    a: 'Una comisión por venta en cuotas que paga el comercio. Tarifa: Próximamente.',
   },
   {
-    q: '¿Qué métodos de pago soportan?',
-    a: 'En sandbox: Pago Móvil simulado, links de pago y punto de venta, por una sola API. Los bancos nacionales figuran como próximo. Ninguno mueve dinero real.',
-  },
-  {
-    q: '¿Cómo se calculan las comisiones?',
-    a: 'Todavía no hay tarifa vigente. Las cifras de esta web —incluido el 1,9 % y la partida 2205 del recibo— son un ejemplo ilustrativo, marcado como tal.',
-  },
-  {
-    q: '¿Mis datos salen de Venezuela?',
-    a: 'Esta página no envía datos de comercios: no hay formulario. El ejemplo está denominado en bolívares (VES). La residencia del sandbox operativo se publicará con la documentación, cuando exista.',
+    q: '¿Ya puedo usarlo?',
+    a: 'Todavía no. Fluvia está en pruebas: Próximamente. No movemos dinero real.',
   },
 ] as const;
 
 export const PLANS = [
   {
-    id: 'sandbox',
-    kicker: 'Sandbox',
-    price: 'Gratis',
-    detail: 'Para integrar y probar.',
-    items: ['API completa', 'Ledger y auditoría', 'Datos simulados'],
-    cta: 'Empezar',
-    href: '/#api',
-    variant: 'secondary' as const,
-    featured: false,
-  },
-  {
     id: 'comercio',
     kicker: 'Comercio',
-    price: '1,9 %',
-    detail: 'por cobro exitoso · sin mensualidad · ejemplo',
-    items: ['Todo Sandbox', 'Pago Móvil y links', 'Liquidación diaria', 'Soporte por correo'],
-    cta: 'Unirme a la lista',
-    href: '/#contacto',
+    price: 'Próximamente',
+    detail: 'Comisión al comercio por venta en cuotas. Tarifa por definir.',
+    items: [
+      'Recibes el total de la venta, menos la comisión',
+      'Tu cliente paga en cuotas',
+      'No es un préstamo para tu negocio',
+    ],
+    cta: 'Cómo funciona',
+    href: '/#como-funciona',
     variant: 'mint' as const,
     featured: true,
-  },
-  {
-    id: 'plataforma',
-    kicker: 'Plataforma',
-    price: 'A medida',
-    detail: 'Marketplaces y volumen alto.',
-    items: ['Subcuentas', 'Webhooks dedicados', 'SLA y revisión de riesgo'],
-    cta: 'Hablar con ventas',
-    href: '/#contacto',
-    variant: 'secondary' as const,
-    featured: false,
   },
 ] as const;
 
@@ -221,9 +128,9 @@ export const FOOTER = [
   {
     title: 'Desarrolladores',
     links: [
-      { href: '/#api', label: 'Documentación' },
-      { href: '/#api', label: 'API' },
-      { href: '/#api', label: 'Estado' },
+      { href: '/#como-funciona', label: 'Cómo funciona' },
+      { href: '/#como-funciona', label: 'API' },
+      { href: '/#como-funciona', label: 'Estado' },
     ],
   },
   {

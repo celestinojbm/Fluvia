@@ -57,6 +57,7 @@ export function Hero() {
           <p className="eyebrow">Asiento nº 000342 · en vivo en sandbox</p>
           <m.article
             className="receipt"
+            data-example=""
             aria-label="Recibo de ejemplo"
             initial={{ y: -24, rotate: 0 }}
             animate={{ y: 0, rotate: -1.5 }}
@@ -112,7 +113,8 @@ export function Hero() {
         </div>
         <Meander />
       </section>
-      <section className="stats" aria-label="Cierre del asiento de ejemplo">
+      <section className="stats" data-example="" aria-label="Cierre del asiento de ejemplo">
+        <p className="sr-only">Datos de ejemplo</p>
         <p>
           <span className="eyebrow">Diferencia</span>
           <strong className="fl-num">0,00</strong>
