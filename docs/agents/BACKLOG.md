@@ -78,6 +78,7 @@ Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verific
 
 ### F5.0 legal/compliance research (docs)
 
+- **Conservada para la fase Colombia** (2026-10-22, #15 actualizada: Venezuela primero; la revisión legal de Venezuela es BNPL-07).
 - **Estado: EJECUTADO A NIVEL DOCUMENTAL** (decisión #30, 2026-07-11). Paquete `docs/compliance/f5-0-legal-research.md` + `legal-questions-checklist.md` con fuentes oficiales (fecha de consulta 2026-07-11) y estado epistémico por afirmación; `jurisdiction-matrix.md` con columna «Verificación» — **ninguna fila cerrada legalmente**. **Sin conclusiones legales.** Salida: llevar el checklist a un abogado colombiano (decisión humana — **pendiente y NO bloquea F6.5**). **F5.1–F5.4 siguen bloqueadas**; F5.0 no cambia runtime ni gates; sin proveedor real; producción/live/sandbox compartido bloqueados; freeze #24 vigente.
 
 ### F6.5 — Product Sandbox Completion (plan)
@@ -131,4 +132,12 @@ Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real n
 | BNPL-04 | Riesgo/scoring sandbox: límite por cliente, decisión en checkout, límites por comercio | Riesgo | BNPL-01 | Alto | M | Reglas deterministas; decisión auditada |
 | BNPL-05 | VES: montos en bolívares, tasa de referencia, cobro de cuotas por Pago Móvil simulado | Pagos | BNPL-01, #74 | Medio | M | Redondeos VES probados |
 | BNPL-06 | Checkout «Pagar en cuotas» del cliente y POS del comercio | Producto | BNPL-01..04, #73 | Medio | L | Copy con lemas + «Próximamente» |
-| BNPL-07 | Legal Venezuela: repetir F5.0 para BNPL/crédito al consumo y rol del socio | Compliance | — | Alto | M | Checklist para abogado; sin conclusiones legales |
+| BNPL-07 | Revisión legal Venezuela (equivalente a F5.0 para VE) | Compliance | — | Alto | M | Ver detalle abajo |
+
+### BNPL-07 — Revisión legal Venezuela (detalle)
+
+- **Estado: PENDIENTE — solo documental, requiere autorización.** Equivalente a F5.0 para Venezuela; F5.0 (Colombia) se conserva para la fase 2.
+- **Alcance**: (1) BNPL y crédito al consumo sin interés: si es crédito, si se requiere licencia y quién es el acreedor; (2) rol del socio financiero (banco/fondo): estructura de fondeo, compra de cartera, regulación SUDEBAN/SUNAVAL según el caso; (3) Fluvia como intermediario: custodia, segregación de fondos y si recibe pagos de cuotas; (4) Pago Móvil y operación en VES/USD: régimen cambiario y tasa BCV; (5) protección al consumidor (precios justos, información de cuotas y mora); (6) KYC/AML/CFT (UNIF) para clientes y comercios; (7) protección de datos y scoring; (8) facturación y tributos (SENIAT) de la comisión al comercio y del adelanto.
+- **Entregables**: `docs/compliance/ve-legal-research.md` con fuentes oficiales (URL + fecha de consulta) y estado epistémico por afirmación; `docs/compliance/ve-legal-questions-checklist.md` para un abogado venezolano; fila Venezuela en `jurisdiction-matrix.md`.
+- **CA**: cada afirmación con fuente y estado; **ninguna conclusión legal definitiva**; preguntas abiertas listadas para el abogado.
+- **Límites**: no autoriza dinero real, `live`, socio real ni contacto con terceros; bloquea la salida de sandbox en Venezuela (no bloquea BNPL-01…06 en sandbox).

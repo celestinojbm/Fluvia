@@ -21,7 +21,7 @@ Flujo: compra aprobada → plan de cuotas creado → socio financia el adelanto 
 
 ## 3. Mercado y diferenciación
 
-- **Arranca en Venezuela** (VES/USD). ⚠️ Cambia el supuesto de la decisión #15 (país inicial Colombia): requiere revisar matriz jurisdiccional y la investigación legal F5.0 (hecha para Colombia).
+- **Arranca en Venezuela** (VES/USD) — decisión #15 actualizada el 2026-10-22. **Colombia es la segunda fase** (no descartada); la investigación legal F5.0 se conserva para esa fase. Venezuela tiene su propia revisión legal (BNPL-07).
 - **Frente a Cashea**: Cashea paga al comercio **a medida que el cliente paga**; Fluvia paga al comercio **completo y de una vez**. Esa es la propuesta de valor.
 - Referentes: **Cashea** (BNPL líder en Venezuela) y **Fina**.
 
