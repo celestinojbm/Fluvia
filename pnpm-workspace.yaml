@@ -7,3 +7,6 @@ overrides:
   postcss@8.4.31: ^8.5.10
   # GHSA-5gmw-xhrv-c9v3 y relacionados (critical, RCE vía prototype pollution) — transitiva de vitest
   tinypool@<2.1.2: ^2.1.2
+  # Transitivas (vitest/postcss) con advisories high — subir a versión parcheada
+  source-map-js@<1.2.2: ^1.2.2
+  vite@>=7 <7.3.7: ^7.3.7
