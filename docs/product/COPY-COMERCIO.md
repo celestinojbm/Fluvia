@@ -28,7 +28,7 @@ Etiqueta: **Próximamente**
 **Cómo funciona**
 1. Tu cliente elige pagar en cuotas.
 2. Tú recibes el total de la venta, menos la comisión, en una sola liquidación.
-3. Tu cliente paga sus cuotas a Fluvia o a su socio, no a ti. (Pendiente BNPL-07, punto 3: quién puede recibir los pagos de las cuotas.)
+3. Tu cliente paga sus cuotas a Fluvia, no a ti. (Pendiente BNPL-07, punto 3: quién puede recibir los pagos de las cuotas.)
 
 **Por qué Fluvia**
 - **Una sola liquidación.** Recibes el total de tu venta, menos la comisión.

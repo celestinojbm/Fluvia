@@ -126,7 +126,7 @@ Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real n
 
 | ID | Título | Dominio | Deps | Riesgo | Talla | CA / Pruebas |
 |----|--------|---------|------|--------|-------|--------------|
-| BNPL-01 | Motor de cuotas: plan N cuotas 0 %, redondeo por mayor residuo, FSM de cuota en el motor | Producto/Ledger | F2, F3 | Alto | L | Σ cuotas = total; FSM con meta-test doc↔TS↔DDL |
+| BNPL-01 | Motor de cuotas: plan de N cuotas (condiciones de interés y mora pendientes de BNPL-07), redondeo por mayor residuo, FSM de cuota en el motor | Producto/Ledger | F2, F3 | Alto | L | Σ cuotas = total; FSM con meta-test doc↔TS↔DDL |
 | BNPL-02 | Liquidación única al comercio (total − comisión) al aprobar la compra | Settlement | BNPL-01, F4 | Alto | M | Asientos balanceados; idempotente; independiente de las cuotas |
 | BNPL-03 | Socio financiero simulado: fondeo del adelanto, cuentas por socio, conciliación | Fondeo | BNPL-02 | Alto | L | Adelanto = fondeo; cuotas cobradas reembolsan al socio; cero drift |
 | BNPL-04 | Riesgo/scoring sandbox: límite por cliente, decisión en checkout, límites por comercio | Riesgo | BNPL-01 | Alto | M | Reglas deterministas; decisión auditada |
@@ -137,7 +137,7 @@ Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real n
 ### BNPL-07 — Revisión legal Venezuela (detalle)
 
 - **Estado: PENDIENTE — solo documental, requiere autorización.** Equivalente a F5.0 para Venezuela; F5.0 (Colombia) se conserva para la fase 2.
-- **Alcance**: (1) BNPL y crédito al consumo sin interés: si es crédito, si se requiere licencia y quién es el acreedor; (2) rol del socio financiero (banco/fondo): estructura de fondeo, compra de cartera, regulación SUDEBAN/SUNAVAL según el caso; (3) Fluvia como intermediario: custodia, segregación de fondos y si recibe pagos de cuotas; (4) Pago Móvil y operación en VES/USD: régimen cambiario y tasa BCV; (5) protección al consumidor (precios justos, información de cuotas y mora); (6) KYC/AML/CFT (UNIF) para clientes y comercios; (7) protección de datos y scoring; (8) facturación y tributos (SENIAT) de la comisión al comercio y del adelanto.
+- **Alcance**: (1) BNPL y crédito al consumo (condiciones de interés y mora por validar): si es crédito, si se requiere licencia y quién es el acreedor; (2) rol del socio financiero (banco/fondo): estructura de fondeo, compra de cartera, regulación SUDEBAN/SUNAVAL según el caso; (3) Fluvia como intermediario: custodia, segregación de fondos y si recibe pagos de cuotas; (4) Pago Móvil y operación en VES/USD: régimen cambiario y tasa BCV; (5) protección al consumidor (precios justos, información de cuotas y mora); (6) KYC/AML/CFT (UNIF) para clientes y comercios; (7) protección de datos y scoring; (8) facturación y tributos (SENIAT) de la comisión al comercio y del adelanto.
 - **Entregables**: `docs/compliance/ve-legal-research.md` con fuentes oficiales (URL + fecha de consulta) y estado epistémico por afirmación; `docs/compliance/ve-legal-questions-checklist.md` para un abogado venezolano; fila Venezuela en `jurisdiction-matrix.md`.
 - **CA**: cada afirmación con fuente y estado; **ninguna conclusión legal definitiva**; preguntas abiertas listadas para el abogado.
 - **Límites**: no autoriza dinero real, `live`, socio real ni contacto con terceros; bloquea la salida de sandbox en Venezuela (no bloquea BNPL-01…06 en sandbox).
