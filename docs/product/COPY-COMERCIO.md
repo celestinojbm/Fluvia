@@ -7,16 +7,23 @@ Estado: **BORRADOR** (2026-10-22) · Modelo: [`MODELO.md`](MODELO.md) · Mientra
 ## Mensaje central
 
 **Tú cobras completo desde el primer día.**
-Tu cliente paga en cuotas sin interés. Tú recibes el total de la venta de una vez, no en semanas.
+Tu cliente paga en cuotas sin interés ⚖️. Tú recibes el total de la venta de una vez, no en semanas.
 
 Etiqueta: **Próximamente**
 
 ## Bloques
 
 **Hero**
-- Título: «Tú cobras completo desde el primer día.»
-- Subtítulo: «Vende en cuotas sin interés y recibe el total de la venta de una vez. Tu cliente paga con calma; tú no esperas.»
-- CTA: «Próximamente: únete a la lista» (sin formulario activo mientras sea sandbox).
+- H1: «Tú cobras completo. Tu cliente paga en cuotas.»
+- Subtítulo: «Recibes el total de la venta desde el primer día. Fluvia no te endeuda.»
+- CTA: «Avísame cuando esté lista» (etiqueta **Próximamente**; sin formulario activo mientras sea sandbox).
+
+**Tarjetas (debajo del hero)**
+1. **Cobras completo** — «Recibes el total de tu venta de una vez, no en semanas.»
+2. **Sin deuda para ti** — «No es un préstamo: te pagamos tu venta y el riesgo de las cuotas lo asume nuestro socio financiero.»
+3. **Tu cliente elige cuotas** — «Tu cliente paga en cuotas sin interés ⚖️.»
+
+> ⚖️ **«sin interés» — PENDIENTE DE REVISIÓN LEGAL** (BNPL-07): aplica a cada aparición de «sin interés» en este documento. No publicar hasta validarlo.
 
 **Cómo funciona**
 1. Tu cliente elige pagar en cuotas.
@@ -26,7 +33,7 @@ Etiqueta: **Próximamente**
 **Por qué Fluvia**
 - **Cobras completo, no en semanas.** Otros modelos liquidan al comercio por partes o con plazos largos; con Fluvia recibes el total de la venta de una vez.
 - **No te endeudamos.** Fluvia no te presta dinero: te adelanta el total de *tu* venta. El riesgo de las cuotas lo asume nuestro socio financiero, no tú.
-- **Sin intereses para tu cliente.** Cuotas sin interés.
+- **Sin intereses para tu cliente.** Cuotas sin interés ⚖️.
 
 **FAQ comercio**
 - *¿En qué se diferencia de Cashea?* — «En su modelo Express, Cashea liquida a sus aliados cada 42 días. Con Fluvia cobras el total de la venta desde el primer día.»
