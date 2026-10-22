@@ -16,11 +16,46 @@ function renderHome() {
 describe('landing Menta', () => {
   it('muestra el titular, el sandbox y el testimonio como ejemplo', () => {
     renderHome();
-    expect(screen.getByRole('heading', { level: 1, name: /Pagos que/ })).toBeInTheDocument();
-    expect(screen.getByText(/Sin dinero real/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: /Tú cobras completo\. Tu cliente paga en cuotas\./,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Próximamente')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Recibes el total de tu venta, menos la comisión. No es un préstamo para tu negocio.'
+      )
+    ).toBeInTheDocument();
+    const cta = screen.getByRole('button', { name: 'Avísame cuando esté lista' });
+    expect(cta).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Cómo funciona' })).toHaveAttribute(
+      'href',
+      '#como-funciona'
+    );
+    for (const title of ['Cobras completo', 'Sin deuda para ti', 'Tu cliente elige cuotas']) {
+      expect(screen.getByRole('heading', { level: 3, name: title })).toBeInTheDocument();
+    }
+    expect(screen.getAllByText(/Sin dinero real/).length).toBeGreaterThan(0);
     expect(screen.getByText('Testimonio de ejemplo · sustituir por uno real')).toBeInTheDocument();
     expect(screen.getByText('[Nombre del comercio piloto]')).toBeInTheDocument();
     expect(screen.getByText(/datos de ejemplo/)).toBeInTheDocument();
+  });
+
+  it('no usa copy vetado por Legal', () => {
+    const { container } = renderHome();
+    const text = container.textContent ?? '';
+    for (const banned of [
+      /sin inter[eé]s/i,
+      /cashea/i,
+      /fina presta/i,
+      /socio financiero/i,
+      /primer d[ií]a/i,
+      /no en semanas/i,
+    ]) {
+      expect(text).not.toMatch(banned);
+    }
   });
 
   it('abre una pregunta del acordeón', async () => {

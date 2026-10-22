@@ -5,9 +5,9 @@ import './globals.css';
 import { MotionRoot } from './components/motion';
 
 export const metadata = {
-  title: 'Fluvia — Pagos que mueven tu negocio',
+  title: 'Fluvia — Tú cobras completo. Tu cliente paga en cuotas.',
   description:
-    'Infraestructura de pagos en sandbox para Venezuela. Cobra, concilia y liquida desde un libro mayor de doble partida. Sin dinero real.',
+    'Próximamente en Venezuela: recibes el total de tu venta, menos la comisión, y tu cliente paga en cuotas. En pruebas, sin dinero real.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

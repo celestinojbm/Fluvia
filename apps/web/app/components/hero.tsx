@@ -2,12 +2,10 @@
 
 import { useEffect, useRef } from 'react';
 import { m } from 'framer-motion';
-import { LEDGER_LINES, SANDBOX_HREF } from '../content';
+import { LEDGER_LINES } from '../content';
 import { Button } from './button';
 import { Meander } from './meander';
 import { NumberTicker } from './number-ticker';
-
-const HEADLINES = ['Pagos que', 'mueven tu', 'negocio.'];
 
 export function Hero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,33 +32,25 @@ export function Hero() {
     <>
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <p className="eyebrow">
-            <span className="only-wide">Infraestructura de pagos</span>
-            <span className="only-narrow">Pagos</span>
-            {' · Venezuela · Sandbox'}
-          </p>
-          <h1 id="hero-title">
-            {HEADLINES.map((line, index) => (
-              <span className="hero-line" key={line}>
-                <span style={{ animationDelay: `${index * 70}ms` }}>{line}</span>
-              </span>
-            ))}
+          <p className="pill-soon">Próximamente</p>
+          <h1 id="hero-title" className="hero-title-bnpl">
+            <span className="hero-line-1">Tú cobras completo.</span>{' '}
+            <span className="hero-line-2">Tu cliente paga en cuotas.</span>
           </h1>
           <p className="lede">
-            Cobra, concilia y liquida desde un solo libro de doble partida.
-            <span className="only-wide">
-              {' '}
-              Cada bolívar tiene su asiento, su auditoría y su dueño.
-            </span>
+            Recibes el total de tu venta, menos la comisión. No es un préstamo para tu negocio.
           </p>
           <div className="hero-actions">
-            <Button href={SANDBOX_HREF} variant="primary">
-              Crear API key de prueba
+            <Button variant="primary" disabled aria-describedby="cta-note">
+              Avísame cuando esté lista
             </Button>
-            <Button href={SANDBOX_HREF} variant="secondary" className="only-wide-btn">
-              Leer la guía
-            </Button>
+            <a className="hero-link" href="#como-funciona">
+              Cómo funciona
+            </a>
           </div>
+          <p id="cta-note" className="hero-note">
+            Aún no recogemos datos: Fluvia está en pruebas.
+          </p>
         </div>
         <div className="hero-stage grain">
           <canvas ref={canvasRef} className="particles" aria-hidden="true" />

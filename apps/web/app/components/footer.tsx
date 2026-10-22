@@ -6,7 +6,7 @@ export function Footer() {
     <footer className="footer">
       <div className="footer-brand">
         <FluviaLogo height={28} tone="white" />
-        <p>Infraestructura de pagos en construcción. Sandbox, sin dinero real.</p>
+        <p>Fluvia está en pruebas: Próximamente. Sin dinero real.</p>
       </div>
       {FOOTER.map((column) => (
         <nav key={column.title} aria-label={column.title}>
