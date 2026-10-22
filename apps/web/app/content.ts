@@ -12,10 +12,14 @@ export const NAV = [
 
 export const SANDBOX_HREF = '/#como-funciona';
 
-export const LEDGER_LINES = [
-  { account: '1105 Caja comercio', debit: '24.100,00', credit: '—' },
-  { account: '4101 Ventas', debit: '—', credit: '23.377,00' },
-  { account: '2205 Comisión Fluvia', debit: '—', credit: '723,00' },
+/**
+ * Recibo ilustrativo del modelo: total de la venta − comisión = lo que recibe
+ * el comercio. Sin importes: solo etiquetas y barras proporcionales simbólicas.
+ */
+export const RECEIPT_LINES = [
+  { label: 'Total de la venta', sign: '', bar: 'full' },
+  { label: 'Comisión al comercio', sign: '−', bar: 'fee' },
+  { label: 'Recibes en una sola liquidación', sign: '=', bar: 'net' },
 ] as const;
 
 export const STEPS = [
@@ -56,7 +60,7 @@ export const FEATURES = [
   {
     icon: 'receipt',
     title: 'Recibos imprimibles',
-    body: 'Formato térmico 58/80 mm desde el punto de venta.',
+    body: 'Formato térmico para impresoras del punto de venta.',
   },
   {
     icon: 'scale',

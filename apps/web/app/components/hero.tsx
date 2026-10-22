@@ -2,10 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { m } from 'framer-motion';
-import { LEDGER_LINES } from '../content';
+import { RECEIPT_LINES } from '../content';
 import { Button } from './button';
 import { Meander } from './meander';
-import { NumberTicker } from './number-ticker';
 
 export function Hero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,7 +53,7 @@ export function Hero() {
         </div>
         <div className="hero-stage grain">
           <canvas ref={canvasRef} className="particles" aria-hidden="true" />
-          <p className="eyebrow">Asiento nº 000342 · en vivo en sandbox</p>
+          <p className="eyebrow">Recibo ilustrativo · sandbox</p>
           <m.article
             className="receipt"
             data-example=""
@@ -64,48 +63,27 @@ export function Hero() {
             transition={{ type: 'spring', stiffness: 260, damping: 24 }}
           >
             <header className="receipt-top">
-              <p className="eyebrow">Importe cobrado</p>
+              <p className="eyebrow">Tu venta en cuotas</p>
               <p className="chip chip-ok">
                 <i />
-                Conciliado
+                Liquidada
               </p>
             </header>
-            <p className="receipt-amount">
-              Bs. <span className="fl-num">24.100,00</span>
-            </p>
             <div className="dots" />
-            <table className="ledger">
-              <caption className="sr-only">
-                Asiento de ejemplo 000342. Datos de ejemplo, sin dinero real. Tres partidas, debe y
-                haber en cero, estado conciliado.
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Cuenta</th>
-                  <th scope="col">Debe</th>
-                  <th scope="col">Haber</th>
-                </tr>
-              </thead>
-              <tbody>
-                {LEDGER_LINES.map((line, index) => (
-                  <tr key={line.account} style={{ animationDelay: `${index * 90}ms` }}>
-                    <th scope="row">{line.account}</th>
-                    <td className="fl-num">{line.debit}</td>
-                    <td className="fl-num">{line.credit}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tbody className="ledger-diff">
-                <tr>
-                  <th scope="row">Diferencia</th>
-                  <td />
-                  <td className="fl-num">
-                    <NumberTicker from={24100} to={0} />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="receipt-meta">22.10.2026 · 03:46 · ref FLV-8F2K · datos de ejemplo</p>
+            <ul className="receipt-bars" aria-label="Total de la venta menos comisión al comercio">
+              {RECEIPT_LINES.map((line) => (
+                <li key={line.label} className={`receipt-bar receipt-bar-${line.bar}`}>
+                  <span className="receipt-bar-label">
+                    {line.sign ? <span aria-hidden="true">{line.sign} </span> : null}
+                    {line.label}
+                  </span>
+                  <span className="receipt-bar-track" aria-hidden="true">
+                    <span className="receipt-bar-fill" />
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="receipt-meta">Ilustrativo · datos de ejemplo · sin importes</p>
           </m.article>
           <p className="caption">
             Sin dinero real: Fluvia está en sandbox hasta superar los controles de producción.
@@ -113,19 +91,19 @@ export function Hero() {
         </div>
         <Meander />
       </section>
-      <section className="stats" data-example="" aria-label="Cierre del asiento de ejemplo">
+      <section className="stats" data-example="" aria-label="Resumen del recibo de ejemplo">
         <p className="sr-only">Datos de ejemplo</p>
         <p>
-          <span className="eyebrow">Diferencia</span>
-          <strong className="fl-num">0,00</strong>
+          <span className="eyebrow">Tú recibes</span>
+          <strong>Total menos comisión</strong>
         </p>
         <p>
-          <span className="eyebrow">Debe y haber</span>
-          <strong>2 partidas</strong>
+          <span className="eyebrow">Tu cliente</span>
+          <strong>Paga en cuotas</strong>
         </p>
         <p>
-          <span className="eyebrow">Conciliado</span>
-          <strong className="fl-num">100%</strong>
+          <span className="eyebrow">Liquidación</span>
+          <strong>Una sola</strong>
         </p>
       </section>
     </>

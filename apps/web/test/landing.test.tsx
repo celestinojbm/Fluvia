@@ -55,13 +55,19 @@ describe('landing Menta', () => {
     for (const node of examples) {
       expect(node.textContent).toMatch(/ejemplo/i);
     }
-    const clone = container.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('[data-example]').forEach((node) => node.remove());
-    const text = clone.textContent ?? '';
+    // Revisa TODO el texto renderizado, incluidos los nodos de ejemplo: ninguna
+    // cifra visible está exenta por estar marcada como ejemplo.
+    const text = container.textContent ?? '';
     expect(text).not.toMatch(/\d\s*%|%\s*\d/);
     expect(text).not.toMatch(
       /(Bs\.?|USD|\$|€)\s*\d|\d[\d.,]*\s*(Bs\b|USD|bol[ií]vares|d[oó]lares)/i
     );
+    expect(text).not.toMatch(/\d+[.,]\d{2}\b/);
+    expect(text).not.toMatch(/\d+\s*(mm|d[ií]as|semanas|meses|cuotas|partidas)\b/i);
+    // El hero y los bloques de ejemplo no llevan ningún dígito.
+    for (const node of container.querySelectorAll('.hero, .stats, [data-example]')) {
+      expect(node.textContent ?? '').not.toMatch(/\d/);
+    }
     for (const banned of [
       /sin inter[eé]s/i,
       /cashea/i,
