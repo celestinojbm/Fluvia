@@ -6,30 +6,50 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-type Status = 'idle' | 'sending' | 'pending' | 'invalid' | 'error';
+type Status = 'idle' | 'sending' | 'saved' | 'invalid' | 'error';
 
 export function ContactForm() {
   const id = useId();
+  const honey = useId();
   const [status, setStatus] = useState<Status>('idle');
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get('email') ?? '');
+    const form = event.currentTarget;
+    const data = new FormData(form);
     setStatus('sending');
+    setNotice(null);
     try {
       const response = await fetch('/api/contacto', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email: String(data.get('email') ?? ''),
+          website: String(data.get('website') ?? ''),
+        }),
       });
-      if (response.status === 501) {
-        setStatus('pending');
-        return;
-      }
-      setStatus(response.status === 400 ? 'invalid' : 'error');
+      const payload: unknown = await response.json().catch(() => null);
+      const record =
+        payload && typeof payload === 'object'
+          ? (payload as { status?: unknown; message?: unknown })
+          : null;
+      const message = typeof record?.message === 'string' ? record.message : null;
+      const kind =
+        record?.status === 'saved' ? 'saved' : record?.status === 'invalid' ? 'invalid' : 'error';
+      if (kind === 'saved') form.reset();
+      setStatus(kind);
+      setNotice(
+        message ??
+          (kind === 'saved'
+            ? 'Listo. Guardamos tu correo.'
+            : kind === 'invalid'
+              ? 'Revisa el correo e inténtalo de nuevo.'
+              : 'No pudimos guardar tu correo. Inténtalo de nuevo.')
+      );
     } catch {
       setStatus('error');
+      setNotice('No pudimos guardar tu correo. Inténtalo de nuevo.');
     }
   }
 
@@ -49,6 +69,17 @@ export function ContactForm() {
           disabled={status === 'sending'}
         />
       </div>
+      <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true">
+        <label htmlFor={honey}>Sitio web</label>
+        <input
+          id={honey}
+          name="website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          defaultValue=""
+        />
+      </div>
       <p id={`${id}-help`} className="text-sm text-[var(--fl-ink-2)]">
         Escríbenos si quieres hablar de tu comercio. Esta página no cobra.
       </p>
@@ -58,22 +89,11 @@ export function ContactForm() {
           <ArrowRight aria-hidden="true" />
         </Button>
       </div>
-      <StatusNote status={status} />
+      {notice ? (
+        <p role="status" className="text-sm font-semibold text-[var(--fl-black)]">
+          {notice}
+        </p>
+      ) : null}
     </form>
-  );
-}
-
-function StatusNote({ status }: { status: Status }) {
-  if (status === 'idle' || status === 'sending') return null;
-  const text =
-    status === 'pending'
-      ? 'PENDIENTE: todavía no hay un buzón conectado. Tu correo no se guardó ni se envió.'
-      : status === 'invalid'
-        ? 'Revisa el correo e inténtalo de nuevo.'
-        : 'No pudimos hablar con el formulario. Inténtalo otra vez.';
-  return (
-    <p role="status" className="text-sm font-semibold text-[var(--fl-black)]">
-      {text}
-    </p>
   );
 }
