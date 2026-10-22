@@ -16,13 +16,13 @@ Etiqueta: **Próximamente**
 ## Bloques
 
 **Hero**
-- H1: «Tú cobras completo. Tu cliente paga en cuotas.» (el subtítulo, justo debajo, aclara «menos la comisión»)
+- H1: «Cobras tu venta de una vez. Tu cliente paga en cuotas.» (el subtítulo, justo debajo, aclara «menos la comisión»)
 - Subtítulo: «Recibes el total de tu venta, menos la comisión. No es un préstamo para tu negocio.»
 - CTA: «Avísame cuando esté lista» (etiqueta **Próximamente**; sin formulario. Si algún día recoge datos, hará falta un aviso de privacidad).
 
 **Tarjetas (debajo del hero)**
-1. **Cobras completo** — «Recibes el total de tu venta, menos la comisión, en una sola liquidación.»
-2. **Sin deuda para ti** — «No es un préstamo para tu negocio. El riesgo de impago de tus clientes no recae en ti*.» <br>*Según contrato.
+1. **Cobras de una vez** — «Recibes el total de tu venta, menos la comisión, en una sola liquidación.»
+2. **No es un préstamo** — «No es un préstamo para tu negocio. Las condiciones sobre impagos, devoluciones y contracargos se definen en tu contrato.» (no promete ausencia de recurso mientras siga abierto el pendiente 4 / BNPL-07)
 3. **Tu cliente elige cuotas** — «Tu cliente paga su compra en cuotas.»
 
 **Cómo funciona**
