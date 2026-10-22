@@ -2,7 +2,16 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/.turbo/**', '**/.next/**'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.turbo/**',
+      '**/.next/**',
+      // Copia literal de la portada previa. No se compila: sus imports viven en otra rama.
+      'apps/landing/referencia/**',
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -14,6 +23,11 @@ export default tseslint.config(
       eqeqeq: ['error', 'always'],
       'no-console': ['error', { allow: ['error'] }],
     },
+  },
+  {
+    // Next lo reescribe en cada build (`reference path` a .next/types/routes.d.ts).
+    files: ['**/next-env.d.ts'],
+    rules: { '@typescript-eslint/triple-slash-reference': 'off' },
   },
   {
     // CLIs y scripts pueden escribir a stdout

@@ -9,7 +9,7 @@ Garantizar que ninguna dependencia (directa o **transitiva**) imponga obligacion
 ## 2. Clasificación
 
 - **Permitidas** (uso libre, salvo ambigüedad en el manifest): `MIT`, `MIT-0`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `0BSD`, `CC0-1.0`, `Unlicense`, `BlueOak-1.0.0`.
-- **Restringidas — requieren decisión humana ANTES de producción/release**: `MPL-2.0`, `EPL-2.0`, toda la familia `LGPL-*` (copyleft débil / scoped a archivo), `CC-BY-*` (atribución en datos), `Python-2.0`, `Artistic-2.0`, licencias duales ambiguas y cualquier copyleft débil equivalente.
+- **Restringidas — requieren decisión humana ANTES de producción/release**: `MPL-2.0`, `EPL-2.0`, toda la familia `LGPL-*` (copyleft débil / scoped a archivo), `CC-BY-*` (atribución en datos), `Python-2.0`, `Artistic-2.0`, `OFL-1.1` (fuentes tipográficas: aviso y texto de licencia al redistribuir), licencias duales ambiguas y cualquier copyleft débil equivalente.
 - **Prohibidas para producción/release sin aprobación legal explícita**: familia `GPL-*`, `AGPL-*`, `SSPL`, `BUSL`, `Commons Clause`, licencias no comerciales (`CC-BY-NC-*`, "NonCommercial"), licencias que impongan abrir el producto completo, propietarias no autorizadas, `UNLICENSED` y paquetes **sin licencia verificable**.
 - **Desconocidas**: licencia vacía, `UNKNOWN`, custom o expresión SPDX no parseable → se tratan como bloqueantes del gate (fallan el check) hasta clasificarse.
 
