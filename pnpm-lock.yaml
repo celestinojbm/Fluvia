@@ -6,6 +6,9 @@ settings:
 
 overrides:
   postcss@8.4.31: ^8.5.10
+  tinypool@<2.1.2: ^2.1.2
+  source-map-js@<1.2.2: ^1.2.2
+  vite@>=7 <7.3.7: ^7.3.7
 
 importers:
 
@@ -75,8 +78,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/webhooks
       fastify:
-        specifier: ^5.2.0
-        version: 5.9.0
+        specifier: ^5.12.2
+        version: 5.12.7
       redis:
         specifier: 6.1.0
         version: 6.1.0
@@ -132,7 +135,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^4.3.2
-        version: 4.7.0(vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0))
+        version: 4.7.0(vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0))
       axe-core:
         specifier: ^4.10.0
         version: 4.12.1
@@ -181,7 +184,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^4.3.2
-        version: 4.7.0(vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0))
+        version: 4.7.0(vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0))
       axe-core:
         specifier: ^4.10.0
         version: 4.12.1
@@ -1627,7 +1630,7 @@ packages:
     resolution: {integrity: sha512-gUu9hwfWvvEDBBmgtAowQCojwZmJ5mcLn3aufeCsitijs3+f2NsrPtlAWIR6OPiqljl96GVCUbLe0HyqIpVaoA==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
-      vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
+      vite: ^7.3.7
 
   '@vitest/expect@3.2.6':
     resolution: {integrity: sha512-1+7q9BtaKzEmO+fmNT3kYvoNn5Y71XWAx2Q5HRim4tTVRQVRv4uJFAQ5FbK0OPUeNP/WmVCpxYxoJdvuHVjzBQ==}
@@ -1636,7 +1639,7 @@ packages:
     resolution: {integrity: sha512-EZOrpDbkKotFAP7wPAQV1UIyoGOk4oX7ynWhBhLB7v+meMHbQhU16oPpIYGTTe4oFlhpryGpgpcZP/sin3hYuw==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^5.0.0 || ^6.0.0 || ^7.0.0-0
+      vite: ^7.3.7
     peerDependenciesMeta:
       msw:
         optional: true
@@ -1970,6 +1973,9 @@ packages:
   fast-json-stringify@6.4.0:
     resolution: {integrity: sha512-ibRCQ0GZKJIQ+P3Et1h0LhPgp3PMTYk0MH8O+kW3lNYsvmaQww5Nn3f1jf73Q0jR1Yz3a1CDP4/NZD3vOajWJQ==}
 
+  fast-json-stringify@7.1.2:
+    resolution: {integrity: sha512-qGXObwtgxbn4CZM64EpHj+w31DnQ1XYtwnJL6eaWwLB00O8huNReY40lF3YP72PIUPv9TBYwvOXYvQvMNm1ekw==}
+
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
@@ -1979,8 +1985,11 @@ packages:
   fast-uri@3.1.8:
     resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
-  fastify@5.9.0:
-    resolution: {integrity: sha512-VMS5lE0zj+MZlJpQa3Qv5iGjfun0H2N7VRgoBwpcTNQ2bdIQpv7fDpb+HGteGbicBsGkzGS+X+hdx9mmrfWuHQ==}
+  fast-uri@4.2.3:
+    resolution: {integrity: sha512-I1PXwP5eAhlNlcdpjt9CgB59op2ZvZfxw+BkqGFVIUOgNpCVTcTqp3HhTX7brxj5vsip+nSY4nTvff+eIA76hg==}
+
+  fastify@5.12.7:
+    resolution: {integrity: sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -2401,6 +2410,9 @@ packages:
   process-warning@5.0.0:
     resolution: {integrity: sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==}
 
+  process-warning@5.1.1:
+    resolution: {integrity: sha512-oCkNVj4OKnKEcocVBcDfiIugN1/cE6rgfT3nCtzeqZPA8+rIxMaQ0xXzIkGP8Gj2qUaP1UR7uhJ1VD8lUCpzCg==}
+
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
@@ -2522,8 +2534,8 @@ packages:
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
   split2@4.2.0:
@@ -2580,9 +2592,9 @@ packages:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
 
-  tinypool@1.1.1:
-    resolution: {integrity: sha512-Zba82s87IFq9A9XmjiX5uZA/ARWDrB03OHlq+Vw1fSdt0I+4/Kutwy8BP4Y/y/aORMo61FQ0vIb5j44vSo5Pkg==}
-    engines: {node: ^18.0.0 || >=20.0.0}
+  tinypool@2.2.0:
+    resolution: {integrity: sha512-jBrmx4lYmaC9k/mgPbylxs7kBUxHtD8256up+HjLaDFfXScKJQyil+SWXSvhAtT7XHo+yTVlpB81PGmHP8oLSQ==}
+    engines: {node: ^20.0.0 || >=22.0.0}
 
   tinyrainbow@2.0.0:
     resolution: {integrity: sha512-op4nsTR47R6p0vMUUoYl/a+ljLFVtlfaXkLQmqfLR1qHma1h/ysYk4hEXZ880bf2CYgTskvTa/e196Vd5dDQXw==}
@@ -2662,8 +2674,8 @@ packages:
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
 
-  vite@7.3.6:
-    resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
+  vite@7.3.7:
+    resolution: {integrity: sha512-AHEzTORMbi7/7aXp7w7KZ5+DCUdSeLsJz0grY8xHpc9DHdYb0vQu6DqJfm2tOw3gDExNgPgnJTXxM6syYFHaCA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -3567,7 +3579,7 @@ snapshots:
       '@typescript-eslint/types': 8.62.1
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react@4.7.0(vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0))':
+  '@vitejs/plugin-react@4.7.0(vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
@@ -3575,7 +3587,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 7.3.6(@types/node@22.20.0)(tsx@4.23.0)
+      vite: 7.3.7(@types/node@22.20.0)(tsx@4.23.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3587,13 +3599,13 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@3.2.6(vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0))':
+  '@vitest/mocker@3.2.6(vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0))':
     dependencies:
       '@vitest/spy': 3.2.6
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.6(@types/node@22.20.0)(tsx@4.23.0)
+      vite: 7.3.7(@types/node@22.20.0)(tsx@4.23.0)
 
   '@vitest/pretty-format@3.2.6':
     dependencies:
@@ -3937,6 +3949,15 @@ snapshots:
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
+  fast-json-stringify@7.1.2:
+    dependencies:
+      '@fastify/merge-json-schemas': 0.2.1
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      fast-uri: 4.2.3
+      json-schema-ref-resolver: 3.0.0
+      rfdc: 1.4.1
+
   fast-levenshtein@2.0.6: {}
 
   fast-querystring@1.1.2:
@@ -3945,7 +3966,9 @@ snapshots:
 
   fast-uri@3.1.8: {}
 
-  fastify@5.9.0:
+  fast-uri@4.2.3: {}
+
+  fastify@5.12.7:
     dependencies:
       '@fastify/ajv-compiler': 4.0.5
       '@fastify/error': 4.2.0
@@ -3953,11 +3976,11 @@ snapshots:
       '@fastify/proxy-addr': 5.1.0
       abstract-logging: 2.0.1
       avvio: 9.2.0
-      fast-json-stringify: 6.4.0
+      fast-json-stringify: 7.1.2
       find-my-way: 9.9.0
       light-my-request: 6.6.0
       pino: 9.14.0
-      process-warning: 5.0.0
+      process-warning: 5.1.1
       rfdc: 1.4.1
       secure-json-parse: 4.1.0
       semver: 7.8.5
@@ -4344,7 +4367,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.19
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
 
@@ -4369,6 +4392,8 @@ snapshots:
   process-warning@4.0.1: {}
 
   process-warning@5.0.0: {}
+
+  process-warning@5.1.1: {}
 
   punycode@2.3.1: {}
 
@@ -4516,7 +4541,7 @@ snapshots:
     dependencies:
       atomic-sleep: 1.0.0
 
-  source-map-js@1.2.1: {}
+  source-map-js@1.2.2: {}
 
   split2@4.2.0: {}
 
@@ -4560,7 +4585,7 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.5)
       picomatch: 4.0.5
 
-  tinypool@1.1.1: {}
+  tinypool@2.2.0: {}
 
   tinyrainbow@2.0.0: {}
 
@@ -4638,7 +4663,7 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.3.6(@types/node@22.20.0)(tsx@4.23.0)
+      vite: 7.3.7(@types/node@22.20.0)(tsx@4.23.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4653,7 +4678,7 @@ snapshots:
       - tsx
       - yaml
 
-  vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0):
+  vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0):
     dependencies:
       esbuild: 0.28.1
       fdir: 6.5.0(picomatch@4.0.5)
@@ -4670,7 +4695,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
-      '@vitest/mocker': 3.2.6(vite@7.3.6(@types/node@22.20.0)(tsx@4.23.0))
+      '@vitest/mocker': 3.2.6(vite@7.3.7(@types/node@22.20.0)(tsx@4.23.0))
       '@vitest/pretty-format': 3.2.6
       '@vitest/runner': 3.2.6
       '@vitest/snapshot': 3.2.6
@@ -4686,9 +4711,9 @@ snapshots:
       tinybench: 2.9.0
       tinyexec: 0.3.2
       tinyglobby: 0.2.17
-      tinypool: 1.1.1
+      tinypool: 2.2.0
       tinyrainbow: 2.0.0
-      vite: 7.3.6(@types/node@22.20.0)(tsx@4.23.0)
+      vite: 7.3.7(@types/node@22.20.0)(tsx@4.23.0)
       vite-node: 3.2.4(@types/node@22.20.0)(tsx@4.23.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
