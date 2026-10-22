@@ -52,6 +52,7 @@ const RESTRICTED = new Set([
   'CC-BY-3.0',
   'Python-2.0',
   'Artistic-2.0',
+  'OFL-1.1',
 ]);
 const PROHIBITED_PATTERNS = [
   /^GPL-/i,
@@ -94,7 +95,10 @@ export function classify(expr) {
 
 function licensesJson(prodOnly) {
   const cmd = `pnpm licenses list ${prodOnly ? '--prod ' : ''}--json`;
-  return { cmd, data: JSON.parse(execSync(cmd, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }) || '{}') };
+  return {
+    cmd,
+    data: JSON.parse(execSync(cmd, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }) || '{}'),
+  };
 }
 
 function bucketize(data) {
@@ -111,7 +115,9 @@ function bucketize(data) {
 
 function loadExceptions() {
   try {
-    return JSON.parse(readFileSync('docs/compliance/license-exceptions.json', 'utf8')).exceptions ?? [];
+    return (
+      JSON.parse(readFileSync('docs/compliance/license-exceptions.json', 'utf8')).exceptions ?? []
+    );
   } catch {
     return [];
   }
@@ -133,7 +139,8 @@ const accepted = new Map(
   exceptions.filter((e) => e.status === 'aceptada').map((e) => [`${e.package}|${e.license}`, e])
 );
 
-const fmt = (list) => list.map((p) => `${p.name}@${p.versions.join(',')} [${p.license}]`).join('\n  ');
+const fmt = (list) =>
+  list.map((p) => `${p.name}@${p.versions.join(',')} [${p.license}]`).join('\n  ');
 
 // Renderiza una licencia RESTRINGIDA de producción en el reporte reflejando la decisión humana
 // vigente en license-exceptions.json (F6-DELTA-001): las ACEPTADAS muestran el bloque completo de la
@@ -160,7 +167,9 @@ function renderRestricted(p) {
   return lines.join('\n');
 }
 
-console.log(`Licencias transitivas — PRODUCCIÓN: ${prodB.total} paquetes · árbol completo: ${allB.total}`);
+console.log(
+  `Licencias transitivas — PRODUCCIÓN: ${prodB.total} paquetes · árbol completo: ${allB.total}`
+);
 console.log(`  permitidas(prod): ${prodB.buckets.permitida.length}`);
 let failures = 0;
 for (const tier of ['prohibida', 'desconocida']) {
@@ -188,10 +197,12 @@ if (report) {
   const date = new Date().toISOString().slice(0, 10);
   const summary = (b) =>
     Object.entries(
-      [...b.buckets.permitida, ...b.buckets.restringida, ...b.buckets.prohibida, ...b.buckets.desconocida].reduce(
-        (acc, p) => ((acc[p.license] = (acc[p.license] ?? 0) + 1), acc),
-        {}
-      )
+      [
+        ...b.buckets.permitida,
+        ...b.buckets.restringida,
+        ...b.buckets.prohibida,
+        ...b.buckets.desconocida,
+      ].reduce((acc, p) => ((acc[p.license] = (acc[p.license] ?? 0) + 1), acc), {})
     )
       .sort()
       .map(([l, n]) => `| ${l} | ${n} | ${classify(l)} |`)
@@ -261,7 +272,11 @@ Total: **${allB.total} paquetes** · fuera del tier permitido: ${[...allB.bucket
 }
 
 if (failures) {
-  console.error(`\nFAIL: ${failures} violación(es) de la política de licencias (docs/compliance/license-policy.md).`);
+  console.error(
+    `\nFAIL: ${failures} violación(es) de la política de licencias (docs/compliance/license-policy.md).`
+  );
   process.exit(1);
 }
-console.log(`OK: sin licencias prohibidas ni desconocidas en producción${strict ? ' (strict)' : ''}.`);
+console.log(
+  `OK: sin licencias prohibidas ni desconocidas en producción${strict ? ' (strict)' : ''}.`
+);
