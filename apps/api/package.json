@@ -40,12 +40,12 @@
     "@fluvia/reconciliation": "workspace:*",
     "@fluvia/webhooks": "workspace:*",
     "fastify": "^5.12.2",
-    "redis": "6.1.0",
+    "redis": "6.3.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vitest": "^4.1.12"
   }
