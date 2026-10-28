@@ -80,7 +80,7 @@ export function ContactForm() {
           defaultValue=""
         />
       </div>
-      <p id={`${id}-help`} className="text-xl leading-relaxed text-[var(--fl-ink-2)]">
+      <p id={`${id}-help`} className="text-[var(--fl-ink-2)]">
         Escríbenos si quieres hablar de tu comercio. Esta página no cobra.
       </p>
       <div>
@@ -90,7 +90,7 @@ export function ContactForm() {
         </Button>
       </div>
       {notice ? (
-        <p role="status" className="text-xl font-semibold text-[var(--fl-black)]">
+        <p role="status" className="font-semibold text-[var(--fl-black)]">
           {notice}
         </p>
       ) : null}

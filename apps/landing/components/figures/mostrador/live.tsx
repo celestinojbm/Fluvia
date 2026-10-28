@@ -172,7 +172,7 @@ export function MostradorLive() {
           />
         </div>
       </Plate>
-      <label className="mt-4 grid gap-2 text-xl font-extrabold tracking-[0.06em] text-[var(--fl-ink-2)] uppercase">
+      <label className="mt-4 grid gap-2 text-lg leading-snug font-extrabold tracking-[0.06em] text-[var(--fl-ink-2)] uppercase md:text-xl">
         Recorrido de la ficha
         <input
           ref={range}

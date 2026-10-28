@@ -22,9 +22,43 @@
   --radius-xl: 24px;
 }
 
+/* Portada: cuerpo 18px en móvil y 20px desde 768px. */
 body {
-  font-size: 1.25rem;
-  line-height: 1.55;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  body {
+    font-size: 1.25rem;
+  }
+}
+
+/* H1 52px–96px. H2 36px–56px. H3 entre el cuerpo y el H2. */
+.fl-h1 {
+  font-size: clamp(3.25rem, 6.67vw, 6rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+.fl-h2 {
+  font-size: clamp(2.25rem, 1.5rem + 2.2vw, 3.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.fl-h3 {
+  font-size: clamp(1.75rem, 1rem + 1.4vw, 2.25rem);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+
+.fl-credit {
+  color: var(--fl-credit);
 }
 
 @utility sr-only {
@@ -46,8 +80,14 @@ body {
 .mostrador-card .iso-legend {
   gap: 0.75rem;
   margin-top: 1rem;
-  font-size: 1.25rem;
-  line-height: 1.5;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  .mostrador-card .iso-legend {
+    font-size: 1.25rem;
+  }
 }
 
 .mostrador-card .iso-plate {
