@@ -118,3 +118,13 @@ graph TD
 ```
 
 Regla §49 respetada: idempotencia (F2-09) precede a la exposición de la API financiera mutante (F3-02).
+
+## Venezuela → Colombia (ver docs/product/ROADMAP-VE-CO.md)
+- #82 [P0] Análisis legal VE (bloqueante) — enlaza BNPL-07 (PR #81)
+- #83 [P0] Tasa BCV diaria — enlaza BNPL-09 (PR #81)
+- #84 [P0] Multimoneda en modelo de datos
+- #85 [P1] Pago Móvil y transferencias
+- #86 [P1] KYC VE
+- #87 [P1] i18n es-VE/es-CO
+- #88 [P2] Colombia/COP
+- Bloqueos Legal (dependen de BNPL-07, ver docs/legal/RIESGOS-VE.md): #90 SDN, #91 kill switch, #92 bloqueo comercios Gobierno, #93 moneda contrato≠pago, #94 tasa BCV por cuota, #95 mora apagada/sin cobros al cliente
