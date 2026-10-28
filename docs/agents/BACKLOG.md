@@ -78,6 +78,7 @@ Proveedor real (Fase 5 — país ya decidido: Colombia; bloqueada por la verific
 
 ### F5.0 legal/compliance research (docs)
 
+- **Conservada para la fase Colombia** (2026-10-22, #15 actualizada: Venezuela primero; la revisión legal de Venezuela es BNPL-07).
 - **Estado: EJECUTADO A NIVEL DOCUMENTAL** (decisión #30, 2026-07-11). Paquete `docs/compliance/f5-0-legal-research.md` + `legal-questions-checklist.md` con fuentes oficiales (fecha de consulta 2026-07-11) y estado epistémico por afirmación; `jurisdiction-matrix.md` con columna «Verificación» — **ninguna fila cerrada legalmente**. **Sin conclusiones legales.** Salida: llevar el checklist a un abogado colombiano (decisión humana — **pendiente y NO bloquea F6.5**). **F5.1–F5.4 siguen bloqueadas**; F5.0 no cambia runtime ni gates; sin proveedor real; producción/live/sandbox compartido bloqueados; freeze #24 vigente.
 
 ### F6.5 — Product Sandbox Completion (plan)
@@ -118,3 +119,35 @@ graph TD
 ```
 
 Regla §49 respetada: idempotencia (F2-09) precede a la exposición de la API financiera mutante (F3-02).
+
+## Modelo BNPL (2026-10-22, borrador — ver `docs/product/MODELO.md`)
+
+Sandbox cerrado; cada ítem requiere autorización individual. Sin dinero real ni socio real.
+
+| ID | Título | Dominio | Deps | Riesgo | Talla | CA / Pruebas |
+|----|--------|---------|------|--------|-------|--------------|
+| BNPL-01 | Motor de cuotas: plan de N cuotas (condiciones de interés y mora pendientes de BNPL-07), redondeo por mayor residuo, FSM de cuota en el motor | Producto/Ledger | F2, F3 | Alto | L | Σ cuotas = total; FSM con meta-test doc↔TS↔DDL |
+| BNPL-02 | Liquidación única al comercio (total − comisión) al aprobar la compra | Settlement | BNPL-01, F4 | Alto | M | Asientos balanceados; idempotente; independiente de las cuotas |
+| BNPL-03 | Socio financiero simulado: fondeo del adelanto, cuentas por socio, conciliación | Fondeo | BNPL-02 | Alto | L | Adelanto = fondeo; cuotas cobradas reembolsan al socio; cero drift |
+| BNPL-04 | Riesgo/scoring sandbox: límite por cliente, decisión en checkout, límites por comercio | Riesgo | BNPL-01 | Alto | M | Reglas deterministas; decisión auditada |
+| BNPL-05 | VES: montos en bolívares, tasa de referencia, cobro de cuotas por Pago Móvil simulado | Pagos | BNPL-01, #74 | Medio | M | Redondeos VES probados |
+| BNPL-06 | Checkout «Pagar en cuotas» del cliente y POS del comercio | Producto | BNPL-01..04, #73 | Medio | L | Copy con lemas + «Próximamente» |
+| BNPL-07 | Revisión legal Venezuela (equivalente a F5.0 para VE) | Compliance | — | Alto | M | Ver detalle abajo |
+
+### BNPL-07 — Revisión legal Venezuela (detalle)
+
+- **Estado: PENDIENTE — solo documental, requiere autorización.** Equivalente a F5.0 para Venezuela; F5.0 (Colombia) se conserva para la fase 2.
+- **Alcance**: (1) BNPL y crédito al consumo (condiciones de interés y mora por validar): si es crédito, si se requiere licencia y quién es el acreedor; (2) rol del socio financiero (banco/fondo): estructura de fondeo, compra de cartera, regulación SUDEBAN/SUNAVAL según el caso; (3) Fluvia como intermediario: custodia, segregación de fondos y si recibe pagos de cuotas; (4) Pago Móvil y operación en VES/USD: régimen cambiario y tasa BCV; (5) protección al consumidor (precios justos, información de cuotas y mora); (6) KYC/AML/CFT (UNIF) para clientes y comercios; (7) protección de datos y scoring; (8) facturación y tributos (SENIAT) de la comisión al comercio y del adelanto.
+- **Entregables**: `docs/compliance/ve-legal-research.md` con fuentes oficiales (URL + fecha de consulta) y estado epistémico por afirmación; `docs/compliance/ve-legal-questions-checklist.md` para un abogado venezolano; fila Venezuela en `jurisdiction-matrix.md`.
+- **CA**: cada afirmación con fuente y estado; **ninguna conclusión legal definitiva**; preguntas abiertas listadas para el abogado.
+- **Límites**: no autoriza dinero real, `live`, socio real ni contacto con terceros; bloquea la salida de sandbox en Venezuela (no bloquea BNPL-01…06 en sandbox).
+
+## Roadmap BNPL — borrador (2026-10-22, vigilancia de competidores)
+
+Borrador; cada ítem requiere autorización individual. Sandbox cerrado.
+
+| ID | Título | Dominio | Deps | Notas |
+|----|--------|---------|------|-------|
+| BNPL-08 | **Links de pago y facturas en cuotas** para negocios sin e-commerce | Producto | BNPL-01, BNPL-06 | Reutiliza los payment links existentes (F6.5A-bis); la cuota se elige al pagar el link o la factura |
+| BNPL-09 | **Precios en USD y en Bs a tasa BCV** en el checkout | Pagos/FX | BNPL-05 | Mostrar ambos montos; tasa BCV con fecha y fuente; reglas de redondeo; en sandbox, tasa simulada |
+| BNPL-10 | **Verticales del piloto en Venezuela: colegios y agencias de viaje** | Go-to-market | BNPL-01..04, BNPL-07 | Matrículas/mensualidades escolares y paquetes de viaje en cuotas; sin contacto con comercios hasta autorización |
