@@ -172,11 +172,11 @@ export function MostradorLive() {
           />
         </div>
       </Plate>
-      <label className="mt-3 grid gap-1 text-xs font-extrabold tracking-[0.08em] text-[var(--fl-ink-2)] uppercase">
+      <label className="mt-4 grid gap-2 text-xl font-extrabold tracking-[0.06em] text-[var(--fl-ink-2)] uppercase">
         Recorrido de la ficha
         <input
           ref={range}
-          className="h-11 w-full accent-[var(--fl-black)]"
+          className="h-12 w-full accent-[var(--fl-black)]"
           type="range"
           min={HOME}
           max={END}

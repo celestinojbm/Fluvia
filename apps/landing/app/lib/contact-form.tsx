@@ -54,7 +54,7 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-3" noValidate>
+    <form onSubmit={onSubmit} className="grid gap-4" noValidate>
       <div className="grid gap-2">
         <Label htmlFor={id}>Tu correo</Label>
         <Input
@@ -80,7 +80,7 @@ export function ContactForm() {
           defaultValue=""
         />
       </div>
-      <p id={`${id}-help`} className="text-sm text-[var(--fl-ink-2)]">
+      <p id={`${id}-help`} className="text-xl leading-relaxed text-[var(--fl-ink-2)]">
         Escríbenos si quieres hablar de tu comercio. Esta página no cobra.
       </p>
       <div>
@@ -90,7 +90,7 @@ export function ContactForm() {
         </Button>
       </div>
       {notice ? (
-        <p role="status" className="text-sm font-semibold text-[var(--fl-black)]">
+        <p role="status" className="text-xl font-semibold text-[var(--fl-black)]">
           {notice}
         </p>
       ) : null}
