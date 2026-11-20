@@ -44,6 +44,8 @@ Estado: Activo · Índice ejecutivo; el detalle vive en los ADR (`../adr/`)
 |----|----------|---------|----------|
 | **PEND-004** | Política definitiva de credenciales `live` (¿qué gates exactos + quién autoriza la primera emisión?) | Nada hoy (creación bloqueada por código, decisión #19) | AUD-P2-003; `production-gates.md` |
 | **PEND-006** | Condiciones para abrir sandbox compartido a terceros | Exposición pública del sandbox | Requiere F1-04b + AUD-P2-015 |
+| **PEND-007** | **Mercado inicial: ¿mantener Colombia (decisión #15) o pasar a Venezuela?** El propietario evalúa Venezuela (2026-09-29). Hasta decidir, las superficies nuevas (POS sandbox) son neutrales: sin país/moneda/impuestos/reglas regulatorias nuevas; VES no existe en `@fluvia/money` | F5 (matriz jurisdiccional); cualquier regla local en UI | `docs/product/pos-sandbox.md` §5 |
+| **PEND-008** | **Exponente de COP**: `@fluvia/money` = 2 (ISO-4217); `formatAmount` de dashboard/checkout y el showroom (PR #47) = 0. Elegir una regla y alinear UI + seeds en un solo cambio | Coherencia de importes COP entre UI y dominio | `docs/product/pos-sandbox.md` §5; test `pos-logic.test.ts` |
 
 Resueltas: ~~PEND-001~~ → Colombia (decisión #15). ~~PEND-002~~ → fee 2% por transacción (decisión #25). ~~PEND-003~~ → aprobado (decisión #16). ~~PEND-005~~ → TOTP + backup codes (decisión #23).
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { formatAmount, MESSAGES, type Locale } from '../messages';
 import type { Merchant } from './api';
 import { CopyUrlButton } from './copy-button';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './csrf-header';
 
 /**
  * Acciones de ESCRITURA del plano de sesión sobre pagos (F6.5A-bis). Cada
@@ -26,7 +27,11 @@ async function postWithIdempotency(url: string, key: string, body: unknown): Pro
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'idempotency-key': key },
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': key,
+        [CSRF_HEADER]: CSRF_HEADER_VALUE,
+      },
       body: JSON.stringify(body),
     });
     let code: string | undefined;
