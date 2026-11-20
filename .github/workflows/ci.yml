@@ -97,12 +97,20 @@ jobs:
         # servidor 16 no reconoce, y `pg_restore --exit-on-error` aborta. Pasó al
         # cambiar ubuntu-latest a 26.04 (pg_dump 18 preinstalado). Se instala el
         # cliente 16 si hace falta y se antepone al PATH de los pasos siguientes.
+        # Ubuntu 26.04 ya NO trae postgresql-client-16 en sus repos: se instala
+        # desde el repo oficial PGDG (apt.postgresql.org), firmado con su clave.
         run: |
           major=$(pg_dump --version | awk '{print $NF}' | cut -d. -f1)
           echo "pg_dump major en PATH=$major"
           if [ "$major" != "16" ]; then
             if [ ! -x /usr/lib/postgresql/16/bin/pg_dump ]; then
-              sudo apt-get update && sudo apt-get install -y postgresql-client-16
+              . /etc/os-release
+              sudo install -d /usr/share/postgresql-common/pgdg
+              sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+                https://www.postgresql.org/media/keys/ACCC4CF8.asc
+              echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+                | sudo tee /etc/apt/sources.list.d/pgdg.list
+              sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
             fi
             echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           fi
