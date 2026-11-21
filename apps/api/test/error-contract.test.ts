@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
+import { z } from 'zod';
 import { loadConfig } from '@fluvia/config';
 import { createPool, type Pool } from '@fluvia/db';
 import { buildApp } from '../src/app.js';
@@ -159,6 +160,52 @@ describe('sobre estable en HTTP real (mensajes del catalogo, jamas err.message)'
     const res = await app.inject({ method: 'GET', url: '/x' });
     expect(res.json()).not.toHaveProperty('statusCode');
     expect(res.json()).toHaveProperty('error.code');
+    await app.close();
+  });
+
+  // Migración zod 3 → 4: los TEXTOS de los issues cambian entre versiones
+  // (p. ej. "Required" → "Invalid input: expected string, received undefined"),
+  // así que `details[].message` NO es contrato. Lo que sí es contrato: el
+  // código/tipo del catálogo, la forma { path, message } y que jamás se
+  // devuelva el VALOR enviado por el cliente (podría ser un PAN o un secreto).
+  it('a ZodError maps to validation_error with {path,message} details and never echoes input', async () => {
+    const app = buildApp({ config: loadConfig({}), appPool });
+    const Body = z
+      .object({
+        merchant_id: z.string().uuid(),
+        amount: z.number().int().positive(),
+        nested: z.object({ currency: z.enum(['COP', 'USD']) }).strict(),
+      })
+      .strict();
+    app.post('/zod-probe', async (req) => Body.parse(req.body));
+
+    // No usar un PAN: el card-data guard responde 422 antes de llegar a zod.
+    const probeValue = 'zod-probe-value-must-not-be-echoed';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/zod-probe',
+      payload: {
+        merchant_id: probeValue,
+        amount: -1,
+        nested: { currency: 'EUR' },
+        sneaky: probeValue,
+      },
+    });
+    expect(res.statusCode).toBe(ERROR_CATALOG.validation_error.status);
+    const body = res.json() as {
+      error: { code: string; type: string; details: { path: string; message: string }[] };
+    };
+    expect(body.error.code).toBe('validation_error');
+    expect(body.error.type).toBe('validation_error');
+    const paths = body.error.details.map((d) => d.path).sort();
+    // '' = issue a nivel raíz (clave desconocida rechazada por .strict())
+    expect(paths).toEqual(['', 'amount', 'merchant_id', 'nested.currency']);
+    for (const d of body.error.details) {
+      expect(Object.keys(d).sort()).toEqual(['message', 'path']);
+      expect(typeof d.message).toBe('string');
+      expect(d.message.length).toBeGreaterThan(0);
+    }
+    expect(JSON.stringify(body)).not.toContain(probeValue);
     await app.close();
   });
 });

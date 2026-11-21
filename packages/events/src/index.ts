@@ -39,7 +39,7 @@ export const EventEnvelopeSchema = z
     occurred_at: z.string().datetime({ offset: true }),
     producer: z.string().min(1),
     resource: z.object({ type: z.string().min(1), id: z.string().min(1) }).strict(),
-    data: z.record(z.unknown()),
+    data: z.record(z.string(), z.unknown()),
   })
   .strict();
 
