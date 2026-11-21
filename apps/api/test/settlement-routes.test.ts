@@ -213,4 +213,62 @@ describe('gestión de conciliación', () => {
     expect(list.statusCode).toBe(200);
     expect((list.json().data as Array<{ id: string }>).some((r) => r.id === reportId)).toBe(true);
   });
+
+  // Migración zod 3 → 4: zod 4 rechaza por defecto el offset sin dos puntos
+  // (`-0500`) y la hora sin segundos (`T00:00Z`), que zod 3 aceptaba. Los
+  // reportes de liquidación del proveedor suelen traer `-0500`
+  // (strftime('%z')), así que el contrato de entrada se mantiene.
+  it('keeps accepting zod-3 timestamp formats (compact offset, minute precision)', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/settlement_reports',
+      headers: auth(keyA),
+      payload: {
+        provider: 'mock',
+        currency: 'COP',
+        period_start: '2026-05-31T19:00:00-0500',
+        period_end: '2026-07-01T00:00Z',
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().period_start).toBe('2026-06-01T00:00:00.000Z');
+    expect(created.json().period_end).toBe('2026-07-01T00:00:00.000Z');
+
+    const added = await app.inject({
+      method: 'POST',
+      url: `/v1/settlement_reports/${created.json().id as string}/lines`,
+      headers: auth(keyA),
+      payload: {
+        lines: [
+          {
+            provider_ref: 'sref_compact_offset',
+            amount: 1_000,
+            settled_at: '2026-06-15T07:00:00-0500',
+          },
+          { provider_ref: 'sref_minute_precision', amount: 2_000, settled_at: '2026-06-15T12:00Z' },
+        ],
+      },
+    });
+    expect(added.statusCode).toBe(200);
+    expect(added.json().inserted).toBe(2);
+  });
+
+  it('still rejects timestamps without a zone (400 validation_error)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/settlement_reports',
+      headers: auth(keyA),
+      payload: {
+        provider: 'mock',
+        currency: 'COP',
+        period_start: '2026-06-01T00:00:00',
+        period_end: PERIOD_END,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation_error');
+    expect(res.json().error.details).toEqual([
+      { path: 'period_start', message: 'Invalid ISO datetime' },
+    ]);
+  });
 });

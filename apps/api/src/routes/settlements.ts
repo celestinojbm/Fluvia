@@ -6,6 +6,7 @@ import {
   type ReconciliationService,
   type SettlementReportDto,
 } from '@fluvia/reconciliation';
+import { isoDateTimeWithOffset } from '../iso-datetime.js';
 import type { Security } from '../security.js';
 
 /**
@@ -20,8 +21,8 @@ const CreateReportSchema = z
   .object({
     provider: z.string().trim().min(1).max(64),
     currency: z.string().regex(/^[A-Z]{3}$/),
-    period_start: z.string().datetime({ offset: true }),
-    period_end: z.string().datetime({ offset: true }),
+    period_start: isoDateTimeWithOffset(),
+    period_end: isoDateTimeWithOffset(),
   })
   .strict();
 
@@ -44,7 +45,7 @@ const LinesSchema = z
               .min(0)
               .refine(Number.isSafeInteger, 'fee out of safe range')
               .optional(),
-            settled_at: z.string().datetime({ offset: true }),
+            settled_at: isoDateTimeWithOffset(),
           })
           .strict()
       )
