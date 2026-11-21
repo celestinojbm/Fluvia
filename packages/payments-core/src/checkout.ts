@@ -4,11 +4,13 @@ import { buildEnvelope } from '@fluvia/events';
 import type { PaymentConfirmationService } from './confirmation.js';
 import {
   CheckoutSessionInvalidCustomerError,
+  CheckoutSessionInvalidRedirectUrlError,
   CheckoutSessionNotFoundError,
   InvalidStateTransitionError,
   PaymentIntentNotFoundError,
 } from './errors.js';
 import type { IntentStatus } from './fsm.js';
+import { isSafeRedirectUrl, safeRedirectUrlOrNull } from './redirect-url.js';
 import type { TxClient } from './service.js';
 
 /** Estados del intent en los que la página alojada aún puede iniciar el pago. */
@@ -143,8 +145,9 @@ export class CheckoutSessionService {
       customerId: r.customer_id,
       status: r.status,
       url: `${this.baseUrl}/c/${r.id}`,
-      successUrl: r.success_url,
-      cancelUrl: r.cancel_url,
+      // Saneado al leer: una fila previa a la regla jamás sale con `javascript:`.
+      successUrl: safeRedirectUrlOrNull(r.success_url),
+      cancelUrl: safeRedirectUrlOrNull(r.cancel_url),
       expiresAt: r.expires_at.toISOString(),
       completedAt: r.completed_at?.toISOString() ?? null,
       createdAt: r.created_at.toISOString(),
@@ -157,6 +160,15 @@ export class CheckoutSessionService {
     tenantId: string,
     input: CreateCheckoutSessionInput
   ): Promise<CreatedCheckoutSession> {
+    // Antes de tocar la BD: la página alojada navegará a estas URLs, así que
+    // solo se aceptan http(s) (anti-XSS por `javascript:` y similares).
+    if (input.successUrl !== undefined && !isSafeRedirectUrl(input.successUrl)) {
+      throw new CheckoutSessionInvalidRedirectUrlError('success_url');
+    }
+    if (input.cancelUrl !== undefined && !isSafeRedirectUrl(input.cancelUrl)) {
+      throw new CheckoutSessionInvalidRedirectUrlError('cancel_url');
+    }
+
     const intent = await c.query<{ status: IntentStatus }>(
       `SELECT status FROM payment_intents WHERE id = $1`,
       [input.paymentIntentId]
@@ -358,8 +370,8 @@ export class CheckoutSessionService {
       status,
       url: `${this.baseUrl}/c/${row.id}`,
       expiresAt: row.expires_at.toISOString(),
-      successUrl: row.success_url,
-      cancelUrl: row.cancel_url,
+      successUrl: safeRedirectUrlOrNull(row.success_url),
+      cancelUrl: safeRedirectUrlOrNull(row.cancel_url),
       paymentIntent: {
         id: row.payment_intent_id,
         status: row.intent_status,

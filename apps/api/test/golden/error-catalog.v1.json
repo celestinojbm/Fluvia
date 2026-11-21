@@ -249,6 +249,7 @@
     "DisputeNotFoundError": "not_found",
     "CheckoutSessionNotFoundError": "not_found",
     "CheckoutSessionInvalidCustomerError": "validation_error",
+    "CheckoutSessionInvalidRedirectUrlError": "validation_error",
     "PaymentLinkNotFoundError": "not_found",
     "PaymentLinkInvalidMerchantError": "validation_error",
     "WebhookEndpointNotFoundError": "not_found",

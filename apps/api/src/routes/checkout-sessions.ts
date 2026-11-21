@@ -8,6 +8,9 @@ import {
 import {
   CheckoutSessionNotFoundError,
   CheckoutSessionService,
+  MAX_REDIRECT_URL_LENGTH,
+  REDIRECT_URL_RULE_MESSAGE,
+  isSafeRedirectUrl,
   type CheckoutSessionDto,
   type HostedCheckoutView,
 } from '@fluvia/payments-core';
@@ -23,12 +26,22 @@ import type { Security } from '../security.js';
  * alojado (F3-05c).
  */
 
+/**
+ * `success_url`/`cancel_url`: la página alojada navega a ellas, así que solo se
+ * aceptan URLs absolutas http(s). `z.string().url()` por sí solo admite
+ * `javascript:alert(1)` (es una URL válida), de ahí el refine explícito.
+ */
+const RedirectUrl = z
+  .string()
+  .max(MAX_REDIRECT_URL_LENGTH)
+  .refine(isSafeRedirectUrl, { message: REDIRECT_URL_RULE_MESSAGE });
+
 const CreateSchema = z
   .object({
     payment_intent_id: z.string().uuid(),
     customer_id: z.string().uuid().optional(),
-    success_url: z.string().url().max(2000).optional(),
-    cancel_url: z.string().url().max(2000).optional(),
+    success_url: RedirectUrl.optional(),
+    cancel_url: RedirectUrl.optional(),
     expires_in_minutes: z.number().int().min(5).max(1440).optional(),
   })
   .strict();

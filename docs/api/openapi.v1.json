@@ -670,12 +670,16 @@
                   "success_url": {
                     "type": "string",
                     "format": "uri",
-                    "maxLength": 2000
+                    "maxLength": 2000,
+                    "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+                    "description": "URL absoluta http(s) sin credenciales, espacios ni caracteres de control. Cualquier otro esquema (javascript:, data:, vbscript:, file:…) se rechaza con 400 validation_error."
                   },
                   "cancel_url": {
                     "type": "string",
                     "format": "uri",
-                    "maxLength": 2000
+                    "maxLength": 2000,
+                    "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+                    "description": "URL absoluta http(s) sin credenciales, espacios ni caracteres de control. Cualquier otro esquema (javascript:, data:, vbscript:, file:…) se rechaza con 400 validation_error."
                   },
                   "expires_in_minutes": {
                     "type": "integer",

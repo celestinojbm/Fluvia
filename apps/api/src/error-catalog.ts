@@ -323,6 +323,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // checkout sessions F3-05b
   CheckoutSessionNotFoundError: 'not_found',
   CheckoutSessionInvalidCustomerError: 'validation_error',
+  CheckoutSessionInvalidRedirectUrlError: 'validation_error',
   // payment links F3-06
   PaymentLinkNotFoundError: 'not_found',
   PaymentLinkInvalidMerchantError: 'validation_error',

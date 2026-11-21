@@ -6,6 +6,7 @@ import { Money } from '@fluvia/money';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import {
   CheckoutSessionInvalidCustomerError,
+  CheckoutSessionInvalidRedirectUrlError,
   CheckoutSessionNotFoundError,
   CheckoutSessionService,
   InvalidStateTransitionError,
@@ -352,5 +353,59 @@ describe('confirm alojado (confirmByClientSecret, F3-05c-iii)', () => {
     await expect(
       service.confirmByClientSecret(s.id, s.clientSecret, 'tok_approve')
     ).rejects.toThrow(/without a confirmation service/);
+  });
+});
+
+describe('success_url / cancel_url (anti-XSS por esquema)', () => {
+  it('stores and returns http(s) URLs unchanged (DTO + hosted view)', async () => {
+    const s = await createSession(org, {
+      paymentIntentId: await newIntent(),
+      successUrl: 'https://shop.example.com/thanks?o=1',
+      cancelUrl: 'http://localhost:3000/cart',
+    });
+    expect(s.successUrl).toBe('https://shop.example.com/thanks?o=1');
+    expect(s.cancelUrl).toBe('http://localhost:3000/cart');
+    const view = await service.getByClientSecret(s.id, s.clientSecret);
+    expect(view.successUrl).toBe('https://shop.example.com/thanks?o=1');
+    expect(view.cancelUrl).toBe('http://localhost:3000/cart');
+  });
+
+  it.each([
+    ['successUrl', 'javascript:alert(1)'],
+    ['cancelUrl', 'javascript:alert(1)'],
+    ['successUrl', 'data:text/html,<script>alert(1)</script>'],
+    ['cancelUrl', 'vbscript:msgbox(1)'],
+    ['successUrl', 'java\tscript:alert(1)'],
+    ['cancelUrl', 'file:///etc/passwd'],
+  ] as const)('rejects %s = %j before writing anything', async (field, url) => {
+    const intentId = await newIntent();
+    await expect(createSession(org, { paymentIntentId: intentId, [field]: url })).rejects.toThrow(
+      CheckoutSessionInvalidRedirectUrlError
+    );
+    const rows = await ctx.admin.query(
+      `SELECT 1 FROM checkout_sessions WHERE payment_intent_id = $1`,
+      [intentId]
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it('a legacy row with a dangerous scheme never leaves the service (nulled on read)', async () => {
+    // Simula una fila guardada ANTES de la regla (escritura directa, sin el servicio).
+    const s = await createSession(org, { paymentIntentId: await newIntent() });
+    await ctx.admin.query(
+      `UPDATE checkout_sessions SET success_url = 'javascript:alert(1)',
+                                    cancel_url = 'JaVaScRiPt:alert(document.domain)'
+       WHERE id = $1`,
+      [s.id]
+    );
+    const view = await service.getByClientSecret(s.id, s.clientSecret);
+    expect(view.successUrl).toBeNull();
+    expect(view.cancelUrl).toBeNull();
+    const got = await service.get(org, s.id);
+    expect(got.successUrl).toBeNull();
+    expect(got.cancelUrl).toBeNull();
+    const listed = (await service.list(org, 100)).find((x) => x.id === s.id)!;
+    expect(listed.successUrl).toBeNull();
+    expect(listed.cancelUrl).toBeNull();
   });
 });

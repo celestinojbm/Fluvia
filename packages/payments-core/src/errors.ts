@@ -39,6 +39,16 @@ export class CheckoutSessionInvalidCustomerError extends PaymentsCoreError {
   }
 }
 
+/**
+ * La `success_url`/`cancel_url` no es una URL http(s) segura (p. ej. esquema
+ * `javascript:`). Defensa en profundidad: la API ya la rechaza al validar.
+ */
+export class CheckoutSessionInvalidRedirectUrlError extends PaymentsCoreError {
+  constructor(readonly field: 'success_url' | 'cancel_url') {
+    super(`${field} must be an absolute http(s) URL`);
+  }
+}
+
 export class PaymentLinkNotFoundError extends PaymentsCoreError {
   constructor() {
     super('Payment link not found');
