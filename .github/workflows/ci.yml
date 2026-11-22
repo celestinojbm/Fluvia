@@ -91,21 +91,38 @@ jobs:
         # consistente para el restore drill.
         run: pnpm --filter @fluvia/api run drill:worker-down
 
-      - name: Asegurar pg_dump 16+ (para el restore drill)
+      - name: Fijar pg_dump/pg_restore a la major del servidor (PG16) para el restore drill
+        # La major del cliente debe COINCIDIR con la del servidor, no solo ser
+        # >= 16: un dump de pg_dump 17+ emite `SET transaction_timeout`, que un
+        # servidor 16 no reconoce, y `pg_restore --exit-on-error` aborta. Pasó al
+        # cambiar ubuntu-latest a 26.04 (pg_dump 18 preinstalado). Se instala el
+        # cliente 16 si hace falta y se antepone al PATH de los pasos siguientes.
+        # Ubuntu 26.04 ya NO trae postgresql-client-16 en sus repos: se instala
+        # desde el repo oficial PGDG (apt.postgresql.org), firmado con su clave.
         run: |
           major=$(pg_dump --version | awk '{print $NF}' | cut -d. -f1)
-          echo "pg_dump major=$major"
-          if [ "$major" -lt 16 ]; then
-            sudo apt-get update && sudo apt-get install -y postgresql-client-16
+          echo "pg_dump major en PATH=$major"
+          if [ "$major" != "16" ]; then
+            if [ ! -x /usr/lib/postgresql/16/bin/pg_dump ]; then
+              . /etc/os-release
+              sudo install -d /usr/share/postgresql-common/pgdg
+              sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+                https://www.postgresql.org/media/keys/ACCC4CF8.asc
+              echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+                | sudo tee /etc/apt/sources.list.d/pgdg.list
+              sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
+            fi
+            echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           fi
-          pg_dump --version
 
       - name: Restore drill — Gate Restore (F6, TM-04)
         # Ensaya el runbook de recuperación de desastre sobre PG16 real:
         # pg_dump -Fc -> pg_restore --exit-on-error en base fresca -> invariantes +
         # paridad (checksums row-level) sobre la copia -> drift detectado + rebuild
         # -> RLS preservado. Corre tras la suite (BD poblada, como una copia real).
-        run: pnpm --filter @fluvia/api run drill:restore
+        run: |
+          pg_dump --version | grep -qE ' 16\.' || { echo "pg_dump no es 16: $(pg_dump --version)"; exit 1; }
+          pnpm --filter @fluvia/api run drill:restore
 
       - name: Load-chaos drill — resiliencia bajo carga + fallo (F6, load-soak-chaos)
         # Ataca las redes de seguridad de V2-R1 (pool acotado + cotas de tiempo por
