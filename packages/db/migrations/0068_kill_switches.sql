@@ -1,5 +1,5 @@
 -- ============================================================================
--- FLUVIA 0046_kill_switches.sql  (issue #91 — kill switch por país o contraparte)
+-- FLUVIA 0068_kill_switches.sql  (issue #91 — kill switch por país o contraparte)
 --
 -- Interruptor operativo para CORTAR el movimiento de dinero nuevo por:
 --   * country  — país del comercio (ISO 3166-1 alfa-2 de merchants.country);

@@ -6,7 +6,7 @@ import { PaymentsCoreError } from './errors.js';
 /**
  * Kill switch por país o contraparte (issue #91).
  *
- * El corte lo hace cumplir el MOTOR (migración 0046): un INSERT en
+ * El corte lo hace cumplir el MOTOR (migración 0068): un INSERT en
  * `payment_intents`, `payment_attempts` o `payouts` que toque un país, comercio
  * o proveedor con un interruptor activo falla con SQLSTATE {@link FLOW_SUSPENDED_SQLSTATE}.
  * Ningún servicio tiene que acordarse de comprobarlo, y ningún camino nuevo
@@ -19,7 +19,7 @@ import { PaymentsCoreError } from './errors.js';
  * usuarios finales: se opera por CLI (`kill-switch-cli.ts`).
  */
 
-/** SQLSTATE dedicado del guard (0046). "451": no disponible por razones legales. */
+/** SQLSTATE dedicado del guard (0068). "451": no disponible por razones legales. */
 export const FLOW_SUSPENDED_SQLSTATE = 'FV451';
 
 /** ¿El error viene del guard del motor? (pg propaga `code` = SQLSTATE). */

@@ -23,7 +23,7 @@ import {
 /**
  * #91 — kill switch por país o contraparte, contra PG real.
  *
- * El corte lo hace el MOTOR (0046): se prueba por los servicios reales (no por
+ * El corte lo hace el MOTOR (0068): se prueba por los servicios reales (no por
  * un flag en memoria) que crear intents, confirmar (attempts) y emitir payouts
  * falla con SQLSTATE FV451 mientras el interruptor está activo, que lo ya en
  * vuelo se sigue resolviendo, y que liberar restaura el flujo.

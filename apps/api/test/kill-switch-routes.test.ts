@@ -9,7 +9,7 @@ import { KillSwitchAdmin } from '@fluvia/payments-core';
 import { buildApp } from '../src/app.js';
 
 /**
- * #91 — el kill switch visto desde HTTP: el guard del motor (0046) llega al
+ * #91 — el kill switch visto desde HTTP: el guard del motor (0068) llega al
  * cliente como `403 flow_suspended` con el sobre del catálogo, sin filtrar el
  * motivo del corte, sin dejar filas a medias y SIN quemar la Idempotency-Key
  * (tras liberar, el mismo request con la misma key se procesa por primera vez).

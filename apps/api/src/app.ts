@@ -419,7 +419,7 @@ export function buildApp({
       );
     }
 
-    // #91: el guard del MOTOR (0046) corta el INSERT con un SQLSTATE dedicado;
+    // #91: el guard del MOTOR (0068) corta el INSERT con un SQLSTATE dedicado;
     // cualquier ruta que cree intents, attempts o payouts cae aquí sin que el
     // servicio tenga que conocer el kill switch.
     if (isFlowSuspendedDbError(err)) {

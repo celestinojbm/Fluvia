@@ -2,7 +2,7 @@
 
 **Disparadores**: revocación o enmienda de una licencia (p. ej. una GL de OFAC), dictamen legal desfavorable, de-risking de un socio/banco, sospecha de fraude o compromiso de un comercio, coincidencia en screening (#90). **Sev**: la decide quien ordena el corte; el corte en sí es una acción de contención, no una corrección de dinero.
 
-**Qué es** (issue #91, migración `0046_kill_switches.sql`): un interruptor que el **motor** (PostgreSQL) hace cumplir. Con un interruptor activo, todo `INSERT` en `payment_intents`, `payment_attempts` o `payouts` que toque el objetivo falla con SQLSTATE `FV451`, y la API responde `403 flow_suspended` (sin revelar el motivo). Ningún servicio tiene que comprobarlo: no hay forma de saltárselo desde el código de aplicación.
+**Qué es** (issue #91, migración `0068_kill_switches.sql`): un interruptor que el **motor** (PostgreSQL) hace cumplir. Con un interruptor activo, todo `INSERT` en `payment_intents`, `payment_attempts` o `payouts` que toque el objetivo falla con SQLSTATE `FV451`, y la API responde `403 flow_suspended` (sin revelar el motivo). Ningún servicio tiene que comprobarlo: no hay forma de saltárselo desde el código de aplicación.
 
 | Alcance    | Objetivo                                     | Corta                                                          |
 | ---------- | -------------------------------------------- | -------------------------------------------------------------- |

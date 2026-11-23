@@ -213,7 +213,7 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
     expect(res.rows).toEqual([]);
   });
 
-  it('#91: NO fluvia_% role holds any privilege on kill_switches nor EXECUTE on its guard (0046)', async () => {
+  it('#91: NO fluvia_% role holds any privilege on kill_switches nor EXECUTE on its guard (0068)', async () => {
     // Activar/liberar es exclusivo del plano de plataforma (pool admin + auditoría);
     // el guard es SECURITY DEFINER y solo lo invocan los triggers.
     const res = await ctx.admin.query(`
