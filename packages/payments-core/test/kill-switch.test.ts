@@ -11,6 +11,7 @@ import {
   KillSwitchAlreadyReleasedError,
   KillSwitchNotFoundError,
   KillSwitchUnknownMerchantError,
+  KillSwitchUnknownTenantError,
   MockPaymentProvider,
   PaymentConfirmationService,
   PaymentIntentService,
@@ -70,7 +71,7 @@ afterAll(async () => {
   await ctx.close();
 });
 
-async function engage(scope: 'country' | 'merchant' | 'provider', target: string) {
+async function engage(scope: 'country' | 'merchant' | 'provider' | 'tenant', target: string) {
   const res = await admin.engage({ scope, target, reason: `test ${scope}`, actorId: OPS });
   engaged.push(res.killSwitch.id);
   return res;
@@ -196,6 +197,94 @@ describe('guard del motor: qué corta', () => {
     await engage('merchant', m);
     const payouts = new PayoutService(ctx.app, posting, namedProvider(uniqueProvider()));
     await expectSuspended(payouts.create(org, { merchantId: m, amount: 1_000n, currency: 'COP' }));
+  });
+});
+
+describe('revisión PR #104: huecos del corte', () => {
+  it('payout `requested` ANTES del corte: execute/re-drive NO lo envía al banco (falla limpio)', async () => {
+    const { org, m } = await scenario();
+    await seedAvailable(org, m, 40_000);
+    const inner = namedProvider(uniqueProvider());
+    let submitted = 0;
+    const provider: PaymentProvider = {
+      ...inner,
+      submitPayout: (i) => {
+        submitted += 1;
+        return inner.submitPayout!(i);
+      },
+    };
+    const payouts = new PayoutService(ctx.app, posting, provider);
+    // Fase 1 antes del corte (el execute fire-and-forget nunca corrió: crash).
+    const p = await payouts.create(org, { merchantId: m, amount: 15_000n, currency: 'COP' });
+    await engage('merchant', m);
+
+    // Lo que haría el redriver (F4-07e) al vencer el lease.
+    await payouts.execute(org, p.id);
+
+    expect(submitted).toBe(0);
+    const after = await payouts.get(org, p.id);
+    expect(after.status).toBe('failed');
+    expect(after.failureCode).toBe('flow_suspended');
+    // Re-ejecutar es no-op (terminal): no queda en bucle para el redriver.
+    await payouts.execute(org, p.id);
+    expect(submitted).toBe(0);
+  });
+
+  it('el motor impide requested→in_transit aunque un servicio no lo sepa', async () => {
+    const { org, m } = await scenario();
+    await seedAvailable(org, m, 10_000);
+    const payouts = new PayoutService(ctx.app, posting, namedProvider(uniqueProvider()));
+    const p = await payouts.create(org, { merchantId: m, amount: 5_000n, currency: 'COP' });
+    await engage('merchant', m);
+    await expectSuspended(
+      ctx.admin.query(`UPDATE payouts SET status = 'in_transit' WHERE id = $1`, [p.id])
+    );
+  });
+
+  it('provider: el corte casa aunque el proveedor se registre con mayúsculas', async () => {
+    const { org, m } = await scenario();
+    const name = uniqueProvider();
+    const confirm = new PaymentConfirmationService(
+      ctx.app,
+      intents,
+      posting,
+      namedProvider(name.toUpperCase()),
+      ZERO_FEE_SCHEDULE
+    );
+    await engage('provider', name);
+    const i = await intents.create({ tenantId: org, merchantId: m, amount: cop(5_000) });
+    await expectSuspended(
+      withTenantTransaction(ctx.app, org, (c) => confirm.beginIn(c, org, i.id))
+    );
+  });
+
+  it('tenant: cortar la organización alcanza también a comercios creados DESPUÉS del corte', async () => {
+    const { org, m } = await scenario();
+    await engage('tenant', org.toUpperCase()); // normaliza a minúsculas
+    await expectSuspended(intents.create({ tenantId: org, merchantId: m, amount: cop(1_000) }));
+
+    // El atajo obvio para esquivar un corte por comercio: crear otro comercio.
+    const res = await ctx.admin.query<{ id: string }>(
+      `INSERT INTO merchants (tenant_id, name, country) VALUES ($1, $2, 'CO') RETURNING id`,
+      [org, `ks-shop-${randomUUID().slice(0, 8)}`]
+    );
+    await expectSuspended(
+      intents.create({ tenantId: org, merchantId: res.rows[0]!.id, amount: cop(1_000) })
+    );
+    // Otra organización no se ve afectada.
+    const other = await scenario();
+    const ok = await intents.create({
+      tenantId: other.org,
+      merchantId: other.m,
+      amount: cop(1_000),
+    });
+    expect(ok.status).toBe('created');
+  });
+
+  it('tenant: rechaza organizaciones inexistentes', async () => {
+    await expect(
+      admin.engage({ scope: 'tenant', target: randomUUID(), reason: 'x', actorId: OPS })
+    ).rejects.toBeInstanceOf(KillSwitchUnknownTenantError);
   });
 });
 

@@ -17,7 +17,7 @@ import { KillSwitchAdmin, type KillSwitchDto, type KillSwitchScope } from './kil
  */
 
 const USAGE = `uso: kill-switch <list|history|engage|release> [opciones]
-  engage   --scope country|merchant|provider --target <valor> --actor <uuid del operador> --reason <por qué>
+  engage   --scope country|merchant|tenant|provider --target <valor> --actor <uuid del operador> --reason <por qué>
   release  --id <uuid> --actor <uuid del operador> --reason <por qué>
   history  [--limit N]`;
 

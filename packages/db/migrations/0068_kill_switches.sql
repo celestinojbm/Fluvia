@@ -4,7 +4,10 @@
 -- Interruptor operativo para CORTAR el movimiento de dinero nuevo por:
 --   * country  — país del comercio (ISO 3166-1 alfa-2 de merchants.country);
 --   * merchant — un comercio concreto (contraparte);
---   * provider — un proveedor/socio/banco (payment_attempts.provider, payouts.provider).
+--   * provider — un proveedor/socio/banco (payment_attempts.provider, payouts.provider);
+--   * tenant   — una organización entera (todos sus comercios, incluidos los que
+--                cree DESPUÉS del corte: cortar solo el comercio se esquiva
+--                creando otro en la misma organización).
 --
 -- Motivación (docs de riesgo Venezuela, borrador): las licencias generales de
 -- OFAC se enmiendan o revocan con poca antelación y un socio puede hacer
@@ -15,7 +18,11 @@
 -- Qué corta (BEFORE INSERT, SQLSTATE dedicado FV451):
 --   * payment_intents  — no nacen cobros nuevos (API key, dashboard, payment links);
 --   * payment_attempts — no se envían intentos nuevos al proveedor (confirmar);
---   * payouts          — no sale dinero hacia el comercio.
+--   * payouts          — no sale dinero hacia el comercio: ni payouts nuevos ni
+--                        la EMISIÓN (requested -> in_transit) de los que se
+--                        pidieron antes del corte. En `requested` el banco jamás
+--                        fue contactado, así que no es "dinero en vuelo": sin
+--                        este corte el redriver (0035) los enviaría igual.
 -- Qué NO corta, a propósito:
 --   * la resolución de lo que YA está en vuelo (webhooks, conciliación, watchdog):
 --     son hechos ocurridos en el proveedor y el ledger debe reflejarlos;
@@ -36,7 +43,7 @@
 -- ----------------------------------------------------------------------------
 CREATE TABLE kill_switches (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  scope          TEXT NOT NULL CHECK (scope IN ('country', 'merchant', 'provider')),
+  scope          TEXT NOT NULL CHECK (scope IN ('country', 'merchant', 'provider', 'tenant')),
   target         TEXT NOT NULL,
   reason         TEXT NOT NULL CHECK (length(btrim(reason)) > 0 AND length(reason) <= 1000),
   -- Operador: id (uuid) del usuario de plataforma, igual que audit_events.actor_id.
@@ -49,7 +56,8 @@ CREATE TABLE kill_switches (
   -- que un 'co' o un uuid en mayúsculas sería un interruptor que no corta nada.
   CONSTRAINT kill_switches_target_format CHECK (
     (scope = 'country'  AND target ~ '^[A-Z]{2}$') OR
-    (scope = 'merchant' AND target ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') OR
+    (scope IN ('merchant', 'tenant')
+       AND target ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') OR
     (scope = 'provider' AND target ~ '^[a-z0-9][a-z0-9_.-]{0,63}$')
   ),
   -- Liberar exige SIEMPRE su propia razón; las dos columnas van juntas.
@@ -120,10 +128,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_country TEXT;
-  v_hit     RECORD;
+  v_country  TEXT;
+  v_tenant   TEXT;
+  v_provider TEXT := lower(btrim(p_provider));
+  v_hit      RECORD;
 BEGIN
-  SELECT upper(btrim(m.country::text)) INTO v_country FROM merchants m WHERE m.id = p_merchant_id;
+  SELECT upper(btrim(m.country::text)), m.tenant_id::text INTO v_country, v_tenant
+  FROM merchants m WHERE m.id = p_merchant_id;
 
   SELECT k.id, k.scope, k.target INTO v_hit
   FROM kill_switches k
@@ -131,7 +142,11 @@ BEGIN
     AND (
       (k.scope = 'country'  AND v_country IS NOT NULL AND k.target = v_country) OR
       (k.scope = 'merchant' AND k.target = p_merchant_id::text) OR
-      (k.scope = 'provider' AND p_provider IS NOT NULL AND k.target = p_provider)
+      (k.scope = 'tenant'   AND v_tenant IS NOT NULL AND k.target = v_tenant) OR
+      -- payment_attempts.provider / payouts.provider son TEXT libre: se compara
+      -- normalizado para que un proveedor registrado como 'Banco-X' no escape
+      -- de un corte 'banco-x'.
+      (k.scope = 'provider' AND v_provider IS NOT NULL AND k.target = v_provider)
     )
   ORDER BY k.engaged_at, k.id
   LIMIT 1;
@@ -182,7 +197,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  PERFORM fluvia_assert_flow_allowed(NEW.merchant_id, NEW.provider);
+  -- INSERT: payout nuevo. UPDATE: solo la EMISIÓN (requested -> in_transit),
+  -- que es el paso previo a contactar al banco. El resto de transiciones
+  -- (resolver in_transit/indeterminate, fallar un requested) sigue libre: o son
+  -- hechos del banco o devuelven los fondos al disponible.
+  IF TG_OP = 'INSERT'
+     OR (OLD.status = 'requested' AND NEW.status = 'in_transit') THEN
+    PERFORM fluvia_assert_flow_allowed(NEW.merchant_id, NEW.provider);
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -200,5 +222,5 @@ CREATE TRIGGER payment_attempts_kill_switch
   FOR EACH ROW EXECUTE FUNCTION fluvia_kill_switch_attempt_guard();
 
 CREATE TRIGGER payouts_kill_switch
-  BEFORE INSERT ON payouts
+  BEFORE INSERT OR UPDATE OF status ON payouts
   FOR EACH ROW EXECUTE FUNCTION fluvia_kill_switch_payout_guard();

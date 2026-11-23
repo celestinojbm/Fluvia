@@ -94,6 +94,7 @@ export {
   KillSwitchAlreadyReleasedError,
   KillSwitchNotFoundError,
   KillSwitchUnknownMerchantError,
+  KillSwitchUnknownTenantError,
   isFlowSuspendedDbError,
   type EngageKillSwitchInput,
   type EngageResult,

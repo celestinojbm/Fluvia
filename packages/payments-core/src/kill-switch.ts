@@ -31,7 +31,7 @@ export function isFlowSuspendedDbError(err: unknown): boolean {
   );
 }
 
-export const KILL_SWITCH_SCOPES = ['country', 'merchant', 'provider'] as const;
+export const KILL_SWITCH_SCOPES = ['country', 'merchant', 'provider', 'tenant'] as const;
 export type KillSwitchScope = (typeof KILL_SWITCH_SCOPES)[number];
 
 export interface KillSwitchDto {
@@ -55,6 +55,13 @@ export class KillSwitchNotFoundError extends PaymentsCoreError {
 export class KillSwitchAlreadyReleasedError extends PaymentsCoreError {
   constructor(readonly id: string) {
     super(`Kill switch ${id} was already released`);
+  }
+}
+
+/** La organización objetivo no existe: casi siempre es un id mal copiado. */
+export class KillSwitchUnknownTenantError extends PaymentsCoreError {
+  constructor(readonly tenantId: string) {
+    super(`Tenant ${tenantId} does not exist`);
   }
 }
 
@@ -90,6 +97,12 @@ const Target = z.discriminatedUnion('scope', [
   z.object({
     scope: z.literal('merchant'),
     target: z.string().trim().toLowerCase().uuid('merchant must be a merchant id (uuid)'),
+  }),
+  z.object({
+    // Organización entera: un corte por comercio se esquiva creando otro
+    // comercio en la misma organización; este alcanza también a los nuevos.
+    scope: z.literal('tenant'),
+    target: z.string().trim().toLowerCase().uuid('tenant must be an organization id (uuid)'),
   }),
   z.object({
     scope: z.literal('provider'),
@@ -182,6 +195,10 @@ export class KillSwitchAdmin {
           );
           if (!m.rows[0]) throw new KillSwitchUnknownMerchantError(target);
           details.merchantTenantId = m.rows[0].tenant_id;
+        }
+        if (scope === 'tenant') {
+          const t = await client.query(`SELECT 1 FROM organizations WHERE id = $1`, [target]);
+          if (t.rowCount === 0) throw new KillSwitchUnknownTenantError(target);
         }
 
         const inserted = await client.query<KillSwitchRow>(

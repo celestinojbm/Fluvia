@@ -2,13 +2,18 @@
 
 **Disparadores**: revocación o enmienda de una licencia (p. ej. una GL de OFAC), dictamen legal desfavorable, de-risking de un socio/banco, sospecha de fraude o compromiso de un comercio, coincidencia en screening (#90). **Sev**: la decide quien ordena el corte; el corte en sí es una acción de contención, no una corrección de dinero.
 
-**Qué es** (issue #91, migración `0068_kill_switches.sql`): un interruptor que el **motor** (PostgreSQL) hace cumplir. Con un interruptor activo, todo `INSERT` en `payment_intents`, `payment_attempts` o `payouts` que toque el objetivo falla con SQLSTATE `FV451`, y la API responde `403 flow_suspended` (sin revelar el motivo). Ningún servicio tiene que comprobarlo: no hay forma de saltárselo desde el código de aplicación.
+**Qué es** (issue #91, migración `0068_kill_switches.sql`): un interruptor que el **motor** (PostgreSQL) hace cumplir. Con un interruptor activo, todo `INSERT` en `payment_intents`, `payment_attempts` o `payouts` que toque el objetivo, y la emisión (`requested → in_transit`) de un payout pedido antes del corte, falla con SQLSTATE `FV451`, y la API responde `403 flow_suspended` (sin revelar el motivo). Ningún servicio tiene que comprobarlo: no hay forma de saltárselo desde el código de aplicación.
 
-| Alcance    | Objetivo                                     | Corta                                                          |
-| ---------- | -------------------------------------------- | -------------------------------------------------------------- |
-| `country`  | ISO 3166-1 alfa-2 de `merchants.country`     | intents, confirmaciones y payouts de comercios de ese país     |
-| `merchant` | id (uuid) del comercio                       | intents, confirmaciones y payouts de ese comercio              |
-| `provider` | nombre del proveedor (`payment_attempts.provider`) | confirmaciones (attempts nuevos) y payouts por ese proveedor |
+| Alcance    | Objetivo                                                                      | Corta                                                                                   |
+| ---------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `country`  | ISO 3166-1 alfa-2 de `merchants.country`                                      | intents, confirmaciones y payouts de comercios de ese país                              |
+| `merchant` | id (uuid) del comercio                                                        | intents, confirmaciones y payouts de ese comercio                                       |
+| `tenant`   | id (uuid) de la organización (`tenant_id`)                                    | todo lo anterior para **todos** sus comercios, incluidos los que cree después del corte |
+| `provider` | nombre del proveedor (`payment_attempts.provider`, sin distinguir mayúsculas) | confirmaciones (attempts nuevos) y payouts por ese proveedor                            |
+
+**Payouts pedidos antes del corte**: los que siguen en `requested` (el banco nunca fue contactado) **no** salen. Al ejecutarlos (fase 2 o redriver) pasan a `failed` con `failure_code = 'flow_suspended'` y los fondos siguen en el disponible del comercio. Tras liberar, el comercio tiene que pedirlos de nuevo. Los que ya están `in_transit`/`indeterminate` sí se resuelven: salieron antes del corte.
+
+**Corte por comercio vs. por organización**: una organización puede crear comercios nuevos desde la API. Si el motivo es la contraparte (sanciones, fraude), corta con `--scope tenant`; `--scope merchant` sirve para un comercio puntual de una organización legítima.
 
 **Qué NO corta, a propósito**:
 
@@ -48,5 +53,6 @@ Después: `kill-switch -- history --limit 20` y un cobro de prueba en sandbox de
 ## Lo que este runbook no resuelve
 
 - **Comunicación al comercio**: el `403 flow_suspended` es genérico a propósito (el motivo puede ser sensible). Avisar al comercio es una decisión de negocio/legal, no del operador.
-- **`merchants.status = 'frozen'`** existe en el esquema pero **no** se hace cumplir en el flujo de pagos; para suspender un comercio usa este kill switch (`--scope merchant`).
+- **`country` es el país declarado** por el comercio en el onboarding, no uno verificado: un comercio que declare otro país lo esquiva. Mientras no haya KYC que lo verifique, para contrapartes concretas usa `tenant`.
+- **`merchants.status = 'frozen'`** existe en el esquema pero **no** se hace cumplir en el flujo de pagos; para suspender un comercio usa este kill switch (`--scope merchant` o `--scope tenant`).
 - **Screening SDN** (#90) y **bloqueo de entidades del Gobierno/PDVSA** (#92): cuando existan, su resultado debe aplicarse con este mismo mecanismo.
