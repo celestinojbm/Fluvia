@@ -328,3 +328,98 @@ describe('GET /v1/checkout_sessions/:id/status (plano alojado, sin API key)', ()
     expect(badBody.json().error.code).toBe('validation_error');
   });
 });
+
+describe('success_url / cancel_url: solo http(s) (anti-XSS por esquema)', () => {
+  function create(payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'POST',
+      url: '/v1/checkout_sessions',
+      headers: { ...auth(keyA), 'idempotency-key': `cs-${randomUUID()}` },
+      payload,
+    });
+  }
+
+  it('accepts https/http URLs and echoes them in the session and the hosted view', async () => {
+    const res = await create({
+      payment_intent_id: await newIntent(),
+      success_url: 'https://shop.example.com/thanks',
+      cancel_url: 'http://localhost:3000/cart',
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.success_url).toBe('https://shop.example.com/thanks');
+    expect(body.cancel_url).toBe('http://localhost:3000/cart');
+
+    const hosted = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${body.id}/status`,
+      headers: { 'x-checkout-client-secret': body.client_secret },
+    });
+    expect(hosted.statusCode).toBe(200);
+    expect(hosted.json().success_url).toBe('https://shop.example.com/thanks');
+    expect(hosted.json().cancel_url).toBe('http://localhost:3000/cart');
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'JAVASCRIPT:alert(document.cookie)',
+    'javascript://shop.example.com/%0Aalert(1)',
+    'java\tscript:alert(1)',
+    ' javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'file:///etc/passwd',
+    'ftp://example.com/x',
+    'https://shop.example.com@evil.example.com/',
+    '/relative/path',
+    // Protocol-relative y variantes que WHATWG "repara" hacia otro host
+    '//evil.example.com/x',
+    '\\\\evil.example.com/x',
+    'https:\\\\evil.example.com/',
+    'http:/evil.example.com',
+    'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
+    'https://shop.example.com\u00a0/ok',
+  ])('rejects %j as success_url and as cancel_url (400, nothing created)', async (url) => {
+    for (const field of ['success_url', 'cancel_url']) {
+      const intentId = await newIntent();
+      const res = await create({ payment_intent_id: intentId, [field]: url });
+      expect(res.statusCode).toBe(400);
+      const err = res.json().error;
+      expect(err.code).toBe('validation_error');
+      expect(err.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: field })])
+      );
+      const rows = await adminPool.query(
+        `SELECT 1 FROM checkout_sessions WHERE payment_intent_id = $1`,
+        [intentId]
+      );
+      expect(rows.rowCount).toBe(0);
+    }
+  });
+
+  it('the hosted view never returns a dangerous URL stored before the rule', async () => {
+    const res = await create({ payment_intent_id: await newIntent() });
+    const { id, client_secret } = res.json();
+    await adminPool.query(
+      `UPDATE checkout_sessions SET success_url = 'javascript:alert(1)',
+                                    cancel_url = 'data:text/html,x' WHERE id = $1`,
+      [id]
+    );
+    const hosted = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}/status`,
+      headers: { 'x-checkout-client-secret': client_secret },
+    });
+    expect(hosted.statusCode).toBe(200);
+    expect(hosted.json().success_url).toBeNull();
+    expect(hosted.json().cancel_url).toBeNull();
+
+    const got = await app.inject({
+      method: 'GET',
+      url: `/v1/checkout_sessions/${id}`,
+      headers: auth(keyARead),
+    });
+    expect(got.json().success_url).toBeNull();
+    expect(got.json().cancel_url).toBeNull();
+  });
+});

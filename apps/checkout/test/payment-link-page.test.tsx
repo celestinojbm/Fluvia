@@ -73,6 +73,32 @@ describe('resolveLinkSession', () => {
     });
     expect(partial).toBeNull();
   });
+
+  // `redirect(target)` en /l/[id]: el destino debe ser SIEMPRE una ruta relativa
+  // del propio origen (`/c/…`). Un id/secret hostil devuelto por la API no puede
+  // convertirlo en `//host` (protocol-relative), `/\host` ni un esquema.
+  it.each([
+    '//evil.example.com',
+    '/\\evil.example.com',
+    'javascript:alert(1)',
+    '../../evil',
+    'x?y#z',
+  ])('keeps the redirect same-origin even for a hostile session id %j', async (sid) => {
+    const target = await resolveLinkSession({
+      apiBase: 'http://api',
+      linkId: 'lnk1',
+      fetchImpl: fakeFetch(200, { checkout_session_id: sid, client_secret: 'a#b/c' }),
+    });
+    expect(target).not.toBeNull();
+    expect(target!.startsWith('/c/')).toBe(true);
+    // Ni `/` ni `\` ni `?`/`#` extra sobreviven sin codificar tras `/c/`.
+    const [path, fragment] = target!.split('#');
+    expect(path!.slice(3)).not.toMatch(/[/\\?#]/);
+    expect(fragment).toBe(encodeURIComponent('a#b/c'));
+    expect(new URL(target!, 'https://checkout.fluvia.test').origin).toBe(
+      'https://checkout.fluvia.test'
+    );
+  });
 });
 
 describe('LinkUnavailable', () => {
