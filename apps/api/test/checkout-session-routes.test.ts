@@ -372,6 +372,13 @@ describe('success_url / cancel_url: solo http(s) (anti-XSS por esquema)', () => 
     'ftp://example.com/x',
     'https://shop.example.com@evil.example.com/',
     '/relative/path',
+    // Protocol-relative y variantes que WHATWG "repara" hacia otro host
+    '//evil.example.com/x',
+    '\\\\evil.example.com/x',
+    'https:\\\\evil.example.com/',
+    'http:/evil.example.com',
+    'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
+    'https://shop.example.com\u00a0/ok',
   ])('rejects %j as success_url and as cancel_url (400, nothing created)', async (url) => {
     for (const field of ['success_url', 'cancel_url']) {
       const intentId = await newIntent();
