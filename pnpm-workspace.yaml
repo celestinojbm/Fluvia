@@ -9,4 +9,6 @@ overrides:
   tinypool@<2.1.2: ^2.1.2
   # Transitivas (vitest/postcss) con advisories high — subir a versión parcheada
   source-map-js@<1.2.2: ^1.2.2
-  vite@>=7 <7.3.7: ^7.3.7
+  # >=7.3.7 (no ^7.3.7): el selector también reescribe el rango de vitest (^6||^7||^8);
+  # con ^7.3.7 excluía vite 8 (peer de @vitejs/plugin-react 6). Sigue vetando <7.3.7.
+  vite@>=7 <7.3.7: '>=7.3.7'

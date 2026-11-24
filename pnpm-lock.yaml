@@ -8,7 +8,7 @@ overrides:
   postcss@8.4.31: ^8.5.10
   tinypool@<2.1.2: ^2.1.2
   source-map-js@<1.2.2: ^1.2.2
-  vite@>=7 <7.3.7: ^7.3.7
+  vite@>=7 <7.3.7: '>=7.3.7'
 
 importers:
 
@@ -1536,7 +1536,7 @@ packages:
     resolution: {integrity: sha512-fKShNpKZzupWZuY0z7egydvL0sqW4INEZBEExMBMAa6izlENEVHwoXgdaTCaBZ5fwlr4xf2o1wXC83n9RpO+NA==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^7.3.7
+      vite: '>=7.3.7'
     peerDependenciesMeta:
       msw:
         optional: true
@@ -2524,7 +2524,7 @@ packages:
       '@vitest/ui': 4.1.12
       happy-dom: '*'
       jsdom: '*'
-      vite: ^7.3.7
+      vite: '>=7.3.7'
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
