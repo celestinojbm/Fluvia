@@ -38,11 +38,17 @@ const merchant = (name: string): Merchant => ({
   country: 'CO',
   defaultCurrency: 'COP',
   status: 'active',
+  stateAffiliation: 'none',
   createdAt: '2026-07-17T00:00:00.000Z',
 });
 
 const INITIAL_ORG = { id: 'org-1', name: 'Mi Empresa', slug: 'mi-empresa' };
-const INITIAL_MERCHANT = { name: 'Mi Tienda', country: 'CO', defaultCurrency: 'COP' };
+const INITIAL_MERCHANT = {
+  name: 'Mi Tienda',
+  country: 'CO',
+  defaultCurrency: 'COP',
+  stateAffiliation: 'none' as const,
+};
 
 function stubFetch(status: number, body: unknown) {
   const fn = vi.fn((_url: string, _init?: RequestInit) =>
@@ -190,7 +196,12 @@ describe('resolveMerchantState (0 / 1 / 2+ merchants)', () => {
   it('0 => Paso 2 vacio; 1 => prellenado; 2+ => onboarding no aplicable (sin seleccion)', () => {
     expect(resolveMerchantState([])).toEqual({ initialMerchant: null, notApplicable: false });
     expect(resolveMerchantState([merchant('Solo Uno')])).toEqual({
-      initialMerchant: { name: 'Solo Uno', country: 'CO', defaultCurrency: 'COP' },
+      initialMerchant: {
+        name: 'Solo Uno',
+        country: 'CO',
+        defaultCurrency: 'COP',
+        stateAffiliation: 'none',
+      },
       notApplicable: false,
     });
     expect(resolveMerchantState([merchant('Uno'), merchant('Dos')])).toEqual({
@@ -253,11 +264,13 @@ describe('OnboardingWizard — estados recuperados desde el servidor', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/orgs/org-1/onboarding/merchant');
-    // Payload = datos reales del servidor, no memoria del operador.
+    // Payload = datos reales del servidor, no memoria del operador (incluida
+    // la declaración #92 ya registrada: el replay la compara).
     expect(JSON.parse(String(init.body))).toEqual({
       name: 'Mi Tienda',
       country: 'CO',
       defaultCurrency: 'COP',
+      stateAffiliation: 'none',
     });
   });
 

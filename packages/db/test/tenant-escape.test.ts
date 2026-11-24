@@ -213,6 +213,32 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
     expect(res.rows).toEqual([]);
   });
 
+  it('#92: NO fluvia_% role holds any privilege on merchant_name_denylist nor EXECUTE on the merchant guards (0069)', async () => {
+    // La lista y congelar/descongelar son plano de plataforma (pool admin +
+    // auditoría); los guards son SECURITY DEFINER y solo los invocan triggers.
+    const res = await ctx.admin.query(`
+      SELECT r.rolname, p.privilege
+      FROM pg_roles r
+      CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p(privilege)
+      WHERE r.rolname LIKE 'fluvia\\_%'
+        AND has_table_privilege(r.oid, 'merchant_name_denylist', p.privilege)
+      UNION ALL
+      SELECT r.rolname, 'EXECUTE ' || f.fn
+      FROM pg_roles r
+      CROSS JOIN unnest(ARRAY[
+        'fluvia_merchant_name_denylisted(text)',
+        'fluvia_merchant_state_guard()',
+        'fluvia_assert_merchant_active(uuid)',
+        'fluvia_frozen_intent_guard()',
+        'fluvia_frozen_attempt_guard()',
+        'fluvia_frozen_payout_guard()'
+      ]) AS f(fn)
+      WHERE r.rolname LIKE 'fluvia\\_%'
+        AND has_function_privilege(r.oid, f.fn, 'EXECUTE')
+    `);
+    expect(res.rows).toEqual([]);
+  });
+
   it('F6 (revisión de seguridad): the app/worker roles hold NO write grant on users (0045)', async () => {
     // `users` no es tabla de credenciales pura (app tiene SELECT vía la política de
     // membresía), pero nunca debe escribirla: 0045 revoca la asimetría heredada de

@@ -25,6 +25,8 @@ export {
   SLUG_RE,
   type CreateOrganizationInput,
   type CreateOrganizationForUserInput,
+  STATE_AFFILIATIONS,
+  type StateAffiliation,
   type CreateMerchantInput,
   type UpdateMerchantInput,
   type CreateCustomerInput,
@@ -40,6 +42,9 @@ export {
   CustomerNotFoundError,
   OnboardingAlreadyCompletedError,
   MerchantOnboardingAlreadyCompletedError,
+  MerchantOnboardingBlockedError,
+  MERCHANT_ONBOARDING_BLOCKED_SQLSTATE,
+  isMerchantOnboardingBlockedDbError,
   OnboardingUserNotFoundError,
   OnboardingEmailNotVerifiedError,
 } from './errors.js';
@@ -76,3 +81,14 @@ export {
   backfillApiKeyPepperFp,
   type ApiKeyPepperStatus,
 } from './rotate-api-key-pepper.js';
+export {
+  MerchantRiskAdmin,
+  InvalidDenylistPatternError,
+  DenylistEntryNotFoundError,
+  DenylistEntryAlreadyRetiredError,
+  type MerchantRiskDto,
+  type DenylistEntryDto,
+  type ScreenFinding,
+  type ScreenResult,
+  type FreezeResult,
+} from './merchant-risk.js';

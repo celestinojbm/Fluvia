@@ -1,4 +1,5 @@
 import type { Org } from './api';
+import { isStateAffiliation, type StateAffiliationOption } from './state-affiliation';
 
 /**
  * RA-F65C2-EXT-003 — lecturas ESTRICTAS y fail-closed para `/onboarding`.
@@ -23,6 +24,8 @@ export interface OnboardingMerchant {
   name: string;
   country: string;
   defaultCurrency: string;
+  /** null: comercio legado sin declarar (o valor desconocido). */
+  stateAffiliation?: StateAffiliationOption | null;
 }
 
 interface ReadOptions {
@@ -114,6 +117,7 @@ export async function readMerchants(
       name?: unknown;
       country?: unknown;
       defaultCurrency?: unknown;
+      stateAffiliation?: unknown;
     } | null;
     if (
       !m ||
@@ -129,6 +133,7 @@ export async function readMerchants(
       name: m.name,
       country: m.country,
       defaultCurrency: m.defaultCurrency,
+      stateAffiliation: isStateAffiliation(m.stateAffiliation) ? m.stateAffiliation : null,
     });
   }
   return { ok: true, value: merchants };

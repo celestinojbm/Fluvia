@@ -296,7 +296,12 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'Tienda Uno', country: 'CO', defaultCurrency: 'COP' },
+      payload: {
+        name: 'Tienda Uno',
+        stateAffiliation: 'none',
+        country: 'CO',
+        defaultCurrency: 'COP',
+      },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
@@ -312,7 +317,12 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
 
   it('identical retry => 200 replayed:true, chart no-op, zero duplicate audit/merchant', async () => {
     const owner = await ownerWithOrg();
-    const payload = { name: 'Tienda Retry', country: 'CO', defaultCurrency: 'COP' };
+    const payload = {
+      name: 'Tienda Retry',
+      stateAffiliation: 'none',
+      country: 'CO',
+      defaultCurrency: 'COP',
+    };
     const first = await app.inject({
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
@@ -341,7 +351,12 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
     // crea por el servicio (commit) y el chart no se ejecuta.
     await identityService.ensureMerchantForOnboarding(
       owner.orgId,
-      { name: 'Tienda Recuperada', country: 'CO', defaultCurrency: 'COP' },
+      {
+        name: 'Tienda Recuperada',
+        stateAffiliation: 'none',
+        country: 'CO',
+        defaultCurrency: 'COP',
+      },
       { actorType: 'user', actorId: owner.userId, authMethod: 'session' }
     );
     expect(await chartAccountCount(owner.orgId)).toBe(0);
@@ -350,7 +365,12 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'Tienda Recuperada', country: 'CO', defaultCurrency: 'COP' },
+      payload: {
+        name: 'Tienda Recuperada',
+        stateAffiliation: 'none',
+        country: 'CO',
+        defaultCurrency: 'COP',
+      },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().replayed).toBe(true);
@@ -370,13 +390,13 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'Tienda Fija' },
+      payload: { name: 'Tienda Fija', stateAffiliation: 'none' },
     });
     const res = await app.inject({
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'Tienda Cambiada' },
+      payload: { name: 'Tienda Cambiada', stateAffiliation: 'none' },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('merchant_onboarding_already_completed');
@@ -388,19 +408,19 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/merchants`,
       headers: owner.headers,
-      payload: { name: 'General Uno' },
+      payload: { name: 'General Uno', stateAffiliation: 'none' },
     });
     await app.inject({
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/merchants`,
       headers: owner.headers,
-      payload: { name: 'General Dos' },
+      payload: { name: 'General Dos', stateAffiliation: 'none' },
     });
     const res = await app.inject({
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'General Uno' },
+      payload: { name: 'General Uno', stateAffiliation: 'none' },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('merchant_onboarding_already_completed');
@@ -413,7 +433,7 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${ownerA.orgId}/onboarding/merchant`,
       headers: ownerB.headers,
-      payload: { name: 'Intrusa' },
+      payload: { name: 'Intrusa', stateAffiliation: 'none' },
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error.code).toBe('not_found');
@@ -421,7 +441,7 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${randomUUID()}/onboarding/merchant`,
       headers: ownerB.headers,
-      payload: { name: 'Fantasma' },
+      payload: { name: 'Fantasma', stateAffiliation: 'none' },
     });
     expect(ghost.statusCode).toBe(404);
     expect(ghost.json().error.code).toBe('not_found');
@@ -434,7 +454,7 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: support.headers,
-      payload: { name: 'Sin Permiso' },
+      payload: { name: 'Sin Permiso', stateAffiliation: 'none' },
     });
     expect(denied.statusCode).toBe(403);
     expect(denied.json().error.code).toBe('insufficient_permissions');
@@ -443,7 +463,7 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: { authorization: 'Bearer fluvia_sk_test_deadbeef' },
-      payload: { name: 'Via Key' },
+      payload: { name: 'Via Key', stateAffiliation: 'none' },
     });
     expect(withKey.statusCode).toBe(401);
     expect(withKey.json().error.code).toBe('invalid_session');
@@ -455,7 +475,7 @@ describe('POST /v1/organizations/:orgId/onboarding/merchant (Paso B, plano tenan
       method: 'POST',
       url: `/v1/organizations/${owner.orgId}/onboarding/merchant`,
       headers: owner.headers,
-      payload: { name: 'Mala Moneda', defaultCurrency: 'XXX' },
+      payload: { name: 'Mala Moneda', stateAffiliation: 'none', defaultCurrency: 'XXX' },
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('validation_error');

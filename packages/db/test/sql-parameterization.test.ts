@@ -47,6 +47,8 @@ const ALLOWED_INTERPOLATIONS: Record<string, string> = {
   LINK_COLUMNS: 'lista de columnas constante',
   CASE_COLUMNS: 'lista de columnas constante',
   EVENT_COLUMNS: 'lista de columnas constante',
+  MERCHANT_RISK_COLUMNS: 'lista de columnas constante (#92, merchant-risk)',
+  DENYLIST_COLUMNS: 'lista de columnas constante (#92, merchant_name_denylist)',
   COLS: 'lista de columnas constante (case_adjustments)',
   // El SET de customers.update se arma desde una tupla LITERAL de campos
   // (`['email','name','phone','description']`) donde cada entrada es

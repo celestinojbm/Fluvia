@@ -77,6 +77,7 @@ export { PaymentConfirmationService, type ConfirmBeginResult } from './confirmat
 export { FlatBpsFeeSchedule, ZERO_FEE_SCHEDULE, type FeeSchedule } from './pricing.js';
 export { RefundService, type CreateRefundInput, type RefundDto } from './refunds.js';
 export { PayoutService, type CreatePayoutInput, type PayoutDto } from './payouts.js';
+export { MERCHANT_FROZEN_SQLSTATE, isMerchantFrozenDbError } from './merchant-frozen.js';
 export {
   DisputeService,
   type DisputeDto,

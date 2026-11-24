@@ -24,16 +24,24 @@ import {
 
 describe('identity schemas — contrato estable tras zod 4', () => {
   it('CreateMerchant applies CO/COP defaults only on create', () => {
-    expect(CreateMerchantSchema.parse({ name: 'Tienda Uno' })).toEqual({
+    expect(CreateMerchantSchema.parse({ name: 'Tienda Uno', stateAffiliation: 'none' })).toEqual({
       name: 'Tienda Uno',
+      stateAffiliation: 'none',
       country: 'CO',
       defaultCurrency: 'COP',
     });
     expect(
-      CreateMerchantSchema.parse({ name: 'Tienda Dos', country: 'MX', defaultCurrency: 'COP' })
-        .country
+      CreateMerchantSchema.parse({
+        name: 'Tienda Dos',
+        stateAffiliation: 'none',
+        country: 'MX',
+        defaultCurrency: 'COP',
+      }).country
     ).toBe('MX');
-    expect(CreateMerchantSchema.safeParse({ name: 'Tienda', country: 'col' }).success).toBe(false);
+    expect(
+      CreateMerchantSchema.safeParse({ name: 'Tienda', stateAffiliation: 'none', country: 'col' })
+        .success
+    ).toBe(false);
   });
 
   it('UpdateMerchant never injects defaults and rejects empty or unknown fields', () => {

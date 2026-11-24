@@ -115,7 +115,7 @@ describe('plano de dashboard: sesion + rol (RBAC)', () => {
       method: 'POST',
       url: `/v1/organizations/${orgId}/merchants`,
       headers: owner.headers,
-      payload: { name: 'Comercio Owner' },
+      payload: { name: 'Comercio Owner', stateAffiliation: 'none' },
     });
     expect(merchant.statusCode).toBe(201);
     expect(merchant.json().defaultCurrency).toBe('COP');
@@ -162,7 +162,7 @@ describe('plano de dashboard: sesion + rol (RBAC)', () => {
       method: 'POST',
       url: `/v1/organizations/${orgId}/merchants`,
       headers: developer.headers,
-      payload: { name: 'No Deberia' },
+      payload: { name: 'No Deberia', stateAffiliation: 'none' },
     });
     expect(denied.statusCode).toBe(403);
     expect(denied.json().error.code).toBe('insufficient_permissions');
@@ -209,7 +209,7 @@ describe('plano de integracion: API key + scopes', () => {
       method: 'POST',
       url: `/v1/organizations/${orgId}/merchants`,
       headers: owner.headers,
-      payload: { name: 'Comercio Integrado' },
+      payload: { name: 'Comercio Integrado', stateAffiliation: 'none' },
     });
 
     const created = await app.inject({
@@ -334,7 +334,7 @@ describe('audit log (F1-05)', () => {
       method: 'POST',
       url: `/v1/organizations/${orgId}/merchants`,
       headers: owner.headers,
-      payload: { name: 'Comercio Auditado' },
+      payload: { name: 'Comercio Auditado', stateAffiliation: 'none' },
     });
 
     const events = await app.inject({
@@ -384,7 +384,7 @@ describe('audit log (F1-05)', () => {
       method: 'POST',
       url: `/v1/organizations/${orgA}/merchants`,
       headers: ownerA.headers,
-      payload: { name: 'Solo En A' },
+      payload: { name: 'Solo En A', stateAffiliation: 'none' },
     });
     const eventsB = await app.inject({
       method: 'GET',

@@ -328,6 +328,8 @@ export interface Merchant {
   country: string;
   defaultCurrency: string;
   status: 'active' | 'frozen';
+  /** #92: afiliación estatal declarada; null en comercios legados. */
+  stateAffiliation?: 'none' | 'government' | 'state_owned' | null;
   createdAt: string;
 }
 

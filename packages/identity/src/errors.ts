@@ -76,6 +76,29 @@ export class OnboardingEmailNotVerifiedError extends IdentityError {
   }
 }
 
+/**
+ * #92 — el MOTOR (0069) rechazó el alta o la edición del comercio: afiliación
+ * estatal declarada o nombre en la lista de bloqueo de plataforma. El cliente
+ * recibe `merchant_onboarding_blocked` sin el motivo concreto.
+ */
+export class MerchantOnboardingBlockedError extends IdentityError {
+  constructor() {
+    super('Merchant cannot be onboarded or reactivated until the sanctions opinion (#92)');
+  }
+}
+
+/** SQLSTATE del guard de alta de comercios (0069). */
+export const MERCHANT_ONBOARDING_BLOCKED_SQLSTATE = 'FV452';
+
+/** true si err viene del guard de alta de comercios (0069). */
+export function isMerchantOnboardingBlockedDbError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === MERCHANT_ONBOARDING_BLOCKED_SQLSTATE
+  );
+}
+
 /** true si err es una violacion de unicidad de Postgres (23505), opcionalmente de un constraint concreto. */
 export function isUniqueViolation(err: unknown, constraint?: string): boolean {
   const e = err as { code?: string; constraint?: string } | null;

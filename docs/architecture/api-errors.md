@@ -50,6 +50,8 @@ Reglas duras (probadas por contract tests):
 
 Fuente de verdad: `error-catalog.ts` (la lista COMPLETA y autoritativa es el golden `error-catalog.v1.json`; este resumen no se mantiene exhaustivo). Códigos iniciales: `validation_error`, `invalid_json`, `bad_request`, `payload_too_large`, `unsupported_media_type`, `invalid_verification_token`, `reversal_note_required` · `invalid_credentials`, `invalid_session`, `invalid_api_key`, `invalid_signature` · `email_not_verified`, `insufficient_permissions`, `insufficient_scope`, `live_keys_disabled` · `not_found` · `email_taken`, `merchant_name_taken`, `organization_slug_taken`, `insufficient_balance`, `idempotency_conflict`, `already_reversed`, `cannot_reverse_reversal` · `account_locked` · `rate_limited` (reservado) · `internal_error`. Añadidos posteriores destacados: los 422 de dinero (`idempotency_key_reuse`, `refund_amount_exceeds_remaining`, `payout_amount_exceeds_balance`) y **`card_data_not_allowed`** (TM-06: el request aparenta traer PAN/CVV — Fluvia solo acepta tokens; rechazado en el borde antes de auth/validación).
 
+**#92 (comercios estatales y congelación):** `merchant_onboarding_blocked` (403: el motor rechaza el alta o la reactivación de un comercio declarado `government`/`state_owned` o con nombre en la lista de plataforma; no se dice cuál regla ni el patrón) y `merchant_frozen` (403: comercio congelado, sin intents, confirmaciones ni payouts nuevos; el motivo no se expone). Runbook: `docs/ops/runbooks/merchant-risk.md`.
+
 ## 5. Cómo añadir un error nuevo
 
 1. Clase de error en el paquete de dominio (mensaje interno libre: es para logs).

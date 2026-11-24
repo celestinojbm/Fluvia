@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { apiBase } from '../../../../../lib/api';
 import { assertTrustedMutationRequest } from '../../../../../lib/csrf';
+import { isStateAffiliation } from '../../../../../lib/state-affiliation';
 
 /**
  * Onboarding Paso B (F6.5C2): merchant inicial + chart. Proxy server-side
@@ -25,6 +26,8 @@ const MERCHANT_ERROR_STATUS: Record<string, number> = {
   validation_error: 400,
   invalid_session: 401,
   insufficient_permissions: 403,
+  // #92: afiliación estatal declarada o nombre bloqueado (sin motivo concreto).
+  merchant_onboarding_blocked: 403,
   not_found: 404,
   merchant_onboarding_already_completed: 409,
   internal_error: 500,
@@ -47,9 +50,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
     name?: unknown;
     country?: unknown;
     defaultCurrency?: unknown;
+    stateAffiliation?: unknown;
   };
   if (
     typeof raw.name !== 'string' ||
+    // #92: obligatoria; solo los valores conocidos viajan al API.
+    !isStateAffiliation(raw.stateAffiliation) ||
     (raw.country !== undefined && typeof raw.country !== 'string') ||
     (raw.defaultCurrency !== undefined && typeof raw.defaultCurrency !== 'string')
   ) {
@@ -65,6 +71,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ orgId: string 
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({
           name: raw.name,
+          stateAffiliation: raw.stateAffiliation,
           ...(raw.country !== undefined ? { country: raw.country } : {}),
           ...(raw.defaultCurrency !== undefined ? { defaultCurrency: raw.defaultCurrency } : {}),
         }),

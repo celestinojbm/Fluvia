@@ -4,13 +4,16 @@ import {
   MerchantNameTakenError,
   MerchantNotFoundError,
   MerchantOnboardingAlreadyCompletedError,
+  MerchantOnboardingBlockedError,
   OrganizationNotFoundError,
+  isMerchantOnboardingBlockedDbError,
   isUniqueViolation,
 } from './errors.js';
 import {
   CreateMerchantSchema,
   UpdateMerchantSchema,
   type CreateMerchantInput,
+  type StateAffiliation,
   type UpdateMerchantInput,
 } from './schemas.js';
 
@@ -28,6 +31,8 @@ export interface MerchantDto {
   country: string;
   defaultCurrency: string;
   status: 'active' | 'frozen';
+  /** #92: null = comercio legado sin declarar. */
+  stateAffiliation: StateAffiliation | null;
   createdAt: string;
 }
 
@@ -52,6 +57,7 @@ interface MerchantRow {
   country: string;
   default_currency: string;
   status: 'active' | 'frozen';
+  state_affiliation: StateAffiliation | null;
   created_at: Date;
 }
 
@@ -61,6 +67,7 @@ const toMerchantDto = (r: MerchantRow): MerchantDto => ({
   country: r.country,
   defaultCurrency: r.default_currency,
   status: r.status,
+  stateAffiliation: r.state_affiliation,
   createdAt: r.created_at.toISOString(),
 });
 
@@ -164,10 +171,10 @@ export class IdentityService {
       await this.acquireMerchantCreationLock(c, tenantId);
       try {
         const res = await c.query<MerchantRow>(
-          `INSERT INTO merchants (tenant_id, name, country, default_currency)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id, name, country, default_currency, status, created_at`,
-          [tenantId, input.name, input.country, input.defaultCurrency]
+          `INSERT INTO merchants (tenant_id, name, country, default_currency, state_affiliation)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, name, country, default_currency, status, state_affiliation, created_at`,
+          [tenantId, input.name, input.country, input.defaultCurrency, input.stateAffiliation]
         );
         const dto = toMerchantDto(res.rows[0]!);
         if (audit) {
@@ -177,7 +184,13 @@ export class IdentityService {
             context: audit,
             resourceType: 'merchant',
             resourceId: dto.id,
-            after: { name: dto.name, country: dto.country, defaultCurrency: dto.defaultCurrency },
+            // #92: la declaración de afiliación estatal queda como evidencia.
+            after: {
+              name: dto.name,
+              country: dto.country,
+              defaultCurrency: dto.defaultCurrency,
+              stateAffiliation: dto.stateAffiliation,
+            },
           });
         }
         return dto;
@@ -185,6 +198,7 @@ export class IdentityService {
         if (isUniqueViolation(err, 'merchants_tenant_id_name_key')) {
           throw new MerchantNameTakenError(input.name);
         }
+        if (isMerchantOnboardingBlockedDbError(err)) throw new MerchantOnboardingBlockedError();
         throw err;
       }
     });
@@ -222,7 +236,7 @@ export class IdentityService {
       await this.acquireMerchantCreationLock(c, tenantId);
 
       const existing = await c.query<MerchantRow>(
-        `SELECT id, name, country, default_currency, status, created_at
+        `SELECT id, name, country, default_currency, status, state_affiliation, created_at
          FROM merchants WHERE deleted_at IS NULL ORDER BY created_at`
       );
       if (existing.rows.length === 1) {
@@ -230,7 +244,8 @@ export class IdentityService {
         if (
           row.name === input.name &&
           row.country === input.country &&
-          row.default_currency === input.defaultCurrency
+          row.default_currency === input.defaultCurrency &&
+          row.state_affiliation === input.stateAffiliation
         ) {
           return { merchant: toMerchantDto(row), replayed: true };
         }
@@ -238,12 +253,19 @@ export class IdentityService {
       }
       if (existing.rows.length > 1) throw new MerchantOnboardingAlreadyCompletedError();
 
-      const res = await c.query<MerchantRow>(
-        `INSERT INTO merchants (tenant_id, name, country, default_currency)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, name, country, default_currency, status, created_at`,
-        [tenantId, input.name, input.country, input.defaultCurrency]
-      );
+      let res;
+      try {
+        res = await c.query<MerchantRow>(
+          `INSERT INTO merchants (tenant_id, name, country, default_currency, state_affiliation)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, name, country, default_currency, status, state_affiliation, created_at`,
+          [tenantId, input.name, input.country, input.defaultCurrency, input.stateAffiliation]
+        );
+      } catch (err) {
+        // #92: el motor (0069) rechaza afiliación estatal o nombre bloqueado.
+        if (isMerchantOnboardingBlockedDbError(err)) throw new MerchantOnboardingBlockedError();
+        throw err;
+      }
       const dto = toMerchantDto(res.rows[0]!);
       await insertAuditEvent(c, {
         action: 'merchant.created',
@@ -251,7 +273,13 @@ export class IdentityService {
         context: audit,
         resourceType: 'merchant',
         resourceId: dto.id,
-        after: { name: dto.name, country: dto.country, defaultCurrency: dto.defaultCurrency },
+        // #92: la declaración de afiliación estatal queda como evidencia.
+        after: {
+          name: dto.name,
+          country: dto.country,
+          defaultCurrency: dto.defaultCurrency,
+          stateAffiliation: dto.stateAffiliation,
+        },
       });
       return { merchant: dto, replayed: false };
     });
@@ -260,7 +288,7 @@ export class IdentityService {
   async listMerchants(tenantId: string): Promise<MerchantDto[]> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<MerchantRow>(
-        `SELECT id, name, country, default_currency, status, created_at
+        `SELECT id, name, country, default_currency, status, state_affiliation, created_at
          FROM merchants WHERE deleted_at IS NULL ORDER BY created_at`
       );
       return res.rows.map(toMerchantDto);
@@ -270,7 +298,7 @@ export class IdentityService {
   async getMerchant(tenantId: string, merchantId: string): Promise<MerchantDto> {
     return withTenantTransaction(this.appPool, tenantId, async (c) => {
       const res = await c.query<MerchantRow>(
-        `SELECT id, name, country, default_currency, status, created_at
+        `SELECT id, name, country, default_currency, status, state_affiliation, created_at
          FROM merchants WHERE id = $1 AND deleted_at IS NULL`,
         [merchantId]
       );
@@ -297,7 +325,7 @@ export class IdentityService {
         const res = await c.query<MerchantRow>(
           `UPDATE merchants SET name = $2, updated_at = now()
            WHERE id = $1 AND deleted_at IS NULL
-           RETURNING id, name, country, default_currency, status, created_at`,
+           RETURNING id, name, country, default_currency, status, state_affiliation, created_at`,
           [merchantId, input.name]
         );
         const dto = toMerchantDto(res.rows[0]!);
@@ -317,6 +345,7 @@ export class IdentityService {
         if (isUniqueViolation(err, 'merchants_tenant_id_name_key')) {
           throw new MerchantNameTakenError(input.name);
         }
+        if (isMerchantOnboardingBlockedDbError(err)) throw new MerchantOnboardingBlockedError();
         throw err;
       }
     });

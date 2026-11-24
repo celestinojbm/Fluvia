@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../lib/csrf-header';
+import { STATE_AFFILIATION_OPTIONS, type StateAffiliationOption } from '../lib/state-affiliation';
 import { MESSAGES, type Locale } from '../messages';
 import type { InitialMerchant, InitialOrganization } from './resolve';
 
@@ -30,7 +31,13 @@ const CURRENCY_OPTIONS = ['COP', 'USD', 'EUR', 'GBP', 'MXN', 'BRL', 'ARS', 'PEN'
 type Step = 'org' | 'merchant';
 type Phase = 'idle' | 'submitting' | 'success';
 type WizardError =
-  null | 'invalid' | 'slug_taken' | 'already_completed' | 'merchant_already_completed' | 'generic';
+  | null
+  | 'invalid'
+  | 'slug_taken'
+  | 'already_completed'
+  | 'merchant_already_completed'
+  | 'merchant_blocked'
+  | 'generic';
 
 export function OnboardingWizard({
   locale,
@@ -65,6 +72,11 @@ export function OnboardingWizard({
   const [merchantName, setMerchantName] = useState(initialMerchant?.name ?? '');
   const [country, setCountry] = useState(initialMerchant?.country ?? 'CO');
   const [currency, setCurrency] = useState(initialMerchant?.defaultCurrency ?? 'COP');
+  // #92: sin valor por defecto: `none` preseleccionado sería una declaración
+  // falsa por omisión. El submit nativo exige elegir (radio `required`).
+  const [affiliation, setAffiliation] = useState<StateAffiliationOption | ''>(
+    initialMerchant?.stateAffiliation ?? ''
+  );
 
   const errorRef = useRef<HTMLParagraphElement>(null);
 
@@ -123,7 +135,12 @@ export function OnboardingWizard({
       const res = await fetch(`/api/orgs/${encodeURIComponent(orgId)}/onboarding/merchant`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', [CSRF_HEADER]: CSRF_HEADER_VALUE },
-        body: JSON.stringify({ name: merchantName, country, defaultCurrency: currency }),
+        body: JSON.stringify({
+          name: merchantName,
+          country,
+          defaultCurrency: currency,
+          stateAffiliation: affiliation,
+        }),
       });
       if (res.status === 201 || res.status === 200) {
         const body = (await res.json().catch(() => null)) as { chartReady?: boolean } | null;
@@ -140,6 +157,7 @@ export function OnboardingWizard({
       const code = body.error?.code;
       setMerchantFailedOnce(true);
       if (code === 'merchant_onboarding_already_completed') showError('merchant_already_completed');
+      else if (code === 'merchant_onboarding_blocked') showError('merchant_blocked');
       else if (code === 'validation_error') showError('invalid');
       else showError('generic');
     } catch {
@@ -155,9 +173,11 @@ export function OnboardingWizard({
         ? t.onboardingAlreadyCompleted
         : error === 'merchant_already_completed'
           ? t.merchantOnboardingAlreadyCompleted
-          : error === 'invalid'
-            ? t.onboardingInvalidInput
-            : t.onboardingGenericError;
+          : error === 'merchant_blocked'
+            ? t.merchantOnboardingBlocked
+            : error === 'invalid'
+              ? t.onboardingInvalidInput
+              : t.onboardingGenericError;
 
   // 2+ merchants: el onboarding inicial ya no aplica — sin seleccion
   // arbitraria, sin formulario; solo la explicacion y el enlace al panel.
@@ -281,6 +301,26 @@ export function OnboardingWizard({
               </option>
             ))}
           </select>
+
+          <fieldset aria-describedby="merchant-affiliation-hint">
+            <legend>{t.merchantAffiliationLegend}</legend>
+            {STATE_AFFILIATION_OPTIONS.map((opt) => (
+              <label key={opt} className="radio">
+                <input
+                  type="radio"
+                  name="merchant-affiliation"
+                  value={opt}
+                  required
+                  checked={affiliation === opt}
+                  onChange={() => setAffiliation(opt)}
+                />
+                {t.merchantAffiliationOptions[opt]}
+              </label>
+            ))}
+          </fieldset>
+          <p className="hint" id="merchant-affiliation-hint">
+            {t.merchantAffiliationHint}
+          </p>
 
           {error !== null && (
             <p className="error" role="alert" tabIndex={-1} ref={errorRef}>

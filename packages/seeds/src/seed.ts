@@ -100,7 +100,8 @@ export async function seedDemo(env: string, pools: SeedPools): Promise<SeedRepor
   }
 
   await pools.admin.query(
-    `INSERT INTO merchants (id, tenant_id, name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+    `INSERT INTO merchants (id, tenant_id, name, state_affiliation)
+     VALUES ($1, $2, $3, 'none') ON CONFLICT DO NOTHING`,
     [DEMO.merchantId, DEMO.organizationId, DEMO.merchantName]
   );
 

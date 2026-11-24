@@ -133,31 +133,44 @@ describe('IdentityService (plano de tenant, RLS activo)', () => {
   });
 
   it('creates merchants with Colombia defaults (CO / COP)', async () => {
-    const merchant = await service.createMerchant(orgA, { name: 'Tienda Bogotá' });
+    const merchant = await service.createMerchant(orgA, {
+      name: 'Tienda Bogotá',
+      stateAffiliation: 'none',
+    });
     expect(merchant.country).toBe('CO');
     expect(merchant.defaultCurrency).toBe('COP');
     expect(merchant.status).toBe('active');
   });
 
   it('rejects duplicate merchant name within the tenant, allows it across tenants', async () => {
-    await service.createMerchant(orgA, { name: 'Sucursal Norte' });
-    await expect(service.createMerchant(orgA, { name: 'Sucursal Norte' })).rejects.toThrow(
-      MerchantNameTakenError
-    );
-    await expect(service.createMerchant(orgB, { name: 'Sucursal Norte' })).resolves.toBeTruthy();
+    await service.createMerchant(orgA, { name: 'Sucursal Norte', stateAffiliation: 'none' });
+    await expect(
+      service.createMerchant(orgA, { name: 'Sucursal Norte', stateAffiliation: 'none' })
+    ).rejects.toThrow(MerchantNameTakenError);
+    await expect(
+      service.createMerchant(orgB, { name: 'Sucursal Norte', stateAffiliation: 'none' })
+    ).resolves.toBeTruthy();
   });
 
   it('rejects unsupported currencies and unknown fields (strict DTO)', async () => {
     await expect(
-      service.createMerchant(orgA, { name: 'Mal Comercio', defaultCurrency: 'XXX' as never })
+      service.createMerchant(orgA, {
+        name: 'Mal Comercio',
+        stateAffiliation: 'none',
+        defaultCurrency: 'XXX' as never,
+      })
     ).rejects.toThrow();
     await expect(
-      service.createMerchant(orgA, { name: 'Mal Comercio', isAdmin: true } as never)
+      service.createMerchant(orgA, {
+        name: 'Mal Comercio',
+        stateAffiliation: 'none',
+        isAdmin: true,
+      } as never)
     ).rejects.toThrow();
   });
 
   it('merchant listing and lookup are tenant-isolated', async () => {
-    const b = await service.createMerchant(orgB, { name: 'Solo De B' });
+    const b = await service.createMerchant(orgB, { name: 'Solo De B', stateAffiliation: 'none' });
     const listA = await service.listMerchants(orgA);
     expect(listA.some((m) => m.id === b.id)).toBe(false);
     await expect(service.getMerchant(orgA, b.id)).rejects.toThrow(MerchantNotFoundError);
@@ -165,7 +178,10 @@ describe('IdentityService (plano de tenant, RLS activo)', () => {
   });
 
   it('updateMerchant renames within the tenant only', async () => {
-    const m = await service.createMerchant(orgA, { name: 'Nombre Viejo' });
+    const m = await service.createMerchant(orgA, {
+      name: 'Nombre Viejo',
+      stateAffiliation: 'none',
+    });
     const updated = await service.updateMerchant(orgA, m.id, { name: 'Nombre Nuevo' });
     expect(updated.name).toBe('Nombre Nuevo');
     await expect(service.updateMerchant(orgB, m.id, { name: 'Hack' })).rejects.toThrow(
