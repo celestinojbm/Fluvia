@@ -148,7 +148,7 @@ describe('ensureMerchantForOnboarding — fallo de merchant.created => rollback 
     await expect(
       service.ensureMerchantForOnboarding(
         tenantId,
-        { name: 'Comercio Rollback' },
+        { name: 'Comercio Rollback', stateAffiliation: 'none' },
         audit(randomUUID(), requestId)
       )
     ).rejects.toThrow(/injected audit failure/);

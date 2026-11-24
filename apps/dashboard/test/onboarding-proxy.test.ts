@@ -328,6 +328,7 @@ describe('proxy de merchant: whitelist y errores estables', () => {
     const res = await merchantPOST(
       requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), {
         name: 'Tienda',
+        stateAffiliation: 'none',
         country: 'CO',
         defaultCurrency: 'COP',
       }),
@@ -346,6 +347,13 @@ describe('proxy de merchant: whitelist y errores estables', () => {
       'Bearer session-token-test'
     );
     expect(init.redirect).toBe('manual');
+    // #92: la declaración viaja al API tal cual (whitelist de campos).
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: 'Tienda',
+      stateAffiliation: 'none',
+      country: 'CO',
+      defaultCurrency: 'COP',
+    });
   });
 
   it('propaga codes estables (merchant_onboarding_already_completed / not_found)', async () => {
@@ -358,7 +366,10 @@ describe('proxy de merchant: whitelist y errores estables', () => {
         vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: { code } }), { status })))
       );
       const res = await merchantPOST(
-        requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), { name: 'Tienda' }),
+        requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), {
+          name: 'Tienda',
+          stateAffiliation: 'none',
+        }),
         PARAMS
       );
       expect(res.status).toBe(status);
@@ -374,6 +385,21 @@ describe('proxy de merchant: whitelist y errores estables', () => {
     expect(bad.status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
 
+    // #92: la declaración es obligatoria y solo pasan los valores conocidos.
+    for (const body of [
+      { name: 'Tienda' },
+      { name: 'Tienda', stateAffiliation: '' },
+      { name: 'Tienda', stateAffiliation: 'private' },
+      { name: 'Tienda', stateAffiliation: true },
+    ]) {
+      const noDeclaration = await merchantPOST(
+        requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), body),
+        PARAMS
+      );
+      expect(noDeclaration.status).toBe(400);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -381,7 +407,10 @@ describe('proxy de merchant: whitelist y errores estables', () => {
       )
     );
     const malformed = await merchantPOST(
-      requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), { name: 'Tienda' }),
+      requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), {
+        name: 'Tienda',
+        stateAffiliation: 'none',
+      }),
       PARAMS
     );
     expect(malformed.status).toBe(502);
@@ -428,6 +457,7 @@ async function callMerchant(): Promise<Response> {
   return merchantPOST(
     requestWith(`/api/orgs/${ORG}/onboarding/merchant`, legitHeaders(), {
       name: 'Tienda',
+      stateAffiliation: 'none',
       country: 'CO',
       defaultCurrency: 'COP',
     }),
@@ -612,6 +642,7 @@ describe('proxy de merchant: contrato de exito ESTRICTO por status exacto', () =
       ['invalid_session', 401],
       ['insufficient_permissions', 403],
       ['not_found', 404],
+      ['merchant_onboarding_blocked', 403],
       ['merchant_onboarding_already_completed', 409],
       ['internal_error', 500],
     ] as const) {
@@ -652,6 +683,7 @@ const MERCHANT_CANONICAL_PAIRS = [
   ['invalid_session', 401],
   ['insufficient_permissions', 403],
   ['not_found', 404],
+  ['merchant_onboarding_blocked', 403],
   ['merchant_onboarding_already_completed', 409],
   ['internal_error', 500],
 ] as const;
@@ -689,6 +721,7 @@ describe('RA-F65C2-EXT-004 — proxy de organizacion: pareja code/status exacta'
     for (const [code, status] of [
       ['insufficient_permissions', 403],
       ['not_found', 404],
+      ['merchant_onboarding_blocked', 403],
       ['merchant_onboarding_already_completed', 409],
     ] as const) {
       stubBackend(status, { error: { code } });

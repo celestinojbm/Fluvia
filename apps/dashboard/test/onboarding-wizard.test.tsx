@@ -50,8 +50,11 @@ async function fillOrgStep() {
   await userEvent.click(screen.getByRole('button', { name: 'Continuar' }));
 }
 
+const NOT_STATE_OWNED_ES = 'No: es una empresa o persona privada';
+
 async function fillMerchantStep() {
   await userEvent.type(screen.getByLabelText('Nombre del comercio'), 'Mi Tienda');
+  await userEvent.click(screen.getByLabelText(NOT_STATE_OWNED_ES));
   await userEvent.click(screen.getByRole('button', { name: /Finalizar|Reintentar/ }));
 }
 
@@ -155,6 +158,7 @@ describe('OnboardingWizard — paso 2 (comercio) y recorrido completo', () => {
       name: 'Mi Tienda',
       country: 'CO',
       defaultCurrency: 'COP',
+      stateAffiliation: 'none',
     });
   });
 
@@ -206,6 +210,22 @@ describe('OnboardingWizard — paso 2 (comercio) y recorrido completo', () => {
     expect(screen.getByRole('link', { name: 'Ir al panel' })).toHaveAttribute('href', '/');
   });
 
+  it('#92: la declaración no viene preseleccionada y un alta bloqueada muestra un error sin pistas', async () => {
+    stubFetchSequence([
+      { status: 201, body: ORG_OK },
+      { status: 403, body: { error: { code: 'merchant_onboarding_blocked' } } },
+    ]);
+    render(<OnboardingWizard locale="es" navigate={vi.fn()} />);
+    await fillOrgStep();
+    await screen.findByText('Paso 2 de 2 — Comercio');
+    for (const radio of screen.getAllByRole('radio')) expect(radio).not.toBeChecked();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    await fillMerchantStep();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/no podemos dar de alta este comercio/);
+    expect(alert).not.toHaveTextContent(/PDVSA|sanci|lista/i);
+  });
+
   it('anti double-submit on step 2', async () => {
     const fetchFn = stubFetchSequence([
       { status: 201, body: ORG_OK },
@@ -215,6 +235,7 @@ describe('OnboardingWizard — paso 2 (comercio) y recorrido completo', () => {
     await fillOrgStep();
     await screen.findByText('Paso 2 de 2 — Comercio');
     await userEvent.type(screen.getByLabelText('Nombre del comercio'), 'Mi Tienda');
+    await userEvent.click(screen.getByLabelText(NOT_STATE_OWNED_ES));
     await userEvent.click(screen.getByRole('button', { name: 'Finalizar' }));
     expect(screen.getByRole('button', { name: 'Creando comercio…' })).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: 'Creando comercio…' }));
@@ -236,6 +257,7 @@ describe('OnboardingWizard — paso 2 (comercio) y recorrido completo', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await screen.findByText('Step 2 of 2 — Merchant');
     await userEvent.type(screen.getByLabelText('Merchant name'), 'My Store');
+    await userEvent.click(screen.getByLabelText('No: it is a private company or individual'));
     await userEvent.click(screen.getByRole('button', { name: 'Finish' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/?lang=en'));
   });

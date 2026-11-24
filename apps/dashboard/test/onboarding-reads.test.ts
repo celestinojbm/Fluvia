@@ -98,7 +98,21 @@ describe('readMerchants (estricto, fail-closed)', () => {
     });
     expect(
       await readMerchants({ ...M_OPTS, fetchImpl: stub(200, { merchants: [GOOD_MERCHANT] }) })
-    ).toEqual({ ok: true, value: [GOOD_MERCHANT] });
+    ).toEqual({ ok: true, value: [{ ...GOOD_MERCHANT, stateAffiliation: null }] });
+    // #92: la declaración se lee tipada; un legado sin declarar o un valor
+    // desconocido quedan en null (el wizard obliga a elegir), sin invalidar.
+    for (const [raw, expected] of [
+      ['state_owned', 'state_owned'],
+      [null, null],
+      ['bogus', null],
+    ] as const) {
+      expect(
+        await readMerchants({
+          ...M_OPTS,
+          fetchImpl: stub(200, { merchants: [{ ...GOOD_MERCHANT, stateAffiliation: raw }] }),
+        })
+      ).toEqual({ ok: true, value: [{ ...GOOD_MERCHANT, stateAffiliation: expected }] });
+    }
     const two = await readMerchants({
       ...M_OPTS,
       fetchImpl: stub(200, { merchants: [GOOD_MERCHANT, { ...GOOD_MERCHANT, id: 'm-2' }] }),

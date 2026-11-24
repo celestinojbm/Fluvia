@@ -122,6 +122,21 @@ export const ERROR_CATALOG = {
     type: 'authorization_error',
     message: 'Email address must be verified before logging in',
   },
+  // #92: el motor (0069) rechaza el alta o la reactivación de un comercio
+  // declarado estatal o con nombre en la lista de plataforma. No se dice cuál
+  // de las dos ni el patrón (puede ser sensible: sanciones).
+  merchant_onboarding_blocked: {
+    status: 403,
+    type: 'authorization_error',
+    message: 'This merchant cannot be onboarded at this time',
+  },
+  // #92: comercio congelado por la plataforma; el motor corta intents,
+  // confirmaciones y payouts nuevos. El motivo no se expone.
+  merchant_frozen: {
+    status: 403,
+    type: 'authorization_error',
+    message: 'This merchant is frozen and cannot move new funds',
+  },
   insufficient_permissions: {
     status: 403,
     type: 'authorization_error',
@@ -299,6 +314,7 @@ export const DOMAIN_ERROR_CODES: Record<string, ErrorCode> = {
   // representa a nadie (401); sin email verificado => 403 del catalogo.
   OnboardingAlreadyCompletedError: 'onboarding_already_completed',
   MerchantOnboardingAlreadyCompletedError: 'merchant_onboarding_already_completed',
+  MerchantOnboardingBlockedError: 'merchant_onboarding_blocked',
   OnboardingUserNotFoundError: 'invalid_session',
   OnboardingEmailNotVerifiedError: 'email_not_verified',
   InvalidApiKeyError: 'invalid_api_key',

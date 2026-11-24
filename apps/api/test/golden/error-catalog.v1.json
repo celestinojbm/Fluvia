@@ -77,6 +77,16 @@
       "type": "authorization_error",
       "message": "Email address must be verified before logging in"
     },
+    "merchant_onboarding_blocked": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "This merchant cannot be onboarded at this time"
+    },
+    "merchant_frozen": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "This merchant is frozen and cannot move new funds"
+    },
     "insufficient_permissions": {
       "status": 403,
       "type": "authorization_error",
@@ -230,6 +240,7 @@
     "InsufficientPermissionError": "insufficient_permissions",
     "OnboardingAlreadyCompletedError": "onboarding_already_completed",
     "MerchantOnboardingAlreadyCompletedError": "merchant_onboarding_already_completed",
+    "MerchantOnboardingBlockedError": "merchant_onboarding_blocked",
     "OnboardingUserNotFoundError": "invalid_session",
     "OnboardingEmailNotVerifiedError": "email_not_verified",
     "InvalidApiKeyError": "invalid_api_key",

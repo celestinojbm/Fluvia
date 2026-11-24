@@ -1,5 +1,6 @@
 import type { Org } from '../lib/api';
 import type { OnboardingMerchant } from '../lib/onboarding-reads';
+import type { StateAffiliationOption } from '../lib/state-affiliation';
 
 /**
  * F6.5C2 — resolucion SERVER-SIDE del estado de onboarding (recuperacion
@@ -19,6 +20,8 @@ export interface InitialMerchant {
   name: string;
   country: string;
   defaultCurrency: string;
+  /** #92: null si el comercio existente no la declaró (hay que elegirla). */
+  stateAffiliation?: StateAffiliationOption | null;
 }
 
 /**
@@ -72,7 +75,12 @@ export function resolveMerchantState(merchants: OnboardingMerchant[]): {
   if (merchants.length === 1) {
     const m = merchants[0]!;
     return {
-      initialMerchant: { name: m.name, country: m.country, defaultCurrency: m.defaultCurrency },
+      initialMerchant: {
+        name: m.name,
+        country: m.country,
+        defaultCurrency: m.defaultCurrency,
+        stateAffiliation: m.stateAffiliation ?? null,
+      },
       notApplicable: false,
     };
   }

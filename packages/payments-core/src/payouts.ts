@@ -4,6 +4,7 @@ import { InsufficientBalanceError, accountName, type PostingService } from '@flu
 import { Money } from '@fluvia/money';
 import { InsufficientPayoutBalanceError, PayoutNotFoundError } from './errors.js';
 import { isFlowSuspendedDbError } from './kill-switch.js';
+import { isMerchantFrozenDbError } from './merchant-frozen.js';
 import type { PaymentProvider } from './provider.js';
 import { CircuitOpenError } from './resilience.js';
 import type { TxClient } from './service.js';
@@ -235,6 +236,17 @@ export class PayoutService {
           // frente a payouts legítimos atascados. Tras liberar, se pide de nuevo.
           await withTenantTransaction(this.appPool, tenantId, (c) =>
             this.transition(c, payoutId, 'failed', { failureCode: 'flow_suspended' })
+          );
+          return;
+        }
+        if (isMerchantFrozenDbError(err)) {
+          // #92: comercio congelado (el motor corta requested -> in_transit, 0069).
+          // El banco JAMÁS fue contactado y el emit se revirtió entero: el
+          // desenlace es CONOCIDO y los fondos siguen en el disponible. Se falla
+          // en vez de dejarlo `requested`: si no, el redriver (0035) lo
+          // reclamaría en cada lease. Tras descongelar, se pide de nuevo.
+          await withTenantTransaction(this.appPool, tenantId, (c) =>
+            this.transition(c, payoutId, 'failed', { failureCode: 'merchant_frozen' })
           );
           return;
         }

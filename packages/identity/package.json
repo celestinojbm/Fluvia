@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "vitest run",
-    "rotate:api-key-pepper": "tsx src/rotate-api-key-pepper-cli.ts"
+    "rotate:api-key-pepper": "tsx src/rotate-api-key-pepper-cli.ts",
+    "merchant-risk": "tsx src/merchant-risk-cli.ts"
   },
   "dependencies": {
     "@fluvia/audit": "workspace:*",

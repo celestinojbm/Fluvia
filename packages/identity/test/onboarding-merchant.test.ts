@@ -7,6 +7,7 @@ import {
   MerchantNameTakenError,
   MerchantOnboardingAlreadyCompletedError,
   merchantCreationLockKey,
+  type CreateMerchantInput,
 } from '../src/index.js';
 
 /**
@@ -58,7 +59,7 @@ describe('contrato bajo el lock', () => {
     const tenantId = await ctx.createTenant();
     const result = await service.ensureMerchantForOnboarding(
       tenantId,
-      { name: 'Tienda Onboarding' },
+      { name: 'Tienda Onboarding', stateAffiliation: 'none' },
       audit()
     );
     expect(result.replayed).toBe(false);
@@ -72,12 +73,12 @@ describe('contrato bajo el lock', () => {
     const tenantId = await ctx.createTenant();
     const first = await service.ensureMerchantForOnboarding(
       tenantId,
-      { name: 'Tienda Replay', country: 'CO', defaultCurrency: 'COP' },
+      { name: 'Tienda Replay', stateAffiliation: 'none', country: 'CO', defaultCurrency: 'COP' },
       audit()
     );
     const second = await service.ensureMerchantForOnboarding(
       tenantId,
-      { name: 'Tienda Replay', country: 'CO', defaultCurrency: 'COP' },
+      { name: 'Tienda Replay', stateAffiliation: 'none', country: 'CO', defaultCurrency: 'COP' },
       audit()
     );
     expect(second.replayed).toBe(true);
@@ -88,12 +89,19 @@ describe('contrato bajo el lock', () => {
 
   it('a DIFFERENT payload (any contractual field) => MerchantOnboardingAlreadyCompletedError', async () => {
     const tenantId = await ctx.createTenant();
-    await service.ensureMerchantForOnboarding(tenantId, { name: 'Tienda Base' }, audit());
-    for (const payload of [
-      { name: 'Otra Tienda' },
-      { name: 'Tienda Base', country: 'MX' },
-      { name: 'Tienda Base', defaultCurrency: 'USD' as const },
-    ]) {
+    await service.ensureMerchantForOnboarding(
+      tenantId,
+      { name: 'Tienda Base', stateAffiliation: 'none' },
+      audit()
+    );
+    const payloads: CreateMerchantInput[] = [
+      { name: 'Otra Tienda', stateAffiliation: 'none' },
+      { name: 'Tienda Base', stateAffiliation: 'none', country: 'MX' },
+      { name: 'Tienda Base', stateAffiliation: 'none', defaultCurrency: 'USD' },
+      // #92: la declaración también es contractual (re-declarar no es un replay).
+      { name: 'Tienda Base', stateAffiliation: 'state_owned' },
+    ];
+    for (const payload of payloads) {
       await expect(service.ensureMerchantForOnboarding(tenantId, payload, audit())).rejects.toThrow(
         MerchantOnboardingAlreadyCompletedError
       );
@@ -103,22 +111,30 @@ describe('contrato bajo el lock', () => {
 
   it('two or more preexisting merchants => stable 409, NEVER an arbitrary pick (even with a matching name)', async () => {
     const tenantId = await ctx.createTenant();
-    await service.createMerchant(tenantId, { name: 'Comercio Uno' });
-    await service.createMerchant(tenantId, { name: 'Comercio Dos' });
+    await service.createMerchant(tenantId, { name: 'Comercio Uno', stateAffiliation: 'none' });
+    await service.createMerchant(tenantId, { name: 'Comercio Dos', stateAffiliation: 'none' });
     await expect(
-      service.ensureMerchantForOnboarding(tenantId, { name: 'Comercio Uno' }, audit())
+      service.ensureMerchantForOnboarding(
+        tenantId,
+        { name: 'Comercio Uno', stateAffiliation: 'none' },
+        audit()
+      )
     ).rejects.toThrow(MerchantOnboardingAlreadyCompletedError);
     expect(await merchantCount(tenantId)).toBe(2);
   });
 
   it('does not alter the general createMerchant contract (still throws MerchantNameTakenError)', async () => {
     const tenantId = await ctx.createTenant();
-    await service.ensureMerchantForOnboarding(tenantId, { name: 'Onboarding Store' }, audit());
-    await expect(service.createMerchant(tenantId, { name: 'Onboarding Store' })).rejects.toThrow(
-      /already exists/
+    await service.ensureMerchantForOnboarding(
+      tenantId,
+      { name: 'Onboarding Store', stateAffiliation: 'none' },
+      audit()
     );
     await expect(
-      service.createMerchant(tenantId, { name: 'Segunda Tienda' })
+      service.createMerchant(tenantId, { name: 'Onboarding Store', stateAffiliation: 'none' })
+    ).rejects.toThrow(/already exists/);
+    await expect(
+      service.createMerchant(tenantId, { name: 'Segunda Tienda', stateAffiliation: 'none' })
     ).resolves.toBeTruthy();
   });
 });
@@ -126,7 +142,7 @@ describe('contrato bajo el lock', () => {
 describe('concurrencia (la garantia que UNIQUE(tenant_id,name) NO da)', () => {
   it('two concurrent requests with the SAME payload: one merchant, zero duplicate audits', async () => {
     const tenantId = await ctx.createTenant();
-    const payload = { name: 'Concurrente Igual' };
+    const payload = { name: 'Concurrente Igual', stateAffiliation: 'none' as const };
     const results = await Promise.all([
       service.ensureMerchantForOnboarding(tenantId, payload, audit()),
       service.ensureMerchantForOnboarding(tenantId, payload, audit()),
@@ -140,8 +156,16 @@ describe('concurrencia (la garantia que UNIQUE(tenant_id,name) NO da)', () => {
   it('two concurrent requests with DIFFERENT names: ONE merchant row, one wins, the other gets the 409', async () => {
     const tenantId = await ctx.createTenant();
     const settled = await Promise.allSettled([
-      service.ensureMerchantForOnboarding(tenantId, { name: 'Nombre Alfa' }, audit()),
-      service.ensureMerchantForOnboarding(tenantId, { name: 'Nombre Beta' }, audit()),
+      service.ensureMerchantForOnboarding(
+        tenantId,
+        { name: 'Nombre Alfa', stateAffiliation: 'none' },
+        audit()
+      ),
+      service.ensureMerchantForOnboarding(
+        tenantId,
+        { name: 'Nombre Beta', stateAffiliation: 'none' },
+        audit()
+      ),
     ]);
     const fulfilled = settled.filter((s) => s.status === 'fulfilled');
     const rejected = settled.filter((s) => s.status === 'rejected');
@@ -237,7 +261,11 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
     try {
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock($1::bigint)', [key]);
-      const pending = service.ensureMerchantForOnboarding(tenantId, { name: 'Bloqueada' }, audit());
+      const pending = service.ensureMerchantForOnboarding(
+        tenantId,
+        { name: 'Bloqueada', stateAffiliation: 'none' },
+        audit()
+      );
       // Prueba determinista de bloqueo: waiter NOT granted en pg_locks, y la
       // tabla sigue vacia (el lock va ANTES del conteo y del insert).
       await waitForAdvisoryWaiters(key, 1);
@@ -258,7 +286,11 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
     try {
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock($1::bigint)', [key]);
-      const pending = service.createMerchant(tenantId, { name: 'General Bloqueada' }, audit());
+      const pending = service.createMerchant(
+        tenantId,
+        { name: 'General Bloqueada', stateAffiliation: 'none' },
+        audit()
+      );
       await waitForAdvisoryWaiters(key, 1);
       expect(await merchantCount(tenantId)).toBe(0);
       await holder.query('COMMIT');
@@ -280,11 +312,13 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
       // Con el lock de A retenido, AMBOS caminos de B completan sin esperar.
       const onboarding = await service.ensureMerchantForOnboarding(
         b,
-        { name: 'Tienda B' },
+        { name: 'Tienda B', stateAffiliation: 'none' },
         audit()
       );
       expect(onboarding.replayed).toBe(false);
-      await expect(service.createMerchant(b, { name: 'Tienda B2' }, audit())).resolves.toBeTruthy();
+      await expect(
+        service.createMerchant(b, { name: 'Tienda B2', stateAffiliation: 'none' }, audit())
+      ).resolves.toBeTruthy();
       await holder.query('ROLLBACK');
     } finally {
       holder.release();
@@ -310,21 +344,33 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
     };
 
     // COMMIT del onboarding libera el lock.
-    await service.ensureMerchantForOnboarding(tenantId, { name: 'Primera' }, audit());
+    await service.ensureMerchantForOnboarding(
+      tenantId,
+      { name: 'Primera', stateAffiliation: 'none' },
+      audit()
+    );
     expect(await probeFree()).toBe(true);
     // ROLLBACK del onboarding (payload distinto => 409, con OTRO nombre)
     // tambien libera: la clave es por tenant, no por nombre.
     await expect(
-      service.ensureMerchantForOnboarding(tenantId, { name: 'Distinta' }, audit())
+      service.ensureMerchantForOnboarding(
+        tenantId,
+        { name: 'Distinta', stateAffiliation: 'none' },
+        audit()
+      )
     ).rejects.toThrow(MerchantOnboardingAlreadyCompletedError);
     expect(await probeFree()).toBe(true);
     // COMMIT del camino general libera.
-    await service.createMerchant(tenantId, { name: 'Adicional' }, audit());
+    await service.createMerchant(
+      tenantId,
+      { name: 'Adicional', stateAffiliation: 'none' },
+      audit()
+    );
     expect(await probeFree()).toBe(true);
     // ROLLBACK del camino general (nombre duplicado) tambien libera.
-    await expect(service.createMerchant(tenantId, { name: 'Adicional' }, audit())).rejects.toThrow(
-      MerchantNameTakenError
-    );
+    await expect(
+      service.createMerchant(tenantId, { name: 'Adicional', stateAffiliation: 'none' }, audit())
+    ).rejects.toThrow(MerchantNameTakenError);
     expect(await probeFree()).toBe(true);
   });
 
@@ -334,7 +380,12 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
 
   it('[general primero] onboarding con el MISMO payload espera y devuelve replay: una fila, un audit', async () => {
     const tenantId = await ctx.createTenant();
-    const payload = { name: 'Compartida', country: 'CO', defaultCurrency: 'COP' as const };
+    const payload = {
+      name: 'Compartida',
+      stateAffiliation: 'none' as const,
+      country: 'CO',
+      defaultCurrency: 'COP' as const,
+    };
     const [general, onboarding] = await withGatedOrder(
       tenantId,
       () => service.createMerchant(tenantId, payload, audit()),
@@ -354,12 +405,20 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
   });
 
   for (const [label, generalPayload, onboardingPayload] of [
-    ['nombre distinto', { name: 'General Gana' }, { name: 'Onboarding Pierde' }],
-    ['solo country distinto', { name: 'Mismo Nombre' }, { name: 'Mismo Nombre', country: 'MX' }],
+    [
+      'nombre distinto',
+      { name: 'General Gana', stateAffiliation: 'none' },
+      { name: 'Onboarding Pierde', stateAffiliation: 'none' },
+    ],
+    [
+      'solo country distinto',
+      { name: 'Mismo Nombre', stateAffiliation: 'none' },
+      { name: 'Mismo Nombre', stateAffiliation: 'none', country: 'MX' },
+    ],
     [
       'solo defaultCurrency distinto',
-      { name: 'Mismo Nombre' },
-      { name: 'Mismo Nombre', defaultCurrency: 'USD' as const },
+      { name: 'Mismo Nombre', stateAffiliation: 'none' },
+      { name: 'Mismo Nombre', stateAffiliation: 'none', defaultCurrency: 'USD' as const },
     ],
   ] as const) {
     it(`[general primero] payload que difiere (${label}): onboarding espera y recibe 409; una fila`, async () => {
@@ -383,8 +442,18 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
     const tenantId = await ctx.createTenant();
     const [onboarding, general] = await withGatedOrder(
       tenantId,
-      () => service.ensureMerchantForOnboarding(tenantId, { name: 'Inicial' }, audit()),
-      () => service.createMerchant(tenantId, { name: 'Adicional Post' }, audit())
+      () =>
+        service.ensureMerchantForOnboarding(
+          tenantId,
+          { name: 'Inicial', stateAffiliation: 'none' },
+          audit()
+        ),
+      () =>
+        service.createMerchant(
+          tenantId,
+          { name: 'Adicional Post', stateAffiliation: 'none' },
+          audit()
+        )
     );
     // Orden inverso de finalizacion respecto a los tests anteriores: el
     // onboarding ADQUIERE y COMMITEA primero; la creacion general queda
@@ -412,8 +481,13 @@ describe('advisory lock transaccional por tenant (compartido por creacion genera
     const tenantId = await ctx.createTenant();
     const [onboarding, general] = await withGatedOrder(
       tenantId,
-      () => service.ensureMerchantForOnboarding(tenantId, { name: 'Unica' }, audit()),
-      () => service.createMerchant(tenantId, { name: 'Unica' }, audit())
+      () =>
+        service.ensureMerchantForOnboarding(
+          tenantId,
+          { name: 'Unica', stateAffiliation: 'none' },
+          audit()
+        ),
+      () => service.createMerchant(tenantId, { name: 'Unica', stateAffiliation: 'none' }, audit())
     );
     expect(onboarding.status).toBe('fulfilled');
     expect(general.status).toBe('rejected');

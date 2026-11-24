@@ -323,6 +323,11 @@ interface Messages {
   merchantCountryLabel: string;
   merchantCountryHint: string;
   merchantCurrencyLabel: string;
+  // #92: declaración de afiliación estatal (obligatoria, sin default)
+  merchantAffiliationLegend: string;
+  merchantAffiliationOptions: Record<'none' | 'government' | 'state_owned', string>;
+  merchantAffiliationHint: string;
+  merchantOnboardingBlocked: string;
   finishAction: string;
   creatingMerchantAction: string;
   retryAction: string;
@@ -663,6 +668,16 @@ export const MESSAGES: Record<Locale, Messages> = {
     merchantCountryLabel: 'País (código ISO de 2 letras)',
     merchantCountryHint: 'Ej.: CO',
     merchantCurrencyLabel: 'Moneda predeterminada',
+    merchantAffiliationLegend: '¿El comercio pertenece a un Estado o a un gobierno?',
+    merchantAffiliationOptions: {
+      none: 'No: es una empresa o persona privada',
+      government: 'Sí: es un órgano o ente de gobierno (ministerio, alcaldía, banco central…)',
+      state_owned: 'Sí: un Estado tiene el 50 % o más o lo controla (p. ej. una petrolera estatal)',
+    },
+    merchantAffiliationHint:
+      'Lo pedimos por cumplimiento de sanciones. Responde con la verdad: queda registrado.',
+    merchantOnboardingBlocked:
+      'Por ahora no podemos dar de alta este comercio. Si crees que es un error, escribe a soporte.',
     finishAction: 'Finalizar',
     creatingMerchantAction: 'Creando comercio…',
     retryAction: 'Reintentar',
@@ -1006,6 +1021,16 @@ export const MESSAGES: Record<Locale, Messages> = {
     merchantCountryLabel: 'Country (2-letter ISO code)',
     merchantCountryHint: 'E.g. CO',
     merchantCurrencyLabel: 'Default currency',
+    merchantAffiliationLegend: 'Is this merchant owned by a state or a government?',
+    merchantAffiliationOptions: {
+      none: 'No: it is a private company or individual',
+      government: 'Yes: it is a government body (ministry, municipality, central bank…)',
+      state_owned: 'Yes: a state owns 50% or more or controls it (e.g. a state oil company)',
+    },
+    merchantAffiliationHint:
+      'We ask for sanctions compliance. Answer truthfully: your answer is recorded.',
+    merchantOnboardingBlocked:
+      'We cannot onboard this merchant right now. If you think this is a mistake, contact support.',
     finishAction: 'Finish',
     creatingMerchantAction: 'Creating merchant…',
     retryAction: 'Retry',

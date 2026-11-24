@@ -39,9 +39,21 @@ export const CreateOrganizationForUserSchema = z
 
 export type CreateOrganizationForUserInput = z.infer<typeof CreateOrganizationForUserSchema>;
 
+/**
+ * #92 — afiliación estatal declarada por quien da de alta el comercio:
+ *  - `none`: sin participación ni control estatal;
+ *  - `government`: es un órgano o ente del Gobierno (ministerio, banco central…);
+ *  - `state_owned`: un Estado posee el 50 % o más, o lo controla (p. ej. PDVSA).
+ * Obligatoria y sin default: un default `none` sería una declaración falsa por
+ * omisión. `government`/`state_owned` se rechazan en el motor hasta dictamen.
+ */
+export const STATE_AFFILIATIONS = ['none', 'government', 'state_owned'] as const;
+export type StateAffiliation = (typeof STATE_AFFILIATIONS)[number];
+
 export const CreateMerchantSchema = z
   .object({
     name: z.string().trim().min(2).max(80),
+    stateAffiliation: z.enum(STATE_AFFILIATIONS),
     country: z
       .string()
       .regex(/^[A-Z]{2}$/, 'country must be an ISO 3166-1 alpha-2 code')
