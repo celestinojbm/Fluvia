@@ -30,6 +30,7 @@ import {
   PayoutService,
   RefundService,
   ResilientProvider,
+  isFlowSuspendedDbError,
 } from '@fluvia/payments-core';
 import { LedgerService, PostingService } from '@fluvia/ledger';
 import { MetricsRegistry } from '@fluvia/observability';
@@ -416,6 +417,16 @@ export function buildApp({
           err.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))
         )
       );
+    }
+
+    // #91: el guard del MOTOR (0068) corta el INSERT con un SQLSTATE dedicado;
+    // cualquier ruta que cree intents, attempts o payouts cae aquí sin que el
+    // servicio tenga que conocer el kill switch.
+    if (isFlowSuspendedDbError(err)) {
+      req.log.warn({ errMessage: err.message }, 'money movement blocked by kill switch');
+      return reply
+        .code(ERROR_CATALOG.flow_suspended.status)
+        .send(errorBody('flow_suspended', req.id));
     }
 
     const code = DOMAIN_ERROR_CODES[err.name];

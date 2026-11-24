@@ -116,7 +116,7 @@ Estados: `requested`, `in_transit`, `paid`, `failed`, `indeterminate`.
 stateDiagram-v2
     [*] --> requested
     requested --> in_transit : emitPayout (available → in_transit)
-    requested --> failed : sin disponible (nunca se envió al banco)
+    requested --> failed : sin disponible o kill switch activo (nunca se envió al banco)
     in_transit --> paid : settlePayout (in_transit → platform.cash)
     in_transit --> failed : failPayout (rebote; fondos de vuelta)
     in_transit --> indeterminate : desenlace desconocido (throw/timeout/pending)
@@ -124,7 +124,7 @@ stateDiagram-v2
     indeterminate --> failed : resolución verificada
 ```
 
-Sobre las primitivas contables de F4-05b (`emitPayout`/`settlePayout`/`failPayout`, `payout.in_transit` credit-normal). `requested → failed` cubre la carrera donde el disponible se drenó entre la validación y el emit — desenlace CONOCIDO, el banco jamás fue contactado. `indeterminate` (V4 §23, igual que attempts/refunds): tras llamar al banco el desenlace es DESCONOCIDO (throw/timeout o aceptación asíncrona `pending`); los fondos quedan RETENIDOS en tránsito y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (jamás por asunción). Terminales: `paid`, `failed`. FSM hecha cumplir EN el motor (migración 0033). Un payout atascado en `in_transit` más allá del lease (5 min) — el proceso murió entre el emit y el registro del desenlace del banco — lo barre `sweep_payouts()` (0034, F4-07c) a `indeterminate`, con los fondos retenidos en tránsito y auditoría atómica; el `PayoutsWatchdog` del worker lo invoca en intervalo, expone métricas y ALERTA ante indeterminados envejecidos + `requested` atascados. Payouts públicos/reales siguen bloqueados hasta los gates aplicables (Nivel A); F4-07a/b/c son el motor + API + robustez en sandbox. Settlement (el lado de conciliación: `open → closing → settled`) es un concepto interno del reporte de liquidación, no una FSM materializada.
+Sobre las primitivas contables de F4-05b (`emitPayout`/`settlePayout`/`failPayout`, `payout.in_transit` credit-normal). `requested → failed` cubre la carrera donde el disponible se drenó entre la validación y el emit, y el kill switch (#91, 0068: el motor corta `requested → in_transit`; `failure_code = 'flow_suspended'`) — en ambos casos desenlace CONOCIDO, el banco jamás fue contactado. `indeterminate` (V4 §23, igual que attempts/refunds): tras llamar al banco el desenlace es DESCONOCIDO (throw/timeout o aceptación asíncrona `pending`); los fondos quedan RETENIDOS en tránsito y SOLO una fuente verificada — webhook, consulta o conciliación — lo cierra (jamás por asunción). Terminales: `paid`, `failed`. FSM hecha cumplir EN el motor (migración 0033). Un payout atascado en `in_transit` más allá del lease (5 min) — el proceso murió entre el emit y el registro del desenlace del banco — lo barre `sweep_payouts()` (0034, F4-07c) a `indeterminate`, con los fondos retenidos en tránsito y auditoría atómica; el `PayoutsWatchdog` del worker lo invoca en intervalo, expone métricas y ALERTA ante indeterminados envejecidos + `requested` atascados. Payouts públicos/reales siguen bloqueados hasta los gates aplicables (Nivel A); F4-07a/b/c son el motor + API + robustez en sandbox. Settlement (el lado de conciliación: `open → closing → settled`) es un concepto interno del reporte de liquidación, no una FSM materializada.
 
 ## 7. Implementación normativa
 

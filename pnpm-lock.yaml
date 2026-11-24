@@ -542,6 +542,12 @@ importers:
 
   packages/payments-core:
     dependencies:
+      '@fluvia/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@fluvia/config':
+        specifier: workspace:*
+        version: link:../config
       '@fluvia/db':
         specifier: workspace:*
         version: link:../db
