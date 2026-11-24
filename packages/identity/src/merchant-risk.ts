@@ -43,6 +43,9 @@ export class DenylistEntryAlreadyRetiredError extends IdentityError {
   }
 }
 
+/** Flag consultable de 0069: legado sin declaración vs ya declarado. */
+export type AffiliationDeclarationStatus = 'pending_review' | 'declared';
+
 export interface MerchantRiskDto {
   id: string;
   tenantId: string;
@@ -50,6 +53,7 @@ export interface MerchantRiskDto {
   country: string;
   status: 'active' | 'frozen';
   stateAffiliation: StateAffiliation | null;
+  affiliationDeclarationStatus: AffiliationDeclarationStatus;
 }
 
 export interface DenylistEntryDto {
@@ -104,6 +108,7 @@ interface MerchantRow {
   country: string;
   status: 'active' | 'frozen';
   state_affiliation: StateAffiliation | null;
+  affiliation_declaration_status: AffiliationDeclarationStatus;
 }
 
 interface DenylistRow {
@@ -117,7 +122,7 @@ interface DenylistRow {
   retire_reason: string | null;
 }
 
-const MERCHANT_RISK_COLUMNS = `id, tenant_id, name, country, status, state_affiliation`;
+const MERCHANT_RISK_COLUMNS = `id, tenant_id, name, country, status, state_affiliation, affiliation_declaration_status`;
 const DENYLIST_COLUMNS = `id, pattern, reason, added_by, added_at, retired_at, retired_by, retire_reason`;
 
 const toMerchant = (r: MerchantRow): MerchantRiskDto => ({
@@ -127,6 +132,7 @@ const toMerchant = (r: MerchantRow): MerchantRiskDto => ({
   country: r.country.trim(),
   status: r.status,
   stateAffiliation: r.state_affiliation,
+  affiliationDeclarationStatus: r.affiliation_declaration_status,
 });
 
 const toEntry = (r: DenylistRow): DenylistEntryDto => ({

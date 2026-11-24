@@ -71,6 +71,7 @@ const showMerchant = (m: MerchantRiskDto): string =>
     m.country,
     m.status.toUpperCase(),
     `affiliation=${m.stateAffiliation ?? 'UNDECLARED'}`,
+    `declaration=${m.affiliationDeclarationStatus}`,
   ].join(' | ');
 
 const showEntry = (e: DenylistEntryDto): string =>

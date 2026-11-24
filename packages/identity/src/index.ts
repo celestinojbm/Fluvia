@@ -87,6 +87,7 @@ export {
   DenylistEntryNotFoundError,
   DenylistEntryAlreadyRetiredError,
   type MerchantRiskDto,
+  type AffiliationDeclarationStatus,
   type DenylistEntryDto,
   type ScreenFinding,
   type ScreenResult,

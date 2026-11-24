@@ -235,4 +235,22 @@ describe('comercio congelado: lo que NO se corta', () => {
     const ok = await intents.create({ tenantId: org, merchantId: m, amount: cop(1_000) });
     expect(ok.status).toBe('created');
   });
+
+  it('un legado sin declaración queda pending_review, activo, y puede cobrar', async () => {
+    const org = await ctx.createTenant(`FZ ${randomUUID().slice(0, 8)}`);
+    const res = await ctx.admin.query<{
+      id: string;
+      status: string;
+      affiliation_declaration_status: string;
+    }>(
+      `INSERT INTO merchants (tenant_id, name) VALUES ($1, $2)
+       RETURNING id, status, affiliation_declaration_status`,
+      [org, `legado-${randomUUID().slice(0, 8)}`]
+    );
+    const row = res.rows[0]!;
+    expect(row.status).toBe('active');
+    expect(row.affiliation_declaration_status).toBe('pending_review');
+    const ok = await intents.create({ tenantId: org, merchantId: row.id, amount: cop(1_000) });
+    expect(ok.status).toBe('created');
+  });
 });

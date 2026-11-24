@@ -15,6 +15,10 @@
 --     ('none' | 'government' | 'state_owned'; NULL = comercio legado sin
 --     declarar). La API la exige al crear; el motor rechaza el alta (SQLSTATE
 --     FV452) si es 'government' o 'state_owned'.
+--     Los comercios existentes SIN declaración NO se congelan ni se
+--     suspenden: quedan marcados como `affiliation_declaration_status =
+--     'pending_review'` (columna generada, consultable). Tras el deploy,
+--     Legal decide caso por caso.
 -- (2) Lista de bloqueo de nombres (`merchant_name_denylist`), solo del plano de
 --     plataforma: un alta o un renombrado cuyo nombre normalizado contiene un
 --     patrón activo (por palabras completas) se rechaza con FV452. La
@@ -70,6 +74,27 @@ ALTER TABLE merchants
 COMMENT ON COLUMN merchants.state_affiliation IS
   '#92: none | government | state_owned (participación estatal >= 50 % o control). '
   'NULL = comercio legado sin declarar. government/state_owned no pueden estar activos hasta dictamen.';
+
+-- Flag consultable para el triage post-deploy. GENERATED: no reescribe filas
+-- ni dispara el guard, así que no congela ni suspende a nadie. pending_review
+-- = sin declaración (legado); declared = ya hay none|government|state_owned.
+ALTER TABLE merchants
+  ADD COLUMN affiliation_declaration_status TEXT
+  GENERATED ALWAYS AS (
+    CASE
+      WHEN state_affiliation IS NULL THEN 'pending_review'
+      ELSE 'declared'
+    END
+  ) STORED;
+
+COMMENT ON COLUMN merchants.affiliation_declaration_status IS
+  '#92: pending_review = comercio legado sin declaración (state_affiliation IS NULL); '
+  'declared = ya declaró none|government|state_owned. Consultable para Legal. '
+  'La migración NO congela ni suspende a los pendientes: tras el deploy, Legal decide caso por caso.';
+
+CREATE INDEX merchants_pending_review_idx
+  ON merchants (id)
+  WHERE state_affiliation IS NULL AND deleted_at IS NULL;
 
 -- ----------------------------------------------------------------------------
 -- 3. Lista de bloqueo de nombres (plano de plataforma)

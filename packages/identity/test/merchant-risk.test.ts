@@ -357,10 +357,24 @@ describe('screen: triage de comercios ACTIVOS ya existentes', () => {
     expect(strict.some((f) => f.merchant.id === undeclared.rows[0]!.id)).toBe(false);
     expect(strict.some((f) => f.merchant.id === declared.id)).toBe(false);
 
+    const undeclaredId = undeclared.rows[0]!.id;
+    const pending = await admin.getMerchant(undeclaredId);
+    expect(pending.status).toBe('active');
+    expect(pending.stateAffiliation).toBeNull();
+    expect(pending.affiliationDeclarationStatus).toBe('pending_review');
+    expect((await admin.getMerchant(declared.id)).affiliationDeclarationStatus).toBe('declared');
+    expect((await admin.getMerchant(denylistedId)).affiliationDeclarationStatus).toBe(
+      'pending_review'
+    );
+    const flagged = await ctx.admin.query(
+      `SELECT 1 FROM merchants
+       WHERE id = $1 AND affiliation_declaration_status = 'pending_review'`,
+      [undeclaredId]
+    );
+    expect(flagged.rowCount).toBe(1);
+
     const all = await admin.screen({ includeUndeclared: true });
-    expect(all.find((f) => f.merchant.id === undeclared.rows[0]!.id)?.findings).toEqual([
-      'undeclared',
-    ]);
+    expect(all.find((f) => f.merchant.id === undeclaredId)?.findings).toEqual(['undeclared']);
     expect(all.some((f) => f.merchant.id === declared.id)).toBe(false);
     // screen solo lee; un UPDATE ajeno (updated_at) no rompe al legado, pero
     // renombrarlo o descongelarlo sí pasa por el guard.

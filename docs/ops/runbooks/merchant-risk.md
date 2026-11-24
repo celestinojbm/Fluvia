@@ -2,13 +2,16 @@
 
 Estado: Activo · Migración `0069_merchant_state_block_and_freeze.sql` · CLI `merchant-risk` (`@fluvia/identity`).
 
-**Contexto.** Hasta que haya dictamen de sanciones (#82, borrador `docs/legal/RIESGOS-VE.md` §1), Fluvia **no da de alta** comercios del Gobierno de Venezuela ni con participación estatal (PDVSA incluida). Además, desde 0069 `merchants.status = 'frozen'` se hace cumplir en el **motor**: antes existía pero ningún servicio lo leía, así que un comercio "congelado" seguía cobrando.
+**Contexto.** Hasta que haya dictamen de sanciones (#82, borrador `docs/legal/RIESGOS-VE.md` §1; ese archivo aún no está en el repo), Fluvia **no da de alta** comercios del Gobierno de Venezuela ni con participación estatal (PDVSA incluida). Además, desde 0069 `merchants.status = 'frozen'` se hace cumplir en el **motor**: antes existía pero ningún servicio lo leía, así que un comercio "congelado" seguía cobrando.
+
+**Decisión de producto (Celestino, PR #108).** La declaración de que el comercio **no** pertenece al Gobierno de Venezuela ni a PDVSA es **obligatoria en la API** al crear un comercio (`stateAffiliation` sin default): si falta, `400 validation_error`; si es `government`/`state_owned` (o el nombre está en la lista), `403 merchant_onboarding_blocked`. Los comercios **ya existentes** sin declaración **no se congelan ni se suspenden de golpe**. La migración los marca como `affiliation_declaration_status = 'pending_review'` (columna generada, consultable; el `status` no cambia). Después del deploy, Legal decide caso por caso (`screen --include-undeclared` y, si corresponde, `freeze`).
 
 ## Qué hace el motor (no depende de que el servicio se acuerde)
 
 | Pieza | Dónde | Efecto | API |
 | --- | --- | --- | --- |
-| Afiliación declarada (`none` / `government` / `state_owned`) | `merchants.state_affiliation` | `government`/`state_owned` no pueden estar **activos**: alta, reactivación o re-declaración fallan (SQLSTATE `FV452`). `NULL` = comercio legado sin declarar | `403 merchant_onboarding_blocked` |
+| Afiliación declarada (`none` / `government` / `state_owned`) | `merchants.state_affiliation` | `government`/`state_owned` no pueden estar **activos**: alta, reactivación o re-declaración fallan (SQLSTATE `FV452`). `NULL` = comercio legado sin declarar | `403 merchant_onboarding_blocked` (alta nueva); `400` si falta el campo |
+| Pendiente de declaración o revisión | `merchants.affiliation_declaration_status` | Columna generada: `pending_review` si `state_affiliation IS NULL`, `declared` si ya hay valor. Consultable (`WHERE affiliation_declaration_status = 'pending_review'`). **No congela ni suspende.** | — (flag de triage; Legal decide después del deploy) |
 | Lista de nombres | `merchant_name_denylist` | Alta o renombrado cuyo nombre normalizado (sin tildes ni signos, siglas juntas: `P.D.V.S.A.` → `pdvsa`) contiene un patrón activo **por palabras completas** → `FV452` | `403 merchant_onboarding_blocked` |
 | Congelación | `merchants.status = 'frozen'` | Sin `payment_intents`, `payment_attempts` ni `payouts` nuevos, y sin **emitir** payouts `requested` (`FV453`). Un payout pedido antes falla con `failure_code = merchant_frozen` (no queda atascado para el redriver) | `403 merchant_frozen` |
 | Columnas protegidas | trigger `merchants_state_guard` | Los roles `fluvia_*` no pueden cambiar `status`, `state_affiliation`, `country` ni `tenant_id` (`42501`): un comercio no se descongela ni se "muda" de país solo | — |
@@ -27,7 +30,7 @@ Corren con el pool **admin**. Toda escritura exige `--reason` y `--actor` (uuid 
 pnpm --filter @fluvia/identity run merchant-risk -- screen
 ```
 
-Lista los comercios **activos** declarados estatales o con nombre en la lista. Con `--include-undeclared` añade los legados sin declaración (anteriores a 0069). Solo lee: no congela nada.
+Lista los comercios **activos** declarados estatales o con nombre en la lista. Con `--include-undeclared` añade los legados sin declaración (`affiliation_declaration_status = 'pending_review'`, anteriores a 0069). Solo lee: no congela nada. Equivale a consultar `WHERE affiliation_declaration_status = 'pending_review' AND status = 'active' AND deleted_at IS NULL`.
 
 ```bash
 pnpm --filter @fluvia/identity run merchant-risk -- freeze --merchant <uuid> --actor <uuid-operador> --reason "Filial de PDVSA según registro mercantil (#92)"
@@ -51,10 +54,12 @@ pnpm --filter @fluvia/identity run merchant-risk -- denylist-retire --id <uuid> 
 
 ### A. Triage después de desplegar 0069 (una vez) y tras cada alta en la lista
 
-1. `screen` → revisar cada fila con Legal.
+**No congelar en masa** a los comercios `pending_review`. Siguen operando hasta que Legal decida, caso por caso.
+
+1. `screen` → revisar cada fila con Legal (estatales declarados o nombre en la lista).
 2. Estatal confirmado → `freeze` con la evidencia en `--reason`.
 3. Falso positivo por nombre → `denylist-retire` del patrón **solo si Legal lo aprueba**; si el patrón es correcto pero el comercio no es estatal, se deja activo (el guard solo actúa al renombrar o reactivar).
-4. `screen --include-undeclared` → pedir la declaración a los legados (hoy por soporte; la corrección la hace plataforma con el comercio **congelado**, ver C).
+4. `screen --include-undeclared` (o `SELECT id, name, country, status FROM merchants WHERE affiliation_declaration_status = 'pending_review' AND deleted_at IS NULL`) → pedir la declaración a los legados (hoy por soporte; la corrección la hace plataforma con el comercio **congelado**, ver C). Legal decide uno a uno si además hay que congelar.
 
 ### B. Un cliente reporta `403 merchant_onboarding_blocked`
 
@@ -76,7 +81,7 @@ No es un flag operativo: hace falta una **migración nueva** que cambie el guard
 
 ## Verificación
 
-- `show --merchant <uuid>` muestra `FROZEN`/`ACTIVE` y la afiliación.
+- `show --merchant <uuid>` muestra `FROZEN`/`ACTIVE`, la afiliación y `declaration=pending_review|declared`.
 - Un `POST /v1/payment_intents` del comercio congelado responde `403 merchant_frozen` y no crea filas; la `Idempotency-Key` sigue disponible para reintentar tras descongelar.
 - Auditoría: `audit_events` con `action = 'platform.operation'`, `resource_id = <merchant>` y la razón (panel «Eventos», `audit-investigation.md`).
 
