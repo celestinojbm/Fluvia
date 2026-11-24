@@ -12,9 +12,12 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "vitest run",
-    "gen:fsm-seed": "tsx scripts/gen-fsm-seed.ts"
+    "gen:fsm-seed": "tsx scripts/gen-fsm-seed.ts",
+    "kill-switch": "tsx src/kill-switch-cli.ts"
   },
   "dependencies": {
+    "@fluvia/audit": "workspace:*",
+    "@fluvia/config": "workspace:*",
     "@fluvia/db": "workspace:*",
     "@fluvia/events": "workspace:*",
     "@fluvia/inbox": "workspace:*",

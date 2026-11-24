@@ -102,6 +102,11 @@
       "type": "authorization_error",
       "message": "Live API keys are not available yet"
     },
+    "flow_suspended": {
+      "status": 403,
+      "type": "authorization_error",
+      "message": "This operation is currently suspended by a platform control"
+    },
     "mfa_step_up_required": {
       "status": 403,
       "type": "authorization_error",

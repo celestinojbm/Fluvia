@@ -213,6 +213,30 @@ describe('META-TESTS estructurales (cubren toda tabla futura)', () => {
     expect(res.rows).toEqual([]);
   });
 
+  it('#91: NO fluvia_% role holds any privilege on kill_switches nor EXECUTE on its guard (0068)', async () => {
+    // Activar/liberar es exclusivo del plano de plataforma (pool admin + auditoría);
+    // el guard es SECURITY DEFINER y solo lo invocan los triggers.
+    const res = await ctx.admin.query(`
+      SELECT r.rolname, p.privilege
+      FROM pg_roles r
+      CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p(privilege)
+      WHERE r.rolname LIKE 'fluvia\\_%'
+        AND has_table_privilege(r.oid, 'kill_switches', p.privilege)
+      UNION ALL
+      SELECT r.rolname, 'EXECUTE ' || f.fn
+      FROM pg_roles r
+      CROSS JOIN unnest(ARRAY[
+        'fluvia_assert_flow_allowed(uuid, text)',
+        'fluvia_kill_switch_intent_guard()',
+        'fluvia_kill_switch_attempt_guard()',
+        'fluvia_kill_switch_payout_guard()'
+      ]) AS f(fn)
+      WHERE r.rolname LIKE 'fluvia\\_%'
+        AND has_function_privilege(r.oid, f.fn, 'EXECUTE')
+    `);
+    expect(res.rows).toEqual([]);
+  });
+
   it('#92: NO fluvia_% role holds any privilege on merchant_name_denylist nor EXECUTE on the merchant guards (0069)', async () => {
     // La lista y congelar/descongelar son plano de plataforma (pool admin +
     // auditoría); los guards son SECURITY DEFINER y solo los invocan triggers.

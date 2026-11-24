@@ -47,6 +47,7 @@ const ALLOWED_INTERPOLATIONS: Record<string, string> = {
   LINK_COLUMNS: 'lista de columnas constante',
   CASE_COLUMNS: 'lista de columnas constante',
   EVENT_COLUMNS: 'lista de columnas constante',
+  KILL_SWITCH_COLUMNS: 'lista de columnas constante',
   MERCHANT_RISK_COLUMNS: 'lista de columnas constante (#92, merchant-risk)',
   DENYLIST_COLUMNS: 'lista de columnas constante (#92, merchant_name_denylist)',
   COLS: 'lista de columnas constante (case_adjustments)',

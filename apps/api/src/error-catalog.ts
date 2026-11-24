@@ -152,6 +152,14 @@ export const ERROR_CATALOG = {
     type: 'authorization_error',
     message: 'Live API keys are not available yet',
   },
+  // #91: un kill switch de plataforma (país, comercio o proveedor) corta el
+  // movimiento de dinero nuevo. El motivo del corte NO se expone (puede ser
+  // sensible: sanciones); solo el hecho de que la operación está suspendida.
+  flow_suspended: {
+    status: 403,
+    type: 'authorization_error',
+    message: 'This operation is currently suspended by a platform control',
+  },
   mfa_step_up_required: {
     status: 403,
     type: 'authorization_error',

@@ -95,3 +95,18 @@ export {
   createMockInboxRegistration,
   type MockWebhookEvent,
 } from './mock-webhook.js';
+export {
+  FLOW_SUSPENDED_SQLSTATE,
+  KILL_SWITCH_SCOPES,
+  KillSwitchAdmin,
+  KillSwitchAlreadyReleasedError,
+  KillSwitchNotFoundError,
+  KillSwitchUnknownMerchantError,
+  KillSwitchUnknownTenantError,
+  isFlowSuspendedDbError,
+  type EngageKillSwitchInput,
+  type EngageResult,
+  type KillSwitchDto,
+  type KillSwitchScope,
+  type ReleaseKillSwitchInput,
+} from './kill-switch.js';
