@@ -33,7 +33,7 @@ Reglas de módulo (V4 §11): responsabilidad clara, interfaz exportada, sin acce
 
 | Capa | Elección | Nota |
 |------|----------|------|
-| Lenguaje | TypeScript strict, ESM, Node ≥ 20 | `any` prohibido en código financiero/seguridad |
+| Lenguaje | TypeScript strict, ESM, Node ≥ 22.23.4 | `any` prohibido en código financiero/seguridad |
 | Monorepo | pnpm + Turborepo, lockfile + save-exact | operativo desde el spike |
 | API | Fastify + Zod, REST `/v1`, OpenAPI generado | ADR-0010; NestJS descartado con justificación |
 | Persistencia | PostgreSQL 16; SQL explícito (`pg`) en núcleo financiero | ADR-0003; Kysely se evaluará para CRUD no crítico en F1 |

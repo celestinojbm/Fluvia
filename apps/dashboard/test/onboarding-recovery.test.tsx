@@ -343,6 +343,17 @@ describe('OrgList — via visible para continuar el onboarding desde el dashboar
     ).toHaveAttribute('href', '/onboarding?orgId=org-1');
   });
 
+  it('nombre accesible del enlace normal = «nombre rol» con separador, sin depender del CSS', () => {
+    // jsdom no carga globals.css: los <span> quedan inline (como en un navegador
+    // sin estilos). Sin un espacio explicito el nombre seria «Mi Empresaowner».
+    render(<OrgList locale="es" orgs={[org('org-1', 'owner', 'Mi Empresa')]} />);
+    expect(getComputedStyle(document.querySelector('.org-name')!).display).toBe('inline');
+    expect(screen.getByRole('link', { name: 'Mi Empresa owner' })).toHaveAttribute(
+      'href',
+      '/o/org-1'
+    );
+  });
+
   it('la accion secundaria conserva el locale (lang=en)', () => {
     render(<OrgList locale="en" orgs={[org('org-1', 'owner', 'My Company')]} />);
     expect(
