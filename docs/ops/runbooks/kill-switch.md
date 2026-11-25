@@ -54,5 +54,24 @@ Después: `kill-switch -- history --limit 20` y un cobro de prueba en sandbox de
 
 - **Comunicación al comercio**: el `403 flow_suspended` es genérico a propósito (el motivo puede ser sensible). Avisar al comercio es una decisión de negocio/legal, no del operador.
 - **`country` es el país declarado** por el comercio en el onboarding, no uno verificado: un comercio que declare otro país lo esquiva. Mientras no haya KYC que lo verifique, para contrapartes concretas usa `tenant`.
-- **`merchants.status = 'frozen'`** existe en el esquema pero **no** se hace cumplir en el flujo de pagos; para suspender un comercio usa este kill switch (`--scope merchant` o `--scope tenant`).
-- **Screening SDN** (#90) y **bloqueo de entidades del Gobierno/PDVSA** (#92): cuando existan, su resultado debe aplicarse con este mismo mecanismo.
+- **Screening SDN** (#90): cuando exista, su resultado debe aplicarse con este mecanismo (contraparte → `--scope tenant`) o con la congelación del comercio (ver abajo).
+
+## Kill switch o congelación: cuál usar
+
+Desde la migración 0069 (#92) `merchants.status = 'frozen'` **sí** se hace cumplir en el motor (`FV453`, API `403 merchant_frozen`). Hasta entonces este runbook recomendaba el kill switch para suspender un comercio porque `frozen` no tenía efecto; eso ya no aplica.
+
+| Situación | Usa | Por qué |
+| --- | --- | --- |
+| Orden por **país** o **proveedor** (licencia revocada, banco que hace de-risking) | kill switch `--scope country` / `--scope provider` | La congelación es por comercio; no existe a nivel país ni proveedor |
+| **Contraparte** sancionada o fraudulenta (la organización entera) | kill switch `--scope tenant` | Cubre también los comercios que la organización cree **después** del corte; congelar no |
+| **Un comercio concreto** que no debe operar (estatal confirmado, nombre en la denylist, decisión de Legal sobre un `pending_review`) | `merchant-risk freeze` ([`merchant-risk.md`](./merchant-risk.md)) | Queda en el estado del comercio, `show` lo enseña y `unfreeze` de un comercio estatal falla hasta el dictamen (más difícil de revertir por error) |
+| Contención **inmediata** mientras se investiga un comercio | cualquiera de los dos; el kill switch `--scope merchant` se libera sin tocar el estado del comercio | Ambos cortan intents, attempts y la emisión de payouts desde el commit |
+
+Son independientes y se suman: un comercio congelado **y** bajo un kill switch sigue bloqueado hasta que se levanten los dos. Ninguno corta refunds ni lo ya en vuelo. Los errores difieren (`flow_suspended` vs `merchant_frozen`), pero con los dos activos el cliente solo ve `flow_suspended`: PostgreSQL dispara los triggers `BEFORE` por orden alfabético y `…_kill_switch` va antes que `…_merchant_frozen`. Un `flow_suspended` **no** descarta que además esté congelado: compruébalo con `merchant-risk show`.
+
+## Alertas relacionadas
+
+El kill switch no tiene alerta propia: es una acción deliberada y su rastro está en `audit_events`. Lo que sí alerta, y suele acabar en una decisión de este runbook o de `merchant-risk.md`:
+
+- `fluvia_merchants_denylisted_active > 0` — un comercio activo coincide con la denylist estatal (#92). Contención inmediata: `kill-switch engage --scope merchant` o `merchant-risk freeze`, según la tabla de arriba.
+- `fluvia_merchants_pending_review > 0` — cola de comercios legados sin declaración de afiliación (#108). **No** es motivo de corte masivo: Legal decide caso por caso.

@@ -23,6 +23,7 @@ import { ReconciliationWatchdog, discrepancyCount } from './reconciliation-watch
 import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { PayoutsRedriver } from './payouts-redriver.js';
 import { DisputesWatchdog } from './disputes-watchdog.js';
+import { MerchantRiskWatchdog } from './merchant-risk-watchdog.js';
 import { IdempotencyWatchdog } from './idempotency-watchdog.js';
 import { LedgerCheckpointer } from './ledger-checkpointer.js';
 import { LedgerChainAnchorer } from './ledger-chain-anchorer.js';
@@ -146,6 +147,18 @@ const disputesHeld = registry.gauge(
 const disputesAged = registry.gauge(
   'fluvia_disputes_aged',
   'Disputas vivas envejecidas (>7 días) — 0 = sano; riesgo de pérdida por no responder'
+);
+const merchantsPendingReview = registry.gauge(
+  'fluvia_merchants_pending_review',
+  'Comercios ACTIVOS sin declaración de afiliación estatal (pending_review, #108) — cola de Legal'
+);
+const merchantsPendingReviewTotal = registry.gauge(
+  'fluvia_merchants_pending_review_total',
+  'Comercios sin declaración de afiliación estatal, incluidos los congelados (#108)'
+);
+const merchantsDenylistedActive = registry.gauge(
+  'fluvia_merchants_denylisted_active',
+  'Comercios ACTIVOS cuyo nombre coincide con la denylist estatal (#92) — 0 = sano'
 );
 const idempotencyInProgress = registry.gauge(
   'fluvia_idempotency_in_progress',
@@ -309,6 +322,16 @@ const disputesWatchdog = new DisputesWatchdog(workerPool, logger, {
     disputesAged.set({}, health.heldAged);
   },
 });
+// #92/#108: cola de comercios pending_review y activos en la denylist. La
+// politica vive en sweep_merchant_risk() (0070); NO congela nada — congelar es
+// decision del operador por el CLI auditado (merchant-risk freeze).
+const merchantRiskWatchdog = new MerchantRiskWatchdog(workerPool, logger, {
+  onResult: (health) => {
+    merchantsPendingReview.set({}, health.pendingReviewActive);
+    merchantsPendingReviewTotal.set({}, health.pendingReviewTotal);
+    merchantsDenylistedActive.set({}, health.denylistedActive);
+  },
+});
 // F6 (threat model §5): salud de la capa de idempotencia. La política vive en
 // sweep_idempotency_orphans() (0041); el job la invoca, expone los gauges y
 // ALERTA ante huérfanos `in_progress` envejecidos. NO transiciona nada (un
@@ -375,6 +398,7 @@ async function shutdown(signal: string): Promise<void> {
   payoutsWatchdog.stop();
   payoutsRedriver.stop();
   disputesWatchdog.stop();
+  merchantRiskWatchdog.stop();
   idempotencyWatchdog.stop();
   ledgerCheckpointer.stop();
   ledgerChainAnchorer.stop();
@@ -470,6 +494,22 @@ worker
       logger.info({ intervalMs: config.disputesWatchdog.intervalMs }, 'disputes watchdog started');
     } else {
       logger.info({}, 'disputes watchdog disabled by config (DISPUTES_WATCHDOG_ENABLED=false)');
+    }
+    if (config.merchantRiskWatchdog.enabled) {
+      // Primera corrida inmediata: la cola pending_review se ve desde el arranque.
+      void merchantRiskWatchdog.runOnce().catch((err: unknown) => {
+        logger.error({ err: String(err) }, 'merchant risk watchdog run failed');
+      });
+      merchantRiskWatchdog.start(config.merchantRiskWatchdog.intervalMs);
+      logger.info(
+        { intervalMs: config.merchantRiskWatchdog.intervalMs },
+        'merchant risk watchdog started'
+      );
+    } else {
+      logger.info(
+        {},
+        'merchant risk watchdog disabled by config (MERCHANT_RISK_WATCHDOG_ENABLED=false)'
+      );
     }
     if (config.idempotencyWatchdog.enabled) {
       idempotencyWatchdog.start(config.idempotencyWatchdog.intervalMs);
