@@ -74,4 +74,5 @@ Son independientes y se suman: un comercio congelado **y** bajo un kill switch s
 El kill switch no tiene alerta propia: es una acción deliberada y su rastro está en `audit_events`. Lo que sí alerta, y suele acabar en una decisión de este runbook o de `merchant-risk.md`:
 
 - `fluvia_merchants_denylisted_active > 0` — un comercio activo coincide con la denylist estatal (#92). Contención inmediata: `kill-switch engage --scope merchant` o `merchant-risk freeze`, según la tabla de arriba.
-- `fluvia_merchants_pending_review > 0` — cola de comercios legados sin declaración de afiliación (#108). **No** es motivo de corte masivo: Legal decide caso por caso.
+- `min_over_time(fluvia_merchants_pending_review[7d]) > 0` — la cola de comercios legados sin declaración de afiliación (#108) lleva una semana sin vaciarse. **No** es motivo de corte masivo: Legal decide caso por caso.
+- `delta(fluvia_merchants_pending_review_total[1h]) > 0` — apareció un comercio **nuevo** sin declaración (alguien se saltó la API). Ver `merchant-risk.md` §E.

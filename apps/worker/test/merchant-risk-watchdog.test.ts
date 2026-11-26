@@ -176,12 +176,48 @@ describe('MerchantRiskWatchdog', () => {
     const lines: LogLine[] = [];
     const wd = new MerchantRiskWatchdog(workerPool, captureLogger(lines));
     await wd.runOnce(); // línea base: la primera corrida nunca es "subida"
-    expect(lines.some((l) => /NEW active merchant/.test(l.msg))).toBe(false);
+    expect(lines.some((l) => /NEW merchant without/.test(l.msg))).toBe(false);
 
     await insertLegacy();
     await wd.runOnce();
-    const regression = lines.find((l) => /NEW active merchant/.test(l.msg));
+    const regression = lines.find((l) => /NEW merchant without/.test(l.msg));
     expect(regression?.level).toBe('error');
+  });
+
+  it('unfreeze de un legado sin declarar NO se reporta como alta nueva; un alta nueva sí, aunque congelen otro', async () => {
+    // Pool simulado: el conteo global de la BD compartida lo mueven otros
+    // archivos de test en paralelo; aquí se fija la secuencia exacta.
+    const seq: Array<[active: number, total: number]> = [
+      [3, 5], // línea base
+      [4, 5], // `merchant-risk unfreeze` de un legado: sube activos, total igual
+      [4, 6], // alta nueva sin declaración + congelación de otro en la misma corrida
+    ];
+    let i = 0;
+    const fakePool = {
+      query: async () => {
+        const [active, total] = seq[i++]!;
+        return {
+          rows: [
+            { metric: 'pending_review_active', value: String(active) },
+            { metric: 'pending_review_total', value: String(total) },
+            { metric: 'denylisted_active', value: '0' },
+          ],
+        };
+      },
+    } as unknown as Pool;
+    const lines: LogLine[] = [];
+    const wd = new MerchantRiskWatchdog(fakePool, captureLogger(lines));
+
+    await wd.runOnce();
+    await wd.runOnce();
+    expect(lines.some((l) => /NEW merchant without/.test(l.msg))).toBe(false);
+    expect(lines.filter((l) => l.level === 'error')).toHaveLength(0);
+
+    await wd.runOnce();
+    const regression = lines.filter((l) => /NEW merchant without/.test(l.msg));
+    expect(regression).toHaveLength(1);
+    expect(regression[0]!.level).toBe('error');
+    expect(regression[0]!.obj).toMatchObject({ pendingReviewTotal: 6, previous: 5 });
   });
 
   it('el observador de métricas que explota no rompe el job', async () => {

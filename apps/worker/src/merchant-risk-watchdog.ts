@@ -9,9 +9,13 @@ import type { WatchdogLogger } from './attempts-watchdog.js';
  *
  * - `pendingReviewActive`: legados sin declaración de afiliación que siguen
  *   cobrando. Es una COLA de trabajo de Legal, no una emergencia: se loguea solo
- *   cuando cambia (no cada minuto) y la alerta es de backlog. Si SUBE, algo
- *   creó un comercio saltándose la API (que exige la declaración): eso sí es
- *   una regresión y se loguea como error.
+ *   cuando cambia (no cada minuto) y la alerta es de backlog.
+ * - `pendingReviewTotal`: ídem incluidos los congelados. Si SUBE, algo creó un
+ *   comercio saltándose la API (que exige la declaración): eso sí es una
+ *   regresión y se loguea como error. Se mira el TOTAL y no los activos porque
+ *   `merchant-risk unfreeze` de un legado sin declarar (permitido por el guard
+ *   de 0069) sube los activos sin que haya ningún alta nueva; y congelar un
+ *   legado en la misma corrida en que entra uno nuevo dejaría los activos igual.
  * - `denylistedActive`: comercio activo cuyo nombre coincide con la lista. El
  *   guard de 0069 no re-evalúa a los ya activos, así que esto es lo único que
  *   lo avisa. Error en cada corrida mientras sea > 0.
@@ -33,6 +37,7 @@ export class MerchantRiskWatchdog {
   private running = false;
   private stopped = false;
   private lastPendingActive: number | undefined;
+  private lastPendingTotal: number | undefined;
 
   constructor(
     /** Pool con rol fluvia_worker (EXECUTE sobre sweep_merchant_risk). */
@@ -59,14 +64,20 @@ export class MerchantRiskWatchdog {
       );
     }
 
-    const previous = this.lastPendingActive;
+    const previousActive = this.lastPendingActive;
+    const previousTotal = this.lastPendingTotal;
     this.lastPendingActive = health.pendingReviewActive;
-    if (previous !== undefined && health.pendingReviewActive > previous) {
+    this.lastPendingTotal = health.pendingReviewTotal;
+    if (previousTotal !== undefined && health.pendingReviewTotal > previousTotal) {
       this.logger?.error(
-        { pendingReviewActive: health.pendingReviewActive, previous },
-        'NEW active merchant without state-affiliation declaration — the API requires it; something created a merchant bypassing it'
+        {
+          pendingReviewTotal: health.pendingReviewTotal,
+          previous: previousTotal,
+          pendingReviewActive: health.pendingReviewActive,
+        },
+        'NEW merchant without state-affiliation declaration — the API requires it; something created a merchant bypassing it'
       );
-    } else if (previous !== health.pendingReviewActive && health.pendingReviewActive > 0) {
+    } else if (previousActive !== health.pendingReviewActive && health.pendingReviewActive > 0) {
       this.logger?.info(
         {
           pendingReviewActive: health.pendingReviewActive,
