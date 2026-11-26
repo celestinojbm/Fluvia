@@ -37,6 +37,15 @@ DECLARE
   n_pending_total BIGINT;
   n_denylisted_active BIGINT;
 BEGIN
+  -- Falla CERRADO: `merchants` tiene FORCE RLS y aquí no hay `app.tenant_id`.
+  -- Si el dueño de la función no se salta RLS (cloud sin BYPASSRLS), los conteos
+  -- saldrían 0 y las alertas quedarían en verde sin ver nada. Mejor un error en
+  -- el log del worker ("merchant risk watchdog run failed") que un falso "sano".
+  IF row_security_active('merchants') THEN
+    RAISE EXCEPTION 'FLUVIA_MERCHANT_RISK_SWEEP_BLIND: owner of sweep_merchant_risk() (%) is subject to RLS on merchants; counts would read 0', current_user
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
   -- Usa merchants_pending_review_idx (0069): state_affiliation IS NULL AND deleted_at IS NULL.
   SELECT count(*) FILTER (WHERE status = 'active'), count(*)
     INTO n_pending_active, n_pending_total

@@ -91,6 +91,8 @@ El worker corre `sweep_merchant_risk()` cada `MERCHANT_RISK_WATCHDOG_INTERVAL_MS
 
 `fluvia_merchants_pending_review_total` incluye a los congelados; la diferencia con `fluvia_merchants_pending_review` son los que ya no pueden cobrar pero siguen sin declarar.
 
+**Falla cerrado.** `merchants` tiene `FORCE RLS`: si el dueño de `sweep_merchant_risk()` no se salta RLS (en cloud, un rol owner sin `BYPASSRLS`), la función **lanza** `FLUVIA_MERCHANT_RISK_SWEEP_BLIND` en vez de devolver 0. En el worker se ve como `merchant risk watchdog run failed` en cada corrida y los gauges dejan de actualizarse. Un 0 en estos gauges significa sano; un error significa que el watchdog está ciego. Se arregla dando `BYPASSRLS` al dueño de la función o cambiando el dueño (`ALTER FUNCTION sweep_merchant_risk() OWNER TO …`).
+
 ## Verificación
 
 - `show --merchant <uuid>` muestra `FROZEN`/`ACTIVE`, la afiliación y `declaration=pending_review|declared`.

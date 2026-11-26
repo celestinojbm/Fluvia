@@ -139,6 +139,30 @@ describe('sweep_merchant_risk() — conteos sin congelar (0070)', () => {
     expect(res.fields.map((f) => f.name)).toEqual(['metric', 'value']);
   });
 
+  it('falla CERRADO si su dueño está sometido a RLS (no devuelve un 0 falso)', async () => {
+    // Cloud sin BYPASSRLS: FORCE RLS sobre `merchants` y sin app.tenant_id, los
+    // conteos saldrían 0 = "sano". Todo dentro de una tx que se revierte: el
+    // cambio de dueño no lo ve ningún otro test.
+    const role = `mrw_blind_${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+    const client = await adminPool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`CREATE ROLE ${role} NOLOGIN`);
+      await client.query(`GRANT SELECT ON merchants, merchant_name_denylist TO ${role}`);
+      await client.query(
+        `GRANT EXECUTE ON FUNCTION fluvia_merchant_name_denylisted(TEXT) TO ${role}`
+      );
+      await client.query(`ALTER FUNCTION sweep_merchant_risk() OWNER TO ${role}`);
+      await client.query('SET LOCAL ROLE fluvia_worker');
+      await expect(client.query('SELECT * FROM sweep_merchant_risk()')).rejects.toThrow(
+        /FLUVIA_MERCHANT_RISK_SWEEP_BLIND/
+      );
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+
   it('solo el rol worker puede ejecutarla', async () => {
     await expect(appPool.query('SELECT * FROM sweep_merchant_risk()')).rejects.toThrow(
       /permission denied/i
