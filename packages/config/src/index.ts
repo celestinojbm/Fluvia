@@ -79,6 +79,14 @@ const EnvSchema = z.object({
   PAYOUTS_REDRIVER_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
   DISPUTES_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   DISPUTES_WATCHDOG_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  // #92/#108: cola pending_review y comercios activos en la denylist (0070).
+  MERCHANT_RISK_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
+  MERCHANT_RISK_WATCHDOG_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .max(3_600_000)
+    .default(300_000),
   // F6 (threat model §5): watchdog de huérfanos `in_progress` de idempotencia.
   IDEMPOTENCY_WATCHDOG_ENABLED: z.enum(['true', 'false']).default('true'),
   IDEMPOTENCY_WATCHDOG_INTERVAL_MS: z.coerce
@@ -220,6 +228,11 @@ export interface AppConfig {
   };
   /** Watchdog de disputas: salud de fondos apartados + envejecidas (F4-10). */
   disputesWatchdog: {
+    enabled: boolean;
+    intervalMs: number;
+  };
+  /** #92/#108: comercios pending_review y activos en la denylist (0070). */
+  merchantRiskWatchdog: {
     enabled: boolean;
     intervalMs: number;
   };
@@ -429,6 +442,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     disputesWatchdog: {
       enabled: e.DISPUTES_WATCHDOG_ENABLED === 'true',
       intervalMs: e.DISPUTES_WATCHDOG_INTERVAL_MS,
+    },
+    merchantRiskWatchdog: {
+      enabled: e.MERCHANT_RISK_WATCHDOG_ENABLED === 'true',
+      intervalMs: e.MERCHANT_RISK_WATCHDOG_INTERVAL_MS,
     },
     idempotencyWatchdog: {
       enabled: e.IDEMPOTENCY_WATCHDOG_ENABLED === 'true',

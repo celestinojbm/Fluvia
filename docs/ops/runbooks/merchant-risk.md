@@ -79,6 +79,20 @@ Solo plataforma (pool admin), y con el comercio **congelado** (con él activo, d
 
 No es un flag operativo: hace falta una **migración nueva** que cambie el guard (`fluvia_merchant_state_guard`), revisada como decisión de producto y legal. Hasta entonces `unfreeze` de un comercio estatal falla siempre.
 
+### E. Alertas del watchdog (migración 0070)
+
+El worker corre `sweep_merchant_risk()` cada `MERCHANT_RISK_WATCHDOG_INTERVAL_MS` (5 min por defecto; `MERCHANT_RISK_WATCHDOG_ENABLED=false` lo apaga) y expone tres gauges. **No congela nada**: solo cuenta. La función devuelve números, nunca nombres ni patrones; el detalle se saca con el CLI.
+
+| Gauge | Alerta (`observability.md` §4) | Qué hacer |
+| --- | --- | --- |
+| `fluvia_merchants_denylisted_active` | `> 0` · ALTA | Un comercio **activo** coincide con la denylist. Pasa cuando el comercio se dio de alta antes de 0069 o antes de un `denylist-add`: el guard no re-evalúa a los ya activos. `screen` → Legal → `freeze` (o `kill-switch engage --scope merchant` si hace falta cortar ya y Legal aún no decidió) **o** `denylist-retire` si el patrón es un falso positivo. Log del worker: `ACTIVE MERCHANTS MATCH THE STATE DENYLIST` en cada corrida. |
+| `fluvia_merchants_pending_review_total` | `delta(…[1h]) > 0` · ALTA | Apareció un comercio **nuevo** sin declaración. La API lo impide (`400` si falta `stateAffiliation`), así que alguien creó la fila por otro camino: seed, SQL en una sesión admin o una regresión del endpoint. Localízalo (`SELECT id, tenant_id, name, created_at FROM merchants WHERE state_affiliation IS NULL ORDER BY created_at DESC LIMIT 10`), averigua el camino y corrige la declaración con el procedimiento C. Log del worker: `NEW merchant without state-affiliation declaration` (compara el total corrida a corrida, así que un `unfreeze` de un legado no lo dispara). Límite: si en la misma hora entra uno nuevo y Legal declara uno viejo, el `delta` queda en 0; el log del worker lo registra salvo que ambos caigan dentro de la misma corrida (5 min). |
+| `fluvia_merchants_pending_review` | `min_over_time(…[7d]) > 0` · MEDIA | La cola de legados (#108) lleva una semana sin vaciarse. Es un **ticket para Legal**, no una página: estos comercios siguen cobrando por decisión de producto. `screen --include-undeclared` da la lista; se resuelve con A.4 y C. **No congelar en masa.** El worker lo registra como `info` solo cuando el número cambia. |
+
+`fluvia_merchants_pending_review_total` incluye a los congelados; la diferencia con `fluvia_merchants_pending_review` son los que ya no pueden cobrar pero siguen sin declarar.
+
+**Falla cerrado.** `merchants` tiene `FORCE RLS`: si el dueño de `sweep_merchant_risk()` no se salta RLS (en cloud, un rol owner sin `BYPASSRLS`), la función **lanza** `FLUVIA_MERCHANT_RISK_SWEEP_BLIND` en vez de devolver 0. En el worker se ve como `merchant risk watchdog run failed` en cada corrida y los gauges dejan de actualizarse. Un 0 en estos gauges significa sano; un error significa que el watchdog está ciego. Se arregla dando `BYPASSRLS` al dueño de la función o cambiando el dueño (`ALTER FUNCTION sweep_merchant_risk() OWNER TO …`).
+
 ## Verificación
 
 - `show --merchant <uuid>` muestra `FROZEN`/`ACTIVE`, la afiliación y `declaration=pending_review|declared`.
@@ -87,4 +101,4 @@ No es un flag operativo: hace falta una **migración nueva** que cambie el guard
 
 ## Relación con el kill switch (#91, PR #104)
 
-El kill switch corta por país, comercio, organización o proveedor con su propia tabla y SQLSTATE (`FV451`); la congelación es el **estado del comercio**. Son independientes y los dos se aplican en el motor: para una contención inmediata por país usa el kill switch; para un comercio concreto que no debe operar, congélalo.
+El kill switch corta por país, comercio, organización o proveedor con su propia tabla y SQLSTATE (`FV451`); la congelación es el **estado del comercio**. Son independientes y los dos se aplican en el motor: para una contención inmediata por país usa el kill switch; para un comercio concreto que no debe operar, congélalo. La tabla de decisión completa está en [`kill-switch.md`](./kill-switch.md#kill-switch-o-congelación-cuál-usar).
