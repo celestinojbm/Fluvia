@@ -138,6 +138,16 @@ jobs:
   security:
     name: Secret scanning, dependencias y SBOM
     runs-on: ubuntu-latest
+    env:
+      # Binarios de syft/grype con versión y SHA256 (asset linux_amd64, de los
+      # checksums.txt oficiales de cada release) EXPLÍCITOS, igual que
+      # GITLEAKS_VERSION: el SHA de la action no fija el binario que descarga.
+      # Al subir una versión, actualizar SU checksum aquí (si no coincide, el
+      # job falla cerrado).
+      SYFT_BIN_VERSION: v1.42.3
+      SYFT_BIN_SHA256: 0d6be741479eddd2c8644a288990c04f3df0d609bbc1599a005532a9dff63509
+      GRYPE_BIN_VERSION: v0.97.1
+      GRYPE_BIN_SHA256: 6215a5900dff667751503f68e4f475390e122938d15f1e4a1dc2eb044c57ff7b
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -184,12 +194,26 @@ jobs:
         # release). Reproducible: `pnpm licenses:check --strict`.
         run: pnpm licenses:check --strict
 
+      - name: Test del instalador de syft/grype (sin red)
+        run: bash scripts/ci/preinstall-anchore-tool.test.sh
+
+      # PR #111: sbom-action/scan-action instalan su binario con install.sh de
+      # `main`, que consulta github.com/anchore/<tool>/releases/<v> y recibió
+      # HTTP 504 en 4 de 4 intentos. Ambas actions miran ANTES el tool cache;
+      # se preinstala ahí desde el asset del release (curl --retry, SHA256
+      # fijado arriba) y así ya no descargan nada.
+      - name: Preinstalar syft y grype (tool cache, reintentos, SHA256 fijado)
+        run: |
+          bash scripts/ci/preinstall-anchore-tool.sh syft "$SYFT_BIN_VERSION" "$SYFT_BIN_SHA256"
+          bash scripts/ci/preinstall-anchore-tool.sh grype "$GRYPE_BIN_VERSION" "$GRYPE_BIN_SHA256"
+
       - name: SBOM (syft, SPDX)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: spdx-json
           artifact-name: fluvia-sbom.spdx.json
+          syft-version: ${{ env.SYFT_BIN_VERSION }}
 
       # F6 (threat model §5 — Secretos/cadena): el SBOM se generaba pero nadie
       # lo LEÍA (capacidad simulada). Grype escanea el mismo árbol y ROMPE el
@@ -204,3 +228,4 @@ jobs:
           fail-build: true
           severity-cutoff: high
           output-format: table
+          grype-version: ${{ env.GRYPE_BIN_VERSION }}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../lib/csrf-header';
 import { STATE_AFFILIATION_OPTIONS, type StateAffiliationOption } from '../lib/state-affiliation';
 import { MESSAGES, type Locale } from '../messages';
@@ -80,12 +80,19 @@ export function OnboardingWizard({
 
   const errorRef = useRef<HTMLParagraphElement>(null);
 
+  // Foco al alert tras el error (tabIndex=-1): el lector de pantalla lo
+  // anuncia y el operador retoma el formulario desde ahi. En un efecto, que
+  // corre DESPUES del commit: con requestAnimationFrame el frame podía llegar
+  // antes de que React pintara el alert (ref null) y el foco se perdía.
+  // Cada submit pone error a null antes del fetch, así que dos fallos
+  // seguidos del mismo tipo también vuelven a disparar el efecto.
+  useEffect(() => {
+    if (error !== null) errorRef.current?.focus();
+  }, [error]);
+
   function showError(kind: Exclude<WizardError, null>) {
     setError(kind);
     setPhase('idle');
-    // Foco al alert tras el error (tabIndex=-1): el lector de pantalla lo
-    // anuncia y el operador retoma el formulario desde ahi.
-    requestAnimationFrame(() => errorRef.current?.focus());
   }
 
   async function submitOrg(e: React.FormEvent) {
