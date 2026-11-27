@@ -196,6 +196,29 @@ describe('OnboardingWizard — paso 2 (comercio) y recorrido completo', () => {
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
+  it('error focus does not depend on frame timing: a frame that fires before the commit still focuses the alert', async () => {
+    // Flake de CI en PR #111: el foco se pedía en un requestAnimationFrame
+    // programado junto a setError(); si el frame llegaba antes de que React
+    // pintara la alerta, errorRef era null y el foco se quedaba en <body>.
+    // Aquí el frame se ejecuta de inmediato (antes del commit) para fijar el
+    // peor orden de forma determinista.
+    stubFetchSequence([
+      { status: 201, body: ORG_OK },
+      { status: 500, body: { error: { code: 'internal_error' } } },
+    ]);
+    render(<OnboardingWizard locale="es" navigate={vi.fn()} />);
+    await fillOrgStep();
+    await screen.findByText('Paso 2 de 2 — Comercio');
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    await fillMerchantStep();
+
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(alert).toHaveFocus());
+  });
+
   it('merchant onboarding already completed: stable error with a link to the dashboard', async () => {
     stubFetchSequence([
       { status: 201, body: ORG_OK },
