@@ -23,8 +23,8 @@ function sample(text: string, metric: string, labels: string): number | undefine
 
 function staleJobs(registry: MetricsRegistry, nowMs: number, job = 'merchant_risk'): boolean {
   const text = registry.render();
-  const last = sample(text, 'fluvia_worker_job_last_success_timestamp_seconds', `job="${job}"`);
-  const interval = sample(text, 'fluvia_worker_job_interval_seconds', `job="${job}"`);
+  const last = sample(text, 'fluvia_worker_job_last_success_timestamp_seconds', `task="${job}"`);
+  const interval = sample(text, 'fluvia_worker_job_interval_seconds', `task="${job}"`);
   if (last === undefined || interval === undefined) {
     throw new Error('freshness series absent — the alert could never fire');
   }
@@ -69,9 +69,9 @@ describe('JobFreshnessMetrics', () => {
       intervalMs: INTERVAL_MS,
     });
     const text = registry.render();
-    expect(text).toContain('fluvia_worker_job_enabled{job="merchant_risk"} 1');
-    expect(text).toContain('fluvia_worker_job_interval_seconds{job="merchant_risk"} 300');
-    expect(text).toContain('fluvia_worker_job_runs_total{job="merchant_risk",result="error"} 0');
+    expect(text).toContain('fluvia_worker_job_enabled{task="merchant_risk"} 1');
+    expect(text).toContain('fluvia_worker_job_interval_seconds{task="merchant_risk"} 300');
+    expect(text).toContain('fluvia_worker_job_runs_total{task="merchant_risk",result="error"} 0');
 
     clock.now += 3 * INTERVAL_MS;
     expect(staleJobs(registry, clock.now)).toBe(false);
@@ -86,7 +86,7 @@ describe('JobFreshnessMetrics', () => {
       intervalMs: INTERVAL_MS,
     });
     const text = registry.render();
-    expect(text).toContain('fluvia_worker_job_enabled{job="merchant_risk"} 0');
+    expect(text).toContain('fluvia_worker_job_enabled{task="merchant_risk"} 0');
     expect(text).not.toContain('fluvia_worker_job_last_success_timestamp_seconds{');
   });
 
@@ -112,7 +112,21 @@ describe('JobFreshnessMetrics', () => {
       .filter((l) => l.startsWith('fluvia_worker_job_'));
     expect(jobLines.length).toBeGreaterThan(0);
     for (const l of jobLines) {
-      expect(l).toMatch(/^fluvia_worker_job_\w+\{job="merchant_risk"(,result="(ok|error)")?\} /);
+      expect(l).toMatch(/^fluvia_worker_job_\w+\{task="merchant_risk"(,result="(ok|error)")?\} /);
+    }
+  });
+  it('no usa labels que Prometheus reserva para el target (job, instance)', () => {
+    // Con honor_labels: false (default) el scrape renombra `job` → `exported_job`
+    // y un selector {job="merchant_risk"} no vería ninguna serie: alerta muda.
+    const registry = new MetricsRegistry();
+    const t = new JobFreshnessMetrics(registry).track('merchant_risk', {
+      enabled: true,
+      intervalMs: INTERVAL_MS,
+    });
+    t.success();
+    for (const l of registry.render().split('\n')) {
+      if (!l.startsWith('fluvia_worker_job_')) continue;
+      expect(l).not.toMatch(/[{,](job|instance)="/);
     }
   });
 });
@@ -128,7 +142,7 @@ describe('MerchantRiskWatchdog — frescura (follow-up #110)', () => {
       expect(staleJobs(registry, clock.now)).toBe(false);
     }
     expect(registry.render()).toContain(
-      'fluvia_worker_job_runs_total{job="merchant_risk",result="ok"} 5'
+      'fluvia_worker_job_runs_total{task="merchant_risk",result="ok"} 5'
     );
 
     // El job deja de correr (timer muerto): nadie llama a tick().
@@ -159,8 +173,8 @@ describe('MerchantRiskWatchdog — frescura (follow-up #110)', () => {
     }
     expect(errors.filter((m) => m === 'merchant risk watchdog run failed')).toHaveLength(4);
     const text = registry.render();
-    expect(text).toContain('fluvia_worker_job_runs_total{job="merchant_risk",result="error"} 4');
-    expect(text).toContain('fluvia_worker_job_runs_total{job="merchant_risk",result="ok"} 1');
+    expect(text).toContain('fluvia_worker_job_runs_total{task="merchant_risk",result="error"} 4');
+    expect(text).toContain('fluvia_worker_job_runs_total{task="merchant_risk",result="ok"} 1');
     expect(staleJobs(registry, clock.now)).toBe(true);
 
     // Se arregla el dueño de la función: la siguiente corrida buena la limpia.
@@ -191,7 +205,7 @@ describe('MerchantRiskWatchdog — frescura (follow-up #110)', () => {
     expect(calls).toBe(1); // el guard `running` saltó las otras tres
     expect(errors).toHaveLength(0); // ni un log: punto ciego sin esta alerta
     expect(registry.render()).toContain(
-      'fluvia_worker_job_runs_total{job="merchant_risk",result="error"} 0'
+      'fluvia_worker_job_runs_total{task="merchant_risk",result="error"} 0'
     );
     expect(staleJobs(registry, clock.now)).toBe(true);
   });

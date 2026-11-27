@@ -22,9 +22,14 @@ import type { Counter, Gauge, MetricsRegistry } from '@fluvia/observability';
  * ninguna comparación ve. `enabled` (0/1) se expone siempre, para que apagar un
  * watchdog por config sea visible y no se confunda con "sano".
  *
- * Métricas genéricas con label `job` (valor fijo del código, cardinalidad
+ * Métricas genéricas con label `task` (valor fijo del código, cardinalidad
  * acotada, sin identificadores de tenant): otro watchdog se suma con una línea
  * y hereda la misma regla.
+ *
+ * El label NO puede llamarse `job` (ni `instance`): Prometheus pone esos labels
+ * a cada target al hacer scrape y, con `honor_labels: false` (el default),
+ * renombra el expuesto a `exported_job`. Un selector `{job="merchant_risk"}`
+ * no encontraría ninguna serie y la alerta quedaría en verde para siempre.
  */
 
 export type JobRunResult = 'ok' | 'error';
@@ -51,20 +56,20 @@ export class JobFreshnessMetrics {
     this.lastSuccess = registry.gauge(
       'fluvia_worker_job_last_success_timestamp_seconds',
       'Unix time de la última corrida correcta del job (o del arranque si aún no hubo ninguna)',
-      ['job']
+      ['task']
     );
     this.interval = registry.gauge(
       'fluvia_worker_job_interval_seconds',
       'Intervalo configurado del job; la alerta de frescura compara contra 3x este valor',
-      ['job']
+      ['task']
     );
     this.enabled = registry.gauge(
       'fluvia_worker_job_enabled',
       'Job habilitado por config (1) o apagado (0)',
-      ['job']
+      ['task']
     );
     this.runs = registry.counter('fluvia_worker_job_runs_total', 'Corridas del job por resultado', [
-      'job',
+      'task',
       'result',
     ]);
   }
@@ -72,21 +77,21 @@ export class JobFreshnessMetrics {
   track(job: string, opts: { enabled: boolean; intervalMs: number }): JobFreshnessTracker {
     if (this.tracked.has(job)) throw new Error(`job freshness already tracked: ${job}`);
     this.tracked.add(job);
-    this.enabled.set({ job }, opts.enabled ? 1 : 0);
+    this.enabled.set({ task: job }, opts.enabled ? 1 : 0);
     if (opts.enabled) {
-      this.interval.set({ job }, opts.intervalMs / 1000);
-      this.lastSuccess.set({ job }, this.now() / 1000);
+      this.interval.set({ task: job }, opts.intervalMs / 1000);
+      this.lastSuccess.set({ task: job }, this.now() / 1000);
       // Series en 0 desde el arranque: `increase()` ve el primer error.
-      this.runs.inc({ job, result: 'ok' }, 0);
-      this.runs.inc({ job, result: 'error' }, 0);
+      this.runs.inc({ task: job, result: 'ok' }, 0);
+      this.runs.inc({ task: job, result: 'error' }, 0);
     }
     return {
       success: () => {
-        this.lastSuccess.set({ job }, this.now() / 1000);
-        this.runs.inc({ job, result: 'ok' });
+        this.lastSuccess.set({ task: job }, this.now() / 1000);
+        this.runs.inc({ task: job, result: 'ok' });
       },
       failure: () => {
-        this.runs.inc({ job, result: 'error' });
+        this.runs.inc({ task: job, result: 'error' });
       },
     };
   }

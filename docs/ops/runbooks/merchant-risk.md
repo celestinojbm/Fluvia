@@ -93,13 +93,13 @@ El worker corre `sweep_merchant_risk()` cada `MERCHANT_RISK_WATCHDOG_INTERVAL_MS
 
 **Falla cerrado.** `merchants` tiene `FORCE RLS`: si el dueño de `sweep_merchant_risk()` no se salta RLS (en cloud, un rol owner sin `BYPASSRLS`), la función **lanza** `FLUVIA_MERCHANT_RISK_SWEEP_BLIND` en vez de devolver 0. En el worker se ve como `merchant risk watchdog run failed` en cada corrida y los gauges dejan de actualizarse. Un 0 en estos gauges significa sano; un error significa que el watchdog está ciego. Se arregla dando `BYPASSRLS` al dueño de la función o cambiando el dueño (`ALTER FUNCTION sweep_merchant_risk() OWNER TO …`).
 
-**El watchdog dejó de correr** (alerta «Watchdog de riesgo sin corrida correcta», follow-up de #110). Si el job no corre, los tres gauges se quedan con su último valor y sus alertas no pueden saltar. El worker expone `fluvia_worker_job_last_success_timestamp_seconds{job="merchant_risk"}` y la alerta salta cuando envejece más de 3 intervalos (15 min con el default). Al arrancar arranca en la hora del boot, así que un worker que nunca logra una corrida correcta también alerta.
+**El watchdog dejó de correr** (alerta «Watchdog de riesgo sin corrida correcta», follow-up de #110). Si el job no corre, los tres gauges se quedan con su último valor y sus alertas no pueden saltar. El worker expone `fluvia_worker_job_last_success_timestamp_seconds{task="merchant_risk"}` y la alerta salta cuando envejece más de 3 intervalos (15 min con el default). Al arrancar arranca en la hora del boot, así que un worker que nunca logra una corrida correcta también alerta.
 
-1. `fluvia_worker_job_runs_total{job="merchant_risk",result="error"}` sube → la corrida falla. El log dice `merchant risk watchdog run failed` con la causa. `FLUVIA_MERCHANT_RISK_SWEEP_BLIND` se arregla como arriba; un error de conexión es de la BD, no del watchdog.
+1. `fluvia_worker_job_runs_total{task="merchant_risk",result="error"}` sube → la corrida falla. El log dice `merchant risk watchdog run failed` con la causa. `FLUVIA_MERCHANT_RISK_SWEEP_BLIND` se arregla como arriba; un error de conexión es de la BD, no del watchdog.
 2. No sube ninguno de los dos contadores → una corrida está **colgada** (el job no lanza la siguiente mientras la anterior siga en vuelo, y no loguea nada) o el timer murió. Mirar consultas del rol `fluvia_worker` en `pg_stat_activity` sobre `sweep_merchant_risk()`; reiniciar el worker si no hay otra causa.
-3. Verificar: tras la siguiente corrida correcta, `time() - fluvia_worker_job_last_success_timestamp_seconds{job="merchant_risk"}` vuelve a menos de un intervalo.
+3. Verificar: tras la siguiente corrida correcta, `time() - fluvia_worker_job_last_success_timestamp_seconds{task="merchant_risk"}` vuelve a menos de un intervalo.
 
-`fluvia_worker_job_enabled{job="merchant_risk"} == 0` significa `MERCHANT_RISK_WATCHDOG_ENABLED=false`. En producción eso es una alerta MEDIA: sin el job nadie ve la denylist ni las altas sin declaración.
+`fluvia_worker_job_enabled{task="merchant_risk"} == 0` significa `MERCHANT_RISK_WATCHDOG_ENABLED=false`. En producción eso es una alerta MEDIA: sin el job nadie ve la denylist ni las altas sin declaración.
 
 ## Verificación
 
