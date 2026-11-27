@@ -24,6 +24,7 @@ import { PayoutsWatchdog } from './payouts-watchdog.js';
 import { PayoutsRedriver } from './payouts-redriver.js';
 import { DisputesWatchdog } from './disputes-watchdog.js';
 import { MerchantRiskWatchdog } from './merchant-risk-watchdog.js';
+import { JobFreshnessMetrics } from './job-freshness.js';
 import { IdempotencyWatchdog } from './idempotency-watchdog.js';
 import { LedgerCheckpointer } from './ledger-checkpointer.js';
 import { LedgerChainAnchorer } from './ledger-chain-anchorer.js';
@@ -45,6 +46,9 @@ const webhookPool = createPool({ connectionString: config.db.webhook, max: 4 });
 // F1-07: metricas del plano worker (agregados anonimos, servidas en
 // WORKER_METRICS_PORT). Las alertas baseline viven en observability.md.
 const registry = new MetricsRegistry();
+// Follow-up de #110: frescura de los jobs periódicos. Sin esto, un watchdog que
+// deja de correr deja sus gauges congelados en el último valor (alerta en verde).
+const jobFreshness = new JobFreshnessMetrics(registry);
 const heartbeatsTotal = registry.counter(
   'fluvia_worker_heartbeats_total',
   'Latidos del proceso worker'
@@ -325,11 +329,16 @@ const disputesWatchdog = new DisputesWatchdog(workerPool, logger, {
 // #92/#108: cola de comercios pending_review y activos en la denylist. La
 // politica vive en sweep_merchant_risk() (0070); NO congela nada — congelar es
 // decision del operador por el CLI auditado (merchant-risk freeze).
+const merchantRiskFreshness = jobFreshness.track('merchant_risk', config.merchantRiskWatchdog);
 const merchantRiskWatchdog = new MerchantRiskWatchdog(workerPool, logger, {
   onResult: (health) => {
     merchantsPendingReview.set({}, health.pendingReviewActive);
     merchantsPendingReviewTotal.set({}, health.pendingReviewTotal);
     merchantsDenylistedActive.set({}, health.denylistedActive);
+  },
+  onRun: (result) => {
+    if (result === 'ok') merchantRiskFreshness.success();
+    else merchantRiskFreshness.failure();
   },
 });
 // F6 (threat model §5): salud de la capa de idempotencia. La política vive en
@@ -497,9 +506,7 @@ worker
     }
     if (config.merchantRiskWatchdog.enabled) {
       // Primera corrida inmediata: la cola pending_review se ve desde el arranque.
-      void merchantRiskWatchdog.runOnce().catch((err: unknown) => {
-        logger.error({ err: String(err) }, 'merchant risk watchdog run failed');
-      });
+      void merchantRiskWatchdog.tick();
       merchantRiskWatchdog.start(config.merchantRiskWatchdog.intervalMs);
       logger.info(
         { intervalMs: config.merchantRiskWatchdog.intervalMs },
